@@ -251,7 +251,7 @@ export default function Jobs() {
                             <Switch
                               label=""
                               defaultChecked={job.isActive}
-                              onChange={(checked) =>
+                              onChange={() =>
                                 handleToggleActive(job.id, job.isActive)
                               }
                             />
