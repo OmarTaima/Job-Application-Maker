@@ -59,6 +59,14 @@ const navItems: NavItem[] = [
 ];
 
 const othersItems: NavItem[] = [
+  {
+    icon: <TaskIcon />,
+    name: "User Management",
+    subItems: [
+      { name: "Users", path: "/users", pro: false },
+      { name: "Permissions & Roles", path: "/permissions", pro: false },
+    ],
+  },
   // {
   //   icon: <PieChartIcon />,
   //   name: "Charts",

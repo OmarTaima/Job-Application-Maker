@@ -24,6 +24,8 @@ import PreviewCompany from "./pages/Recruiting/PreviewCompany";
 import JobCreation from "./pages/Recruiting/JobCreation";
 import Jobs from "./pages/Recruiting/Jobs";
 import CreateJob from "./pages/Recruiting/CreateJob";
+import Users from "./pages/Recruiting/Users";
+import Permissions from "./pages/Recruiting/Permissions";
 
 export default function App() {
   return (
@@ -43,6 +45,10 @@ export default function App() {
               path="company/:companyId/create-job"
               element={<JobCreation />}
             />
+
+            {/* User Management */}
+            <Route path="users" element={<Users />} />
+            <Route path="permissions" element={<Permissions />} />
 
             {/* Others Page */}
             <Route path="profile" element={<UserProfiles />} />
