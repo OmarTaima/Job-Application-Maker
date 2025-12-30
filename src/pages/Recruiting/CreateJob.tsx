@@ -184,8 +184,11 @@ export default function CreateJob() {
     null
   );
   const [jobStatus, setJobStatus] = useState("");
-  const [showRecommendedFieldsModal, setShowRecommendedFieldsModal] = useState(false);
-  const [selectedRecommendedFields, setSelectedRecommendedFields] = useState<string[]>([]);
+  const [showRecommendedFieldsModal, setShowRecommendedFieldsModal] =
+    useState(false);
+  const [selectedRecommendedFields, setSelectedRecommendedFields] = useState<
+    string[]
+  >([]);
 
   const handleInputChange = (field: keyof JobForm, value: any) => {
     setJobForm((prev) => ({ ...prev, [field]: value }));
@@ -432,7 +435,10 @@ export default function CreateJob() {
       .map((field) => ({
         ...field,
         fieldId: `${field.fieldId}_${Date.now()}`, // Make unique
-        displayOrder: jobForm.customFields.length + selectedRecommendedFields.indexOf(field.fieldId) + 1,
+        displayOrder:
+          jobForm.customFields.length +
+          selectedRecommendedFields.indexOf(field.fieldId) +
+          1,
       }));
 
     setJobForm((prev) => ({
@@ -726,7 +732,7 @@ export default function CreateJob() {
             <button
               type="button"
               onClick={handleAddCustomField}
-              className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white shadow-sm transition-all hover:bg-primary/90"
+              className="flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white shadow-sm transition-all hover:bg-blue-700"
             >
               <PlusIcon className="size-4" />
               Add Custom Field
@@ -1188,11 +1194,12 @@ export default function CreateJob() {
                     <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
                       <span className="font-mono text-xs">{field.fieldId}</span>
                     </p>
-                    {field.minValue !== undefined && field.maxValue !== undefined && (
-                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-500">
-                        Range: {field.minValue} - {field.maxValue}
-                      </p>
-                    )}
+                    {field.minValue !== undefined &&
+                      field.maxValue !== undefined && (
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-500">
+                          Range: {field.minValue} - {field.maxValue}
+                        </p>
+                      )}
                     {field.choices && field.choices.length > 0 && (
                       <div className="mt-2 flex flex-wrap gap-1">
                         {field.choices.map((choice, idx) => (
@@ -1226,9 +1233,12 @@ export default function CreateJob() {
               type="button"
               onClick={handleAddRecommendedFields}
               disabled={selectedRecommendedFields.length === 0}
-              className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Add {selectedRecommendedFields.length > 0 && `(${selectedRecommendedFields.length})`} Selected Fields
+              Add{" "}
+              {selectedRecommendedFields.length > 0 &&
+                `(${selectedRecommendedFields.length})`}{" "}
+              Selected Fields
             </button>
           </div>
         </div>

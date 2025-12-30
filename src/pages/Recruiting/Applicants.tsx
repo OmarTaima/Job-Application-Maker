@@ -104,13 +104,15 @@ const Applicants = () => {
   }));
 
   // Filter applicants by status
-  const filteredGroups = groupedApplicants.map((group) => ({
-    ...group,
-    applicants:
-      statusFilter === "all"
-        ? group.applicants
-        : group.applicants.filter((app) => app.status === statusFilter),
-  })).filter((group) => group.applicants.length > 0);
+  const filteredGroups = groupedApplicants
+    .map((group) => ({
+      ...group,
+      applicants:
+        statusFilter === "all"
+          ? group.applicants
+          : group.applicants.filter((app) => app.status === statusFilter),
+    }))
+    .filter((group) => group.applicants.length > 0);
 
   const toggleJobExpand = (jobId: string) => {
     setExpandedJobs((prev) =>
@@ -149,7 +151,10 @@ const Applicants = () => {
       <PageBreadcrumb pageTitle="Applicants" />
 
       <div className="grid gap-6">
-        <ComponentCard title="Job Applicants" desc="View and manage all applicants">
+        <ComponentCard
+          title="Job Applicants"
+          desc="View and manage all applicants"
+        >
           <>
             {/* Status Filter */}
             <div className="mb-6 flex flex-wrap gap-2">
@@ -251,29 +256,70 @@ const Applicants = () => {
                       <Table>
                         <TableHeader className="bg-gray-50 dark:bg-gray-800">
                           <TableRow>
-                            <TableCell isHeader className="px-4 py-3 align-middle text-left font-semibold">
+                            <TableCell
+                              isHeader
+                              className="px-4 py-3 align-middle text-left font-semibold"
+                            >
+                              Photo
+                            </TableCell>
+                            <TableCell
+                              isHeader
+                              className="px-4 py-3 align-middle text-left font-semibold"
+                            >
                               Name
                             </TableCell>
-                            <TableCell isHeader className="px-4 py-3 align-middle text-left font-semibold">
+                            <TableCell
+                              isHeader
+                              className="px-4 py-3 align-middle text-left font-semibold"
+                            >
                               Email
                             </TableCell>
-                            <TableCell isHeader className="px-4 py-3 align-middle text-left font-semibold">
+                            <TableCell
+                              isHeader
+                              className="px-4 py-3 align-middle text-left font-semibold"
+                            >
                               Phone
                             </TableCell>
-                            <TableCell isHeader className="px-4 py-3 align-middle text-left font-semibold">
+                            <TableCell
+                              isHeader
+                              className="px-4 py-3 align-middle text-left font-semibold"
+                            >
                               Status
                             </TableCell>
-                            <TableCell isHeader className="px-4 py-3 align-middle text-left font-semibold">
+                            <TableCell
+                              isHeader
+                              className="px-4 py-3 align-middle text-left font-semibold"
+                            >
                               Submitted
-                            </TableCell>
-                            <TableCell isHeader className="px-4 py-3 align-middle text-left font-semibold">
-                              Actions
                             </TableCell>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {group.applicants.map((applicant) => (
-                            <TableRow key={applicant._id}>
+                            <TableRow
+                              key={applicant._id}
+                              onClick={() =>
+                                navigate(`/applicant/${applicant._id}`)
+                              }
+                              className="cursor-pointer transition hover:bg-gray-50 dark:hover:bg-gray-800"
+                            >
+                              <TableCell className="px-4 py-3 align-middle">
+                                <div className="h-10 w-10 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+                                  {applicant.profilePhoto ? (
+                                    <img
+                                      src={applicant.profilePhoto}
+                                      alt={applicant.fullName}
+                                      className="h-full w-full object-cover"
+                                    />
+                                  ) : (
+                                    <div className="flex h-full w-full items-center justify-center text-sm font-semibold text-gray-500 dark:text-gray-400">
+                                      {applicant.fullName
+                                        .charAt(0)
+                                        .toUpperCase()}
+                                    </div>
+                                  )}
+                                </div>
+                              </TableCell>
                               <TableCell className="px-4 py-3 align-middle font-medium">
                                 {applicant.fullName}
                               </TableCell>
@@ -295,16 +341,6 @@ const Applicants = () => {
                               </TableCell>
                               <TableCell className="px-4 py-3 align-middle text-sm text-gray-600 dark:text-gray-400">
                                 {formatDate(applicant.submittedAt)}
-                              </TableCell>
-                              <TableCell className="px-4 py-3 align-middle">
-                                <button
-                                  onClick={() =>
-                                    navigate(`/applicant/${applicant._id}`)
-                                  }
-                                  className="text-sm font-medium text-primary hover:text-primary/80"
-                                >
-                                  View Details
-                                </button>
                               </TableCell>
                             </TableRow>
                           ))}
