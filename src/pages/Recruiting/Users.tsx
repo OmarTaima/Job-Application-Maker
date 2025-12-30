@@ -81,20 +81,20 @@ const mockUsers: User[] = [
 ];
 
 const mockRoles = [
-  { 
-    id: "ROLE-001", 
+  {
+    id: "ROLE-001",
     name: "HR Manager",
-    permissions: ["PERM-001", "PERM-002", "PERM-003", "PERM-005"]
+    permissions: ["PERM-001", "PERM-002", "PERM-003", "PERM-005"],
   },
-  { 
-    id: "ROLE-002", 
+  {
+    id: "ROLE-002",
     name: "Recruiter",
-    permissions: ["PERM-001", "PERM-005"]
+    permissions: ["PERM-001", "PERM-005"],
   },
-  { 
-    id: "ROLE-003", 
+  {
+    id: "ROLE-003",
     name: "Admin",
-    permissions: ["PERM-001", "PERM-002", "PERM-003", "PERM-004", "PERM-005"]
+    permissions: ["PERM-001", "PERM-002", "PERM-003", "PERM-004", "PERM-005"],
   },
 ];
 
@@ -126,17 +126,19 @@ export default function Users() {
   const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
   const [rolePermissions, setRolePermissions] = useState<string[]>([]);
 
-  const handleInputChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const handleInputChange = (
+    e: ChangeEvent<HTMLInputElement | HTMLSelectElement>
+  ) => {
     const { name, value } = e.target;
     setUserForm((prev) => ({ ...prev, [name]: value }));
-    
+
     // Auto-select role permissions when role is selected
     if (name === "roleId" && value) {
-      const selectedRole = mockRoles.find(r => r.id === value);
+      const selectedRole = mockRoles.find((r) => r.id === value);
       if (selectedRole) {
         setRolePermissions(selectedRole.permissions);
         // Merge role permissions with any additional user permissions
-        setSelectedPermissions(prev => {
+        setSelectedPermissions((prev) => {
           const combined = [...new Set([...selectedRole.permissions, ...prev])];
           return combined;
         });
@@ -157,7 +159,7 @@ export default function Users() {
     if (rolePermissions.includes(permId)) {
       return;
     }
-    
+
     setSelectedPermissions((prev) =>
       prev.includes(permId)
         ? prev.filter((id) => id !== permId)
@@ -171,9 +173,9 @@ export default function Users() {
     // Prepare payload
     // Only include additional permissions (not from role)
     const additionalPermissions = selectedPermissions.filter(
-      permId => !rolePermissions.includes(permId)
+      (permId) => !rolePermissions.includes(permId)
     );
-    
+
     const payload = {
       email: userForm.email,
       password: userForm.password,
@@ -221,7 +223,10 @@ export default function Users() {
 
   return (
     <>
-      <PageMeta title="Users | Job Application Maker" description="Manage system users, roles, and permissions" />
+      <PageMeta
+        title="Users | Job Application Maker"
+        description="Manage system users, roles, and permissions"
+      />
       <PageBreadcrumb pageTitle="Users" />
 
       <div className="space-y-6">
@@ -255,9 +260,7 @@ export default function Users() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Basic Information */}
                 <div>
-                  <Label htmlFor="fullName">
-                    Full Name
-                  </Label>
+                  <Label htmlFor="fullName">Full Name</Label>
                   <Input
                     id="fullName"
                     name="fullName"
@@ -268,9 +271,7 @@ export default function Users() {
                 </div>
 
                 <div>
-                  <Label htmlFor="email">
-                    Email
-                  </Label>
+                  <Label htmlFor="email">Email</Label>
                   <Input
                     id="email"
                     name="email"
@@ -282,9 +283,7 @@ export default function Users() {
                 </div>
 
                 <div>
-                  <Label htmlFor="password">
-                    Password
-                  </Label>
+                  <Label htmlFor="password">Password</Label>
                   <Input
                     id="password"
                     name="password"
@@ -296,9 +295,7 @@ export default function Users() {
                 </div>
 
                 <div>
-                  <Label htmlFor="phone">
-                    Phone
-                  </Label>
+                  <Label htmlFor="phone">Phone</Label>
                   <Input
                     id="phone"
                     name="phone"
@@ -309,9 +306,7 @@ export default function Users() {
                 </div>
 
                 <div>
-                  <Label htmlFor="roleId">
-                    Role
-                  </Label>
+                  <Label htmlFor="roleId">Role</Label>
                   <select
                     id="roleId"
                     name="roleId"
@@ -330,9 +325,7 @@ export default function Users() {
                 </div>
 
                 <div>
-                  <Label htmlFor="companyId">
-                    Company
-                  </Label>
+                  <Label htmlFor="companyId">Company</Label>
                   <select
                     id="companyId"
                     name="companyId"
@@ -376,15 +369,14 @@ export default function Users() {
               <div>
                 <Label>Permissions</Label>
                 <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                  Permissions from role are automatically selected. You can add additional permissions for this user.
+                  Permissions from role are automatically selected. You can add
+                  additional permissions for this user.
                 </p>
                 <div className="mt-2 border border-gray-300 dark:border-gray-700 rounded-lg overflow-hidden">
                   <table className="w-full">
                     <thead className="bg-gray-50 dark:bg-gray-800">
                       <tr>
-                        <th className="px-4 py-3 text-left text-sm font-medium w-12">
-                          
-                        </th>
+                        <th className="px-4 py-3 text-left text-sm font-medium w-12"></th>
                         <th className="px-4 py-3 text-left text-sm font-medium">
                           Permission
                         </th>
@@ -396,10 +388,15 @@ export default function Users() {
                     <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                       {mockPermissions.map((perm) => {
                         const isFromRole = rolePermissions.includes(perm.id);
-                        const isSelected = selectedPermissions.includes(perm.id);
-                        
+                        const isSelected = selectedPermissions.includes(
+                          perm.id
+                        );
+
                         return (
-                          <tr key={perm.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
+                          <tr
+                            key={perm.id}
+                            className="hover:bg-gray-50 dark:hover:bg-gray-800"
+                          >
                             <td className="px-4 py-3 text-center">
                               <input
                                 type="checkbox"
@@ -409,9 +406,7 @@ export default function Users() {
                                 className="w-4 h-4 text-brand-500 rounded focus:ring-brand-500 disabled:opacity-50 disabled:cursor-not-allowed"
                               />
                             </td>
-                            <td className="px-4 py-3 text-sm">
-                              {perm.name}
-                            </td>
+                            <td className="px-4 py-3 text-sm">{perm.name}</td>
                             <td className="px-4 py-3 text-sm">
                               {isFromRole ? (
                                 <span className="px-2 py-1 text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded">
@@ -458,26 +453,86 @@ export default function Users() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableCell isHeader className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800">User ID</TableCell>
-                <TableCell isHeader className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800">Full Name</TableCell>
-                <TableCell isHeader className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800">Email</TableCell>
-                <TableCell isHeader className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800">Phone</TableCell>
-                <TableCell isHeader className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800">Role</TableCell>
-                <TableCell isHeader className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800">Company</TableCell>
-                <TableCell isHeader className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800">Departments</TableCell>
-                <TableCell isHeader className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800">Status</TableCell>
-                <TableCell isHeader className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800">Created At</TableCell>
+                <TableCell
+                  isHeader
+                  className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
+                >
+                  User ID
+                </TableCell>
+                <TableCell
+                  isHeader
+                  className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
+                >
+                  Full Name
+                </TableCell>
+                <TableCell
+                  isHeader
+                  className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
+                >
+                  Email
+                </TableCell>
+                <TableCell
+                  isHeader
+                  className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
+                >
+                  Phone
+                </TableCell>
+                <TableCell
+                  isHeader
+                  className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
+                >
+                  Role
+                </TableCell>
+                <TableCell
+                  isHeader
+                  className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
+                >
+                  Company
+                </TableCell>
+                <TableCell
+                  isHeader
+                  className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
+                >
+                  Departments
+                </TableCell>
+                <TableCell
+                  isHeader
+                  className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
+                >
+                  Status
+                </TableCell>
+                <TableCell
+                  isHeader
+                  className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
+                >
+                  Created At
+                </TableCell>
               </TableRow>
             </TableHeader>
             <TableBody className="divide-y divide-gray-200 dark:divide-gray-700">
               {users.map((user) => (
-                <TableRow key={user.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
-                  <TableCell className="px-4 py-3 align-middle">{user.id}</TableCell>
-                  <TableCell className="px-4 py-3 align-middle">{user.fullName}</TableCell>
-                  <TableCell className="px-4 py-3 align-middle">{user.email}</TableCell>
-                  <TableCell className="px-4 py-3 align-middle">{user.phone}</TableCell>
-                  <TableCell className="px-4 py-3 align-middle">{user.role}</TableCell>
-                  <TableCell className="px-4 py-3 align-middle">{user.company}</TableCell>
+                <TableRow
+                  key={user.id}
+                  className="hover:bg-gray-50 dark:hover:bg-gray-800"
+                >
+                  <TableCell className="px-4 py-3 align-middle">
+                    {user.id}
+                  </TableCell>
+                  <TableCell className="px-4 py-3 align-middle">
+                    {user.fullName}
+                  </TableCell>
+                  <TableCell className="px-4 py-3 align-middle">
+                    {user.email}
+                  </TableCell>
+                  <TableCell className="px-4 py-3 align-middle">
+                    {user.phone}
+                  </TableCell>
+                  <TableCell className="px-4 py-3 align-middle">
+                    {user.role}
+                  </TableCell>
+                  <TableCell className="px-4 py-3 align-middle">
+                    {user.company}
+                  </TableCell>
                   <TableCell className="px-4 py-3 align-middle">
                     <div className="flex flex-wrap gap-1">
                       {user.departments.map((dept, idx) => (
@@ -501,7 +556,9 @@ export default function Users() {
                       {user.status}
                     </span>
                   </TableCell>
-                  <TableCell className="px-4 py-3 align-middle">{user.createdAt}</TableCell>
+                  <TableCell className="px-4 py-3 align-middle">
+                    {user.createdAt}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

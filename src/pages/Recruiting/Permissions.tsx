@@ -122,7 +122,7 @@ const mockPermissions: Permission[] = [
   },
 ];
 
-const availableActions = ["read", "write", "delete", "admin"];
+const availableAccess = ["read", "write", "create"];
 
 export default function Permissions() {
   const [roles, setRoles] = useState<Role[]>(mockRoles);
@@ -137,7 +137,7 @@ export default function Permissions() {
   const [showPermissionForm, setShowPermissionForm] = useState(false);
 
   const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
-  const [selectedActions, setSelectedActions] = useState<string[]>([]);
+  const [selectedAccess, setSelectedAccess] = useState<string[]>([]);
 
   // Role handlers
   const handleRoleInputChange = (
@@ -190,11 +190,11 @@ export default function Permissions() {
     setPermissionForm((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleActionToggle = (action: string) => {
-    setSelectedActions((prev) =>
-      prev.includes(action)
-        ? prev.filter((a) => a !== action)
-        : [...prev, action]
+  const handleAccessToggle = (access: string) => {
+    setSelectedAccess((prev) =>
+      prev.includes(access)
+        ? prev.filter((a) => a !== access)
+        : [...prev, access]
     );
   };
 
@@ -204,7 +204,7 @@ export default function Permissions() {
     const payload = {
       name: permissionForm.name,
       description: permissionForm.description,
-      actions: selectedActions,
+      access: selectedAccess,
     };
 
     console.log(
@@ -217,13 +217,13 @@ export default function Permissions() {
       id: `PERM-${String(permissions.length + 1).padStart(3, "0")}`,
       name: permissionForm.name,
       description: permissionForm.description,
-      actions: selectedActions,
+      actions: selectedAccess,
       createdAt: new Date().toISOString().split("T")[0],
     };
 
     setPermissions([...permissions, newPermission]);
     setPermissionForm(defaultPermissionForm);
-    setSelectedActions([]);
+    setSelectedAccess([]);
     setShowPermissionForm(false);
   };
 
@@ -516,22 +516,22 @@ export default function Permissions() {
                   </div>
                 </div>
 
-                {/* Actions Selection */}
+                {/* Access Selection */}
                 <div>
-                  <Label>Actions</Label>
+                  <Label>Access</Label>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-2">
-                    {availableActions.map((action) => (
+                    {availableAccess.map((access) => (
                       <label
-                        key={action}
+                        key={access}
                         className="flex items-center gap-2 p-3 border border-gray-300 dark:border-gray-700 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800"
                       >
                         <input
                           type="checkbox"
-                          checked={selectedActions.includes(action)}
-                          onChange={() => handleActionToggle(action)}
+                          checked={selectedAccess.includes(access)}
+                          onChange={() => handleAccessToggle(access)}
                           className="w-4 h-4 text-brand-500 rounded focus:ring-brand-500"
                         />
-                        <span className="text-sm capitalize">{action}</span>
+                        <span className="text-sm capitalize">{access}</span>
                       </label>
                     ))}
                   </div>

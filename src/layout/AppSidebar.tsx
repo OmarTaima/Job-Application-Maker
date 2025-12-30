@@ -22,6 +22,7 @@ const navItems: NavItem[] = [
     icon: <TaskIcon />,
     name: "Recruiting",
     subItems: [
+      { name: "Applicants", path: "/applicants", pro: false },
       { name: "Create Company", path: "/recruiting", pro: false },
       { name: "Companies", path: "/companies", pro: false },
       { name: "Create Job", path: "/create-job", pro: false },
@@ -65,6 +66,7 @@ const adminItems: NavItem[] = [
     subItems: [
       { name: "Users", path: "/users", pro: false },
       { name: "Permissions & Roles", path: "/permissions", pro: false },
+      { name: "Recommended Fields", path: "/recommended-fields", pro: false },
     ],
   },
   // {

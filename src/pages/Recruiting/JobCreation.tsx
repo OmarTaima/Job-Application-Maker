@@ -26,7 +26,9 @@ type CustomField = {
     | "checkbox"
     | "radio"
     | "select"
-    | "textarea";
+    | "textarea"
+    | "url"
+    | "Tags";
   isRequired: boolean;
   minValue?: number;
   maxValue?: number;
@@ -55,10 +57,12 @@ const inputTypeOptions = [
   { value: "number", label: "Number" },
   { value: "email", label: "Email" },
   { value: "date", label: "Date" },
+  { value: "url", label: "URL" },
   { value: "checkbox", label: "Checkbox" },
   { value: "radio", label: "Radio" },
   { value: "select", label: "Select" },
   { value: "textarea", label: "Textarea" },
+  { value: "Tags", label: "Tags (Multiple Values)" },
 ];
 
 export default function JobCreation() {
@@ -622,7 +626,8 @@ export default function JobCreation() {
 
                   {(field.inputType === "checkbox" ||
                     field.inputType === "radio" ||
-                    field.inputType === "select") && (
+                    field.inputType === "select" ||
+                    field.inputType === "Tags") && (
                     <div>
                       <Label>Choices</Label>
                       <div className="flex gap-2">

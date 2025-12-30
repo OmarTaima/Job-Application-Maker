@@ -26,6 +26,9 @@ import Jobs from "./pages/Recruiting/Jobs";
 import CreateJob from "./pages/Recruiting/CreateJob";
 import Users from "./pages/Recruiting/Users";
 import Permissions from "./pages/Recruiting/Permissions";
+import RecommendedFields from "./pages/Recruiting/RecommendedFields";
+import Applicants from "./pages/Recruiting/Applicants";
+import ApplicantData from "./pages/Recruiting/ApplicantData";
 
 export default function App() {
   return (
@@ -49,6 +52,9 @@ export default function App() {
             {/* User Management */}
             <Route path="users" element={<Users />} />
             <Route path="permissions" element={<Permissions />} />
+            <Route path="recommended-fields" element={<RecommendedFields />} />
+            <Route path="applicants" element={<Applicants />} />
+            <Route path="applicant/:id" element={<ApplicantData />} />
 
             {/* Others Page */}
             <Route path="profile" element={<UserProfiles />} />
