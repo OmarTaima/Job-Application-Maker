@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router";
 import ComponentCard from "../../components/common/ComponentCard";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
@@ -9,61 +9,15 @@ import TextArea from "../../components/form/input/TextArea";
 import Select from "../../components/form/Select";
 import { Modal } from "../../components/ui/modal";
 import { PlusIcon } from "../../icons";
-
-type Interview = {
-  issuedBy: string;
-  issuedAt: string;
-  description: string;
-  comment?: string;
-};
-
-type Message = {
-  status: string;
-  text: string;
-  sentAt: string;
-  sentBy: string;
-  comment?: string;
-};
-
-type Comment = {
-  changedBy: string;
-  changedAt: string;
-  comment: string;
-};
-
-type StatusHistory = {
-  status: string;
-  changedBy: string;
-  changedAt: string;
-  notes?: string;
-};
-
-type ApplicantData = {
-  _id: string;
-  companyId: string;
-  jobPositionId: string;
-  departmentId: string;
-  status: "pending" | "approved" | "interview" | "rejected";
-  submittedAt: string;
-  fullName: string;
-  email: string;
-  phone: string;
-  address: string;
-  profilePhoto?: string;
-  cvFilePath?: string;
-  customResponses: Record<string, any>;
-  interviews: Interview[];
-  messages: Message[];
-  comments: Comment[];
-  statusHistory: StatusHistory[];
-};
+import { applicantsService, ApiError } from "../../services/applicantsService";
+import type { Applicant } from "../../services/applicantsService";
+import { jobPositionsService } from "../../services/jobPositionsService";
+import { companiesService } from "../../services/companiesService";
+import { departmentsService } from "../../services/departmentsService";
 
 const ApplicantData = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-
-  // Use id for fetching data (placeholder)
-  console.log("Applicant ID:", id);
 
   // Modal states
   const [showInterviewModal, setShowInterviewModal] = useState(false);
@@ -72,192 +26,242 @@ const ApplicantData = () => {
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [expandedHistory, setExpandedHistory] = useState<string | null>(null);
 
+  // Data states
+  const [applicant, setApplicant] = useState<Applicant | null>(null);
+  const [jobTitle, setJobTitle] = useState<string>("");
+  const [companyName, setCompanyName] = useState<string>("");
+  const [departmentName, setDepartmentName] = useState<string>("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
   // Form states
   const [interviewForm, setInterviewForm] = useState({
     date: "",
+    time: "",
     description: "",
     comment: "",
+    location: "",
+    link: "",
+    type: "phone" as "phone" | "video" | "in-person",
   });
   const [messageForm, setMessageForm] = useState({
-    text: "",
-    comment: "",
+    subject: "",
+    body: "",
+    type: "email" as "email" | "sms" | "internal",
   });
   const [commentForm, setCommentForm] = useState({
-    comment: "",
+    text: "",
   });
   const [statusForm, setStatusForm] = useState({
-    status: "",
-    comment: "",
+    status: "" as Applicant["status"] | "",
+    notes: "",
   });
 
-  // Mock data - replace with API call
-  const [applicant, setApplicant] = useState<ApplicantData>({
-    _id: "APP001",
-    companyId: "COMP-12345678",
-    jobPositionId: "JOB001",
-    departmentId: "DEPT-001",
-    status: "pending",
-    submittedAt: "2025-12-28T10:00:00Z",
-    fullName: "John Doe",
-    email: "john.doe@example.com",
-    phone: "+1234567890",
-    address: "123 Main St, New York, NY",
-    profilePhoto:
-      "https://ui-avatars.com/api/?name=John+Doe&size=200&background=3b82f6&color=fff",
-    cvFilePath: "/uploads/cv/john-doe.pdf",
-    customResponses: {
-      years_experience: "5",
-      education_level: "Bachelor's",
-      skills: ["JavaScript", "React", "Node.js"],
-    },
-    interviews: [
-      {
-        issuedBy: "Admin",
-        issuedAt: "2025-12-29T14:00:00Z",
-        description: "Technical Interview",
-        comment: "Candidate shows strong technical skills",
-      },
-    ],
-    messages: [
-      {
-        status: "sent",
-        text: "Thank you for your application. We will review it soon.",
-        sentAt: "2025-12-28T11:00:00Z",
-        sentBy: "HR Team",
-      },
-    ],
-    comments: [
-      {
-        changedBy: "Admin",
-        changedAt: "2025-12-28T15:00:00Z",
-        comment: "Strong candidate, proceed to interview",
-      },
-    ],
-    statusHistory: [
-      {
-        status: "pending",
-        changedBy: "System",
-        changedAt: "2025-12-28T10:00:00Z",
-        notes: "Application submitted",
-      },
-    ],
-  });
+  useEffect(() => {
+    if (id) {
+      loadApplicantData(id);
+    }
+  }, [id]);
+
+  const loadApplicantData = async (applicantId: string) => {
+    try {
+      setLoading(true);
+      const data = await applicantsService.getApplicantById(applicantId);
+      setApplicant(data);
+
+      // Load related entities
+      const [job, company, department] = await Promise.all([
+        jobPositionsService
+          .getJobPositionById(data.jobPositionId)
+          .catch(() => ({ title: "Unknown Job" })),
+        companiesService
+          .getCompanyById(data.companyId)
+          .catch(() => ({ name: "Unknown Company" })),
+        departmentsService
+          .getDepartmentById(data.departmentId)
+          .catch(() => ({ name: "Unknown Department" })),
+      ]);
+
+      setJobTitle(job.title);
+      setCompanyName(company.name);
+      setDepartmentName(department.name);
+      setError(null);
+    } catch (err) {
+      const errorMessage =
+        err instanceof ApiError ? err.message : "Failed to load applicant data";
+      setError(errorMessage);
+      console.error("Error loading applicant:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const statusOptions = [
     { value: "pending", label: "Pending" },
-    { value: "approved", label: "Approved" },
+    { value: "screening", label: "Screening" },
     { value: "interview", label: "Interview" },
+    { value: "offer", label: "Offer" },
+    { value: "approved", label: "Approved" },
     { value: "rejected", label: "Rejected" },
   ];
 
-  const handleInterviewSubmit = (e: React.FormEvent) => {
+  const handleInterviewSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const newInterview: Interview = {
-      issuedBy: "Current User", // Replace with actual user
-      issuedAt: interviewForm.date,
-      description: interviewForm.description,
-      comment: interviewForm.comment || undefined,
-    };
-    const historyEntry: StatusHistory = {
-      status: "Interview Scheduled",
-      changedBy: "Current User",
-      changedAt: new Date().toISOString(),
-      notes: `Interview: ${interviewForm.description}${
-        interviewForm.comment ? ` - ${interviewForm.comment}` : ""
-      }`,
-    };
-    setApplicant((prev) => ({
-      ...prev,
-      interviews: [...prev.interviews, newInterview],
-      statusHistory: [...prev.statusHistory, historyEntry],
-    }));
-    setInterviewForm({ date: "", description: "", comment: "" });
-    setShowInterviewModal(false);
-    console.log("Interview created:", newInterview);
+    if (!id || !applicant) return;
+
+    try {
+      const interviewData: any = {
+        description: interviewForm.description,
+        type: interviewForm.type,
+      };
+
+      if (interviewForm.comment) interviewData.comment = interviewForm.comment;
+      if (interviewForm.date) interviewData.date = interviewForm.date;
+      if (interviewForm.time) interviewData.time = interviewForm.time;
+      if (interviewForm.location)
+        interviewData.location = interviewForm.location;
+      if (interviewForm.link) interviewData.link = interviewForm.link;
+
+      await applicantsService.scheduleInterview(id, interviewData);
+      await loadApplicantData(id);
+      setInterviewForm({
+        date: "",
+        time: "",
+        description: "",
+        comment: "",
+        location: "",
+        link: "",
+        type: "phone",
+      });
+      setShowInterviewModal(false);
+    } catch (err) {
+      const errorMessage =
+        err instanceof ApiError ? err.message : "Failed to schedule interview";
+      alert(errorMessage);
+      console.error("Error scheduling interview:", err);
+    }
   };
 
-  const handleMessageSubmit = (e: React.FormEvent) => {
+  const handleMessageSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const newMessage: Message = {
-      status: "sent",
-      text: messageForm.text,
-      sentAt: new Date().toISOString(),
-      sentBy: "Current User", // Replace with actual user
-      comment: messageForm.comment || undefined,
-    };
-    const historyEntry: StatusHistory = {
-      status: "Message Sent",
-      changedBy: "Current User",
-      changedAt: new Date().toISOString(),
-      notes: `Message: ${messageForm.text.substring(0, 50)}${
-        messageForm.text.length > 50 ? "..." : ""
-      }${messageForm.comment ? ` - ${messageForm.comment}` : ""}`,
-    };
-    setApplicant((prev) => ({
-      ...prev,
-      messages: [...prev.messages, newMessage],
-      statusHistory: [...prev.statusHistory, historyEntry],
-    }));
-    setMessageForm({ text: "", comment: "" });
-    setShowMessageModal(false);
-    console.log("Message sent:", newMessage);
+    if (!id || !applicant) return;
+
+    try {
+      const messageData = {
+        subject: messageForm.subject,
+        body: messageForm.body,
+        type: messageForm.type,
+      };
+
+      await applicantsService.sendMessage(id, messageData);
+      await loadApplicantData(id);
+      setMessageForm({ subject: "", body: "", type: "email" });
+      setShowMessageModal(false);
+    } catch (err) {
+      const errorMessage =
+        err instanceof ApiError ? err.message : "Failed to send message";
+      alert(errorMessage);
+      console.error("Error sending message:", err);
+    }
   };
 
-  const handleCommentSubmit = (e: React.FormEvent) => {
+  const handleCommentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const newComment: Comment = {
-      changedBy: "Current User", // Replace with actual user
-      changedAt: new Date().toISOString(),
-      comment: commentForm.comment,
-    };
-    const historyEntry: StatusHistory = {
-      status: "Comment Added",
-      changedBy: "Current User",
-      changedAt: new Date().toISOString(),
-      notes: commentForm.comment,
-    };
-    setApplicant((prev) => ({
-      ...prev,
-      comments: [...prev.comments, newComment],
-      statusHistory: [...prev.statusHistory, historyEntry],
-    }));
-    setCommentForm({ comment: "" });
-    setShowCommentModal(false);
-    console.log("Comment added:", newComment);
+    if (!id || !applicant) return;
+
+    try {
+      const commentData = {
+        text: commentForm.text,
+      };
+
+      await applicantsService.addComment(id, commentData);
+      await loadApplicantData(id);
+      setCommentForm({ text: "" });
+      setShowCommentModal(false);
+    } catch (err) {
+      const errorMessage =
+        err instanceof ApiError ? err.message : "Failed to add comment";
+      alert(errorMessage);
+      console.error("Error adding comment:", err);
+    }
   };
 
-  const handleStatusChange = (e: React.FormEvent) => {
+  const handleStatusChange = async (e: React.FormEvent) => {
     e.preventDefault();
-    const newStatus: StatusHistory = {
-      status: statusForm.status,
-      changedBy: "Current User", // Replace with actual user
-      changedAt: new Date().toISOString(),
-      notes: statusForm.comment || undefined,
-    };
-    setApplicant((prev) => ({
-      ...prev,
-      status: statusForm.status as any,
-      statusHistory: [...prev.statusHistory, newStatus],
-    }));
-    setStatusForm({ status: "", comment: "" });
-    setShowStatusModal(false);
-    console.log("Status changed:", newStatus);
+    if (!id || !applicant || !statusForm.status) return;
+
+    try {
+      const statusData = {
+        status: statusForm.status,
+        notes: statusForm.notes || undefined,
+      };
+
+      await applicantsService.updateApplicantStatus(id, statusData);
+      await loadApplicantData(id);
+      setStatusForm({ status: "", notes: "" });
+      setShowStatusModal(false);
+    } catch (err) {
+      const errorMessage =
+        err instanceof ApiError ? err.message : "Failed to update status";
+      alert(errorMessage);
+      console.error("Error updating status:", err);
+    }
   };
 
   const getStatusColor = (status: string) => {
     switch (status) {
       case "pending":
         return "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400";
+      case "screening":
+        return "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400";
+      case "interview":
+        return "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400";
+      case "offer":
+        return "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400";
       case "approved":
         return "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400";
-      case "interview":
-        return "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400";
       case "rejected":
         return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400";
       default:
         return "bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400";
     }
   };
+
+  if (loading) {
+    return (
+      <>
+        <PageMeta
+          title="Applicant Details - Loading"
+          description="Loading applicant data"
+        />
+        <div className="p-12 text-center text-gray-500">
+          Loading applicant data...
+        </div>
+      </>
+    );
+  }
+
+  if (error || !applicant) {
+    return (
+      <>
+        <PageMeta
+          title="Applicant Details - Error"
+          description="Error loading applicant"
+        />
+        <div className="p-12 text-center">
+          <div className="mb-4 text-red-600 dark:text-red-400">
+            {error || "Applicant not found"}
+          </div>
+          <button
+            onClick={() => navigate("/recruiting/applicants")}
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            Back to Applicants
+          </button>
+        </div>
+      </>
+    );
+  }
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString("en-US", {
@@ -273,7 +277,7 @@ const ApplicantData = () => {
     <>
       <PageMeta
         title={`Applicant - ${applicant.fullName}`}
-        description="View applicant details"
+        description={`${jobTitle} - ${companyName}`}
       />
       <PageBreadcrumb pageTitle={applicant.fullName} />
 
@@ -281,7 +285,7 @@ const ApplicantData = () => {
         {/* Back Button and Actions */}
         <div className="flex items-center justify-between">
           <button
-            onClick={() => navigate("/applicants")}
+            onClick={() => navigate("/recruiting/applicants")}
             className="text-sm font-medium text-primary hover:text-primary/80"
           >
             ← Back to Applicants
@@ -357,6 +361,22 @@ const ApplicantData = () => {
                 </p>
               </div>
               <div>
+                <Label>Job Position</Label>
+                <p className="mt-1 text-gray-900 dark:text-white">{jobTitle}</p>
+              </div>
+              <div>
+                <Label>Company</Label>
+                <p className="mt-1 text-gray-900 dark:text-white">
+                  {companyName}
+                </p>
+              </div>
+              <div>
+                <Label>Department</Label>
+                <p className="mt-1 text-gray-900 dark:text-white">
+                  {departmentName}
+                </p>
+              </div>
+              <div>
                 <Label>Status</Label>
                 <span
                   className={`mt-1 inline-block rounded-full px-3 py-1 text-xs font-semibold ${getStatusColor(
@@ -391,32 +411,35 @@ const ApplicantData = () => {
         </ComponentCard>
 
         {/* Custom Responses */}
-        {Object.keys(applicant.customResponses).length > 0 && (
-          <ComponentCard
-            title="Application Responses"
-            desc="Custom field responses"
-          >
-            <div className="grid grid-cols-2 gap-6">
-              {Object.entries(applicant.customResponses).map(([key, value]) => (
-                <div key={key}>
-                  <Label>
-                    {key
-                      .replace(/_/g, " ")
-                      .replace(/\b\w/g, (c) => c.toUpperCase())}
-                  </Label>
-                  <p className="mt-1 text-gray-900 dark:text-white">
-                    {Array.isArray(value) ? value.join(", ") : value}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </ComponentCard>
-        )}
+        {applicant.customResponses &&
+          Object.keys(applicant.customResponses).length > 0 && (
+            <ComponentCard
+              title="Application Responses"
+              desc="Custom field responses"
+            >
+              <div className="grid grid-cols-2 gap-6">
+                {Object.entries(applicant.customResponses).map(
+                  ([key, value]) => (
+                    <div key={key}>
+                      <Label>
+                        {key
+                          .replace(/_/g, " ")
+                          .replace(/\b\w/g, (c) => c.toUpperCase())}
+                      </Label>
+                      <p className="mt-1 text-gray-900 dark:text-white">
+                        {Array.isArray(value) ? value.join(", ") : value}
+                      </p>
+                    </div>
+                  )
+                )}
+              </div>
+            </ComponentCard>
+          )}
 
         {/* Status History */}
         <ComponentCard title="Status History" desc="Track status changes">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {applicant.statusHistory.map((history, index) => (
+            {applicant.statusHistory?.map((history, index) => (
               <div
                 key={index}
                 onClick={() =>
@@ -482,14 +505,70 @@ const ApplicantData = () => {
           </h2>
 
           <div>
-            <Label htmlFor="interview-date">Interview Date & Time</Label>
+            <Label htmlFor="interview-date">Interview Date</Label>
             <Input
               id="interview-date"
-              type="datetime-local"
+              type="date"
               value={interviewForm.date}
               onChange={(e) =>
                 setInterviewForm({ ...interviewForm, date: e.target.value })
               }
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="interview-time">Interview Time</Label>
+            <Input
+              id="interview-time"
+              type="time"
+              value={interviewForm.time}
+              onChange={(e) =>
+                setInterviewForm({ ...interviewForm, time: e.target.value })
+              }
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="interview-type">Interview Type</Label>
+            <Select
+              options={[
+                { value: "phone", label: "Phone" },
+                { value: "video", label: "Video" },
+                { value: "in-person", label: "In-Person" },
+              ]}
+              placeholder="Select interview type"
+              onChange={(value) =>
+                setInterviewForm({
+                  ...interviewForm,
+                  type: value as "phone" | "video" | "in-person",
+                })
+              }
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="interview-location">Location (Optional)</Label>
+            <Input
+              id="interview-location"
+              type="text"
+              value={interviewForm.location}
+              onChange={(e) =>
+                setInterviewForm({ ...interviewForm, location: e.target.value })
+              }
+              placeholder="Office address or meeting room"
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="interview-link">Video Link (Optional)</Label>
+            <Input
+              id="interview-link"
+              type="url"
+              value={interviewForm.link}
+              onChange={(e) =>
+                setInterviewForm({ ...interviewForm, link: e.target.value })
+              }
+              placeholder="https://meet.example.com/..."
             />
           </div>
 
@@ -547,26 +626,45 @@ const ApplicantData = () => {
           </h2>
 
           <div>
-            <Label htmlFor="message-text">Message</Label>
-            <TextArea
-              value={messageForm.text}
+            <Label htmlFor="message-type">Message Type</Label>
+            <Select
+              options={[
+                { value: "email", label: "Email" },
+                { value: "sms", label: "SMS" },
+                { value: "internal", label: "Internal Note" },
+              ]}
+              placeholder="Select message type"
               onChange={(value) =>
-                setMessageForm({ ...messageForm, text: value })
+                setMessageForm({
+                  ...messageForm,
+                  type: value as "email" | "sms" | "internal",
+                })
               }
-              placeholder="Enter your message to the applicant"
-              rows={5}
             />
           </div>
 
           <div>
-            <Label htmlFor="message-comment">Comment (Optional)</Label>
-            <TextArea
-              value={messageForm.comment}
-              onChange={(value) =>
-                setMessageForm({ ...messageForm, comment: value })
+            <Label htmlFor="message-subject">Subject</Label>
+            <Input
+              id="message-subject"
+              type="text"
+              value={messageForm.subject}
+              onChange={(e) =>
+                setMessageForm({ ...messageForm, subject: e.target.value })
               }
-              placeholder="Internal note about this message"
-              rows={2}
+              placeholder="Message subject"
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="message-body">Message</Label>
+            <TextArea
+              value={messageForm.body}
+              onChange={(value) =>
+                setMessageForm({ ...messageForm, body: value })
+              }
+              placeholder="Enter your message to the applicant"
+              rows={5}
             />
           </div>
 
@@ -602,8 +700,8 @@ const ApplicantData = () => {
           <div>
             <Label htmlFor="comment-text">Comment</Label>
             <TextArea
-              value={commentForm.comment}
-              onChange={(value) => setCommentForm({ comment: value })}
+              value={commentForm.text}
+              onChange={(value) => setCommentForm({ text: value })}
               placeholder="Enter your internal comment about this applicant"
               rows={5}
             />
@@ -644,17 +742,20 @@ const ApplicantData = () => {
               options={statusOptions}
               placeholder="Select new status"
               onChange={(value) =>
-                setStatusForm({ ...statusForm, status: value })
+                setStatusForm({
+                  ...statusForm,
+                  status: value as Applicant["status"],
+                })
               }
             />
           </div>
 
           <div>
-            <Label htmlFor="status-comment">Comment (Optional)</Label>
+            <Label htmlFor="status-notes">Notes (Optional)</Label>
             <TextArea
-              value={statusForm.comment}
+              value={statusForm.notes}
               onChange={(value) =>
-                setStatusForm({ ...statusForm, comment: value })
+                setStatusForm({ ...statusForm, notes: value })
               }
               placeholder="Add notes about this status change"
               rows={3}

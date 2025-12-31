@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import ComponentCard from "../../components/common/ComponentCard";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
@@ -11,6 +11,12 @@ import Select from "../../components/form/Select";
 import { PlusIcon, TrashBinIcon, CheckCircleIcon } from "../../icons";
 import { useAuth } from "../../context/AuthContext";
 import { Modal } from "../../components/ui/modal";
+import {
+  jobPositionsService,
+  ApiError,
+} from "../../services/jobPositionsService";
+import { companiesService } from "../../services/companiesService";
+import { departmentsService } from "../../services/departmentsService";
 
 type JobSpec = {
   spec: string;
@@ -102,64 +108,84 @@ const subFieldTypeOptions = [
   { value: "Tags", label: "Tags" },
 ];
 
-// Mock companies - replace with API call
-const mockCompanies = [
-  { value: "COMP-12345678", label: "Tech Solutions Inc." },
-  { value: "COMP-87654321", label: "Innovation Labs" },
-  { value: "COMP-11223344", label: "Digital Ventures" },
-];
-
-// Mock departments - would be filtered based on selected company
-const mockDepartments = [
-  { value: "DEPT-001", label: "Software Development" },
-  { value: "DEPT-002", label: "Human Resources" },
-  { value: "DEPT-003", label: "Marketing" },
-];
-
-// Mock recommended fields - in production, fetch from API
-const mockRecommendedFields: CustomField[] = [
-  {
-    fieldId: "years_experience_template",
-    label: "Years of Experience",
-    inputType: "number",
-    isRequired: true,
-    minValue: 0,
-    maxValue: 50,
-    displayOrder: 1,
-  },
-  {
-    fieldId: "education_level_template",
-    label: "Education Level",
-    inputType: "select",
-    isRequired: true,
-    displayOrder: 2,
-    choices: ["High School", "Bachelor's", "Master's", "PhD"],
-  },
-  {
-    fieldId: "skills_template",
-    label: "Skills",
-    inputType: "tags",
-    isRequired: false,
-    displayOrder: 3,
-  },
-  {
-    fieldId: "portfolio_url_template",
-    label: "Portfolio URL",
-    inputType: "url",
-    isRequired: false,
-    displayOrder: 4,
-  },
-];
-
 export default function CreateJob() {
   const navigate = useNavigate();
   const { user, canAccessCompany } = useAuth();
 
-  // Filter companies based on user access
-  const companies =
-    user?.role === "admin"
-      ? mockCompanies
-      : mockCompanies.filter((c) => canAccessCompany(c.value));
+  const [companies, setCompanies] = useState<
+    Array<{ value: string; label: string }>
+  >([]);
+  const [departments, setDepartments] = useState<
+    Array<{ value: string; label: string }>
+  >([]);
+
+  const loadCompanies = async () => {
+    try {
+      const data = await companiesService.getAllCompanies();
+      const companyOptions = data.map((company) => ({
+        value: company._id,
+        label: company.name,
+      }));
+
+      // Filter companies based on user access
+      const filteredCompanies =
+        user?.role === "admin"
+          ? companyOptions
+          : companyOptions.filter((c) => canAccessCompany(c.value));
+
+      setCompanies(filteredCompanies);
+    } catch (err) {
+      console.error("Failed to load companies:", err);
+    }
+  };
+
+  const loadDepartments = async (companyId: string) => {
+    try {
+      const data = await departmentsService.getAllDepartments(companyId);
+      const departmentOptions = data.map((dept) => ({
+        value: dept._id,
+        label: dept.name,
+      }));
+      setDepartments(departmentOptions);
+    } catch (err) {
+      console.error("Failed to load departments:", err);
+    }
+  };
+
+  // Mock recommended fields - in production, fetch from API
+  const mockRecommendedFields: CustomField[] = [
+    {
+      fieldId: "years_experience_template",
+      label: "Years of Experience",
+      inputType: "number",
+      isRequired: true,
+      minValue: 0,
+      maxValue: 50,
+      displayOrder: 1,
+    },
+    {
+      fieldId: "education_level_template",
+      label: "Education Level",
+      inputType: "select",
+      isRequired: true,
+      displayOrder: 2,
+      choices: ["High School", "Bachelor's", "Master's", "PhD"],
+    },
+    {
+      fieldId: "skills_template",
+      label: "Skills",
+      inputType: "tags",
+      isRequired: false,
+      displayOrder: 3,
+    },
+    {
+      fieldId: "portfolio_url_template",
+      label: "Portfolio URL",
+      inputType: "url",
+      isRequired: false,
+      displayOrder: 4,
+    },
+  ];
 
   const [jobForm, setJobForm] = useState<JobForm>({
     companyId: "",
@@ -189,6 +215,16 @@ export default function CreateJob() {
   const [selectedRecommendedFields, setSelectedRecommendedFields] = useState<
     string[]
   >([]);
+
+  useEffect(() => {
+    loadCompanies();
+  }, []);
+
+  useEffect(() => {
+    if (jobForm.companyId) {
+      loadDepartments(jobForm.companyId);
+    }
+  }, [jobForm.companyId]);
 
   const handleInputChange = (field: keyof JobForm, value: any) => {
     setJobForm((prev) => ({ ...prev, [field]: value }));
@@ -411,14 +447,44 @@ export default function CreateJob() {
     }));
   };
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    console.log("Job Payload:", jobForm);
-    setJobStatus("Job created successfully");
-    setTimeout(() => {
-      setJobStatus("");
-      navigate("/jobs");
-    }, 1500);
+
+    try {
+      const payload = {
+        title: jobForm.title,
+        description: jobForm.description,
+        companyId: jobForm.companyId,
+        departmentId: jobForm.departmentId,
+        jobCode: jobForm.jobCode,
+        requirements: jobForm.termsAndConditions.filter((term) => term.trim()),
+        salary: {
+          min: jobForm.salary,
+          max: jobForm.salary,
+          currency: "USD",
+        },
+        salaryVisible: jobForm.salaryVisible,
+        openPositions: jobForm.openPositions,
+        registrationStart: jobForm.registrationStart,
+        registrationEnd: jobForm.registrationEnd,
+        jobSpecs: jobForm.jobSpecs.filter((spec) => spec.spec.trim()),
+        customFields: jobForm.customFields,
+        status: "open" as const,
+        employmentType: "Full-time",
+      };
+
+      await jobPositionsService.createJobPosition(payload);
+      setJobStatus("Job created successfully");
+      setTimeout(() => {
+        setJobStatus("");
+        navigate("/jobs");
+      }, 1500);
+    } catch (err) {
+      const errorMessage =
+        err instanceof ApiError ? err.message : "Failed to create job";
+      setJobStatus(`Error: ${errorMessage}`);
+      console.error("Error creating job:", err);
+    }
   };
 
   const handleToggleRecommendedField = (fieldId: string) => {
@@ -501,14 +567,21 @@ export default function CreateJob() {
               <Select
                 options={companies}
                 placeholder="Select company"
-                onChange={(value) => handleInputChange("companyId", value)}
+                onChange={(value) => {
+                  handleInputChange("companyId", value);
+                  handleInputChange("departmentId", ""); // Reset department when company changes
+                }}
               />
             </div>
             <div>
               <Label htmlFor="departmentId">Department</Label>
               <Select
-                options={mockDepartments}
-                placeholder="Select department"
+                options={departments}
+                placeholder={
+                  jobForm.companyId
+                    ? "Select department"
+                    : "Select company first"
+                }
                 onChange={(value) => handleInputChange("departmentId", value)}
               />
             </div>

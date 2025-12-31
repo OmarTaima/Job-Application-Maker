@@ -1,64 +1,109 @@
-import { createContext, useContext, useState, ReactNode } from "react";
-
-type User = {
-  id: string;
-  name: string;
-  email: string;
-  role: "admin" | "company_user";
-  assignedCompanyIds: string[]; // Companies this user has access to
-};
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  ReactNode,
+} from "react";
+import { authService, User, ApiError } from "../services/authService";
+import { tokenStorage } from "../config/api";
 
 type AuthContextType = {
   user: User | null;
   login: (email: string, password: string) => Promise<void>;
+  register: (userData: {
+    email: string;
+    password: string;
+    firstName?: string;
+    lastName?: string;
+    name?: string;
+  }) => Promise<void>;
   logout: () => void;
   isAuthenticated: boolean;
+  isLoading: boolean;
+  error: string | null;
   canAccessCompany: (companyId: string) => boolean;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Mock users - replace with real API
-const mockUsers: User[] = [
-  {
-    id: "USR-001",
-    name: "Admin User",
-    email: "admin@example.com",
-    role: "admin",
-    assignedCompanyIds: [], // Admin can see all companies
-  },
-  {
-    id: "USR-002",
-    name: "Tech Solutions HR",
-    email: "hr@techsolutions.com",
-    role: "company_user",
-    assignedCompanyIds: ["COMP-12345678"], // Can only see Tech Solutions
-  },
-  {
-    id: "USR-003",
-    name: "Innovation Labs Manager",
-    email: "manager@innovationlabs.com",
-    role: "company_user",
-    assignedCompanyIds: ["COMP-87654321"], // Can only see Innovation Labs
-  },
-];
-
 export function AuthProvider({ children }: { children: ReactNode }) {
-  // Default to admin user for demo - replace with null for production
-  const [user, setUser] = useState<User | null>(mockUsers[0]);
+  const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const login = async (email: string, _password: string) => {
-    // Mock login - replace with real API call
-    const foundUser = mockUsers.find((u) => u.email === email);
-    if (foundUser) {
-      setUser(foundUser);
-    } else {
-      throw new Error("Invalid credentials");
+  // Load user on mount if token exists
+  useEffect(() => {
+    const loadUser = async () => {
+      const token = tokenStorage.getAccessToken();
+      if (token) {
+        try {
+          const currentUser = await authService.getCurrentUser();
+          setUser(currentUser);
+        } catch (err) {
+          console.error("Failed to load user:", err);
+          // Token might be invalid, clear it
+          tokenStorage.clearTokens();
+        }
+      }
+      setIsLoading(false);
+    };
+
+    loadUser();
+  }, []);
+
+  const login = async (email: string, password: string) => {
+    try {
+      setError(null);
+      setIsLoading(true);
+      const response = await authService.login({ email, password });
+      console.log("Login successful, fetching user profile...");
+
+      // After successful login, fetch the user profile
+      const currentUser = await authService.getCurrentUser();
+      console.log("User profile fetched:", currentUser);
+      setUser(currentUser);
+    } catch (err) {
+      console.error("Login error:", err);
+      const errorMessage =
+        err instanceof ApiError
+          ? err.message
+          : "An error occurred during login";
+      setError(errorMessage);
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const register = async (userData: {
+    email: string;
+    password: string;
+    firstName?: string;
+    lastName?: string;
+    name?: string;
+  }) => {
+    try {
+      setError(null);
+      setIsLoading(true);
+      const response = await authService.register(userData);
+      setUser(response.data.user);
+    } catch (err) {
+      const errorMessage =
+        err instanceof ApiError
+          ? err.message
+          : "An error occurred during registration";
+      setError(errorMessage);
+      throw err;
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const logout = () => {
+    authService.logout();
     setUser(null);
+    setError(null);
   };
 
   const canAccessCompany = (companyId: string): boolean => {
@@ -68,7 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (user.role === "admin") return true;
 
     // Company users can only access assigned companies
-    return user.assignedCompanyIds.includes(companyId);
+    return user.assignedCompanyIds?.includes(companyId) || false;
   };
 
   return (
@@ -76,8 +121,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       value={{
         user,
         login,
+        register,
         logout,
         isAuthenticated: !!user,
+        isLoading,
+        error,
         canAccessCompany,
       }}
     >

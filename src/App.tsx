@@ -1,6 +1,5 @@
-import { BrowserRouter as Router, Routes, Route } from "react-router";
+import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router";
 import SignIn from "./pages/AuthPages/SignIn";
-import SignUp from "./pages/AuthPages/SignUp";
 import NotFound from "./pages/OtherPage/NotFound";
 import UserProfiles from "./pages/UserProfiles";
 import Videos from "./pages/UiElements/Videos";
@@ -29,6 +28,7 @@ import Permissions from "./pages/Recruiting/Permissions";
 import RecommendedFields from "./pages/Recruiting/RecommendedFields";
 import Applicants from "./pages/Recruiting/Applicants";
 import ApplicantData from "./pages/Recruiting/ApplicantData";
+import ProtectedRoute from "./components/auth/ProtectedRoute";
 
 export default function App() {
   return (
@@ -36,53 +36,58 @@ export default function App() {
       <Router>
         <ScrollToTop />
         <Routes>
-          {/* Dashboard Layout */}
-          <Route element={<AppLayout />}>
-            <Route index element={<Home />} />
-            <Route path="recruiting" element={<RecruitingDashboard />} />
-            <Route path="companies" element={<Companies />} />
-            <Route path="jobs" element={<Jobs />} />
-            <Route path="create-job" element={<CreateJob />} />
-            <Route path="company/:companyId" element={<PreviewCompany />} />
-            <Route
-              path="company/:companyId/create-job"
-              element={<JobCreation />}
-            />
+          {/* Public Routes */}
+          <Route path="/signin" element={<SignIn />} />
 
-            {/* User Management */}
-            <Route path="users" element={<Users />} />
-            <Route path="permissions" element={<Permissions />} />
-            <Route path="recommended-fields" element={<RecommendedFields />} />
-            <Route path="applicants" element={<Applicants />} />
-            <Route path="applicant/:id" element={<ApplicantData />} />
+          {/* Protected Routes */}
+          <Route element={<ProtectedRoute />}>
+            {/* Dashboard Layout */}
+            <Route element={<AppLayout />}>
+              <Route index element={<Home />} />
+              <Route path="recruiting" element={<RecruitingDashboard />} />
+              <Route path="companies" element={<Companies />} />
+              <Route path="jobs" element={<Jobs />} />
+              <Route path="create-job" element={<CreateJob />} />
+              <Route path="company/:companyId" element={<PreviewCompany />} />
+              <Route
+                path="company/:companyId/create-job"
+                element={<JobCreation />}
+              />
 
-            {/* Others Page */}
-            <Route path="profile" element={<UserProfiles />} />
-            <Route path="calendar" element={<Calendar />} />
-            <Route path="blank" element={<Blank />} />
+              {/* User Management */}
+              <Route path="users" element={<Users />} />
+              <Route path="permissions" element={<Permissions />} />
+              <Route
+                path="recommended-fields"
+                element={<RecommendedFields />}
+              />
+              <Route path="applicants" element={<Applicants />} />
+              <Route path="applicant/:id" element={<ApplicantData />} />
 
-            {/* Forms */}
-            <Route path="form-elements" element={<FormElements />} />
+              {/* Others Page */}
+              <Route path="profile" element={<UserProfiles />} />
+              <Route path="calendar" element={<Calendar />} />
+              <Route path="blank" element={<Blank />} />
 
-            {/* Tables */}
-            <Route path="basic-tables" element={<BasicTables />} />
+              {/* Forms */}
+              <Route path="form-elements" element={<FormElements />} />
 
-            {/* Ui Elements */}
-            <Route path="alerts" element={<Alerts />} />
-            <Route path="avatars" element={<Avatars />} />
-            <Route path="badge" element={<Badges />} />
-            <Route path="buttons" element={<Buttons />} />
-            <Route path="images" element={<Images />} />
-            <Route path="videos" element={<Videos />} />
+              {/* Tables */}
+              <Route path="basic-tables" element={<BasicTables />} />
 
-            {/* Charts */}
-            <Route path="line-chart" element={<LineChart />} />
-            <Route path="bar-chart" element={<BarChart />} />
+              {/* Ui Elements */}
+              <Route path="alerts" element={<Alerts />} />
+              <Route path="avatars" element={<Avatars />} />
+              <Route path="badge" element={<Badges />} />
+              <Route path="buttons" element={<Buttons />} />
+              <Route path="images" element={<Images />} />
+              <Route path="videos" element={<Videos />} />
+
+              {/* Charts */}
+              <Route path="line-chart" element={<LineChart />} />
+              <Route path="bar-chart" element={<BarChart />} />
+            </Route>
           </Route>
-
-          {/* Auth Layout */}
-          <Route path="signin" element={<SignIn />} />
-          <Route path="signup" element={<SignUp />} />
 
           {/* Fallback Route */}
           <Route path="*" element={<NotFound />} />

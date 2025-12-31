@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
 import PageMeta from "../../components/common/PageMeta";
 import ComponentCard from "../../components/common/ComponentCard";
 import { Link, useNavigate } from "react-router";
-import { PlusIcon, PencilIcon } from "../../icons";
+import { PlusIcon, PencilIcon, TrashBinIcon } from "../../icons";
 import Switch from "../../components/form/switch/Switch";
 import {
   Table,
@@ -12,84 +12,133 @@ import {
   TableHeader,
   TableRow,
 } from "../../components/ui/table";
+import {
+  jobPositionsService,
+  ApiError,
+} from "../../services/jobPositionsService";
+import type { JobPosition } from "../../services/jobPositionsService";
+import { companiesService } from "../../services/companiesService";
+import { departmentsService } from "../../services/departmentsService";
 
-type Job = {
-  id: string;
-  companyId: string;
-  companyName: string;
-  departmentId: string;
-  departmentName: string;
-  jobCode: string;
-  title: string;
-  openPositions: number;
-  registrationEnd: string;
-  isActive: boolean;
+type Job = JobPosition & {
+  companyName?: string;
+  departmentName?: string;
 };
-
-// Mock data - replace with API call
-const mockJobs: Job[] = [
-  {
-    id: "JOB-001",
-    companyId: "COMP-12345678",
-    companyName: "Tech Solutions Inc.",
-    departmentId: "DEPT-001",
-    departmentName: "Software Development",
-    jobCode: "DEV-FE-001",
-    title: "Senior Frontend Developer",
-    openPositions: 3,
-    registrationEnd: "2024-12-31",
-    isActive: true,
-  },
-  {
-    id: "JOB-002",
-    companyId: "COMP-87654321",
-    companyName: "Innovation Labs",
-    departmentId: "DEPT-002",
-    departmentName: "Human Resources",
-    jobCode: "HR-MGR-001",
-    title: "HR Manager",
-    openPositions: 1,
-    registrationEnd: "2024-11-30",
-    isActive: true,
-  },
-  {
-    id: "JOB-003",
-    companyId: "COMP-11223344",
-    companyName: "Digital Ventures",
-    departmentId: "DEPT-003",
-    departmentName: "Marketing",
-    jobCode: "MKT-SPE-001",
-    title: "Marketing Specialist",
-    openPositions: 2,
-    registrationEnd: "2024-10-15",
-    isActive: false,
-  },
-];
 
 export default function Jobs() {
   const navigate = useNavigate();
-  const [jobs, setJobs] = useState<Job[]>(mockJobs);
+  const [jobs, setJobs] = useState<Job[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadJobs();
+  }, []);
+
+  const loadJobs = async () => {
+    try {
+      setLoading(true);
+      const positions = await jobPositionsService.getAllJobPositions();
+
+      // Fetch company and department names
+      const jobsWithNames = await Promise.all(
+        positions.map(async (position) => {
+          let companyName = "Unknown Company";
+          let departmentName = "Unknown Department";
+
+          try {
+            const company = await companiesService.getCompanyById(
+              position.companyId
+            );
+            companyName = company.name;
+          } catch (err) {
+            console.error(
+              `Failed to fetch company ${position.companyId}:`,
+              err
+            );
+          }
+
+          try {
+            const department = await departmentsService.getDepartmentById(
+              position.departmentId
+            );
+            departmentName = department.name;
+          } catch (err) {
+            console.error(
+              `Failed to fetch department ${position.departmentId}:`,
+              err
+            );
+          }
+
+          return {
+            ...position,
+            companyName,
+            departmentName,
+          };
+        })
+      );
+
+      setJobs(jobsWithNames);
+      setError(null);
+    } catch (err) {
+      const errorMessage =
+        err instanceof ApiError ? err.message : "Failed to load jobs";
+      setError(errorMessage);
+      console.error("Error loading jobs:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const filteredJobs = jobs.filter(
     (job) =>
-      job.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      job.jobCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      job.companyName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      job.departmentName.toLowerCase().includes(searchTerm.toLowerCase())
+      job.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      job.jobCode?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      job.companyName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      job.departmentName?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const handleToggleActive = (jobId: string, currentStatus: boolean) => {
-    setJobs(
-      jobs.map((job) =>
-        job.id === jobId ? { ...job, isActive: !currentStatus } : job
-      )
-    );
+  const handleToggleActive = async (jobId: string, currentStatus: string) => {
+    try {
+      const newStatus = currentStatus === "open" ? "closed" : "open";
+      await jobPositionsService.updateJobPosition(jobId, {
+        status: newStatus as "open" | "closed",
+      });
+
+      // Update local state
+      setJobs(
+        jobs.map((job) =>
+          job._id === jobId
+            ? { ...job, status: newStatus as "open" | "closed" }
+            : job
+        )
+      );
+    } catch (err) {
+      const errorMessage =
+        err instanceof ApiError ? err.message : "Failed to update job status";
+      setError(errorMessage);
+      console.error("Error updating job status:", err);
+    }
+  };
+
+  const handleDeleteJob = async (jobId: string) => {
+    if (!confirm("Are you sure you want to delete this job?")) return;
+
+    try {
+      await jobPositionsService.deleteJobPosition(jobId);
+      setJobs(jobs.filter((job) => job._id !== jobId));
+    } catch (err) {
+      const errorMessage =
+        err instanceof ApiError ? err.message : "Failed to delete job";
+      setError(errorMessage);
+      console.error("Error deleting job:", err);
+    }
   };
 
   const handleEditJob = (job: Job) => {
-    // Navigate to edit job page
-    navigate(`/company/${job.companyId}/create-job`);
+    // Navigate to edit job page - TODO: implement edit page
+    navigate(`/create-job?id=${job._id}`);
   };
 
   return (
@@ -105,6 +154,12 @@ export default function Jobs() {
         desc="Browse and manage job postings across all companies"
       >
         <div className="space-y-4">
+          {error && (
+            <div className="p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg">
+              {error}
+            </div>
+          )}
+
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex-1">
               <input
@@ -124,7 +179,11 @@ export default function Jobs() {
             </Link>
           </div>
 
-          {filteredJobs.length === 0 ? (
+          {loading ? (
+            <div className="p-12 text-center text-gray-500">
+              Loading jobs...
+            </div>
+          ) : filteredJobs.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 py-12 dark:border-gray-700">
               <svg
                 className="mb-4 size-12 text-gray-400"
@@ -208,7 +267,7 @@ export default function Jobs() {
                   <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
                     {filteredJobs.map((job) => (
                       <TableRow
-                        key={job.id}
+                        key={job._id}
                         className="transition hover:bg-gray-50 dark:hover:bg-white/[0.02]"
                       >
                         <TableCell className="px-5 py-4 text-start">
@@ -218,41 +277,43 @@ export default function Jobs() {
                         </TableCell>
                         <TableCell className="px-5 py-4 text-start">
                           <span className="font-mono text-xs text-gray-600 dark:text-gray-400">
-                            {job.jobCode}
+                            {job.jobCode || "N/A"}
                           </span>
                         </TableCell>
                         <TableCell className="px-5 py-4 text-start">
                           <span className="text-sm text-gray-800 dark:text-gray-200">
-                            {job.companyName}
+                            {job.companyName || "Unknown"}
                           </span>
                         </TableCell>
                         <TableCell className="px-5 py-4 text-start">
                           <span className="text-sm text-gray-600 dark:text-gray-400">
-                            {job.departmentName}
+                            {job.departmentName || "Unknown"}
                           </span>
                         </TableCell>
                         <TableCell className="px-5 py-4 text-start">
                           <span className="inline-flex items-center rounded-full bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-600 ring-1 ring-inset ring-brand-200 dark:bg-brand-500/10 dark:text-brand-200 dark:ring-brand-400/40">
-                            {job.openPositions}
+                            {job.openPositions || 0}
                           </span>
                         </TableCell>
                         <TableCell className="px-5 py-4 text-gray-500 text-start text-theme-sm dark:text-gray-400">
-                          {new Date(job.registrationEnd).toLocaleDateString(
-                            "en-US",
-                            {
-                              year: "numeric",
-                              month: "short",
-                              day: "numeric",
-                            }
-                          )}
+                          {job.registrationEnd
+                            ? new Date(job.registrationEnd).toLocaleDateString(
+                                "en-US",
+                                {
+                                  year: "numeric",
+                                  month: "short",
+                                  day: "numeric",
+                                }
+                              )
+                            : "N/A"}
                         </TableCell>
                         <TableCell className="px-5 py-4 text-start">
                           <div onClick={(e) => e.stopPropagation()}>
                             <Switch
                               label=""
-                              defaultChecked={job.isActive}
+                              defaultChecked={job.status === "open"}
                               onChange={() =>
-                                handleToggleActive(job.id, job.isActive)
+                                handleToggleActive(job._id, job.status)
                               }
                             />
                           </div>
@@ -268,6 +329,13 @@ export default function Jobs() {
                               title="Edit job"
                             >
                               <PencilIcon className="size-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteJob(job._id)}
+                              className="rounded p-1.5 text-error-600 transition hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-500/10"
+                              title="Delete job"
+                            >
+                              <TrashBinIcon className="size-4" />
                             </button>
                           </div>
                         </TableCell>

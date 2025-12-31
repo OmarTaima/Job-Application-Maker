@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
 import PageMeta from "../../components/common/PageMeta";
 import ComponentCard from "../../components/common/ComponentCard";
@@ -11,74 +11,84 @@ import {
   TableHeader,
   TableRow,
 } from "../../components/ui/table";
-import { useAuth } from "../../context/AuthContext";
-
-type Company = {
-  id: string;
-  name: string;
-  description: string;
-  contactEmail: string;
-  phone: string;
-  address: string;
-  website: string;
-  departmentCount: number;
-  createdAt: string;
-};
-
-// Mock data - replace with API call
-const mockCompanies: Company[] = [
-  {
-    id: "COMP-12345678",
-    name: "Tech Solutions Inc.",
-    description: "A technology solutions company",
-    contactEmail: "contact@techsolutions.com",
-    phone: "+1-555-0123",
-    address: "123 Tech Street, Silicon Valley, CA",
-    website: "https://techsolutions.com",
-    departmentCount: 3,
-    createdAt: "2025-12-20",
-  },
-  {
-    id: "COMP-87654321",
-    name: "Innovation Labs",
-    description: "Research and development company",
-    contactEmail: "info@innovationlabs.com",
-    phone: "+1-555-0456",
-    address: "456 Innovation Ave, San Francisco, CA",
-    website: "https://innovationlabs.com",
-    departmentCount: 5,
-    createdAt: "2025-12-18",
-  },
-  {
-    id: "COMP-11223344",
-    name: "Digital Ventures",
-    description: "Digital transformation consulting",
-    contactEmail: "hello@digitalventures.com",
-    phone: "+1-555-0789",
-    address: "789 Digital Blvd, Austin, TX",
-    website: "https://digitalventures.com",
-    departmentCount: 2,
-    createdAt: "2025-12-15",
-  },
-];
+import { companiesService, ApiError } from "../../services/companiesService";
+import type { Company } from "../../services/companiesService";
+import { departmentsService } from "../../services/departmentsService";
 
 export default function Companies() {
   const navigate = useNavigate();
-  const { user, canAccessCompany } = useAuth();
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [departmentCounts, setDepartmentCounts] = useState<
+    Record<string, number>
+  >({});
+  const [searchTerm, setSearchTerm] = useState<string>("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Filter companies based on user access
-  const allCompanies = mockCompanies.filter((company) =>
-    user?.role === "admin" ? true : canAccessCompany(company.id)
-  );
+  useEffect(() => {
+    loadCompanies();
+  }, []);
 
-  const [companies] = useState<Company[]>(allCompanies);
-  const [searchTerm, setSearchTerm] = useState("");
+  const loadCompanies = async () => {
+    try {
+      setLoading(true);
+      const data = await companiesService.getAllCompanies();
+      setCompanies(data);
+
+      // Load department counts for each company
+      const counts: Record<string, number> = {};
+      await Promise.all(
+        data.map(async (company) => {
+          try {
+            const departments = await departmentsService.getAllDepartments(
+              company._id
+            );
+            counts[company._id] = departments.length;
+          } catch (err) {
+            counts[company._id] = 0;
+          }
+        })
+      );
+      setDepartmentCounts(counts);
+
+      setError(null);
+    } catch (err) {
+      const errorMessage =
+        err instanceof ApiError ? err.message : "Failed to load companies";
+      setError(errorMessage);
+      console.error("Error loading companies:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteCompany = async (
+    companyId: string,
+    e: React.MouseEvent
+  ) => {
+    e.stopPropagation();
+    if (!confirm("Are you sure you want to delete this company?")) return;
+
+    try {
+      await companiesService.deleteCompany(companyId);
+      await loadCompanies();
+    } catch (err) {
+      const errorMessage =
+        err instanceof ApiError ? err.message : "Failed to delete company";
+      setError(errorMessage);
+      console.error("Error deleting company:", err);
+    }
+  };
 
   const filteredCompanies = companies.filter(
     (company) =>
-      company.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      company.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      company.contactEmail.toLowerCase().includes(searchTerm.toLowerCase())
+      company.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (company.contactEmail &&
+        company.contactEmail
+          .toLowerCase()
+          .includes(searchTerm.toLowerCase())) ||
+      (company.industry &&
+        company.industry.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   const handleRowClick = (companyId: string) => {
@@ -98,6 +108,12 @@ export default function Companies() {
         desc="Browse and manage companies registered for recruiting"
       >
         <div className="space-y-4">
+          {error && (
+            <div className="p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg">
+              {error}
+            </div>
+          )}
+
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex-1">
               <input
@@ -117,7 +133,13 @@ export default function Companies() {
             </Link>
           </div>
 
-          {filteredCompanies.length === 0 ? (
+          {loading ? (
+            <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 py-12 dark:border-gray-700">
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                Loading companies...
+              </p>
+            </div>
+          ) : filteredCompanies.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 py-12 dark:border-gray-700">
               <svg
                 className="mb-4 size-12 text-gray-400"
@@ -169,6 +191,12 @@ export default function Companies() {
                         isHeader
                         className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
                       >
+                        Industry
+                      </TableCell>
+                      <TableCell
+                        isHeader
+                        className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
+                      >
                         Departments
                       </TableCell>
                       <TableCell
@@ -177,14 +205,20 @@ export default function Companies() {
                       >
                         Created
                       </TableCell>
+                      <TableCell
+                        isHeader
+                        className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
+                      >
+                        Actions
+                      </TableCell>
                     </TableRow>
                   </TableHeader>
 
                   <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
                     {filteredCompanies.map((company) => (
                       <TableRow
-                        key={company.id}
-                        onClick={() => handleRowClick(company.id)}
+                        key={company._id}
+                        onClick={() => handleRowClick(company._id)}
                         className="cursor-pointer transition hover:bg-gray-50 dark:hover:bg-white/[0.02]"
                       >
                         <TableCell className="px-5 py-4 text-start">
@@ -192,40 +226,61 @@ export default function Companies() {
                             <span className="block font-medium text-gray-800 text-theme-sm dark:text-white/90">
                               {company.name}
                             </span>
-                            <span className="block text-gray-500 text-theme-xs dark:text-gray-400">
-                              {company.description}
-                            </span>
+                            {company.address && (
+                              <span className="block text-gray-500 text-theme-xs dark:text-gray-400">
+                                {company.address}
+                              </span>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell className="px-5 py-4 text-start">
                           <span className="font-mono text-xs text-gray-600 dark:text-gray-400">
-                            {company.id}
+                            {company._id.slice(-8)}
                           </span>
                         </TableCell>
                         <TableCell className="px-5 py-4 text-start">
                           <div>
-                            <span className="block text-sm text-gray-800 dark:text-gray-200">
-                              {company.contactEmail}
-                            </span>
-                            <span className="block text-xs text-gray-500 dark:text-gray-400">
-                              {company.phone}
-                            </span>
+                            {company.contactEmail && (
+                              <span className="block text-sm text-gray-800 dark:text-gray-200">
+                                {company.contactEmail}
+                              </span>
+                            )}
+                            {company.phone && (
+                              <span className="block text-xs text-gray-500 dark:text-gray-400">
+                                {company.phone}
+                              </span>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell className="px-5 py-4 text-start">
+                          <span className="text-sm text-gray-600 dark:text-gray-400">
+                            {company.industry || "-"}
+                          </span>
+                        </TableCell>
+                        <TableCell className="px-5 py-4 text-start">
                           <span className="inline-flex items-center rounded-full bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-600 ring-1 ring-inset ring-brand-200 dark:bg-brand-500/10 dark:text-brand-200 dark:ring-brand-400/40">
-                            {company.departmentCount}
+                            {departmentCounts[company._id] ?? 0}
                           </span>
                         </TableCell>
                         <TableCell className="px-5 py-4 text-gray-500 text-start text-theme-sm dark:text-gray-400">
-                          {new Date(company.createdAt).toLocaleDateString(
-                            "en-US",
-                            {
-                              year: "numeric",
-                              month: "short",
-                              day: "numeric",
-                            }
-                          )}
+                          {company.createdAt
+                            ? new Date(company.createdAt).toLocaleDateString(
+                                "en-US",
+                                {
+                                  year: "numeric",
+                                  month: "short",
+                                  day: "numeric",
+                                }
+                              )
+                            : "-"}
+                        </TableCell>
+                        <TableCell className="px-5 py-4 text-start">
+                          <button
+                            onClick={(e) => handleDeleteCompany(company._id, e)}
+                            className="px-3 py-1 text-xs bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 rounded hover:bg-red-200 dark:hover:bg-red-800 transition-colors"
+                          >
+                            Delete
+                          </button>
                         </TableCell>
                       </TableRow>
                     ))}

@@ -1,5 +1,5 @@
 import type { ChangeEvent, FormEvent } from "react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
 import PageMeta from "../../components/common/PageMeta";
 import ComponentCard from "../../components/common/ComponentCard";
@@ -14,6 +14,12 @@ import {
   TableHeader,
   TableRow,
 } from "../../components/ui/table";
+import {
+  rolesService,
+  type Permission,
+  type Role,
+  ApiError,
+} from "../../services/rolesService";
 
 type RoleForm = {
   name: string;
@@ -25,23 +31,6 @@ type PermissionForm = {
   name: string;
   description: string;
   actions: string[];
-};
-
-type Role = {
-  id: string;
-  name: string;
-  description: string;
-  permissionsCount: number;
-  usersCount: number;
-  createdAt: string;
-};
-
-type Permission = {
-  id: string;
-  name: string;
-  description: string;
-  actions: string[];
-  createdAt: string;
 };
 
 const defaultRoleForm: RoleForm = {
@@ -56,77 +45,14 @@ const defaultPermissionForm: PermissionForm = {
   actions: [],
 };
 
-// Mock data
-const mockRoles: Role[] = [
-  {
-    id: "ROLE-001",
-    name: "HR Manager",
-    description: "Manages human resources and recruitment",
-    permissionsCount: 12,
-    usersCount: 5,
-    createdAt: "2025-12-15",
-  },
-  {
-    id: "ROLE-002",
-    name: "Recruiter",
-    description: "Handles job postings and candidate management",
-    permissionsCount: 8,
-    usersCount: 10,
-    createdAt: "2025-12-16",
-  },
-  {
-    id: "ROLE-003",
-    name: "Admin",
-    description: "Full system access and configuration",
-    permissionsCount: 20,
-    usersCount: 2,
-    createdAt: "2025-12-10",
-  },
-];
-
-const mockPermissions: Permission[] = [
-  {
-    id: "PERM-001",
-    name: "View Users",
-    description: "Can view user information",
-    actions: ["read"],
-    createdAt: "2025-12-15",
-  },
-  {
-    id: "PERM-002",
-    name: "Create Users",
-    description: "Can create new users",
-    actions: ["write"],
-    createdAt: "2025-12-15",
-  },
-  {
-    id: "PERM-003",
-    name: "Edit Users",
-    description: "Can edit existing users",
-    actions: ["write"],
-    createdAt: "2025-12-15",
-  },
-  {
-    id: "PERM-004",
-    name: "Delete Users",
-    description: "Can delete users",
-    actions: ["delete"],
-    createdAt: "2025-12-15",
-  },
-  {
-    id: "PERM-005",
-    name: "Manage Jobs",
-    description: "Can create, edit and delete jobs",
-    actions: ["read", "write", "delete"],
-    createdAt: "2025-12-16",
-  },
-];
-
 const availableAccess = ["read", "write", "create"];
 
 export default function Permissions() {
-  const [roles, setRoles] = useState<Role[]>(mockRoles);
-  const [permissions, setPermissions] = useState<Permission[]>(mockPermissions);
+  const [roles, setRoles] = useState<Role[]>([]);
+  const [permissions, setPermissions] = useState<Permission[]>([]);
+  const [isLoadingRoles, setIsLoadingRoles] = useState(true);
+  const [isLoadingPermissions, setIsLoadingPermissions] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const [roleForm, setRoleForm] = useState<RoleForm>(defaultRoleForm);
   const [permissionForm, setPermissionForm] = useState<PermissionForm>(
@@ -137,7 +63,52 @@ export default function Permissions() {
   const [showPermissionForm, setShowPermissionForm] = useState(false);
 
   const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
+  const [permissionAccess, setPermissionAccess] = useState<
+    Record<string, string[]>
+  >({});
   const [selectedAccess, setSelectedAccess] = useState<string[]>([]);
+
+  // Load data on mount
+  useEffect(() => {
+    loadPermissions();
+    loadRoles();
+  }, []);
+
+  const loadPermissions = async () => {
+    try {
+      setIsLoadingPermissions(true);
+      setError(null);
+      const data = await rolesService.getAllPermissions();
+      console.log("Loaded permissions:", data);
+      if (data.length > 0) {
+        console.log("First permission structure:", data[0]);
+      }
+      setPermissions(data);
+    } catch (err) {
+      const errorMessage =
+        err instanceof ApiError ? err.message : "Failed to load permissions";
+      setError(errorMessage);
+      console.error("Error loading permissions:", err);
+    } finally {
+      setIsLoadingPermissions(false);
+    }
+  };
+
+  const loadRoles = async () => {
+    try {
+      setIsLoadingRoles(true);
+      setError(null);
+      const data = await rolesService.getAllRoles();
+      setRoles(data);
+    } catch (err) {
+      const errorMessage =
+        err instanceof ApiError ? err.message : "Failed to load roles";
+      setError(errorMessage);
+      console.error("Error loading roles:", err);
+    } finally {
+      setIsLoadingRoles(false);
+    }
+  };
 
   // Role handlers
   const handleRoleInputChange = (
@@ -148,38 +119,85 @@ export default function Permissions() {
   };
 
   const handlePermissionToggle = (permId: string) => {
-    setSelectedPermissions((prev) =>
-      prev.includes(permId)
-        ? prev.filter((id) => id !== permId)
-        : [...prev, permId]
-    );
+    console.log("Toggling permission:", permId);
+
+    setSelectedPermissions((prev) => {
+      console.log("Current selected:", prev);
+
+      if (prev.includes(permId)) {
+        // Remove permission and its access
+        console.log("Removing permission:", permId);
+        const newPerms = prev.filter((id) => id !== permId);
+        setPermissionAccess((prevAccess) => {
+          const newAccess = { ...prevAccess };
+          delete newAccess[permId];
+          return newAccess;
+        });
+        return newPerms;
+      } else {
+        // Add permission with default access (all available actions)
+        console.log("Adding permission:", permId);
+        const permission = permissions.find((p) => p._id === permId);
+        const defaultActions = permission?.actions || [
+          "read",
+          "write",
+          "create",
+        ];
+        setPermissionAccess((prevAccess) => ({
+          ...prevAccess,
+          [permId]: defaultActions,
+        }));
+        return [...prev, permId];
+      }
+    });
   };
 
-  const handleRoleSubmit = (e: FormEvent<HTMLFormElement>) => {
+  const handleAccessToggleForPermission = (permId: string, access: string) => {
+    setPermissionAccess((prev) => {
+      const currentAccess = prev[permId] || [];
+      const newAccess = currentAccess.includes(access)
+        ? currentAccess.filter((a) => a !== access)
+        : [...currentAccess, access];
+      return { ...prev, [permId]: newAccess };
+    });
+  };
+
+  const handleRoleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    setError(null);
+
+    // Build permissions array with access rights
+    const permissionsWithAccess = selectedPermissions.map((permId) => ({
+      permission: permId,
+      access: permissionAccess[permId] || [],
+    }));
 
     const payload = {
       name: roleForm.name,
       description: roleForm.description,
-      permissions: selectedPermissions,
+      permissions: permissionsWithAccess,
     };
 
     console.log("Role Creation Payload:", JSON.stringify(payload, null, 2));
 
-    // Mock: Add role to list
-    const newRole: Role = {
-      id: `ROLE-${String(roles.length + 1).padStart(3, "0")}`,
-      name: roleForm.name,
-      description: roleForm.description,
-      permissionsCount: selectedPermissions.length,
-      usersCount: 0,
-      createdAt: new Date().toISOString().split("T")[0],
-    };
+    try {
+      const newRole = await rolesService.createRole(payload);
+      console.log("Role created successfully:", newRole);
 
-    setRoles([...roles, newRole]);
-    setRoleForm(defaultRoleForm);
-    setSelectedPermissions([]);
-    setShowRoleForm(false);
+      // Refresh roles list
+      await loadRoles();
+
+      // Reset form
+      setRoleForm(defaultRoleForm);
+      setSelectedPermissions([]);
+      setPermissionAccess({});
+      setShowRoleForm(false);
+    } catch (err) {
+      const errorMessage =
+        err instanceof ApiError ? err.message : "Failed to create role";
+      setError(errorMessage);
+      console.error("Error creating role:", err);
+    }
   };
 
   // Permission handlers
@@ -214,7 +232,7 @@ export default function Permissions() {
 
     // Mock: Add permission to list
     const newPermission: Permission = {
-      id: `PERM-${String(permissions.length + 1).padStart(3, "0")}`,
+      _id: `PERM-${String(permissions.length + 1).padStart(3, "0")}`,
       name: permissionForm.name,
       description: permissionForm.description,
       actions: selectedAccess,
@@ -242,6 +260,13 @@ export default function Permissions() {
             Permissions & Roles Management
           </h1>
         </div>
+
+        {/* Error Alert */}
+        {error && (
+          <div className="p-4 text-sm text-red-700 bg-red-100 border border-red-300 rounded-lg dark:bg-red-900/20 dark:border-red-800 dark:text-red-400">
+            {error}
+          </div>
+        )}
 
         {/* Roles Section */}
         <div className="space-y-4">
@@ -300,15 +325,28 @@ export default function Permissions() {
                                 onChange={(e) => {
                                   if (e.target.checked) {
                                     setSelectedPermissions(
-                                      permissions.map((p) => p.id)
+                                      permissions.map((p) => p._id)
                                     );
+                                    // Set default access for all permissions
+                                    const allAccess: Record<string, string[]> =
+                                      {};
+                                    permissions.forEach((p) => {
+                                      allAccess[p._id] = p.actions || [
+                                        "read",
+                                        "write",
+                                        "create",
+                                      ];
+                                    });
+                                    setPermissionAccess(allAccess);
                                   } else {
                                     setSelectedPermissions([]);
+                                    setPermissionAccess({});
                                   }
                                 }}
                                 checked={
+                                  permissions.length > 0 &&
                                   selectedPermissions.length ===
-                                  permissions.length
+                                    permissions.length
                                 }
                                 className="w-4 h-4 text-brand-500 rounded focus:ring-brand-500"
                               />
@@ -327,18 +365,19 @@ export default function Permissions() {
                         <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                           {permissions.map((perm) => (
                             <tr
-                              key={perm.id}
+                              key={perm._id}
                               className="hover:bg-gray-50 dark:hover:bg-gray-800"
                             >
                               <td className="px-4 py-3">
                                 <input
                                   type="checkbox"
                                   checked={selectedPermissions.includes(
-                                    perm.id
+                                    perm._id
                                   )}
-                                  onChange={() =>
-                                    handlePermissionToggle(perm.id)
-                                  }
+                                  onChange={(e) => {
+                                    e.stopPropagation();
+                                    handlePermissionToggle(perm._id);
+                                  }}
                                   className="w-4 h-4 text-brand-500 rounded focus:ring-brand-500"
                                 />
                               </td>
@@ -349,19 +388,50 @@ export default function Permissions() {
                               </td>
                               <td className="px-4 py-3">
                                 <div className="text-sm text-gray-600 dark:text-gray-400">
-                                  {perm.description}
+                                  {perm.description || "No description"}
                                 </div>
                               </td>
                               <td className="px-4 py-3">
                                 <div className="flex flex-wrap gap-1">
-                                  {perm.actions.map((action) => (
-                                    <span
-                                      key={action}
-                                      className="px-2 py-0.5 text-xs bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200 rounded"
-                                    >
-                                      {action}
-                                    </span>
-                                  ))}
+                                  {(
+                                    perm.actions || ["read", "write", "create"]
+                                  ).map((action) => {
+                                    const isPermSelected =
+                                      selectedPermissions.includes(perm._id);
+                                    const isAccessSelected =
+                                      permissionAccess[perm._id]?.includes(
+                                        action
+                                      );
+
+                                    return (
+                                      <label
+                                        key={action}
+                                        className={`px-2 py-0.5 text-xs rounded cursor-pointer transition-colors ${
+                                          isPermSelected && isAccessSelected
+                                            ? "bg-purple-500 text-white"
+                                            : isPermSelected
+                                            ? "bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200 hover:bg-purple-200"
+                                            : "bg-gray-100 dark:bg-gray-800 text-gray-400"
+                                        }`}
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          className="hidden"
+                                          checked={
+                                            isPermSelected && isAccessSelected
+                                          }
+                                          disabled={!isPermSelected}
+                                          onChange={() =>
+                                            handleAccessToggleForPermission(
+                                              perm._id,
+                                              action
+                                            )
+                                          }
+                                        />
+                                        {action}
+                                      </label>
+                                    );
+                                  })}
                                 </div>
                               </td>
                             </tr>
@@ -394,79 +464,90 @@ export default function Permissions() {
 
           {/* Roles Table */}
           <ComponentCard title="All Roles">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableCell
-                    isHeader
-                    className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
-                  >
-                    Role ID
-                  </TableCell>
-                  <TableCell
-                    isHeader
-                    className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
-                  >
-                    Name
-                  </TableCell>
-                  <TableCell
-                    isHeader
-                    className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
-                  >
-                    Description
-                  </TableCell>
-                  <TableCell
-                    isHeader
-                    className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
-                  >
-                    Permissions
-                  </TableCell>
-                  <TableCell
-                    isHeader
-                    className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
-                  >
-                    Users
-                  </TableCell>
-                  <TableCell
-                    isHeader
-                    className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
-                  >
-                    Created At
-                  </TableCell>
-                </TableRow>
-              </TableHeader>
-              <TableBody className="divide-y divide-gray-200 dark:divide-gray-700">
-                {roles.map((role) => (
-                  <TableRow
-                    key={role.id}
-                    className="hover:bg-gray-50 dark:hover:bg-gray-800"
-                  >
-                    <TableCell className="px-4 py-3 align-middle">
-                      {role.id}
+            {isLoadingRoles ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="text-center">
+                  <div className="inline-block w-8 h-8 border-4 border-gray-200 border-t-brand-500 rounded-full animate-spin"></div>
+                  <p className="mt-4 text-gray-600 dark:text-gray-400">
+                    Loading roles...
+                  </p>
+                </div>
+              </div>
+            ) : roles.length === 0 ? (
+              <div className="py-12 text-center text-gray-500 dark:text-gray-400">
+                No roles found. Create your first role to get started.
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableCell
+                      isHeader
+                      className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
+                    >
+                      Name
                     </TableCell>
-                    <TableCell className="px-4 py-3 align-middle">
-                      <span className="font-medium">{role.name}</span>
+                    <TableCell
+                      isHeader
+                      className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
+                    >
+                      Description
                     </TableCell>
-                    <TableCell className="px-4 py-3 align-middle">
-                      {role.description}
+                    <TableCell
+                      isHeader
+                      className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
+                    >
+                      Permissions
                     </TableCell>
-                    <TableCell className="px-4 py-3 align-middle">
-                      <span className="px-2 py-1 text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded">
-                        {role.permissionsCount} permissions
-                      </span>
+                    <TableCell
+                      isHeader
+                      className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
+                    >
+                      Users
                     </TableCell>
-                    <TableCell className="px-4 py-3 align-middle">
-                      <span className="px-2 py-1 text-xs bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 rounded">
-                        {role.usersCount} users
-                      </span>
-                    </TableCell>
-                    <TableCell className="px-4 py-3 align-middle">
-                      {role.createdAt}
+                    <TableCell
+                      isHeader
+                      className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
+                    >
+                      Created At
                     </TableCell>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody className="divide-y divide-gray-200 dark:divide-gray-700">
+                  {roles.map((role) => (
+                    <TableRow
+                      key={role._id}
+                      className="hover:bg-gray-50 dark:hover:bg-gray-800"
+                    >
+                      <TableCell className="px-4 py-3 align-middle">
+                        <span className="font-medium">{role.name}</span>
+                      </TableCell>
+                      <TableCell className="px-4 py-3 align-middle">
+                        {role.description}
+                      </TableCell>
+                      <TableCell className="px-4 py-3 align-middle">
+                        <span className="px-2 py-1 text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded">
+                          {role.permissionsCount ||
+                            role.permissions?.length ||
+                            0}{" "}
+                          permissions
+                        </span>
+                      </TableCell>
+                      <TableCell className="px-4 py-3 align-middle">
+                        <span className="px-2 py-1 text-xs bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 rounded">
+                          {role.usersCount || 0} users
+                        </span>
+                      </TableCell>
+                      <TableCell className="px-4 py-3 align-middle">
+                        {role.createdAt
+                          ? new Date(role.createdAt).toLocaleDateString()
+                          : "N/A"}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </ComponentCard>
         </div>
 
@@ -559,77 +640,85 @@ export default function Permissions() {
 
           {/* Permissions Table */}
           <ComponentCard title="All Permissions">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableCell
-                    isHeader
-                    className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
-                  >
-                    Permission ID
-                  </TableCell>
-                  <TableCell
-                    isHeader
-                    className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
-                  >
-                    Name
-                  </TableCell>
-                  <TableCell
-                    isHeader
-                    className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
-                  >
-                    Description
-                  </TableCell>
-
-                  <TableCell
-                    isHeader
-                    className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
-                  >
-                    Actions
-                  </TableCell>
-                  <TableCell
-                    isHeader
-                    className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
-                  >
-                    Created At
-                  </TableCell>
-                </TableRow>
-              </TableHeader>
-              <TableBody className="divide-y divide-gray-200 dark:divide-gray-700">
-                {permissions.map((permission) => (
-                  <TableRow
-                    key={permission.id}
-                    className="hover:bg-gray-50 dark:hover:bg-gray-800"
-                  >
-                    <TableCell className="px-4 py-3 align-middle">
-                      {permission.id}
+            {isLoadingPermissions ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="text-center">
+                  <div className="inline-block w-8 h-8 border-4 border-gray-200 border-t-brand-500 rounded-full animate-spin"></div>
+                  <p className="mt-4 text-gray-600 dark:text-gray-400">
+                    Loading permissions...
+                  </p>
+                </div>
+              </div>
+            ) : permissions.length === 0 ? (
+              <div className="py-12 text-center text-gray-500 dark:text-gray-400">
+                No permissions found.
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableCell
+                      isHeader
+                      className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
+                    >
+                      Name
                     </TableCell>
-                    <TableCell className="px-4 py-3 align-middle">
-                      <span className="font-medium">{permission.name}</span>
+                    <TableCell
+                      isHeader
+                      className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
+                    >
+                      Description
                     </TableCell>
-                    <TableCell className="px-4 py-3 align-middle">
-                      {permission.description}
+                    <TableCell
+                      isHeader
+                      className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
+                    >
+                      Actions
                     </TableCell>
-
-                    <TableCell className="px-4 py-3 align-middle">
-                      <div className="flex flex-wrap gap-1">
-                        {permission.actions.map((action) => (
-                          <span
-                            key={action}
-                            className="px-2 py-1 text-xs bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200 rounded"
-                          >
-                            {action}
-                          </span>
-                        ))}
-                      </div>
-                    </TableCell>
-                    <TableCell className="px-4 py-3 align-middle">
-                      {permission.createdAt}
+                    <TableCell
+                      isHeader
+                      className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
+                    >
+                      Created At
                     </TableCell>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody className="divide-y divide-gray-200 dark:divide-gray-700">
+                  {permissions.map((permission) => (
+                    <TableRow
+                      key={permission._id}
+                      className="hover:bg-gray-50 dark:hover:bg-gray-800"
+                    >
+                      <TableCell className="px-4 py-3 align-middle">
+                        <span className="font-medium">{permission.name}</span>
+                      </TableCell>
+                      <TableCell className="px-4 py-3 align-middle">
+                        {permission.description || "No description"}
+                      </TableCell>
+                      <TableCell className="px-4 py-3 align-middle">
+                        <div className="flex flex-wrap gap-1">
+                          {(
+                            permission.actions || ["read", "write", "create"]
+                          ).map((action) => (
+                            <span
+                              key={action}
+                              className="px-2 py-1 text-xs bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200 rounded"
+                            >
+                              {action}
+                            </span>
+                          ))}
+                        </div>
+                      </TableCell>
+                      <TableCell className="px-4 py-3 align-middle">
+                        {permission.createdAt
+                          ? new Date(permission.createdAt).toLocaleDateString()
+                          : "N/A"}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </ComponentCard>
         </div>
       </div>
