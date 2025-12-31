@@ -138,7 +138,6 @@ export default function SignInForm() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     disabled={isLoading}
-                    required
                   />
                 </div>
                 <div>
@@ -152,7 +151,6 @@ export default function SignInForm() {
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       disabled={isLoading}
-                      required
                     />
                     <span
                       onClick={() => setShowPassword(!showPassword)}
@@ -181,14 +179,13 @@ export default function SignInForm() {
                   </Link>
                 </div>
                 <div>
-                  <Button
+                  <button
                     type="submit"
-                    className="w-full"
-                    size="sm"
+                    className="w-full rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-brand-600 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-brand-400 dark:hover:bg-brand-500"
                     disabled={isLoading}
                   >
                     {isLoading ? "Signing in..." : "Sign in"}
-                  </Button>
+                  </button>
                 </div>
               </div>
             </form>

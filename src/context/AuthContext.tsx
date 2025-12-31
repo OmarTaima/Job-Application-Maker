@@ -56,7 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       setError(null);
       setIsLoading(true);
-      const response = await authService.login({ email, password });
+      await authService.login({ email, password });
       console.log("Login successful, fetching user profile...");
 
       // After successful login, fetch the user profile

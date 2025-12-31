@@ -172,7 +172,6 @@ export default function SignUpForm() {
                       value={formData.firstName}
                       onChange={handleInputChange}
                       disabled={isLoading}
-                      required
                     />
                   </div>
                   {/* <!-- Last Name --> */}
@@ -188,7 +187,6 @@ export default function SignUpForm() {
                       value={formData.lastName}
                       onChange={handleInputChange}
                       disabled={isLoading}
-                      required
                     />
                   </div>
                 </div>
@@ -205,7 +203,6 @@ export default function SignUpForm() {
                     value={formData.email}
                     onChange={handleInputChange}
                     disabled={isLoading}
-                    required
                   />
                 </div>
                 {/* <!-- Password --> */}
@@ -221,8 +218,6 @@ export default function SignUpForm() {
                       value={formData.password}
                       onChange={handleInputChange}
                       disabled={isLoading}
-                      required
-                      minLength={6}
                     />
                     <span
                       onClick={() => setShowPassword(!showPassword)}
