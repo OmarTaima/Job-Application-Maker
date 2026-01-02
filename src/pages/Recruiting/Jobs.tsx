@@ -47,28 +47,35 @@ export default function Jobs() {
           let companyName = "Unknown Company";
           let departmentName = "Unknown Department";
 
+          // Normalize IDs (handle cases where the API returns populated objects)
+          const companyId =
+            typeof position.companyId === "string"
+              ? position.companyId
+              : (position.companyId as any)?._id;
+
+          const departmentId =
+            typeof position.departmentId === "string"
+              ? position.departmentId
+              : (position.departmentId as any)?._id;
+
           try {
-            const company = await companiesService.getCompanyById(
-              position.companyId
-            );
-            companyName = company.name;
+            if (companyId) {
+              const company = await companiesService.getCompanyById(companyId);
+              companyName = company.name;
+            }
           } catch (err) {
-            console.error(
-              `Failed to fetch company ${position.companyId}:`,
-              err
-            );
+            console.error(`Failed to fetch company ${companyId}:`, err);
           }
 
           try {
-            const department = await departmentsService.getDepartmentById(
-              position.departmentId
-            );
-            departmentName = department.name;
+            if (departmentId) {
+              const department = await departmentsService.getDepartmentById(
+                departmentId
+              );
+              departmentName = department.name;
+            }
           } catch (err) {
-            console.error(
-              `Failed to fetch department ${position.departmentId}:`,
-              err
-            );
+            console.error(`Failed to fetch department ${departmentId}:`, err);
           }
 
           return {

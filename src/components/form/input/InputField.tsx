@@ -8,11 +8,14 @@ interface InputProps {
   placeholder?: string;
   value?: string | number;
   onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+  onClick?: (e: React.MouseEvent<HTMLInputElement>) => void;
   className?: string;
   min?: string;
   max?: string;
   step?: number;
   disabled?: boolean;
+  required?: boolean;
   success?: boolean;
   error?: boolean;
   hint?: string;
@@ -25,11 +28,14 @@ const Input: FC<InputProps> = ({
   placeholder,
   value,
   onChange,
+  onKeyDown,
+  onClick,
   className = "",
   min,
   max,
   step,
   disabled = false,
+  required = false,
   success = false,
   error = false,
   hint,
@@ -55,10 +61,13 @@ const Input: FC<InputProps> = ({
         placeholder={placeholder}
         value={value}
         onChange={onChange}
+        onKeyDown={onKeyDown}
+        onClick={onClick}
         min={min}
         max={max}
         step={step}
         disabled={disabled}
+        required={required}
         className={inputClasses}
       />
 

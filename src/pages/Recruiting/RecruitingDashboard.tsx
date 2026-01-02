@@ -8,6 +8,7 @@ import Label from "../../components/form/Label";
 import Input from "../../components/form/input/InputField";
 import TextArea from "../../components/form/input/TextArea";
 import { PlusIcon } from "../../icons";
+import { companiesService, ApiError } from "../../services/companiesService";
 
 type CompanyForm = {
   name: string;
@@ -30,6 +31,9 @@ const defaultCompany: CompanyForm = {
 export default function RecruitingDashboard() {
   const navigate = useNavigate();
   const [companyForm, setCompanyForm] = useState<CompanyForm>(defaultCompany);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const handleCompanyChange = (
     e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
@@ -38,13 +42,36 @@ export default function RecruitingDashboard() {
     setCompanyForm((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleCompanySubmit = (e: FormEvent<HTMLFormElement>) => {
+  const handleCompanySubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    // Simulate API call that returns generated ID
-    const generatedId = `COMP-${Date.now().toString().slice(-8)}`;
+    setIsSubmitting(true);
+    setError(null);
+    setSuccessMessage(null);
 
-    // Redirect to preview page with the new company ID
-    navigate(`/company/${generatedId}`);
+    try {
+      const newCompany = await companiesService.createCompany({
+        name: companyForm.name,
+        description: companyForm.description,
+        contactEmail: companyForm.contactEmail,
+        phone: companyForm.phone,
+        address: companyForm.address,
+        website: companyForm.website,
+      });
+
+      setSuccessMessage("Company created successfully!");
+
+      // Redirect to the new company page after a short delay
+      setTimeout(() => {
+        navigate(`/company/${newCompany._id}`);
+      }, 1500);
+    } catch (err) {
+      const errorMessage =
+        err instanceof ApiError ? err.message : "Failed to create company";
+      setError(errorMessage);
+      console.error("Error creating company:", err);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const companyPayload = useMemo(() => companyForm, [companyForm]);
@@ -61,6 +88,18 @@ export default function RecruitingDashboard() {
         title="Company Information"
         desc="Enter the company details to create a new recruiting company"
       >
+        {error && (
+          <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg">
+            {error}
+          </div>
+        )}
+
+        {successMessage && (
+          <div className="mb-4 p-4 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded-lg">
+            {successMessage}
+          </div>
+        )}
+
         <form className="space-y-4" onSubmit={handleCompanySubmit}>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
@@ -131,10 +170,11 @@ export default function RecruitingDashboard() {
           <div className="flex flex-wrap items-center gap-3">
             <button
               type="submit"
-              className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600"
+              disabled={isSubmitting}
+              className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <PlusIcon className="size-4" />
-              Create Company
+              {isSubmitting ? "Creating..." : "Create Company"}
             </button>
           </div>
 

@@ -8,6 +8,8 @@ export interface Company {
   industry?: string;
   contactEmail?: string;
   phone?: string;
+  website?: string;
+  description?: string;
   createdAt?: string;
   __v?: number;
 }
@@ -18,6 +20,8 @@ export interface CreateCompanyRequest {
   industry?: string;
   contactEmail?: string;
   phone?: string;
+  website?: string;
+  description?: string;
 }
 
 export interface UpdateCompanyRequest {
@@ -26,6 +30,8 @@ export interface UpdateCompanyRequest {
   industry?: string;
   contactEmail?: string;
   phone?: string;
+  website?: string;
+  description?: string;
 }
 
 export interface CompaniesResponse {

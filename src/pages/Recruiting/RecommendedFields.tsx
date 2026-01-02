@@ -6,7 +6,7 @@ import Label from "../../components/form/Label";
 import Input from "../../components/form/input/InputField";
 import Switch from "../../components/form/switch/Switch";
 import Select from "../../components/form/Select";
-import { PlusIcon, TrashBinIcon } from "../../icons";
+import { PlusIcon, TrashBinIcon, PencilIcon } from "../../icons";
 import {
   Table,
   TableBody,
@@ -24,18 +24,16 @@ import type {
 } from "../../services/recommendedFieldsService";
 
 type FormField = {
-  name: string;
   label: string;
   type: FieldType;
   required: boolean;
   options?: string[];
-  description?: string;
   defaultValue?: string;
   validation?: {
-    min?: number;
-    max?: number;
-    minLength?: number;
-    maxLength?: number;
+    min?: number | null;
+    max?: number | null;
+    minLength?: number | null;
+    maxLength?: number | null;
     pattern?: string;
   };
 };
@@ -49,14 +47,13 @@ const RecommendedFields = () => {
   const [showForm, setShowForm] = useState(false);
   const [newChoice, setNewChoice] = useState("");
   const [form, setForm] = useState<FormField>({
-    name: "",
     label: "",
     type: "text",
     required: false,
     options: [],
-    description: "",
     validation: {},
   });
+  const [editFieldId, setEditFieldId] = useState<string | null>(null);
 
   useEffect(() => {
     loadRecommendedFields();
@@ -65,8 +62,27 @@ const RecommendedFields = () => {
   const loadRecommendedFields = async () => {
     try {
       setLoading(true);
-      const data = await recommendedFieldsService.getAllRecommendedFields();
-      setRecommendedFields(data);
+      const apiData = await recommendedFieldsService.getAllRecommendedFields();
+      const mapped = (apiData || []).map((d: any) => ({
+        // keep original/name for compatibility
+        name: d.fieldId || d.name || d._id || d.label,
+        fieldId: d.fieldId || d._id,
+        label: d.label,
+        // prefer API's inputType; cast to FieldType when possible
+        type: (d.inputType || d.type || "text") as FieldType,
+        required: d.isRequired ?? d.required ?? false,
+        options: d.choices || d.options || [],
+        description: d.description,
+        validation: {
+          min: d.minValue ?? d.validation?.min,
+          max: d.maxValue ?? d.validation?.max,
+          minLength: d.validation?.minLength,
+          maxLength: d.validation?.maxLength,
+          pattern: d.validation?.pattern,
+        },
+      }));
+
+      setRecommendedFields(mapped);
       setError(null);
     } catch (err) {
       const errorMessage =
@@ -98,6 +114,7 @@ const RecommendedFields = () => {
     field: string,
     value: string | number | boolean
   ) => {
+    console.debug("handleInputChange", field, value);
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
@@ -122,17 +139,30 @@ const RecommendedFields = () => {
     e.preventDefault();
 
     try {
+      const generatedId = `field_${Date.now()}`;
+      const sanitizeLabelToId = (label?: string) => {
+        if (!label) return generatedId;
+        return label
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9\s_-]/g, "")
+          .replace(/\s+/g, "_");
+      };
+
+      const mapTypeToInputType = (t: FieldType) => t;
+
+      const fieldId = sanitizeLabelToId(form.label);
+
       const fieldData: any = {
-        name: form.name || `field_${Date.now()}`,
+        fieldId,
         label: form.label,
-        type: form.type,
-        required: form.required,
+        inputType: mapTypeToInputType(form.type),
+        isRequired: form.required,
       };
 
       // Add optional fields
-      if (form.description) fieldData.description = form.description;
       if (form.options && form.options.length > 0)
-        fieldData.options = form.options;
+        fieldData.choices = form.options;
 
       // Add validation
       const validation: any = {};
@@ -148,18 +178,41 @@ const RecommendedFields = () => {
         validation.pattern = form.validation.pattern;
       if (Object.keys(validation).length > 0) fieldData.validation = validation;
 
-      await recommendedFieldsService.createRecommendedField(fieldData);
+      if (editFieldId) {
+        // Update existing field (API expects inputType/isRequired/choices)
+        const updatePayload: any = {
+          label: form.label,
+          inputType: mapTypeToInputType(form.type),
+          isRequired: form.required,
+        };
+        if (form.options && form.options.length > 0)
+          updatePayload.choices = form.options;
+        if (Object.keys(fieldData.validation || {}).length > 0)
+          updatePayload.validation = fieldData.validation;
+
+        console.debug(
+          "Updating recommended field:",
+          editFieldId,
+          updatePayload
+        );
+        await recommendedFieldsService.updateRecommendedField(
+          editFieldId,
+          updatePayload
+        );
+      } else {
+        console.debug("Creating recommended field payload:", fieldData);
+        await recommendedFieldsService.createRecommendedField(fieldData);
+      }
       await loadRecommendedFields();
 
       setForm({
-        name: "",
         label: "",
         type: "text",
         required: false,
         options: [],
-        description: "",
         validation: {},
       });
+      setEditFieldId(null);
       setShowForm(false);
     } catch (err) {
       const errorMessage =
@@ -230,18 +283,6 @@ const RecommendedFields = () => {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label htmlFor="name">Field Name *</Label>
-                    <Input
-                      id="name"
-                      value={form.name}
-                      onChange={(e) =>
-                        handleInputChange("name", e.target.value)
-                      }
-                      placeholder="e.g., driving_license"
-                    />
-                  </div>
-
-                  <div>
                     <Label htmlFor="label">Label *</Label>
                     <Input
                       id="label"
@@ -259,20 +300,11 @@ const RecommendedFields = () => {
                       options={inputTypeOptions}
                       placeholder="Select type"
                       onChange={(value) => handleInputChange("type", value)}
+                      value={form.type}
                     />
                   </div>
 
-                  <div>
-                    <Label htmlFor="description">Description</Label>
-                    <Input
-                      id="description"
-                      value={form.description || ""}
-                      onChange={(e) =>
-                        handleInputChange("description", e.target.value)
-                      }
-                      placeholder="Optional field description"
-                    />
-                  </div>
+                  {/* Description input removed */}
 
                   {form.type === "number" && (
                     <>
@@ -381,7 +413,7 @@ const RecommendedFields = () => {
                   <div className="flex items-center gap-3">
                     <Switch
                       label=""
-                      defaultChecked={form.required}
+                      checked={form.required}
                       onChange={(checked) =>
                         handleInputChange("required", checked)
                       }
@@ -401,12 +433,20 @@ const RecommendedFields = () => {
                       <Input
                         value={newChoice}
                         onChange={(e) => setNewChoice(e.target.value)}
+                        onKeyDown={(
+                          e: React.KeyboardEvent<HTMLInputElement>
+                        ) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            handleAddChoice();
+                          }
+                        }}
                         placeholder="Add an option"
                       />
                       <button
                         type="button"
                         onClick={handleAddChoice}
-                        className="rounded-md bg-primary px-4 py-2 text-white hover:bg-primary/90"
+                        className="rounded-md bg-brand-500 px-4 py-2 text-white hover:bg-brand-500/90"
                       >
                         Add
                       </button>
@@ -436,16 +476,19 @@ const RecommendedFields = () => {
                 <div className="mt-6 flex justify-end gap-3">
                   <button
                     type="button"
-                    onClick={() => setShowForm(false)}
+                    onClick={() => {
+                      setShowForm(false);
+                      setEditFieldId(null);
+                    }}
                     className="rounded-md border border-stroke px-6 py-2 hover:bg-gray-100 dark:border-strokedark dark:hover:bg-gray-800"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    className="rounded-md bg-primary px-6 py-2 text-white hover:bg-primary/90"
+                    className="rounded-md bg-brand-500 px-6 py-2 text-white hover:bg-brand-500/90"
                   >
-                    Create Field
+                    {editFieldId ? "Update Field" : "Create Field"}
                   </button>
                 </div>
               </form>
@@ -462,12 +505,6 @@ const RecommendedFields = () => {
                   <Table>
                     <TableHeader className="bg-gray-50 dark:bg-gray-800">
                       <TableRow>
-                        <TableCell
-                          isHeader
-                          className="px-4 py-3 align-middle text-left font-semibold"
-                        >
-                          Field Name
-                        </TableCell>
                         <TableCell
                           isHeader
                           className="px-4 py-3 align-middle text-left font-semibold"
@@ -510,10 +547,7 @@ const RecommendedFields = () => {
                         </TableRow>
                       ) : (
                         recommendedFields.map((field) => (
-                          <TableRow key={field.name}>
-                            <TableCell className="px-4 py-3 align-middle font-mono text-sm">
-                              {field.name}
-                            </TableCell>
+                          <TableRow key={field.name || field.label}>
                             <TableCell className="px-4 py-3 align-middle">
                               {field.label}
                             </TableCell>
@@ -539,9 +573,36 @@ const RecommendedFields = () => {
                                 <span className="text-gray-400">-</span>
                               )}
                             </TableCell>
-                            <TableCell className="px-4 py-3 align-middle">
+                            <TableCell className="px-4 py-3 align-middle flex items-center gap-3">
                               <button
-                                onClick={() => handleDelete(field.name)}
+                                type="button"
+                                onClick={() => {
+                                  // populate form for editing
+                                  const v = field.validation || {};
+                                  setForm((prev) => ({
+                                    ...prev,
+                                    label: field.label || "",
+                                    type: (field.type as FieldType) || "text",
+                                    required: !!field.required,
+                                    options: field.options || [],
+                                    validation: {
+                                      ...v,
+                                      pattern: v.pattern ?? undefined,
+                                    },
+                                  }));
+                                  setEditFieldId(field.name || field.label);
+                                  setShowForm(true);
+                                }}
+                                className="text-gray-600 hover:text-gray-800"
+                                title="Edit field"
+                              >
+                                <PencilIcon className="h-5 w-5" />
+                              </button>
+
+                              <button
+                                onClick={() =>
+                                  handleDelete(field.name || field.label)
+                                }
                                 className="text-red-500 hover:text-red-700"
                                 title="Delete field"
                               >

@@ -23,6 +23,7 @@ import {
   ApiError as DepartmentsApiError,
 } from "../../services/departmentsService";
 import type { Department } from "../../services/departmentsService";
+import { useAuth } from "../../context/AuthContext";
 
 type CompanyForm = {
   name: string;
@@ -43,6 +44,7 @@ type DepartmentForm = {
 export default function PreviewCompany() {
   const { companyId } = useParams<{ companyId: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   const [companyForm, setCompanyForm] = useState<CompanyForm>({
     name: "",
@@ -143,7 +145,13 @@ export default function PreviewCompany() {
   const handleDepartmentSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     try {
-      await departmentsService.createDepartment(departmentForm);
+      // Use current user's ID as managerId if not explicitly set
+      const payload = {
+        ...departmentForm,
+        managerId: departmentForm.managerId || user?.id || undefined,
+      };
+
+      await departmentsService.createDepartment(payload);
       await loadDepartments();
       setDepartmentStatus("Department created successfully");
       setDepartmentForm({

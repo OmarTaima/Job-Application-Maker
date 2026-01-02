@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router";
 import ComponentCard from "../../components/common/ComponentCard";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
@@ -111,6 +111,22 @@ const subFieldTypeOptions = [
 export default function CreateJob() {
   const navigate = useNavigate();
   const { user, canAccessCompany } = useAuth();
+  // Handle different admin role formats - roleId can be an object with name property
+  const userRole = user?.role ? String(user.role).toLowerCase() : undefined;
+
+  const isAdmin =
+    userRole === "admin" ||
+    userRole === "super_admin" ||
+    userRole === "superadmin" ||
+    ((user as any)?.roleId &&
+      typeof (user as any).roleId === "object" &&
+      (String((user as any).roleId.name).toLowerCase() === "admin" ||
+        String((user as any).roleId.name).toLowerCase() === "super_admin" ||
+        String((user as any).roleId.name).toLowerCase() === "superadmin" ||
+        String((user as any).roleId.name) === "Admin" ||
+        String((user as any).roleId.name) === "Super Admin"));
+
+  
 
   const [companies, setCompanies] = useState<
     Array<{ value: string; label: string }>
@@ -118,24 +134,31 @@ export default function CreateJob() {
   const [departments, setDepartments] = useState<
     Array<{ value: string; label: string }>
   >([]);
+  const [isLoadingCompanies, setIsLoadingCompanies] = useState(true);
 
   const loadCompanies = async () => {
     try {
+      setIsLoadingCompanies(true);
       const data = await companiesService.getAllCompanies();
+      console.log("Loaded companies:", data);
+      console.log("User role:", user?.role, "isAdmin:", isAdmin);
+
       const companyOptions = data.map((company) => ({
         value: company._id,
         label: company.name,
       }));
 
       // Filter companies based on user access
-      const filteredCompanies =
-        user?.role === "admin"
-          ? companyOptions
-          : companyOptions.filter((c) => canAccessCompany(c.value));
+      const filteredCompanies = isAdmin
+        ? companyOptions
+        : companyOptions.filter((c) => canAccessCompany(c.value));
 
+      console.log("Filtered companies:", filteredCompanies);
       setCompanies(filteredCompanies);
     } catch (err) {
       console.error("Failed to load companies:", err);
+    } finally {
+      setIsLoadingCompanies(false);
     }
   };
 
@@ -151,41 +174,6 @@ export default function CreateJob() {
       console.error("Failed to load departments:", err);
     }
   };
-
-  // Mock recommended fields - in production, fetch from API
-  const mockRecommendedFields: CustomField[] = [
-    {
-      fieldId: "years_experience_template",
-      label: "Years of Experience",
-      inputType: "number",
-      isRequired: true,
-      minValue: 0,
-      maxValue: 50,
-      displayOrder: 1,
-    },
-    {
-      fieldId: "education_level_template",
-      label: "Education Level",
-      inputType: "select",
-      isRequired: true,
-      displayOrder: 2,
-      choices: ["High School", "Bachelor's", "Master's", "PhD"],
-    },
-    {
-      fieldId: "skills_template",
-      label: "Skills",
-      inputType: "tags",
-      isRequired: false,
-      displayOrder: 3,
-    },
-    {
-      fieldId: "portfolio_url_template",
-      label: "Portfolio URL",
-      inputType: "url",
-      isRequired: false,
-      displayOrder: 4,
-    },
-  ];
 
   const [jobForm, setJobForm] = useState<JobForm>({
     companyId: "",
@@ -210,15 +198,27 @@ export default function CreateJob() {
     null
   );
   const [jobStatus, setJobStatus] = useState("");
-  const [showRecommendedFieldsModal, setShowRecommendedFieldsModal] =
-    useState(false);
-  const [selectedRecommendedFields, setSelectedRecommendedFields] = useState<
-    string[]
-  >([]);
+  const companyAutoSet = useRef(false);
+  const companiesLoaded = useRef(false);
 
   useEffect(() => {
-    loadCompanies();
-  }, []);
+    // Only load companies once when user is available
+    if (user && !companiesLoaded.current) {
+      loadCompanies();
+      companiesLoaded.current = true;
+    }
+  }, [user]);
+
+  // Auto-select company for non-admin users
+  useEffect(() => {
+    if (user && !isAdmin && companies.length > 0 && !companyAutoSet.current) {
+      const userCompanyId = user.assignedCompanyIds?.[0];
+      if (userCompanyId) {
+        setJobForm((prev) => ({ ...prev, companyId: userCompanyId }));
+        companyAutoSet.current = true;
+      }
+    }
+  }, [user, isAdmin, companies]);
 
   useEffect(() => {
     if (jobForm.companyId) {
@@ -451,6 +451,9 @@ export default function CreateJob() {
     e.preventDefault();
 
     try {
+      const salaryValue = Number(jobForm.salary);
+      const salaryObj = salaryValue > 0 ? { min: salaryValue } : undefined;
+
       const payload = {
         title: jobForm.title,
         description: jobForm.description,
@@ -458,11 +461,7 @@ export default function CreateJob() {
         departmentId: jobForm.departmentId,
         jobCode: jobForm.jobCode,
         requirements: jobForm.termsAndConditions.filter((term) => term.trim()),
-        salary: {
-          min: jobForm.salary,
-          max: jobForm.salary,
-          currency: "USD",
-        },
+        salary: salaryObj,
         salaryVisible: jobForm.salaryVisible,
         openPositions: jobForm.openPositions,
         registrationStart: jobForm.registrationStart,
@@ -485,35 +484,6 @@ export default function CreateJob() {
       setJobStatus(`Error: ${errorMessage}`);
       console.error("Error creating job:", err);
     }
-  };
-
-  const handleToggleRecommendedField = (fieldId: string) => {
-    setSelectedRecommendedFields((prev) =>
-      prev.includes(fieldId)
-        ? prev.filter((id) => id !== fieldId)
-        : [...prev, fieldId]
-    );
-  };
-
-  const handleAddRecommendedFields = () => {
-    const fieldsToAdd = mockRecommendedFields
-      .filter((field) => selectedRecommendedFields.includes(field.fieldId))
-      .map((field) => ({
-        ...field,
-        fieldId: `${field.fieldId}_${Date.now()}`, // Make unique
-        displayOrder:
-          jobForm.customFields.length +
-          selectedRecommendedFields.indexOf(field.fieldId) +
-          1,
-      }));
-
-    setJobForm((prev) => ({
-      ...prev,
-      customFields: [...prev.customFields, ...fieldsToAdd],
-    }));
-
-    setShowRecommendedFieldsModal(false);
-    setSelectedRecommendedFields([]);
   };
 
   const jobPayload = useMemo(() => jobForm, [jobForm]);
@@ -564,14 +534,43 @@ export default function CreateJob() {
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
               <Label htmlFor="companyId">Company</Label>
-              <Select
-                options={companies}
-                placeholder="Select company"
-                onChange={(value) => {
-                  handleInputChange("companyId", value);
-                  handleInputChange("departmentId", ""); // Reset department when company changes
-                }}
-              />
+              {isLoadingCompanies ? (
+                <Input
+                  id="companyId"
+                  value="Loading companies..."
+                  disabled={true}
+                  className="bg-gray-50 dark:bg-gray-800"
+                />
+              ) : isAdmin ? (
+                <Select
+                  options={companies}
+                  placeholder="Select company"
+                  value={jobForm.companyId}
+                  onChange={(value) => {
+                    handleInputChange("companyId", value);
+                    handleInputChange("departmentId", ""); // Reset department when company changes
+                  }}
+                />
+              ) : companies.length > 0 ? (
+                <Input
+                  id="companyId"
+                  value={
+                    companies.find((c) => c.value === jobForm.companyId)
+                      ?.label ||
+                    companies[0]?.label ||
+                    "No company"
+                  }
+                  disabled={true}
+                  className="bg-gray-50 dark:bg-gray-800"
+                />
+              ) : (
+                <Input
+                  id="companyId"
+                  value="No company assigned"
+                  disabled={true}
+                  className="bg-gray-50 dark:bg-gray-800"
+                />
+              )}
             </div>
             <div>
               <Label htmlFor="departmentId">Department</Label>
@@ -599,6 +598,7 @@ export default function CreateJob() {
                   value={jobForm.jobCode}
                   onChange={(e) => handleInputChange("jobCode", e.target.value)}
                   placeholder="DEV-FE-001"
+                  required
                 />
               </div>
               <div>
@@ -669,6 +669,13 @@ export default function CreateJob() {
                   onChange={(e) =>
                     handleInputChange("registrationStart", e.target.value)
                   }
+                  onClick={(e) => {
+                    const input = e.currentTarget as HTMLInputElement;
+                    if (input.showPicker) {
+                      input.showPicker();
+                    }
+                  }}
+                  required
                 />
               </div>
               <div>
@@ -680,6 +687,13 @@ export default function CreateJob() {
                   onChange={(e) =>
                     handleInputChange("registrationEnd", e.target.value)
                   }
+                  onClick={(e) => {
+                    const input = e.currentTarget as HTMLInputElement;
+                    if (input.showPicker) {
+                      input.showPicker();
+                    }
+                  }}
+                  required
                 />
               </div>
             </div>
@@ -809,14 +823,6 @@ export default function CreateJob() {
             >
               <PlusIcon className="size-4" />
               Add Custom Field
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowRecommendedFieldsModal(true)}
-              className="flex items-center gap-2 rounded-lg border border-primary bg-white px-4 py-2 text-sm font-medium text-primary shadow-sm transition-all hover:bg-primary/5 dark:bg-gray-900 dark:hover:bg-primary/10"
-            >
-              <CheckCircleIcon className="size-4" />
-              Preview Recommended Fields
             </button>
           </div>
 
@@ -972,6 +978,12 @@ export default function CreateJob() {
                         <Input
                           value={newChoice}
                           onChange={(e) => setNewChoice(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              handleAddChoice(fieldIndex);
+                            }
+                          }}
                           placeholder="Add a choice"
                         />
                         <button
@@ -1117,6 +1129,15 @@ export default function CreateJob() {
                                       onChange={(e) =>
                                         setNewSubFieldChoice(e.target.value)
                                       }
+                                      onKeyDown={(e) => {
+                                        if (e.key === "Enter") {
+                                          e.preventDefault();
+                                          handleAddSubFieldChoice(
+                                            fieldIndex,
+                                            subFieldIndex
+                                          );
+                                        }
+                                      }}
                                       placeholder="Add a choice"
                                     />
                                     <button
@@ -1211,111 +1232,6 @@ export default function CreateJob() {
           </div>
         </ComponentCard>
       </form>
-
-      {/* Recommended Fields Modal */}
-      <Modal
-        isOpen={showRecommendedFieldsModal}
-        onClose={() => {
-          setShowRecommendedFieldsModal(false);
-          setSelectedRecommendedFields([]);
-        }}
-        className="max-w-4xl max-h-[90vh] overflow-y-auto p-6"
-      >
-        <div className="space-y-6">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-              Recommended Fields
-            </h2>
-            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-              Select pre-configured fields to add to your job application form
-            </p>
-          </div>
-
-          <div className="grid gap-4">
-            {mockRecommendedFields.map((field) => (
-              <div
-                key={field.fieldId}
-                className={`rounded-lg border-2 p-4 transition cursor-pointer ${
-                  selectedRecommendedFields.includes(field.fieldId)
-                    ? "border-primary bg-primary/5 dark:bg-primary/10"
-                    : "border-gray-200 hover:border-gray-300 dark:border-gray-700 dark:hover:border-gray-600"
-                }`}
-                onClick={() => handleToggleRecommendedField(field.fieldId)}
-              >
-                <div className="flex items-start gap-3">
-                  <input
-                    type="checkbox"
-                    checked={selectedRecommendedFields.includes(field.fieldId)}
-                    onChange={() => handleToggleRecommendedField(field.fieldId)}
-                    className="mt-1 h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-semibold text-gray-900 dark:text-white">
-                        {field.label}
-                      </h3>
-                      <span className="rounded-md bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-400">
-                        {field.inputType}
-                      </span>
-                      {field.isRequired && (
-                        <span className="rounded-md bg-red-100 px-2 py-0.5 text-xs font-medium text-red-600 dark:bg-red-900/30 dark:text-red-400">
-                          Required
-                        </span>
-                      )}
-                    </div>
-                    <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                      <span className="font-mono text-xs">{field.fieldId}</span>
-                    </p>
-                    {field.minValue !== undefined &&
-                      field.maxValue !== undefined && (
-                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-500">
-                          Range: {field.minValue} - {field.maxValue}
-                        </p>
-                      )}
-                    {field.choices && field.choices.length > 0 && (
-                      <div className="mt-2 flex flex-wrap gap-1">
-                        {field.choices.map((choice, idx) => (
-                          <span
-                            key={idx}
-                            className="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-700 dark:bg-gray-800 dark:text-gray-300"
-                          >
-                            {choice}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="flex justify-end gap-3 border-t border-gray-200 pt-4 dark:border-gray-700">
-            <button
-              type="button"
-              onClick={() => {
-                setShowRecommendedFieldsModal(false);
-                setSelectedRecommendedFields([]);
-              }}
-              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleAddRecommendedFields}
-              disabled={selectedRecommendedFields.length === 0}
-              className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Add{" "}
-              {selectedRecommendedFields.length > 0 &&
-                `(${selectedRecommendedFields.length})`}{" "}
-              Selected Fields
-            </button>
-          </div>
-        </div>
-      </Modal>
     </div>
   );
 }
