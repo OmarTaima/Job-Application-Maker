@@ -23,6 +23,7 @@ import PreviewCompany from "./pages/Recruiting/PreviewCompany";
 import JobCreation from "./pages/Recruiting/JobCreation";
 import Jobs from "./pages/Recruiting/Jobs";
 import CreateJob from "./pages/Recruiting/CreateJob";
+import PreviewJob from "./pages/Recruiting/PreviewJob";
 import Users from "./pages/Recruiting/Users";
 import Permissions from "./pages/Recruiting/Permissions";
 import RecommendedFields from "./pages/Recruiting/RecommendedFields";
@@ -48,6 +49,7 @@ export default function App() {
               <Route path="companies" element={<Companies />} />
               <Route path="jobs" element={<Jobs />} />
               <Route path="create-job" element={<CreateJob />} />
+              <Route path="job/:jobId" element={<PreviewJob />} />
               <Route path="company/:companyId" element={<PreviewCompany />} />
               <Route
                 path="company/:companyId/create-job"

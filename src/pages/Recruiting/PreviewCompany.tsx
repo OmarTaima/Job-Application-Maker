@@ -4,6 +4,7 @@ import { useParams, useNavigate } from "react-router";
 import ComponentCard from "../../components/common/ComponentCard";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
 import PageMeta from "../../components/common/PageMeta";
+import LoadingSpinner from "../../components/common/LoadingSpinner";
 import Label from "../../components/form/Label";
 import Input from "../../components/form/input/InputField";
 import TextArea from "../../components/form/input/TextArea";
@@ -220,7 +221,13 @@ export default function PreviewCompany() {
     setEditingDept(null);
   };
 
-  return (
+  return loading ? (
+    <div className="space-y-6">
+      <PageMeta title="Loading..." description="Loading company details" />
+      <PageBreadcrumb pageTitle="Company Details" />
+      <LoadingSpinner fullPage message="Loading company details..." />
+    </div>
+  ) : (
     <div className="space-y-6">
       <PageMeta
         title={`${companyForm.name || "Company"} | Company Preview`}

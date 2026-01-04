@@ -1,8 +1,9 @@
 import { useMemo, useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import ComponentCard from "../../components/common/ComponentCard";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
 import PageMeta from "../../components/common/PageMeta";
+import LoadingSpinner from "../../components/common/LoadingSpinner";
 import Label from "../../components/form/Label";
 import Input from "../../components/form/input/InputField";
 import TextArea from "../../components/form/input/TextArea";
@@ -109,6 +110,8 @@ const subFieldTypeOptions = [
 
 export default function CreateJob() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const editJobId = searchParams.get("id");
   const { user, canAccessCompany } = useAuth();
   // Handle different admin role formats - roleId can be an object with name property
   const userRole = user?.role ? String(user.role).toLowerCase() : undefined;
@@ -124,8 +127,6 @@ export default function CreateJob() {
         String((user as any).roleId.name).toLowerCase() === "superadmin" ||
         String((user as any).roleId.name) === "Admin" ||
         String((user as any).roleId.name) === "Super Admin"));
-
-  
 
   const [companies, setCompanies] = useState<
     Array<{ value: string; label: string }>
@@ -197,8 +198,11 @@ export default function CreateJob() {
     null
   );
   const [jobStatus, setJobStatus] = useState("");
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [isLoadingJob, setIsLoadingJob] = useState(false);
   const companyAutoSet = useRef(false);
   const companiesLoaded = useRef(false);
+  const jobDataLoaded = useRef(false);
 
   useEffect(() => {
     // Only load companies once when user is available
@@ -207,6 +211,71 @@ export default function CreateJob() {
       companiesLoaded.current = true;
     }
   }, [user]);
+
+  // Load existing job data when in edit mode
+  useEffect(() => {
+    const loadJobData = async () => {
+      if (editJobId && !jobDataLoaded.current && companies.length > 0) {
+        try {
+          setIsLoadingJob(true);
+          setIsEditMode(true);
+          const job = await jobPositionsService.getJobPositionById(editJobId);
+
+          // Normalize company and department IDs
+          const companyId =
+            typeof job.companyId === "string"
+              ? job.companyId
+              : (job.companyId as any)?._id;
+          const departmentId =
+            typeof job.departmentId === "string"
+              ? job.departmentId
+              : (job.departmentId as any)?._id;
+
+          // Format dates for input fields
+          const formatDateForInput = (dateString?: string) => {
+            if (!dateString) return "";
+            const date = new Date(dateString);
+            return date.toISOString().split("T")[0];
+          };
+
+          setJobForm({
+            companyId: companyId || "",
+            departmentId: departmentId || "",
+            jobCode: job.jobCode || "",
+            title: job.title || "",
+            description: job.description || "",
+            salary: job.salary?.min || 0,
+            salaryVisible: job.salaryVisible ?? true,
+            openPositions: job.openPositions || 1,
+            registrationStart: formatDateForInput(job.registrationStart),
+            registrationEnd: formatDateForInput(job.registrationEnd),
+            termsAndConditions:
+              job.termsAndConditions && job.termsAndConditions.length > 0
+                ? job.termsAndConditions
+                : job.requirements && job.requirements.length > 0
+                ? job.requirements
+                : [""],
+            jobSpecs:
+              job.jobSpecs && job.jobSpecs.length > 0
+                ? job.jobSpecs
+                : [{ spec: "", weight: 0 }],
+            customFields: Array.isArray(job.customFields)
+              ? (job.customFields as CustomField[])
+              : [],
+          });
+
+          jobDataLoaded.current = true;
+        } catch (err) {
+          console.error("Failed to load job data:", err);
+          setJobStatus("Error: Failed to load job data");
+        } finally {
+          setIsLoadingJob(false);
+        }
+      }
+    };
+
+    loadJobData();
+  }, [editJobId, companies]);
 
   // Auto-select company for non-admin users
   useEffect(() => {
@@ -471,17 +540,27 @@ export default function CreateJob() {
         employmentType: "Full-time",
       };
 
-      await jobPositionsService.createJobPosition(payload);
-      setJobStatus("Job created successfully");
+      if (isEditMode && editJobId) {
+        // Update existing job
+        await jobPositionsService.updateJobPosition(editJobId, payload);
+        setJobStatus("Job updated successfully");
+      } else {
+        // Create new job
+        await jobPositionsService.createJobPosition(payload);
+        setJobStatus("Job created successfully");
+      }
+
       setTimeout(() => {
         setJobStatus("");
         navigate("/jobs");
       }, 1500);
     } catch (err) {
       const errorMessage =
-        err instanceof ApiError ? err.message : "Failed to create job";
+        err instanceof ApiError
+          ? err.message
+          : `Failed to ${isEditMode ? "update" : "create"} job`;
       setJobStatus(`Error: ${errorMessage}`);
-      console.error("Error creating job:", err);
+      console.error(`Error ${isEditMode ? "updating" : "creating"} job:`, err);
     }
   };
 
@@ -495,8 +574,10 @@ export default function CreateJob() {
   return (
     <div className="space-y-6">
       <PageMeta
-        title="Create Job | TailAdmin React"
-        description="Create a new job posting for your company"
+        title={`${isEditMode ? "Edit" : "Create"} Job | TailAdmin React`}
+        description={`${
+          isEditMode ? "Edit an existing" : "Create a new"
+        } job posting for your company`}
       />
 
       <div className="flex items-center gap-4">
@@ -522,715 +603,729 @@ export default function CreateJob() {
         </button>
       </div>
 
-      <PageBreadcrumb pageTitle="Create Job" />
+      <PageBreadcrumb pageTitle={isEditMode ? "Edit Job" : "Create Job"} />
 
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Company & Department Selection */}
-        <ComponentCard
-          title="Company & Department"
-          desc="Select the company and department"
-        >
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div>
-              <Label htmlFor="companyId">Company</Label>
-              {isLoadingCompanies ? (
-                <Input
-                  id="companyId"
-                  value="Loading companies..."
-                  disabled={true}
-                  className="bg-gray-50 dark:bg-gray-800"
-                />
-              ) : isAdmin ? (
+      {isLoadingJob ? (
+        <LoadingSpinner fullPage message="Loading job data..." />
+      ) : (
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Company & Department Selection */}
+          <ComponentCard
+            title="Company & Department"
+            desc="Select the company and department"
+          >
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div>
+                <Label htmlFor="companyId">Company</Label>
+                {isLoadingCompanies ? (
+                  <Input
+                    id="companyId"
+                    value="Loading companies..."
+                    disabled={true}
+                    className="bg-gray-50 dark:bg-gray-800"
+                  />
+                ) : isAdmin ? (
+                  <Select
+                    options={companies}
+                    placeholder="Select company"
+                    value={jobForm.companyId}
+                    onChange={(value) => {
+                      handleInputChange("companyId", value);
+                      handleInputChange("departmentId", ""); // Reset department when company changes
+                    }}
+                  />
+                ) : companies.length > 0 ? (
+                  <Input
+                    id="companyId"
+                    value={
+                      companies.find((c) => c.value === jobForm.companyId)
+                        ?.label ||
+                      companies[0]?.label ||
+                      "No company"
+                    }
+                    disabled={true}
+                    className="bg-gray-50 dark:bg-gray-800"
+                  />
+                ) : (
+                  <Input
+                    id="companyId"
+                    value="No company assigned"
+                    disabled={true}
+                    className="bg-gray-50 dark:bg-gray-800"
+                  />
+                )}
+              </div>
+              <div>
+                <Label htmlFor="departmentId">Department</Label>
                 <Select
-                  options={companies}
-                  placeholder="Select company"
-                  value={jobForm.companyId}
-                  onChange={(value) => {
-                    handleInputChange("companyId", value);
-                    handleInputChange("departmentId", ""); // Reset department when company changes
-                  }}
-                />
-              ) : companies.length > 0 ? (
-                <Input
-                  id="companyId"
-                  value={
-                    companies.find((c) => c.value === jobForm.companyId)
-                      ?.label ||
-                    companies[0]?.label ||
-                    "No company"
+                  options={departments}
+                  value={jobForm.departmentId}
+                  placeholder={
+                    jobForm.companyId
+                      ? "Select department"
+                      : "Select company first"
                   }
-                  disabled={true}
-                  className="bg-gray-50 dark:bg-gray-800"
-                />
-              ) : (
-                <Input
-                  id="companyId"
-                  value="No company assigned"
-                  disabled={true}
-                  className="bg-gray-50 dark:bg-gray-800"
-                />
-              )}
-            </div>
-            <div>
-              <Label htmlFor="departmentId">Department</Label>
-              <Select
-                options={departments}
-                placeholder={
-                  jobForm.companyId
-                    ? "Select department"
-                    : "Select company first"
-                }
-                onChange={(value) => handleInputChange("departmentId", value)}
-              />
-            </div>
-          </div>
-        </ComponentCard>
-
-        {/* Basic Job Information */}
-        <ComponentCard title="Basic Information" desc="Enter the job details">
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div>
-                <Label htmlFor="jobCode">Job Code</Label>
-                <Input
-                  id="jobCode"
-                  value={jobForm.jobCode}
-                  onChange={(e) => handleInputChange("jobCode", e.target.value)}
-                  placeholder="DEV-FE-001"
-                  required
-                />
-              </div>
-              <div>
-                <Label htmlFor="title">Job Title</Label>
-                <Input
-                  id="title"
-                  value={jobForm.title}
-                  onChange={(e) => handleInputChange("title", e.target.value)}
-                  placeholder="Senior Frontend Developer"
+                  onChange={(value) => handleInputChange("departmentId", value)}
                 />
               </div>
             </div>
+          </ComponentCard>
 
-            <div>
-              <Label htmlFor="description">Description</Label>
-              <TextArea
-                value={jobForm.description}
-                onChange={(value) => handleInputChange("description", value)}
-                placeholder="We are looking for a skilled developer..."
-                rows={5}
-              />
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-              <div>
-                <Label htmlFor="salary">Salary</Label>
-                <Input
-                  id="salary"
-                  type="number"
-                  value={jobForm.salary}
-                  onChange={(e) =>
-                    handleInputChange("salary", Number(e.target.value))
-                  }
-                  placeholder="85000"
-                />
-              </div>
-              <div>
-                <Label htmlFor="openPositions">Open Positions</Label>
-                <Input
-                  id="openPositions"
-                  type="number"
-                  value={jobForm.openPositions}
-                  onChange={(e) =>
-                    handleInputChange("openPositions", Number(e.target.value))
-                  }
-                  placeholder="3"
-                  min="1"
-                />
-              </div>
-              <div className="flex items-end pb-2">
-                <Switch
-                  label="Salary Visible"
-                  defaultChecked={jobForm.salaryVisible}
-                  onChange={(checked) =>
-                    handleInputChange("salaryVisible", checked)
-                  }
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div>
-                <Label htmlFor="registrationStart">Registration Start</Label>
-                <Input
-                  id="registrationStart"
-                  type="date"
-                  value={jobForm.registrationStart}
-                  onChange={(e) =>
-                    handleInputChange("registrationStart", e.target.value)
-                  }
-                  onClick={(e) => {
-                    const input = e.currentTarget as HTMLInputElement;
-                    if (input.showPicker) {
-                      input.showPicker();
-                    }
-                  }}
-                  required
-                />
-              </div>
-              <div>
-                <Label htmlFor="registrationEnd">Registration End</Label>
-                <Input
-                  id="registrationEnd"
-                  type="date"
-                  value={jobForm.registrationEnd}
-                  onChange={(e) =>
-                    handleInputChange("registrationEnd", e.target.value)
-                  }
-                  onClick={(e) => {
-                    const input = e.currentTarget as HTMLInputElement;
-                    if (input.showPicker) {
-                      input.showPicker();
-                    }
-                  }}
-                  required
-                />
-              </div>
-            </div>
-          </div>
-        </ComponentCard>
-
-        {/* Terms and Conditions */}
-        <ComponentCard
-          title="Terms and Conditions"
-          desc="Add requirements and conditions for this job"
-        >
-          <div className="space-y-4">
-            <div className="flex gap-2">
-              <Input
-                value={newTerm}
-                onChange={(e) => setNewTerm(e.target.value)}
-                placeholder="Add a term or condition"
-              />
-              <button
-                type="button"
-                onClick={handleAddTerm}
-                className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600"
-              >
-                <PlusIcon className="size-4" />
-                Add
-              </button>
-            </div>
-
-            <div className="space-y-2">
-              {jobForm.termsAndConditions.map((term, index) => (
-                <div
-                  key={index}
-                  className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-4 py-2 dark:border-gray-800 dark:bg-gray-900/50"
-                >
-                  <span className="text-sm text-gray-700 dark:text-gray-300">
-                    {term}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveTerm(index)}
-                    className="rounded p-1 text-error-600 transition hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-500/10"
-                  >
-                    <TrashBinIcon className="size-4" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        </ComponentCard>
-
-        {/* Job Specs */}
-        <ComponentCard
-          title="Job Specifications"
-          desc="Define evaluation criteria and their weights"
-        >
-          <div className="space-y-4">
-            {jobForm.jobSpecs.map((spec, index) => (
-              <div key={index} className="flex gap-3">
-                <div className="flex-1">
+          {/* Basic Job Information */}
+          <ComponentCard title="Basic Information" desc="Enter the job details">
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                  <Label htmlFor="jobCode">Job Code</Label>
                   <Input
-                    value={spec.spec}
+                    id="jobCode"
+                    value={jobForm.jobCode}
                     onChange={(e) =>
-                      handleJobSpecChange(index, "spec", e.target.value)
+                      handleInputChange("jobCode", e.target.value)
                     }
-                    placeholder="Specification name"
+                    placeholder="DEV-FE-001"
+                    required
                   />
                 </div>
-                <div className="w-32">
+                <div>
+                  <Label htmlFor="title">Job Title</Label>
                   <Input
+                    id="title"
+                    value={jobForm.title}
+                    onChange={(e) => handleInputChange("title", e.target.value)}
+                    placeholder="Senior Frontend Developer"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="description">Description</Label>
+                <TextArea
+                  value={jobForm.description}
+                  onChange={(value) => handleInputChange("description", value)}
+                  placeholder="We are looking for a skilled developer..."
+                  rows={5}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <div>
+                  <Label htmlFor="salary">Salary</Label>
+                  <Input
+                    id="salary"
                     type="number"
-                    value={spec.weight}
+                    value={jobForm.salary}
                     onChange={(e) =>
-                      handleJobSpecChange(
-                        index,
-                        "weight",
-                        Number(e.target.value)
-                      )
+                      handleInputChange("salary", Number(e.target.value))
                     }
-                    placeholder="Weight"
-                    min="0"
-                    max="100"
+                    placeholder="85000"
                   />
                 </div>
+                <div>
+                  <Label htmlFor="openPositions">Open Positions</Label>
+                  <Input
+                    id="openPositions"
+                    type="number"
+                    value={jobForm.openPositions}
+                    onChange={(e) =>
+                      handleInputChange("openPositions", Number(e.target.value))
+                    }
+                    placeholder="3"
+                    min="1"
+                  />
+                </div>
+                <div className="flex items-end pb-2">
+                  <Switch
+                    label="Salary Visible"
+                    defaultChecked={jobForm.salaryVisible}
+                    onChange={(checked) =>
+                      handleInputChange("salaryVisible", checked)
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                  <Label htmlFor="registrationStart">Registration Start</Label>
+                  <Input
+                    id="registrationStart"
+                    type="date"
+                    value={jobForm.registrationStart}
+                    onChange={(e) =>
+                      handleInputChange("registrationStart", e.target.value)
+                    }
+                    onClick={(e) => {
+                      const input = e.currentTarget as HTMLInputElement;
+                      if (input.showPicker) {
+                        input.showPicker();
+                      }
+                    }}
+                    required
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="registrationEnd">Registration End</Label>
+                  <Input
+                    id="registrationEnd"
+                    type="date"
+                    value={jobForm.registrationEnd}
+                    onChange={(e) =>
+                      handleInputChange("registrationEnd", e.target.value)
+                    }
+                    onClick={(e) => {
+                      const input = e.currentTarget as HTMLInputElement;
+                      if (input.showPicker) {
+                        input.showPicker();
+                      }
+                    }}
+                    required
+                  />
+                </div>
+              </div>
+            </div>
+          </ComponentCard>
+
+          {/* Terms and Conditions */}
+          <ComponentCard
+            title="Terms and Conditions"
+            desc="Add requirements and conditions for this job"
+          >
+            <div className="space-y-4">
+              <div className="flex gap-2">
+                <Input
+                  value={newTerm}
+                  onChange={(e) => setNewTerm(e.target.value)}
+                  placeholder="Add a term or condition"
+                />
                 <button
                   type="button"
-                  onClick={() => handleRemoveJobSpec(index)}
-                  className="rounded p-2 text-error-600 transition hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-500/10"
+                  onClick={handleAddTerm}
+                  className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600"
                 >
-                  <TrashBinIcon className="size-4" />
+                  <PlusIcon className="size-4" />
+                  Add
                 </button>
               </div>
-            ))}
 
-            <div className="flex items-center justify-between">
-              <button
-                type="button"
-                onClick={handleAddJobSpec}
-                className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
-              >
-                <PlusIcon className="size-4" />
-                Add Specification
-              </button>
-              <span
-                className={`text-sm font-semibold ${
-                  totalWeight === 100
-                    ? "text-success-600 dark:text-success-400"
-                    : "text-error-600 dark:text-error-400"
-                }`}
-              >
-                Total Weight: {totalWeight}%{" "}
-                {totalWeight !== 100 && "(Should be 100%)"}
-              </span>
-            </div>
-          </div>
-        </ComponentCard>
-
-        {/* Custom Fields */}
-        <ComponentCard
-          title="Custom Form Fields"
-          desc="Define custom fields for the job application form"
-        >
-          <div className="mb-4 flex gap-3">
-            <button
-              type="button"
-              onClick={handleAddCustomField}
-              className="flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white shadow-sm transition-all hover:bg-blue-700"
-            >
-              <PlusIcon className="size-4" />
-              Add Custom Field
-            </button>
-          </div>
-
-          <div className="space-y-4">
-            {jobForm.customFields.map((field, fieldIndex) => (
-              <div
-                key={field.fieldId}
-                className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-900/50"
-              >
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-                      Field #{fieldIndex + 1}
-                    </h4>
+              <div className="space-y-2">
+                {jobForm.termsAndConditions.map((term, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-4 py-2 dark:border-gray-800 dark:bg-gray-900/50"
+                  >
+                    <span className="text-sm text-gray-700 dark:text-gray-300">
+                      {term}
+                    </span>
                     <button
                       type="button"
-                      onClick={() => handleRemoveCustomField(fieldIndex)}
+                      onClick={() => handleRemoveTerm(index)}
                       className="rounded p-1 text-error-600 transition hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-500/10"
                     >
                       <TrashBinIcon className="size-4" />
                     </button>
                   </div>
+                ))}
+              </div>
+            </div>
+          </ComponentCard>
 
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                    <div>
-                      <Label htmlFor={`field-id-${fieldIndex}`}>Field ID</Label>
-                      <Input
-                        id={`field-id-${fieldIndex}`}
-                        value={field.fieldId}
-                        onChange={(e) =>
-                          handleCustomFieldChange(
-                            fieldIndex,
-                            "fieldId",
-                            e.target.value
-                          )
-                        }
-                        placeholder="field_name"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor={`field-label-${fieldIndex}`}>Label</Label>
-                      <Input
-                        id={`field-label-${fieldIndex}`}
-                        value={field.label}
-                        onChange={(e) =>
-                          handleCustomFieldChange(
-                            fieldIndex,
-                            "label",
-                            e.target.value
-                          )
-                        }
-                        placeholder="Years of Experience"
-                      />
-                    </div>
+          {/* Job Specs */}
+          <ComponentCard
+            title="Job Specifications"
+            desc="Define evaluation criteria and their weights"
+          >
+            <div className="space-y-4">
+              {jobForm.jobSpecs.map((spec, index) => (
+                <div key={index} className="flex gap-3">
+                  <div className="flex-1">
+                    <Input
+                      value={spec.spec}
+                      onChange={(e) =>
+                        handleJobSpecChange(index, "spec", e.target.value)
+                      }
+                      placeholder="Specification name"
+                    />
                   </div>
-
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                    <div>
-                      <Label htmlFor={`field-type-${fieldIndex}`}>
-                        Input Type
-                      </Label>
-                      <Select
-                        options={inputTypeOptions}
-                        placeholder="Select type"
-                        onChange={(value) =>
-                          handleCustomFieldChange(
-                            fieldIndex,
-                            "inputType",
-                            value
-                          )
-                        }
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor={`field-order-${fieldIndex}`}>
-                        Display Order
-                      </Label>
-                      <Input
-                        id={`field-order-${fieldIndex}`}
-                        type="number"
-                        value={field.displayOrder}
-                        onChange={(e) =>
-                          handleCustomFieldChange(
-                            fieldIndex,
-                            "displayOrder",
-                            Number(e.target.value)
-                          )
-                        }
-                        min="1"
-                      />
-                    </div>
-                    <div className="flex items-end pb-2">
-                      <Switch
-                        label="Required"
-                        defaultChecked={field.isRequired}
-                        onChange={(checked) =>
-                          handleCustomFieldChange(
-                            fieldIndex,
-                            "isRequired",
-                            checked
-                          )
-                        }
-                      />
-                    </div>
+                  <div className="w-32">
+                    <Input
+                      type="number"
+                      value={spec.weight}
+                      onChange={(e) =>
+                        handleJobSpecChange(
+                          index,
+                          "weight",
+                          Number(e.target.value)
+                        )
+                      }
+                      placeholder="Weight"
+                      min="0"
+                      max="100"
+                    />
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveJobSpec(index)}
+                    className="rounded p-2 text-error-600 transition hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-500/10"
+                  >
+                    <TrashBinIcon className="size-4" />
+                  </button>
+                </div>
+              ))}
 
-                  {field.inputType === "number" && (
-                    <div className="grid grid-cols-2 gap-3">
+              <div className="flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={handleAddJobSpec}
+                  className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                >
+                  <PlusIcon className="size-4" />
+                  Add Specification
+                </button>
+                <span
+                  className={`text-sm font-semibold ${
+                    totalWeight === 100
+                      ? "text-success-600 dark:text-success-400"
+                      : "text-error-600 dark:text-error-400"
+                  }`}
+                >
+                  Total Weight: {totalWeight}%{" "}
+                  {totalWeight !== 100 && "(Should be 100%)"}
+                </span>
+              </div>
+            </div>
+          </ComponentCard>
+
+          {/* Custom Fields */}
+          <ComponentCard
+            title="Custom Form Fields"
+            desc="Define custom fields for the job application form"
+          >
+            <div className="mb-4 flex gap-3">
+              <button
+                type="button"
+                onClick={handleAddCustomField}
+                className="flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white shadow-sm transition-all hover:bg-blue-700"
+              >
+                <PlusIcon className="size-4" />
+                Add Custom Field
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {jobForm.customFields.map((field, fieldIndex) => (
+                <div
+                  key={field.fieldId}
+                  className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-900/50"
+                >
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                        Field #{fieldIndex + 1}
+                      </h4>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveCustomField(fieldIndex)}
+                        className="rounded p-1 text-error-600 transition hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-500/10"
+                      >
+                        <TrashBinIcon className="size-4" />
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                       <div>
-                        <Label htmlFor={`field-min-${fieldIndex}`}>
-                          Min Value
+                        <Label htmlFor={`field-id-${fieldIndex}`}>
+                          Field ID
                         </Label>
                         <Input
-                          id={`field-min-${fieldIndex}`}
-                          type="number"
-                          value={field.minValue || ""}
+                          id={`field-id-${fieldIndex}`}
+                          value={field.fieldId}
                           onChange={(e) =>
                             handleCustomFieldChange(
                               fieldIndex,
-                              "minValue",
-                              Number(e.target.value)
+                              "fieldId",
+                              e.target.value
+                            )
+                          }
+                          placeholder="field_name"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor={`field-label-${fieldIndex}`}>
+                          Label
+                        </Label>
+                        <Input
+                          id={`field-label-${fieldIndex}`}
+                          value={field.label}
+                          onChange={(e) =>
+                            handleCustomFieldChange(
+                              fieldIndex,
+                              "label",
+                              e.target.value
+                            )
+                          }
+                          placeholder="Years of Experience"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                      <div>
+                        <Label htmlFor={`field-type-${fieldIndex}`}>
+                          Input Type
+                        </Label>
+                        <Select
+                          options={inputTypeOptions}
+                          value={field.inputType}
+                          placeholder="Select type"
+                          onChange={(value) =>
+                            handleCustomFieldChange(
+                              fieldIndex,
+                              "inputType",
+                              value
                             )
                           }
                         />
                       </div>
                       <div>
-                        <Label htmlFor={`field-max-${fieldIndex}`}>
-                          Max Value
+                        <Label htmlFor={`field-order-${fieldIndex}`}>
+                          Display Order
                         </Label>
                         <Input
-                          id={`field-max-${fieldIndex}`}
+                          id={`field-order-${fieldIndex}`}
                           type="number"
-                          value={field.maxValue || ""}
+                          value={field.displayOrder}
                           onChange={(e) =>
                             handleCustomFieldChange(
                               fieldIndex,
-                              "maxValue",
+                              "displayOrder",
                               Number(e.target.value)
+                            )
+                          }
+                          min="1"
+                        />
+                      </div>
+                      <div className="flex items-end pb-2">
+                        <Switch
+                          label="Required"
+                          defaultChecked={field.isRequired}
+                          onChange={(checked) =>
+                            handleCustomFieldChange(
+                              fieldIndex,
+                              "isRequired",
+                              checked
                             )
                           }
                         />
                       </div>
                     </div>
-                  )}
 
-                  {(field.inputType === "checkbox" ||
-                    field.inputType === "radio" ||
-                    field.inputType === "select" ||
-                    field.inputType === "tags") && (
-                    <div>
-                      <Label>Choices</Label>
-                      <div className="flex gap-2">
-                        <Input
-                          value={newChoice}
-                          onChange={(e) => setNewChoice(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              handleAddChoice(fieldIndex);
+                    {field.inputType === "number" && (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <Label htmlFor={`field-min-${fieldIndex}`}>
+                            Min Value
+                          </Label>
+                          <Input
+                            id={`field-min-${fieldIndex}`}
+                            type="number"
+                            value={field.minValue || ""}
+                            onChange={(e) =>
+                              handleCustomFieldChange(
+                                fieldIndex,
+                                "minValue",
+                                Number(e.target.value)
+                              )
                             }
-                          }}
-                          placeholder="Add a choice"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => handleAddChoice(fieldIndex)}
-                          className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600"
-                        >
-                          <PlusIcon className="size-4" />
-                        </button>
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor={`field-max-${fieldIndex}`}>
+                            Max Value
+                          </Label>
+                          <Input
+                            id={`field-max-${fieldIndex}`}
+                            type="number"
+                            value={field.maxValue || ""}
+                            onChange={(e) =>
+                              handleCustomFieldChange(
+                                fieldIndex,
+                                "maxValue",
+                                Number(e.target.value)
+                              )
+                            }
+                          />
+                        </div>
                       </div>
-                      <div className="mt-2 space-y-1">
-                        {field.choices?.map((choice, choiceIndex) => (
-                          <div
-                            key={choiceIndex}
-                            className="flex items-center justify-between rounded border border-gray-200 bg-white px-3 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800"
-                          >
-                            <span className="text-gray-700 dark:text-gray-300">
-                              {choice}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                handleRemoveChoice(fieldIndex, choiceIndex)
+                    )}
+
+                    {(field.inputType === "checkbox" ||
+                      field.inputType === "radio" ||
+                      field.inputType === "select" ||
+                      field.inputType === "tags") && (
+                      <div>
+                        <Label>Choices</Label>
+                        <div className="flex gap-2">
+                          <Input
+                            value={newChoice}
+                            onChange={(e) => setNewChoice(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                handleAddChoice(fieldIndex);
                               }
-                              className="text-error-600 hover:text-error-700 dark:text-error-400"
-                            >
-                              <TrashBinIcon className="size-3" />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Group Field Sub-Questions */}
-                  {field.inputType === "groupField" && (
-                    <div className="border-l-4 border-brand-500 pl-4">
-                      <div className="mb-3 flex items-center justify-between">
-                        <Label>Sub-Questions</Label>
-                        <button
-                          type="button"
-                          onClick={() => handleAddSubField(fieldIndex)}
-                          className="inline-flex items-center gap-1 rounded-lg bg-brand-100 px-3 py-1.5 text-xs font-semibold text-brand-700 transition hover:bg-brand-200 dark:bg-brand-900/30 dark:text-brand-300"
-                        >
-                          <PlusIcon className="size-3" />
-                          Add Sub-Question
-                        </button>
-                      </div>
-
-                      <div className="space-y-4">
-                        {field.subFields?.map((subField, subFieldIndex) => (
-                          <div
-                            key={subField.fieldId}
-                            className="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800/50"
+                            }}
+                            placeholder="Add a choice"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleAddChoice(fieldIndex)}
+                            className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600"
                           >
-                            <div className="mb-3 flex items-center justify-between">
-                              <h5 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-                                Sub-Question #{subFieldIndex + 1}
-                              </h5>
+                            <PlusIcon className="size-4" />
+                          </button>
+                        </div>
+                        <div className="mt-2 space-y-1">
+                          {field.choices?.map((choice, choiceIndex) => (
+                            <div
+                              key={choiceIndex}
+                              className="flex items-center justify-between rounded border border-gray-200 bg-white px-3 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800"
+                            >
+                              <span className="text-gray-700 dark:text-gray-300">
+                                {choice}
+                              </span>
                               <button
                                 type="button"
                                 onClick={() =>
-                                  handleRemoveSubField(
-                                    fieldIndex,
-                                    subFieldIndex
-                                  )
+                                  handleRemoveChoice(fieldIndex, choiceIndex)
                                 }
                                 className="text-error-600 hover:text-error-700 dark:text-error-400"
                               >
-                                <TrashBinIcon className="size-4" />
+                                <TrashBinIcon className="size-3" />
                               </button>
                             </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
-                            <div className="space-y-3">
-                              <div>
-                                <Label
-                                  htmlFor={`subfield-label-${subFieldIndex}`}
-                                >
-                                  Label
-                                </Label>
-                                <Input
-                                  id={`subfield-label-${subFieldIndex}`}
-                                  value={subField.label}
-                                  onChange={(e) =>
-                                    handleSubFieldChange(
+                    {/* Group Field Sub-Questions */}
+                    {field.inputType === "groupField" && (
+                      <div className="border-l-4 border-brand-500 pl-4">
+                        <div className="mb-3 flex items-center justify-between">
+                          <Label>Sub-Questions</Label>
+                          <button
+                            type="button"
+                            onClick={() => handleAddSubField(fieldIndex)}
+                            className="inline-flex items-center gap-1 rounded-lg bg-brand-100 px-3 py-1.5 text-xs font-semibold text-brand-700 transition hover:bg-brand-200 dark:bg-brand-900/30 dark:text-brand-300"
+                          >
+                            <PlusIcon className="size-3" />
+                            Add Sub-Question
+                          </button>
+                        </div>
+
+                        <div className="space-y-4">
+                          {field.subFields?.map((subField, subFieldIndex) => (
+                            <div
+                              key={subField.fieldId}
+                              className="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800/50"
+                            >
+                              <div className="mb-3 flex items-center justify-between">
+                                <h5 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                                  Sub-Question #{subFieldIndex + 1}
+                                </h5>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleRemoveSubField(
                                       fieldIndex,
-                                      subFieldIndex,
-                                      "label",
-                                      e.target.value
+                                      subFieldIndex
                                     )
                                   }
-                                  placeholder="Enter question label"
-                                />
+                                  className="text-error-600 hover:text-error-700 dark:text-error-400"
+                                >
+                                  <TrashBinIcon className="size-4" />
+                                </button>
                               </div>
 
-                              <div className="grid grid-cols-2 gap-3">
+                              <div className="space-y-3">
                                 <div>
                                   <Label
-                                    htmlFor={`subfield-type-${subFieldIndex}`}
+                                    htmlFor={`subfield-label-${subFieldIndex}`}
                                   >
-                                    Input Type
+                                    Label
                                   </Label>
-                                  <Select
-                                    options={subFieldTypeOptions}
-                                    placeholder="Select type"
-                                    onChange={(value) =>
+                                  <Input
+                                    id={`subfield-label-${subFieldIndex}`}
+                                    value={subField.label}
+                                    onChange={(e) =>
                                       handleSubFieldChange(
                                         fieldIndex,
                                         subFieldIndex,
-                                        "inputType",
-                                        value
+                                        "label",
+                                        e.target.value
                                       )
                                     }
+                                    placeholder="Enter question label"
                                   />
                                 </div>
 
-                                <div className="flex items-end pb-2">
-                                  <Switch
-                                    label="Required"
-                                    defaultChecked={subField.isRequired}
-                                    onChange={(checked) =>
-                                      handleSubFieldChange(
-                                        fieldIndex,
-                                        subFieldIndex,
-                                        "isRequired",
-                                        checked
-                                      )
-                                    }
-                                  />
-                                </div>
-                              </div>
-
-                              {/* Sub-field choices for radio, checkbox, dropdown, tags */}
-                              {(subField.inputType === "radio" ||
-                                subField.inputType === "checkbox" ||
-                                subField.inputType === "dropdown" ||
-                                subField.inputType === "tags") && (
-                                <div>
-                                  <Label>Choices</Label>
-                                  <div className="flex gap-2">
-                                    <Input
-                                      value={newSubFieldChoice}
-                                      onChange={(e) =>
-                                        setNewSubFieldChoice(e.target.value)
+                                <div className="grid grid-cols-2 gap-3">
+                                  <div>
+                                    <Label
+                                      htmlFor={`subfield-type-${subFieldIndex}`}
+                                    >
+                                      Input Type
+                                    </Label>
+                                    <Select
+                                      options={subFieldTypeOptions}
+                                      value={subField.inputType}
+                                      placeholder="Select type"
+                                      onChange={(value) =>
+                                        handleSubFieldChange(
+                                          fieldIndex,
+                                          subFieldIndex,
+                                          "inputType",
+                                          value
+                                        )
                                       }
-                                      onKeyDown={(e) => {
-                                        if (e.key === "Enter") {
-                                          e.preventDefault();
+                                    />
+                                  </div>
+
+                                  <div className="flex items-end pb-2">
+                                    <Switch
+                                      label="Required"
+                                      defaultChecked={subField.isRequired}
+                                      onChange={(checked) =>
+                                        handleSubFieldChange(
+                                          fieldIndex,
+                                          subFieldIndex,
+                                          "isRequired",
+                                          checked
+                                        )
+                                      }
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* Sub-field choices for radio, checkbox, dropdown, tags */}
+                                {(subField.inputType === "radio" ||
+                                  subField.inputType === "checkbox" ||
+                                  subField.inputType === "dropdown" ||
+                                  subField.inputType === "tags") && (
+                                  <div>
+                                    <Label>Choices</Label>
+                                    <div className="flex gap-2">
+                                      <Input
+                                        value={newSubFieldChoice}
+                                        onChange={(e) =>
+                                          setNewSubFieldChoice(e.target.value)
+                                        }
+                                        onKeyDown={(e) => {
+                                          if (e.key === "Enter") {
+                                            e.preventDefault();
+                                            handleAddSubFieldChoice(
+                                              fieldIndex,
+                                              subFieldIndex
+                                            );
+                                          }
+                                        }}
+                                        placeholder="Add a choice"
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() =>
                                           handleAddSubFieldChoice(
                                             fieldIndex,
                                             subFieldIndex
-                                          );
+                                          )
                                         }
-                                      }}
-                                      placeholder="Add a choice"
-                                    />
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        handleAddSubFieldChoice(
-                                          fieldIndex,
-                                          subFieldIndex
-                                        )
-                                      }
-                                      className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600"
-                                    >
-                                      <PlusIcon className="size-4" />
-                                    </button>
-                                  </div>
-                                  <div className="mt-2 space-y-1">
-                                    {subField.choices?.map(
-                                      (choice, choiceIndex) => (
-                                        <div
-                                          key={choiceIndex}
-                                          className="flex items-center justify-between rounded border border-gray-200 bg-white px-3 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800"
-                                        >
-                                          <span className="text-gray-700 dark:text-gray-300">
-                                            {choice}
-                                          </span>
-                                          <button
-                                            type="button"
-                                            onClick={() =>
-                                              handleRemoveSubFieldChoice(
-                                                fieldIndex,
-                                                subFieldIndex,
-                                                choiceIndex
-                                              )
-                                            }
-                                            className="text-error-600 hover:text-error-700 dark:text-error-400"
+                                        className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600"
+                                      >
+                                        <PlusIcon className="size-4" />
+                                      </button>
+                                    </div>
+                                    <div className="mt-2 space-y-1">
+                                      {subField.choices?.map(
+                                        (choice, choiceIndex) => (
+                                          <div
+                                            key={choiceIndex}
+                                            className="flex items-center justify-between rounded border border-gray-200 bg-white px-3 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800"
                                           >
-                                            <TrashBinIcon className="size-3" />
-                                          </button>
-                                        </div>
-                                      )
-                                    )}
+                                            <span className="text-gray-700 dark:text-gray-300">
+                                              {choice}
+                                            </span>
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                handleRemoveSubFieldChoice(
+                                                  fieldIndex,
+                                                  subFieldIndex,
+                                                  choiceIndex
+                                                )
+                                              }
+                                              className="text-error-600 hover:text-error-700 dark:text-error-400"
+                                            >
+                                              <TrashBinIcon className="size-3" />
+                                            </button>
+                                          </div>
+                                        )
+                                      )}
+                                    </div>
                                   </div>
-                                </div>
-                              )}
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          ))}
 
-                        {(!field.subFields || field.subFields.length === 0) && (
-                          <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-8 text-center text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-800/30 dark:text-gray-400">
-                            No sub-questions added yet. Click "Add Sub-Question"
-                            to add questions to this group.
-                          </div>
-                        )}
+                          {(!field.subFields ||
+                            field.subFields.length === 0) && (
+                            <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-8 text-center text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-800/30 dark:text-gray-400">
+                              No sub-questions added yet. Click "Add
+                              Sub-Question" to add questions to this group.
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        </ComponentCard>
-
-        {/* Submit and Preview */}
-        <ComponentCard title="Review & Submit">
-          <div className="space-y-4">
-            <div className="flex flex-wrap items-center gap-3">
-              <button
-                type="submit"
-                className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-6 py-3 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600"
-              >
-                <CheckCircleIcon className="size-5" />
-                Create Job
-              </button>
-              {jobStatus && (
-                <span className="inline-flex items-center gap-2 rounded-full bg-success-50 px-4 py-2 text-sm font-semibold text-success-600 ring-1 ring-inset ring-success-200 dark:bg-success-500/10 dark:text-success-200 dark:ring-success-400/40">
-                  <CheckCircleIcon className="size-4" />
-                  {jobStatus}
-                </span>
-              )}
+              ))}
             </div>
+          </ComponentCard>
 
-            <div className="overflow-hidden rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-900/60">
-              <div className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                <span>Payload Preview</span>
-                <span>POST /api/jobs</span>
+          {/* Submit and Preview */}
+          <ComponentCard title="Review & Submit">
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="submit"
+                  className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-6 py-3 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600"
+                >
+                  <CheckCircleIcon className="size-5" />
+                  {isEditMode ? "Update Job" : "Create Job"}
+                </button>
+                {jobStatus && (
+                  <span className="inline-flex items-center gap-2 rounded-full bg-success-50 px-4 py-2 text-sm font-semibold text-success-600 ring-1 ring-inset ring-success-200 dark:bg-success-500/10 dark:text-success-200 dark:ring-success-400/40">
+                    <CheckCircleIcon className="size-4" />
+                    {jobStatus}
+                  </span>
+                )}
               </div>
-              <pre className="max-h-96 overflow-auto text-xs leading-relaxed text-gray-800 dark:text-gray-200">
-                {JSON.stringify(jobPayload, null, 2)}
-              </pre>
+
+              <div className="overflow-hidden rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-900/60">
+                <div className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  <span>Payload Preview</span>
+                  <span>POST /api/jobs</span>
+                </div>
+                <pre className="max-h-96 overflow-auto text-xs leading-relaxed text-gray-800 dark:text-gray-200">
+                  {JSON.stringify(jobPayload, null, 2)}
+                </pre>
+              </div>
             </div>
-          </div>
-        </ComponentCard>
-      </form>
+          </ComponentCard>
+        </form>
+      )}
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
 import PageMeta from "../../components/common/PageMeta";
 import ComponentCard from "../../components/common/ComponentCard";
+import LoadingSpinner from "../../components/common/LoadingSpinner";
 import { Link, useNavigate } from "react-router";
 import { PlusIcon } from "../../icons";
 import {
@@ -134,11 +135,7 @@ export default function Companies() {
           </div>
 
           {loading ? (
-            <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 py-12 dark:border-gray-700">
-              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                Loading companies...
-              </p>
-            </div>
+            <LoadingSpinner message="Loading companies..." />
           ) : filteredCompanies.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 py-12 dark:border-gray-700">
               <svg

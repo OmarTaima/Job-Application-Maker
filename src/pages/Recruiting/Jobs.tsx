@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
 import PageMeta from "../../components/common/PageMeta";
 import ComponentCard from "../../components/common/ComponentCard";
+import LoadingSpinner from "../../components/common/LoadingSpinner";
 import { Link, useNavigate } from "react-router";
 import { PlusIcon, PencilIcon, TrashBinIcon } from "../../icons";
 import Switch from "../../components/form/switch/Switch";
@@ -187,9 +188,7 @@ export default function Jobs() {
           </div>
 
           {loading ? (
-            <div className="p-12 text-center text-gray-500">
-              Loading jobs...
-            </div>
+            <LoadingSpinner message="Loading jobs..." />
           ) : filteredJobs.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 py-12 dark:border-gray-700">
               <svg
@@ -275,7 +274,8 @@ export default function Jobs() {
                     {filteredJobs.map((job) => (
                       <TableRow
                         key={job._id}
-                        className="transition hover:bg-gray-50 dark:hover:bg-white/[0.02]"
+                        onClick={() => navigate(`/job/${job._id}`)}
+                        className="cursor-pointer transition hover:bg-gray-50 dark:hover:bg-white/[0.02]"
                       >
                         <TableCell className="px-5 py-4 text-start">
                           <span className="font-medium text-gray-800 text-theme-sm dark:text-white/90">

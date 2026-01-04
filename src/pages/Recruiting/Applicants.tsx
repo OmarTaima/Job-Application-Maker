@@ -3,6 +3,7 @@ import { useNavigate } from "react-router";
 import ComponentCard from "../../components/common/ComponentCard";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
 import PageMeta from "../../components/common/PageMeta";
+import LoadingSpinner from "../../components/common/LoadingSpinner";
 import {
   Table,
   TableBody,
@@ -13,6 +14,7 @@ import {
 import { applicantsService, ApiError } from "../../services/applicantsService";
 import type { Applicant } from "../../services/applicantsService";
 import { jobPositionsService } from "../../services/jobPositionsService";
+import { TrashBinIcon } from "../../icons";
 
 type JobGroup = {
   jobPositionId: string;
@@ -28,6 +30,9 @@ const Applicants = () => {
   const [jobTitles, setJobTitles] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedApplicants, setSelectedApplicants] = useState<string[]>([]);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
 
   useEffect(() => {
     loadApplicants();
@@ -40,7 +45,15 @@ const Applicants = () => {
       setApplicants(data);
 
       // Fetch job titles for each unique job position
-      const uniqueJobIds = [...new Set(data.map((app) => app.jobPositionId))];
+      const uniqueJobIds = [
+        ...new Set(
+          data.map((app) =>
+            typeof app.jobPositionId === "string"
+              ? app.jobPositionId
+              : (app.jobPositionId as any)?._id
+          )
+        ),
+      ].filter((id): id is string => !!id);
       const titles: Record<string, string> = {};
 
       await Promise.all(
@@ -71,7 +84,13 @@ const Applicants = () => {
   const groupedApplicants: JobGroup[] = Object.keys(jobTitles).map((jobId) => ({
     jobPositionId: jobId,
     jobTitle: jobTitles[jobId],
-    applicants: applicants.filter((app) => app.jobPositionId === jobId),
+    applicants: applicants.filter((app) => {
+      const appJobId =
+        typeof app.jobPositionId === "string"
+          ? app.jobPositionId
+          : (app.jobPositionId as any)?._id;
+      return appJobId === jobId;
+    }),
   }));
 
   // Filter applicants by status
@@ -116,6 +135,62 @@ const Applicants = () => {
     });
   };
 
+  const handleSelectApplicant = (applicantId: string) => {
+    setSelectedApplicants((prev) =>
+      prev.includes(applicantId)
+        ? prev.filter((id) => id !== applicantId)
+        : [...prev, applicantId]
+    );
+  };
+
+  const handleSelectAll = (jobApplicants: Applicant[]) => {
+    const jobApplicantIds = jobApplicants.map((app) => app._id);
+    const allSelected = jobApplicantIds.every((id) =>
+      selectedApplicants.includes(id)
+    );
+
+    if (allSelected) {
+      setSelectedApplicants((prev) =>
+        prev.filter((id) => !jobApplicantIds.includes(id))
+      );
+    } else {
+      setSelectedApplicants((prev) => [
+        ...new Set([...prev, ...jobApplicantIds]),
+      ]);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedApplicants.length === 0) return;
+
+    const confirmed = window.confirm(
+      `Are you sure you want to reject ${selectedApplicants.length} applicant(s)?`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setIsDeleting(true);
+      await Promise.all(
+        selectedApplicants.map((id) =>
+          applicantsService.updateApplicantStatus(id, {
+            status: "rejected",
+            notes: `Bulk rejected on ${new Date().toLocaleDateString()}`,
+          })
+        )
+      );
+      setSelectedApplicants([]);
+      await loadApplicants();
+    } catch (err) {
+      const errorMessage =
+        err instanceof ApiError ? err.message : "Failed to reject applicants";
+      setError(errorMessage);
+      console.error("Error rejecting applicants:", err);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   return (
     <>
       <PageMeta title="Applicants" description="Manage job applicants" />
@@ -127,6 +202,23 @@ const Applicants = () => {
           desc="View and manage all applicants"
         >
           <>
+            {/* Bulk Actions Bar */}
+            {selectedApplicants.length > 0 && (
+              <div className="mb-4 flex items-center justify-between rounded-lg bg-brand-50 px-4 py-3 dark:bg-brand-900/20">
+                <span className="text-sm font-medium text-brand-700 dark:text-brand-300">
+                  {selectedApplicants.length} applicant(s) selected
+                </span>
+                <button
+                  onClick={handleBulkDelete}
+                  disabled={isDeleting}
+                  className="inline-flex items-center gap-2 rounded-lg bg-red-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <TrashBinIcon className="h-4 w-4" />
+                  {isDeleting ? "Rejecting..." : "Reject Selected"}
+                </button>
+              </div>
+            )}
+
             {error && (
               <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg">
                 {error}
@@ -134,9 +226,7 @@ const Applicants = () => {
             )}
 
             {loading ? (
-              <div className="p-12 text-center text-gray-500">
-                Loading applicants...
-              </div>
+              <LoadingSpinner message="Loading applicants..." />
             ) : (
               <>
                 {/* Status Filter */}
@@ -241,6 +331,21 @@ const Applicants = () => {
                               <TableRow>
                                 <TableCell
                                   isHeader
+                                  className="px-4 py-3 align-middle text-left font-semibold w-12"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={group.applicants.every((app) =>
+                                      selectedApplicants.includes(app._id)
+                                    )}
+                                    onChange={() =>
+                                      handleSelectAll(group.applicants)
+                                    }
+                                    className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500 dark:border-gray-600 dark:bg-gray-700"
+                                  />
+                                </TableCell>
+                                <TableCell
+                                  isHeader
                                   className="px-4 py-3 align-middle text-left font-semibold"
                                 >
                                   Photo
@@ -287,7 +392,31 @@ const Applicants = () => {
                                   className="cursor-pointer transition hover:bg-gray-50 dark:hover:bg-gray-800"
                                 >
                                   <TableCell className="px-4 py-3 align-middle">
-                                    <div className="h-10 w-10 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+                                    <div onClick={(e) => e.stopPropagation()}>
+                                      <input
+                                        type="checkbox"
+                                        checked={selectedApplicants.includes(
+                                          applicant._id
+                                        )}
+                                        onChange={() =>
+                                          handleSelectApplicant(applicant._id)
+                                        }
+                                        className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500 dark:border-gray-600 dark:bg-gray-700"
+                                      />
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="px-4 py-3 align-middle">
+                                    <div
+                                      className="h-10 w-10 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700 cursor-pointer hover:ring-2 hover:ring-brand-500 transition"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (applicant.profilePhoto) {
+                                          setPreviewPhoto(
+                                            applicant.profilePhoto
+                                          );
+                                        }
+                                      }}
+                                    >
                                       {applicant.profilePhoto ? (
                                         <img
                                           src={applicant.profilePhoto}
@@ -349,6 +478,29 @@ const Applicants = () => {
           </>
         </ComponentCard>
       </div>
+
+      {/* Photo Preview Modal */}
+      {previewPhoto && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm"
+          onClick={() => setPreviewPhoto(null)}
+        >
+          <div className="relative max-h-[90vh] max-w-[90vw] p-4">
+            <button
+              onClick={() => setPreviewPhoto(null)}
+              className="absolute -top-2 -right-2 flex h-8 w-8 items-center justify-center rounded-full bg-white text-gray-700 shadow-lg hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+            >
+              ✕
+            </button>
+            <img
+              src={previewPhoto}
+              alt="Applicant photo preview"
+              className="max-h-[85vh] max-w-full rounded-lg shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+        </div>
+      )}
     </>
   );
 };

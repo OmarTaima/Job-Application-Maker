@@ -3,10 +3,12 @@ import { useParams, useNavigate } from "react-router";
 import ComponentCard from "../../components/common/ComponentCard";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
 import PageMeta from "../../components/common/PageMeta";
+import LoadingSpinner from "../../components/common/LoadingSpinner";
 import Label from "../../components/form/Label";
 import Input from "../../components/form/input/InputField";
 import TextArea from "../../components/form/input/TextArea";
 import Select from "../../components/form/Select";
+import DatePicker from "../../components/form/date-picker";
 import { Modal } from "../../components/ui/modal";
 import { PlusIcon } from "../../icons";
 import { applicantsService, ApiError } from "../../services/applicantsService";
@@ -69,22 +71,35 @@ const ApplicantData = () => {
       const data = await applicantsService.getApplicantById(applicantId);
       setApplicant(data);
 
-      // Load related entities
-      const [job, company, department] = await Promise.all([
-        jobPositionsService
-          .getJobPositionById(data.jobPositionId)
-          .catch(() => ({ title: "Unknown Job" })),
-        companiesService
-          .getCompanyById(data.companyId)
-          .catch(() => ({ name: "Unknown Company" })),
-        departmentsService
-          .getDepartmentById(data.departmentId)
-          .catch(() => ({ name: "Unknown Department" })),
-      ]);
+      // Handle populated vs string IDs
+      let jobPosition: any;
+      if (typeof data.jobPositionId === "string") {
+        jobPosition = await jobPositionsService.getJobPositionById(
+          data.jobPositionId
+        );
+      } else {
+        jobPosition = data.jobPositionId;
+      }
 
-      setJobTitle(job.title);
-      setCompanyName(company.name);
-      setDepartmentName(department.name);
+      let company: any;
+      if (typeof jobPosition.companyId === "string") {
+        company = await companiesService.getCompanyById(jobPosition.companyId);
+      } else {
+        company = jobPosition.companyId;
+      }
+
+      let department: any;
+      if (typeof jobPosition.departmentId === "string") {
+        department = await departmentsService.getDepartmentById(
+          jobPosition.departmentId
+        );
+      } else {
+        department = jobPosition.departmentId;
+      }
+
+      setJobTitle(jobPosition?.title || "Unknown Job");
+      setCompanyName(company?.name || "Unknown Company");
+      setDepartmentName(department?.name || "Unknown Department");
       setError(null);
     } catch (err) {
       const errorMessage =
@@ -97,11 +112,10 @@ const ApplicantData = () => {
   };
 
   const statusOptions = [
-    { value: "pending", label: "Pending" },
-    { value: "screening", label: "Screening" },
-    { value: "interview", label: "Interview" },
-    { value: "offer", label: "Offer" },
-    { value: "approved", label: "Approved" },
+    { value: "applied", label: "Applied" },
+    { value: "under_review", label: "Under Review" },
+    { value: "interviewed", label: "Interviewed" },
+    { value: "accepted", label: "Accepted" },
     { value: "rejected", label: "Rejected" },
   ];
 
@@ -109,20 +123,43 @@ const ApplicantData = () => {
     e.preventDefault();
     if (!id || !applicant) return;
 
+    // Validate required comment field
+    if (!interviewForm.comment || !interviewForm.comment.trim()) {
+      alert("Comment is required when scheduling an interview");
+      return;
+    }
+
     try {
+      // Combine date and time into scheduledAt
+      let scheduledAt: string | undefined;
+      if (interviewForm.date && interviewForm.time) {
+        scheduledAt = `${interviewForm.date}T${interviewForm.time}:00`;
+      } else if (interviewForm.date) {
+        scheduledAt = `${interviewForm.date}T00:00:00`;
+      }
+
       const interviewData: any = {
         description: interviewForm.description,
         type: interviewForm.type,
+        scheduledAt,
       };
 
       if (interviewForm.comment) interviewData.comment = interviewForm.comment;
-      if (interviewForm.date) interviewData.date = interviewForm.date;
-      if (interviewForm.time) interviewData.time = interviewForm.time;
       if (interviewForm.location)
         interviewData.location = interviewForm.location;
       if (interviewForm.link) interviewData.link = interviewForm.link;
 
+      // Schedule interview
       await applicantsService.scheduleInterview(id, interviewData);
+
+      // Automatically update status to "interview" if not already
+      if (applicant.status !== "interview") {
+        await applicantsService.updateApplicantStatus(id, {
+          status: "interview",
+          notes: `Status automatically updated to Interview upon scheduling an interview on ${new Date().toLocaleDateString()}`,
+        });
+      }
+
       await loadApplicantData(id);
       setInterviewForm({
         date: "",
@@ -145,6 +182,16 @@ const ApplicantData = () => {
   const handleMessageSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!id || !applicant) return;
+
+    // Validate required fields
+    if (!messageForm.subject || !messageForm.subject.trim()) {
+      alert("Subject is required when sending a message");
+      return;
+    }
+    if (!messageForm.body || !messageForm.body.trim()) {
+      alert("Message body is required when sending a message");
+      return;
+    }
 
     try {
       const messageData = {
@@ -210,15 +257,13 @@ const ApplicantData = () => {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case "pending":
-        return "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400";
-      case "screening":
+      case "applied":
         return "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400";
-      case "interview":
+      case "under_review":
+        return "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400";
+      case "interviewed":
         return "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400";
-      case "offer":
-        return "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400";
-      case "approved":
+      case "accepted":
         return "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400";
       case "rejected":
         return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400";
@@ -229,15 +274,14 @@ const ApplicantData = () => {
 
   if (loading) {
     return (
-      <>
+      <div className="space-y-6">
         <PageMeta
           title="Applicant Details - Loading"
           description="Loading applicant data"
         />
-        <div className="p-12 text-center text-gray-500">
-          Loading applicant data...
-        </div>
-      </>
+        <PageBreadcrumb pageTitle="Applicant Details" />
+        <LoadingSpinner fullPage message="Loading applicant data..." />
+      </div>
     );
   }
 
@@ -253,7 +297,7 @@ const ApplicantData = () => {
             {error || "Applicant not found"}
           </div>
           <button
-            onClick={() => navigate("/recruiting/applicants")}
+            onClick={() => navigate("/applicants")}
             className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
           >
             Back to Applicants
@@ -285,7 +329,7 @@ const ApplicantData = () => {
         {/* Back Button and Actions */}
         <div className="flex items-center justify-between">
           <button
-            onClick={() => navigate("/recruiting/applicants")}
+            onClick={() => navigate("/applicants")}
             className="text-sm font-medium text-primary hover:text-primary/80"
           >
             ← Back to Applicants
@@ -478,8 +522,37 @@ const ApplicantData = () => {
                   {formatDate(history.changedAt)}
                 </p>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
-                  By: {history.changedBy}
+                  By:{" "}
+                  {typeof history.changedBy === "string"
+                    ? history.changedBy
+                    : (history.changedBy as any)?.fullName ||
+                      (history.changedBy as any)?.email ||
+                      "Unknown"}
                 </p>
+                {(history.status === "interviewed" ||
+                  history.status === "interview") &&
+                  applicant.interviews &&
+                  applicant.interviews.length > 0 &&
+                  (() => {
+                    const lastInterview =
+                      applicant.interviews[applicant.interviews.length - 1];
+                    const scheduledAt = (lastInterview as any).scheduledAt;
+                    if (scheduledAt) {
+                      return (
+                        <p className="mt-1 text-sm font-medium text-purple-600 dark:text-purple-400">
+                          📅 Interview: {formatDate(scheduledAt)}
+                        </p>
+                      );
+                    } else if (lastInterview.date) {
+                      return (
+                        <p className="mt-1 text-sm font-medium text-purple-600 dark:text-purple-400">
+                          📅 Interview: {lastInterview.date}{" "}
+                          {lastInterview.time || ""}
+                        </p>
+                      );
+                    }
+                    return null;
+                  })()}
                 {expandedHistory === `${index}` && history.notes && (
                   <div className="mt-3 border-t border-stroke pt-3 dark:border-strokedark">
                     <p className="text-sm text-gray-700 dark:text-gray-300">
@@ -505,26 +578,39 @@ const ApplicantData = () => {
           </h2>
 
           <div>
-            <Label htmlFor="interview-date">Interview Date</Label>
-            <Input
+            <DatePicker
               id="interview-date"
-              type="date"
-              value={interviewForm.date}
-              onChange={(e) =>
-                setInterviewForm({ ...interviewForm, date: e.target.value })
-              }
+              label="Interview Date"
+              placeholder="Select interview date"
+              defaultDate={interviewForm.date || undefined}
+              onChange={(selectedDates) => {
+                if (selectedDates.length > 0) {
+                  const date = selectedDates[0];
+                  const formattedDate = date.toISOString().split("T")[0];
+                  setInterviewForm({ ...interviewForm, date: formattedDate });
+                }
+              }}
             />
           </div>
 
           <div>
-            <Label htmlFor="interview-time">Interview Time</Label>
-            <Input
+            <DatePicker
               id="interview-time"
-              type="time"
-              value={interviewForm.time}
-              onChange={(e) =>
-                setInterviewForm({ ...interviewForm, time: e.target.value })
-              }
+              label="Interview Time"
+              mode="time"
+              placeholder="Select interview time"
+              defaultDate={interviewForm.time || undefined}
+              onChange={(selectedDates) => {
+                if (selectedDates.length > 0) {
+                  const date = selectedDates[0];
+                  const hours = date.getHours().toString().padStart(2, "0");
+                  const minutes = date.getMinutes().toString().padStart(2, "0");
+                  setInterviewForm({
+                    ...interviewForm,
+                    time: `${hours}:${minutes}`,
+                  });
+                }
+              }}
             />
           </div>
 
@@ -585,13 +671,13 @@ const ApplicantData = () => {
           </div>
 
           <div>
-            <Label htmlFor="interview-comment">Comment (Optional)</Label>
+            <Label htmlFor="interview-comment">Comment *</Label>
             <TextArea
               value={interviewForm.comment}
               onChange={(value) =>
                 setInterviewForm({ ...interviewForm, comment: value })
               }
-              placeholder="Add any notes about this interview"
+              placeholder="Add notes about this interview (required)"
               rows={2}
             />
           </div>
@@ -644,7 +730,7 @@ const ApplicantData = () => {
           </div>
 
           <div>
-            <Label htmlFor="message-subject">Subject</Label>
+            <Label htmlFor="message-subject">Subject *</Label>
             <Input
               id="message-subject"
               type="text"
@@ -653,11 +739,12 @@ const ApplicantData = () => {
                 setMessageForm({ ...messageForm, subject: e.target.value })
               }
               placeholder="Message subject"
+              required
             />
           </div>
 
           <div>
-            <Label htmlFor="message-body">Message</Label>
+            <Label htmlFor="message-body">Message *</Label>
             <TextArea
               value={messageForm.body}
               onChange={(value) =>
