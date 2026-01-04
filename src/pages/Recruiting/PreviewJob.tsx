@@ -443,7 +443,7 @@ export default function PreviewJob() {
           desc="Additional fields for applicants"
         >
           <div className="space-y-4">
-            {job.customFields.map((field, index) => (
+            {job.customFields.map((field) => (
               <div
                 key={field.fieldId}
                 className="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800"

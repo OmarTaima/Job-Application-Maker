@@ -156,7 +156,7 @@ const ApplicantData = () => {
       if (applicant.status !== "under_review") {
         await applicantsService.updateApplicantStatus(id, {
           status: "under_review",
-          notes: `Status automatically updated to Under Review upon scheduling an interview on ${new Date().toLocaleDateString()}`,
+          notes: `Status automatically updated to under_review upon scheduling an interview on ${new Date().toLocaleDateString()}`,
         });
       }
 

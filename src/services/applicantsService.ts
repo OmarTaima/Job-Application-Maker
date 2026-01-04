@@ -79,13 +79,7 @@ export type Applicant = {
   companyId: string;
   jobPositionId: string;
   departmentId: string;
-  status:
-    | "pending"
-    | "approved"
-    | "interview"
-    | "rejected"
-    | "screening"
-    | "offer";
+  status: "applied" | "under_review" | "interviewed" | "accepted" | "rejected";
   submittedAt: string;
   fullName: string;
   firstName?: string;
@@ -131,13 +125,7 @@ export type UpdateApplicantRequest = {
 };
 
 export type UpdateStatusRequest = {
-  status:
-    | "pending"
-    | "approved"
-    | "interview"
-    | "rejected"
-    | "screening"
-    | "offer";
+  status: "applied" | "under_review" | "interviewed" | "accepted" | "rejected";
   notes?: string;
 };
 
