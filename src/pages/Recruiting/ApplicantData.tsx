@@ -152,11 +152,11 @@ const ApplicantData = () => {
       // Schedule interview
       await applicantsService.scheduleInterview(id, interviewData);
 
-      // Automatically update status to "interview" if not already
-      if (applicant.status !== "interview") {
+      // Automatically update status to "under_review" if not already
+      if (applicant.status !== "under_review") {
         await applicantsService.updateApplicantStatus(id, {
-          status: "interview",
-          notes: `Status automatically updated to Interview upon scheduling an interview on ${new Date().toLocaleDateString()}`,
+          status: "under_review",
+          notes: `Status automatically updated to Under Review upon scheduling an interview on ${new Date().toLocaleDateString()}`,
         });
       }
 
@@ -196,7 +196,7 @@ const ApplicantData = () => {
     try {
       const messageData = {
         subject: messageForm.subject,
-        body: messageForm.body,
+        content: messageForm.body,
         type: messageForm.type,
       };
 
@@ -218,7 +218,7 @@ const ApplicantData = () => {
 
     try {
       const commentData = {
-        text: commentForm.text,
+        comment: commentForm.text,
       };
 
       await applicantsService.addComment(id, commentData);
@@ -481,87 +481,344 @@ const ApplicantData = () => {
           )}
 
         {/* Status History */}
-        <ComponentCard title="Status History" desc="Track status changes">
+        <ComponentCard
+          title="Activity Timeline"
+          desc="Track all activities, status changes, messages, and comments"
+        >
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {applicant.statusHistory?.map((history, index) => (
-              <div
-                key={index}
-                onClick={() =>
-                  setExpandedHistory(
-                    expandedHistory === `${index}` ? null : `${index}`
-                  )
+            {(() => {
+              // Combine all activities into a single timeline
+              const activities: Array<{
+                type: "status" | "message" | "comment" | "interview";
+                date: string;
+                data: any;
+              }> = [];
+
+              // Add status history
+              applicant.statusHistory?.forEach((history) => {
+                activities.push({
+                  type: "status",
+                  date: history.changedAt,
+                  data: history,
+                });
+              });
+
+              // Add messages
+              applicant.messages?.forEach((message) => {
+                activities.push({
+                  type: "message",
+                  date: message.sentAt,
+                  data: message,
+                });
+              });
+
+              // Add comments
+              applicant.comments?.forEach((comment) => {
+                activities.push({
+                  type: "comment",
+                  date:
+                    (comment as any).commentedAt ||
+                    comment.changedAt ||
+                    (comment as any).createdAt ||
+                    new Date().toISOString(),
+                  data: comment,
+                });
+              });
+
+              // Add interviews
+              applicant.interviews?.forEach((interview) => {
+                activities.push({
+                  type: "interview",
+                  date: interview.issuedAt,
+                  data: interview,
+                });
+              });
+
+              // Sort by date (oldest first)
+              activities.sort(
+                (a, b) =>
+                  new Date(a.date).getTime() - new Date(b.date).getTime()
+              );
+
+              return activities.map((activity, index) => {
+                if (activity.type === "status") {
+                  const history = activity.data;
+                  return (
+                    <div
+                      key={`status-${index}`}
+                      onClick={() =>
+                        setExpandedHistory(
+                          expandedHistory === `status-${index}`
+                            ? null
+                            : `status-${index}`
+                        )
+                      }
+                      className="cursor-pointer rounded-lg border border-stroke p-4 transition hover:bg-gray-50 dark:border-strokedark dark:hover:bg-gray-800/50"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span
+                          className={`rounded-full px-3 py-1 text-xs font-semibold ${getStatusColor(
+                            history.status
+                          )}`}
+                        >
+                          {history.status.charAt(0).toUpperCase() +
+                            history.status.slice(1)}
+                        </span>
+                        <svg
+                          className={`h-4 w-4 transition-transform ${
+                            expandedHistory === `status-${index}`
+                              ? "rotate-180"
+                              : ""
+                          }`}
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M19 9l-7 7-7-7"
+                          />
+                        </svg>
+                      </div>
+                      <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+                        {formatDate(history.changedAt)}
+                      </p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                        By:{" "}
+                        {typeof history.changedBy === "string"
+                          ? history.changedBy
+                          : (history.changedBy as any)?.fullName ||
+                            (history.changedBy as any)?.email ||
+                            "Unknown"}
+                      </p>
+                      {expandedHistory === `status-${index}` &&
+                        history.notes && (
+                          <div className="mt-3 border-t border-stroke pt-3 dark:border-strokedark">
+                            <p className="text-sm text-gray-700 dark:text-gray-300">
+                              {history.notes}
+                            </p>
+                          </div>
+                        )}
+                    </div>
+                  );
+                } else if (activity.type === "message") {
+                  const message = activity.data;
+                  return (
+                    <div
+                      key={`message-${index}`}
+                      onClick={() =>
+                        setExpandedHistory(
+                          expandedHistory === `message-${index}`
+                            ? null
+                            : `message-${index}`
+                        )
+                      }
+                      className="cursor-pointer rounded-lg border border-stroke p-4 transition hover:bg-gray-50 dark:border-strokedark dark:hover:bg-gray-800/50"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="rounded-full bg-purple-100 px-3 py-1 text-xs font-semibold text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">
+                          💌 Message
+                        </span>
+                        <svg
+                          className={`h-4 w-4 transition-transform ${
+                            expandedHistory === `message-${index}`
+                              ? "rotate-180"
+                              : ""
+                          }`}
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M19 9l-7 7-7-7"
+                          />
+                        </svg>
+                      </div>
+                      <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+                        {formatDate(message.sentAt)}
+                      </p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                        By:{" "}
+                        {typeof message.sentBy === "string"
+                          ? message.sentBy
+                          : (message.sentBy as any)?.fullName ||
+                            (message.sentBy as any)?.email ||
+                            "Unknown"}
+                      </p>
+                      {message.subject && (
+                        <p className="mt-1 text-sm font-medium text-gray-700 dark:text-gray-300">
+                          {message.subject}
+                        </p>
+                      )}
+                      {expandedHistory === `message-${index}` &&
+                        message.body && (
+                          <div className="mt-3 border-t border-stroke pt-3 dark:border-strokedark">
+                            <p className="text-sm text-gray-700 dark:text-gray-300">
+                              {message.body}
+                            </p>
+                          </div>
+                        )}
+                    </div>
+                  );
+                } else if (activity.type === "comment") {
+                  const comment = activity.data;
+                  return (
+                    <div
+                      key={`comment-${index}`}
+                      onClick={() =>
+                        setExpandedHistory(
+                          expandedHistory === `comment-${index}`
+                            ? null
+                            : `comment-${index}`
+                        )
+                      }
+                      className="cursor-pointer rounded-lg border border-stroke p-4 transition hover:bg-gray-50 dark:border-strokedark dark:hover:bg-gray-800/50"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700 dark:bg-gray-900/30 dark:text-gray-400">
+                          💬 Comment
+                        </span>
+                        <svg
+                          className={`h-4 w-4 transition-transform ${
+                            expandedHistory === `comment-${index}`
+                              ? "rotate-180"
+                              : ""
+                          }`}
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M19 9l-7 7-7-7"
+                          />
+                        </svg>
+                      </div>
+                      <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+                        {formatDate(
+                          (comment as any).commentedAt ||
+                            comment.changedAt ||
+                            (comment as any).createdAt ||
+                            new Date().toISOString()
+                        )}
+                      </p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                        By:{" "}
+                        {(() => {
+                          const author =
+                            (comment as any).commentedBy ||
+                            comment.changedBy ||
+                            (comment as any).author ||
+                            (comment as any).createdBy;
+                          if (typeof author === "string") {
+                            return author;
+                          }
+                          if (author && typeof author === "object") {
+                            return (
+                              author.fullName ||
+                              author.name ||
+                              author.email ||
+                              author.username ||
+                              "User"
+                            );
+                          }
+                          return "Unknown";
+                        })()}
+                      </p>
+                      {expandedHistory === `comment-${index}` &&
+                        (comment.comment || comment.text) && (
+                          <div className="mt-3 border-t border-stroke pt-3 dark:border-strokedark">
+                            <p className="text-sm text-gray-700 dark:text-gray-300">
+                              {comment.comment || comment.text}
+                            </p>
+                          </div>
+                        )}
+                    </div>
+                  );
+                } else if (activity.type === "interview") {
+                  const interview = activity.data;
+                  return (
+                    <div
+                      key={`interview-${index}`}
+                      onClick={() =>
+                        setExpandedHistory(
+                          expandedHistory === `interview-${index}`
+                            ? null
+                            : `interview-${index}`
+                        )
+                      }
+                      className="cursor-pointer rounded-lg border border-stroke p-4 transition hover:bg-gray-50 dark:border-strokedark dark:hover:bg-gray-800/50"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+                          📅 Interview Scheduled
+                        </span>
+                        <svg
+                          className={`h-4 w-4 transition-transform ${
+                            expandedHistory === `interview-${index}`
+                              ? "rotate-180"
+                              : ""
+                          }`}
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M19 9l-7 7-7-7"
+                          />
+                        </svg>
+                      </div>
+                      <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+                        {formatDate(interview.issuedAt)}
+                      </p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                        By:{" "}
+                        {typeof interview.issuedBy === "string"
+                          ? interview.issuedBy
+                          : (interview.issuedBy as any)?.fullName ||
+                            (interview.issuedBy as any)?.email ||
+                            "Unknown"}
+                      </p>
+                      {(interview as any).scheduledAt && (
+                        <p className="mt-1 text-sm font-medium text-blue-600 dark:text-blue-400">
+                          📅 {formatDate((interview as any).scheduledAt)}
+                        </p>
+                      )}
+                      {expandedHistory === `interview-${index}` && (
+                        <div className="mt-3 border-t border-stroke pt-3 dark:border-strokedark">
+                          {interview.description && (
+                            <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                              {interview.description}
+                            </p>
+                          )}
+                          {interview.comment && (
+                            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                              {interview.comment}
+                            </p>
+                          )}
+                          {interview.type && (
+                            <p className="mt-1 text-xs text-gray-500 dark:text-gray-500">
+                              Type: {interview.type}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
                 }
-                className="cursor-pointer rounded-lg border border-stroke p-4 transition hover:bg-gray-50 dark:border-strokedark dark:hover:bg-gray-800/50"
-              >
-                <div className="flex items-center justify-between">
-                  <span
-                    className={`rounded-full px-3 py-1 text-xs font-semibold ${getStatusColor(
-                      history.status
-                    )}`}
-                  >
-                    {history.status.charAt(0).toUpperCase() +
-                      history.status.slice(1)}
-                  </span>
-                  <svg
-                    className={`h-4 w-4 transition-transform ${
-                      expandedHistory === `${index}` ? "rotate-180" : ""
-                    }`}
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M19 9l-7 7-7-7"
-                    />
-                  </svg>
-                </div>
-                <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-                  {formatDate(history.changedAt)}
-                </p>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  By:{" "}
-                  {typeof history.changedBy === "string"
-                    ? history.changedBy
-                    : (history.changedBy as any)?.fullName ||
-                      (history.changedBy as any)?.email ||
-                      "Unknown"}
-                </p>
-                {(history.status === "interviewed" ||
-                  history.status === "interview") &&
-                  applicant.interviews &&
-                  applicant.interviews.length > 0 &&
-                  (() => {
-                    const lastInterview =
-                      applicant.interviews[applicant.interviews.length - 1];
-                    const scheduledAt = (lastInterview as any).scheduledAt;
-                    if (scheduledAt) {
-                      return (
-                        <p className="mt-1 text-sm font-medium text-purple-600 dark:text-purple-400">
-                          📅 Interview: {formatDate(scheduledAt)}
-                        </p>
-                      );
-                    } else if (lastInterview.date) {
-                      return (
-                        <p className="mt-1 text-sm font-medium text-purple-600 dark:text-purple-400">
-                          📅 Interview: {lastInterview.date}{" "}
-                          {lastInterview.time || ""}
-                        </p>
-                      );
-                    }
-                    return null;
-                  })()}
-                {expandedHistory === `${index}` && history.notes && (
-                  <div className="mt-3 border-t border-stroke pt-3 dark:border-strokedark">
-                    <p className="text-sm text-gray-700 dark:text-gray-300">
-                      {history.notes}
-                    </p>
-                  </div>
-                )}
-              </div>
-            ))}
+                return null;
+              });
+            })()}
           </div>
         </ComponentCard>
       </div>
@@ -571,6 +828,7 @@ const ApplicantData = () => {
         isOpen={showInterviewModal}
         onClose={() => setShowInterviewModal(false)}
         className="max-w-2xl p-6"
+        closeOnBackdrop={false}
       >
         <form onSubmit={handleInterviewSubmit} className="space-y-6">
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
@@ -705,6 +963,7 @@ const ApplicantData = () => {
         isOpen={showMessageModal}
         onClose={() => setShowMessageModal(false)}
         className="max-w-2xl p-6"
+        closeOnBackdrop={false}
       >
         <form onSubmit={handleMessageSubmit} className="space-y-6">
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
@@ -778,6 +1037,7 @@ const ApplicantData = () => {
         isOpen={showCommentModal}
         onClose={() => setShowCommentModal(false)}
         className="max-w-2xl p-6"
+        closeOnBackdrop={false}
       >
         <form onSubmit={handleCommentSubmit} className="space-y-6">
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
@@ -817,6 +1077,7 @@ const ApplicantData = () => {
         isOpen={showStatusModal}
         onClose={() => setShowStatusModal(false)}
         className="max-w-2xl p-6"
+        closeOnBackdrop={false}
       >
         <form onSubmit={handleStatusChange} className="space-y-6">
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
