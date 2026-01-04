@@ -10,7 +10,6 @@ import Switch from "../../components/form/switch/Switch";
 import Select from "../../components/form/Select";
 import { PlusIcon, TrashBinIcon, CheckCircleIcon } from "../../icons";
 import { useAuth } from "../../context/AuthContext";
-import { Modal } from "../../components/ui/modal";
 import {
   jobPositionsService,
   ApiError,
