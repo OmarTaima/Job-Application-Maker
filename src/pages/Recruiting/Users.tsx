@@ -1,5 +1,5 @@
 import type { ChangeEvent, FormEvent } from "react";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
 import PageMeta from "../../components/common/PageMeta";
@@ -112,25 +112,6 @@ export default function Users() {
       console.error("Error loading departments:", err);
     }
   };
-
-  // Get selected company IDs
-  const selectedCompanyIds = useMemo(() => {
-    return userForm.companies.map((c) => c.companyId);
-  }, [userForm.companies]);
-
-  // Filter departments based on selected companies
-  const filteredDepartments = useMemo(() => {
-    if (selectedCompanyIds.length === 0) {
-      return [];
-    }
-    return departments.filter((dept) => {
-      const deptCompanyId =
-        typeof dept.companyId === "string"
-          ? dept.companyId
-          : dept.companyId._id;
-      return selectedCompanyIds.includes(deptCompanyId);
-    });
-  }, [departments, selectedCompanyIds]);
 
   const handleInputChange = (
     e: ChangeEvent<HTMLInputElement | HTMLSelectElement>

@@ -27,11 +27,7 @@ type RoleForm = {
   permissions: string[];
 };
 
-type PermissionForm = {
-  name: string;
-  description: string;
-  actions: string[];
-};
+
 
 const defaultRoleForm: RoleForm = {
   name: "",
@@ -39,13 +35,7 @@ const defaultRoleForm: RoleForm = {
   permissions: [],
 };
 
-const defaultPermissionForm: PermissionForm = {
-  name: "",
-  description: "",
-  actions: [],
-};
 
-const availableAccess = ["read", "write", "create"];
 
 export default function Permissions() {
   const [roles, setRoles] = useState<Role[]>([]);
@@ -55,18 +45,14 @@ export default function Permissions() {
   const [error, setError] = useState<string | null>(null);
 
   const [roleForm, setRoleForm] = useState<RoleForm>(defaultRoleForm);
-  const [permissionForm, setPermissionForm] = useState<PermissionForm>(
-    defaultPermissionForm
-  );
+
 
   const [showRoleForm, setShowRoleForm] = useState(false);
-  const [showPermissionForm, setShowPermissionForm] = useState(false);
 
   const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
   const [permissionAccess, setPermissionAccess] = useState<
     Record<string, string[]>
   >({});
-  const [selectedAccess, setSelectedAccess] = useState<string[]>([]);
 
   // Load data on mount
   useEffect(() => {
@@ -200,50 +186,8 @@ export default function Permissions() {
     }
   };
 
-  // Permission handlers
-  const handlePermissionInputChange = (
-    e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
-  ) => {
-    const { name, value } = e.target;
-    setPermissionForm((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleAccessToggle = (access: string) => {
-    setSelectedAccess((prev) =>
-      prev.includes(access)
-        ? prev.filter((a) => a !== access)
-        : [...prev, access]
-    );
-  };
-
-  const handlePermissionSubmit = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-
-    const payload = {
-      name: permissionForm.name,
-      description: permissionForm.description,
-      access: selectedAccess,
-    };
-
-    console.log(
-      "Permission Creation Payload:",
-      JSON.stringify(payload, null, 2)
-    );
-
-    // Mock: Add permission to list
-    const newPermission: Permission = {
-      _id: `PERM-${String(permissions.length + 1).padStart(3, "0")}`,
-      name: permissionForm.name,
-      description: permissionForm.description,
-      actions: selectedAccess,
-      createdAt: new Date().toISOString().split("T")[0],
-    };
-
-    setPermissions([...permissions, newPermission]);
-    setPermissionForm(defaultPermissionForm);
-    setSelectedAccess([]);
-    setShowPermissionForm(false);
-  };
+  // Permission handlers removed - not currently used in UI
+  // TODO: Implement permission management UI when needed
 
   return (
     <>
