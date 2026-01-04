@@ -25,6 +25,7 @@ export default function Companies() {
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showRaw, setShowRaw] = useState(false);
 
   useEffect(() => {
     loadCompanies();
@@ -34,6 +35,8 @@ export default function Companies() {
     try {
       setLoading(true);
       const data = await companiesService.getAllCompanies();
+      // Log first item for quick inspection in browser console
+      console.debug("Loaded companies:", data && data.length ? data[0] : data);
       setCompanies(data);
 
       // Load department counts for each company
@@ -81,16 +84,26 @@ export default function Companies() {
     }
   };
 
-  const filteredCompanies = companies.filter(
-    (company) =>
-      company.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (company.contactEmail &&
-        company.contactEmail
-          .toLowerCase()
-          .includes(searchTerm.toLowerCase())) ||
-      (company.industry &&
-        company.industry.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  const filteredCompanies = companies.filter((company) => {
+    const term = searchTerm.toLowerCase();
+    const contact =
+      company.contactEmail ||
+      (company as any).email ||
+      (company as any).contact ||
+      company.phone ||
+      "";
+    const address =
+      company.address ||
+      (company as any).location ||
+      (company as any).city ||
+      "";
+
+    return (
+      (company.name && company.name.toLowerCase().includes(term)) ||
+      (contact && contact.toLowerCase().includes(term)) ||
+      (address && address.toLowerCase().includes(term))
+    );
+  });
 
   const handleRowClick = (companyId: string) => {
     navigate(`/company/${companyId}`);
@@ -132,6 +145,13 @@ export default function Companies() {
               <PlusIcon className="size-4" />
               Create Company
             </Link>
+            <button
+              onClick={() => setShowRaw((s) => !s)}
+              className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 ml-2"
+              type="button"
+            >
+              {showRaw ? "Hide raw data" : "Show raw data"}
+            </button>
           </div>
 
           {loading ? (
@@ -176,19 +196,13 @@ export default function Companies() {
                         isHeader
                         className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
                       >
-                        Company ID
+                        Address
                       </TableCell>
                       <TableCell
                         isHeader
                         className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
                       >
                         Contact
-                      </TableCell>
-                      <TableCell
-                        isHeader
-                        className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
-                      >
-                        Industry
                       </TableCell>
                       <TableCell
                         isHeader
@@ -223,35 +237,23 @@ export default function Companies() {
                             <span className="block font-medium text-gray-800 text-theme-sm dark:text-white/90">
                               {company.name}
                             </span>
-                            {company.address && (
-                              <span className="block text-gray-500 text-theme-xs dark:text-gray-400">
-                                {company.address}
-                              </span>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell className="px-5 py-4 text-start">
-                          <span className="font-mono text-xs text-gray-600 dark:text-gray-400">
-                            {company._id.slice(-8)}
-                          </span>
-                        </TableCell>
-                        <TableCell className="px-5 py-4 text-start">
-                          <div>
-                            {company.contactEmail && (
-                              <span className="block text-sm text-gray-800 dark:text-gray-200">
-                                {company.contactEmail}
-                              </span>
-                            )}
-                            {company.phone && (
-                              <span className="block text-xs text-gray-500 dark:text-gray-400">
-                                {company.phone}
-                              </span>
-                            )}
                           </div>
                         </TableCell>
                         <TableCell className="px-5 py-4 text-start">
                           <span className="text-sm text-gray-600 dark:text-gray-400">
-                            {company.industry || "-"}
+                            {company.address ||
+                              (company as any).location ||
+                              (company as any).city ||
+                              "-"}
+                          </span>
+                        </TableCell>
+                        <TableCell className="px-5 py-4 text-start">
+                          <span className="text-sm text-gray-800 dark:text-gray-200">
+                            {company.contactEmail ||
+                              (company as any).email ||
+                              (company as any).contact ||
+                              company.phone ||
+                              "-"}
                           </span>
                         </TableCell>
                         <TableCell className="px-5 py-4 text-start">
@@ -287,6 +289,19 @@ export default function Companies() {
             </div>
           )}
         </div>
+        {/* Debug: show raw JSON for each company when toggled */}
+        {showRaw && (
+          <div className="p-4 bg-gray-50 dark:bg-black/20">
+            {companies.map((c) => (
+              <pre
+                key={c._id}
+                className="mb-3 max-w-full overflow-auto rounded bg-white p-3 text-xs text-gray-700 dark:bg-gray-900 dark:text-gray-200"
+              >
+                {JSON.stringify(c, null, 2)}
+              </pre>
+            ))}
+          </div>
+        )}
       </ComponentCard>
     </div>
   );

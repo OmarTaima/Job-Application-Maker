@@ -511,6 +511,12 @@ export default function Permissions() {
                     >
                       Created At
                     </TableCell>
+                    <TableCell
+                      isHeader
+                      className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
+                    >
+                      Actions
+                    </TableCell>
                   </TableRow>
                 </TableHeader>
                 <TableBody className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -543,6 +549,60 @@ export default function Permissions() {
                           ? new Date(role.createdAt).toLocaleDateString()
                           : "N/A"}
                       </TableCell>
+                      <TableCell className="px-4 py-3 align-middle">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => {
+                              // TODO: Implement edit functionality
+                              console.log("Edit role:", role._id);
+                            }}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50 rounded-lg transition-colors"
+                          >
+                            <svg
+                              className="w-4 h-4"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                              />
+                            </svg>
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => {
+                              // TODO: Implement delete functionality
+                              if (
+                                window.confirm(
+                                  `Are you sure you want to delete the role "${role.name}"?`
+                                )
+                              ) {
+                                console.log("Delete role:", role._id);
+                              }
+                            }}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50 rounded-lg transition-colors"
+                          >
+                            <svg
+                              className="w-4 h-4"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                              />
+                            </svg>
+                            Delete
+                          </button>
+                        </div>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -557,86 +617,7 @@ export default function Permissions() {
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
               Permissions
             </h2>
-            <button
-              onClick={() => setShowPermissionForm(!showPermissionForm)}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-lg transition-colors"
-            >
-              <PlusIcon className="w-5 h-5" />
-              {showPermissionForm ? "Cancel" : "Create Permission"}
-            </button>
           </div>
-
-          {/* Create Permission Form */}
-          {showPermissionForm && (
-            <ComponentCard title="Create New Permission">
-              <form onSubmit={handlePermissionSubmit} className="space-y-6">
-                <div className="grid grid-cols-1 gap-6">
-                  <div>
-                    <Label htmlFor="permissionName">Permission Name</Label>
-                    <Input
-                      id="permissionName"
-                      name="name"
-                      value={permissionForm.name}
-                      onChange={handlePermissionInputChange}
-                      placeholder="View Users"
-                    />
-                  </div>
-
-                  <div>
-                    <Label htmlFor="permissionDescription">Description</Label>
-                    <TextArea
-                      value={permissionForm.description}
-                      onChange={(value) =>
-                        setPermissionForm((prev) => ({
-                          ...prev,
-                          description: value,
-                        }))
-                      }
-                      placeholder="Describe what this permission allows..."
-                    />
-                  </div>
-                </div>
-
-                {/* Access Selection */}
-                <div>
-                  <Label>Access</Label>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-2">
-                    {availableAccess.map((access) => (
-                      <label
-                        key={access}
-                        className="flex items-center gap-2 p-3 border border-gray-300 dark:border-gray-700 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedAccess.includes(access)}
-                          onChange={() => handleAccessToggle(access)}
-                          className="w-4 h-4 text-brand-500 rounded focus:ring-brand-500"
-                        />
-                        <span className="text-sm capitalize">{access}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Submit Button */}
-                <div className="flex justify-end gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setShowPermissionForm(false)}
-                    className="px-6 py-2.5 border border-gray-300 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-6 py-2.5 bg-brand-500 hover:bg-brand-600 text-white rounded-lg transition-colors"
-                  >
-                    Create Permission
-                  </button>
-                </div>
-              </form>
-            </ComponentCard>
-          )}
 
           {/* Permissions Table */}
           <ComponentCard title="All Permissions">

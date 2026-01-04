@@ -1,11 +1,12 @@
 import type { ChangeEvent, FormEvent } from "react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Link } from "react-router";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
 import PageMeta from "../../components/common/PageMeta";
 import ComponentCard from "../../components/common/ComponentCard";
 import Label from "../../components/form/Label";
 import Input from "../../components/form/input/InputField";
+import MultiSelect from "../../components/form/MultiSelect";
 import { PlusIcon } from "../../icons";
 import {
   Table,
@@ -19,8 +20,18 @@ import {
   ApiError as UsersApiError,
 } from "../../services/usersService";
 import { rolesService } from "../../services/rolesService";
+import { companiesService } from "../../services/companiesService";
+import { departmentsService } from "../../services/departmentsService";
 import type { User as ApiUser } from "../../services/usersService";
 import type { Role } from "../../services/rolesService";
+import type { Company } from "../../services/companiesService";
+import type { Department } from "../../services/departmentsService";
+
+type CompanyAssignment = {
+  companyId: string;
+  departments: string[];
+  isPrimary: boolean;
+};
 
 type UserForm = {
   email: string;
@@ -28,7 +39,7 @@ type UserForm = {
   fullName: string;
   phone: string;
   roleId: string;
-  department: string;
+  companies: CompanyAssignment[];
 };
 
 const defaultUserForm: UserForm = {
@@ -37,13 +48,15 @@ const defaultUserForm: UserForm = {
   fullName: "",
   phone: "",
   roleId: "",
-  department: "",
+  companies: [],
 };
 
 export default function Users() {
   const [userForm, setUserForm] = useState<UserForm>(defaultUserForm);
   const [users, setUsers] = useState<ApiUser[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -52,6 +65,8 @@ export default function Users() {
   useEffect(() => {
     loadUsers();
     loadRoles();
+    loadCompanies();
+    loadDepartments();
   }, []);
 
   const loadUsers = async () => {
@@ -80,6 +95,43 @@ export default function Users() {
     }
   };
 
+  const loadCompanies = async () => {
+    try {
+      const data = await companiesService.getAllCompanies();
+      setCompanies(data);
+    } catch (err) {
+      console.error("Error loading companies:", err);
+    }
+  };
+
+  const loadDepartments = async () => {
+    try {
+      const data = await departmentsService.getAllDepartments();
+      setDepartments(data);
+    } catch (err) {
+      console.error("Error loading departments:", err);
+    }
+  };
+
+  // Get selected company IDs
+  const selectedCompanyIds = useMemo(() => {
+    return userForm.companies.map((c) => c.companyId);
+  }, [userForm.companies]);
+
+  // Filter departments based on selected companies
+  const filteredDepartments = useMemo(() => {
+    if (selectedCompanyIds.length === 0) {
+      return [];
+    }
+    return departments.filter((dept) => {
+      const deptCompanyId =
+        typeof dept.companyId === "string"
+          ? dept.companyId
+          : dept.companyId._id;
+      return selectedCompanyIds.includes(deptCompanyId);
+    });
+  }, [departments, selectedCompanyIds]);
+
   const handleInputChange = (
     e: ChangeEvent<HTMLInputElement | HTMLSelectElement>
   ) => {
@@ -92,13 +144,26 @@ export default function Users() {
     e.preventDefault();
     setError(null);
 
+    // Validate companies
+    if (!userForm.companies || userForm.companies.length === 0) {
+      setError("Please select at least one company");
+      return;
+    }
+
+    // Validate at least one primary company
+    const hasPrimary = userForm.companies.some((c) => c.isPrimary);
+    if (!hasPrimary) {
+      setError("Please select a primary company");
+      return;
+    }
+
     const payload = {
       fullName: userForm.fullName,
       email: userForm.email,
       password: userForm.password,
       roleId: userForm.roleId,
+      companies: userForm.companies,
       ...(userForm.phone && { phone: userForm.phone }),
-      ...(userForm.department && { department: userForm.department }),
     };
 
     console.log("Form state:", userForm);
@@ -251,15 +316,185 @@ export default function Users() {
                   </select>
                 </div>
 
-                <div>
-                  <Label htmlFor="department">Department</Label>
-                  <Input
-                    id="department"
-                    name="department"
-                    value={userForm.department}
-                    onChange={handleInputChange}
-                    placeholder="Engineering"
-                  />
+                {/* Companies Section */}
+                <div className="col-span-2 space-y-4">
+                  <Label>
+                    Companies <span className="text-red-500">*</span>
+                  </Label>
+
+                  {/* Add Company Button */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const availableCompanies = companies.filter(
+                        (c) =>
+                          !userForm.companies.some(
+                            (uc) => uc.companyId === c._id
+                          )
+                      );
+                      if (availableCompanies.length > 0) {
+                        setUserForm({
+                          ...userForm,
+                          companies: [
+                            ...userForm.companies,
+                            {
+                              companyId: availableCompanies[0]._id,
+                              departments: [],
+                              isPrimary: userForm.companies.length === 0,
+                            },
+                          ],
+                        });
+                      }
+                    }}
+                    className="w-full px-4 py-2.5 border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-lg hover:border-brand-500 dark:hover:border-brand-500 transition-colors text-gray-600 dark:text-gray-400 hover:text-brand-500 dark:hover:text-brand-500 flex items-center justify-center gap-2"
+                  >
+                    <PlusIcon className="w-5 h-5" />
+                    Add Company
+                  </button>
+
+                  {/* Company Assignments */}
+                  {userForm.companies.map((companyAssignment, index) => {
+                    const companyDepartments = departments.filter((dept) => {
+                      const deptCompanyId =
+                        typeof dept.companyId === "string"
+                          ? dept.companyId
+                          : dept.companyId._id;
+                      return deptCompanyId === companyAssignment.companyId;
+                    });
+
+                    return (
+                      <div
+                        key={index}
+                        className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg space-y-3 bg-gray-50/50 dark:bg-gray-800/50"
+                      >
+                        <div className="flex items-center justify-between">
+                          <h4 className="font-medium text-gray-900 dark:text-gray-100">
+                            Company {index + 1}
+                          </h4>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newCompanies = userForm.companies.filter(
+                                (_, i) => i !== index
+                              );
+                              // If removing primary, make first one primary
+                              if (
+                                companyAssignment.isPrimary &&
+                                newCompanies.length > 0
+                              ) {
+                                newCompanies[0].isPrimary = true;
+                              }
+                              setUserForm({
+                                ...userForm,
+                                companies: newCompanies,
+                              });
+                            }}
+                            className="text-red-500 hover:text-red-600 text-sm"
+                          >
+                            Remove
+                          </button>
+                        </div>
+
+                        <div className="space-y-3">
+                          {/* Company Select */}
+                          <div>
+                            <Label htmlFor={`company-${index}`}>Company</Label>
+                            <select
+                              id={`company-${index}`}
+                              value={companyAssignment.companyId}
+                              onChange={(e) => {
+                                const newCompanies = [...userForm.companies];
+                                newCompanies[index] = {
+                                  ...newCompanies[index],
+                                  companyId: e.target.value,
+                                  departments: [], // Reset departments when company changes
+                                };
+                                setUserForm({
+                                  ...userForm,
+                                  companies: newCompanies,
+                                });
+                              }}
+                              className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+                            >
+                              {companies.map((company) => (
+                                <option
+                                  key={company._id}
+                                  value={company._id}
+                                  disabled={userForm.companies.some(
+                                    (c, i) =>
+                                      i !== index && c.companyId === company._id
+                                  )}
+                                >
+                                  {company.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          {/* Departments MultiSelect */}
+                          <div>
+                            <Label htmlFor={`departments-${index}`}>
+                              Departments (Optional)
+                            </Label>
+                            <MultiSelect
+                              label=""
+                              options={companyDepartments.map((dept) => ({
+                                value: dept._id,
+                                text: dept.name,
+                              }))}
+                              value={companyAssignment.departments}
+                              onChange={(values) => {
+                                const newCompanies = [...userForm.companies];
+                                newCompanies[index] = {
+                                  ...newCompanies[index],
+                                  departments: values,
+                                };
+                                setUserForm({
+                                  ...userForm,
+                                  companies: newCompanies,
+                                });
+                              }}
+                              placeholder={
+                                companyDepartments.length === 0
+                                  ? "No departments available"
+                                  : "Select departments"
+                              }
+                              disabled={companyDepartments.length === 0}
+                            />
+                          </div>
+
+                          {/* Primary Company Checkbox */}
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="radio"
+                              id={`primary-${index}`}
+                              name="primaryCompany"
+                              checked={companyAssignment.isPrimary}
+                              onChange={() => {
+                                const newCompanies = userForm.companies.map(
+                                  (c, i) => ({
+                                    ...c,
+                                    isPrimary: i === index,
+                                  })
+                                );
+                                setUserForm({
+                                  ...userForm,
+                                  companies: newCompanies,
+                                });
+                              }}
+                              className="w-4 h-4 text-brand-500 focus:ring-brand-500"
+                            />
+                            <Label
+                              htmlFor={`primary-${index}`}
+                              className="!mb-0"
+                            >
+                              Primary Company
+                            </Label>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 

@@ -43,6 +43,17 @@ export type Interview = {
   location?: string;
   link?: string;
   type?: string;
+  notifications?: {
+    channels: {
+      email: boolean;
+      sms: boolean;
+      whatsapp: boolean;
+    };
+    emailOption?: "company" | "user" | "custom";
+    customEmail?: string;
+    phoneOption?: "company" | "user" | "whatsapp" | "custom";
+    customPhone?: string;
+  };
 };
 
 export type Message = {
@@ -72,6 +83,17 @@ export type StatusHistory = {
   changedBy: string;
   changedAt: string;
   notes?: string;
+  notifications?: {
+    channels: {
+      email: boolean;
+      sms: boolean;
+      whatsapp: boolean;
+    };
+    emailOption?: "company" | "user" | "custom";
+    customEmail?: string;
+    phoneOption?: "company" | "user" | "whatsapp" | "custom";
+    customPhone?: string;
+  };
 };
 
 export type Applicant = {
@@ -79,7 +101,13 @@ export type Applicant = {
   companyId: string;
   jobPositionId: string;
   departmentId: string;
-  status: "applied" | "under_review" | "interviewed" | "accepted" | "rejected";
+  status:
+    | "applied"
+    | "under_review"
+    | "interviewed"
+    | "accepted"
+    | "rejected"
+    | "trashed";
   submittedAt: string;
   fullName: string;
   firstName?: string;
@@ -125,7 +153,13 @@ export type UpdateApplicantRequest = {
 };
 
 export type UpdateStatusRequest = {
-  status: "applied" | "under_review" | "interviewed" | "accepted" | "rejected";
+  status:
+    | "applied"
+    | "under_review"
+    | "interviewed"
+    | "accepted"
+    | "rejected"
+    | "trashed";
   notes?: string;
 };
 
