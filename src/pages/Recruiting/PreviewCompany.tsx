@@ -1,5 +1,6 @@
 import type { ChangeEvent, FormEvent } from "react";
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import Swal from "sweetalert2";
 import { useParams, useNavigate } from "react-router";
 import ComponentCard from "../../components/common/ComponentCard";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
@@ -15,21 +16,20 @@ import {
   PencilIcon,
   CloseIcon,
 } from "../../icons";
-import {
-  companiesService,
-  ApiError as CompaniesApiError,
-} from "../../services/companiesService";
-import {
-  departmentsService,
-  ApiError as DepartmentsApiError,
-} from "../../services/departmentsService";
 import type { Department } from "../../services/departmentsService";
 import { useAuth } from "../../context/AuthContext";
+import {
+  useCompany,
+  useDepartments,
+  useUpdateCompany,
+  useCreateDepartment,
+  useUpdateDepartment,
+  useDeleteDepartment,
+} from "../../hooks/queries";
 
 type CompanyForm = {
   name: string;
   address?: string;
-  industry?: string;
   contactEmail?: string;
   phone?: string;
 };
@@ -47,15 +47,26 @@ export default function PreviewCompany() {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  const [companyForm, setCompanyForm] = useState<CompanyForm>({
-    name: "",
-    address: "",
-    industry: "",
-    contactEmail: "",
-    phone: "",
-  });
+  // React Query hooks - data fetching happens automatically
+  const {
+    data: company,
+    isLoading: loading,
+    error,
+  } = useCompany(companyId || "");
+  const { data: departments = [] } = useDepartments(companyId);
 
-  const [departments, setDepartments] = useState<Department[]>([]);
+  // Mutations
+  const updateCompanyMutation = useUpdateCompany();
+  const createDepartmentMutation = useCreateDepartment();
+  const updateDepartmentMutation = useUpdateDepartment();
+  const deleteDepartmentMutation = useDeleteDepartment();
+
+  const [companyForm, setCompanyForm] = useState<CompanyForm>({
+    name: company?.name || "",
+    address: company?.address || "",
+    contactEmail: company?.contactEmail || "",
+    phone: company?.phone || "",
+  });
   const [departmentForm, setDepartmentForm] = useState<DepartmentForm>({
     companyId: companyId || "",
     name: "",
@@ -64,53 +75,70 @@ export default function PreviewCompany() {
     location: "",
   });
 
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [companyStatus, setCompanyStatus] = useState("");
   const [departmentStatus, setDepartmentStatus] = useState("");
+  const [companyError, setCompanyError] = useState("");
+  const [departmentError, setDepartmentError] = useState("");
   const [isEditingCompany, setIsEditingCompany] = useState(false);
   const [editingDeptId, setEditingDeptId] = useState<string | null>(null);
   const [editingDept, setEditingDept] = useState<Department | null>(null);
+  const [isSubmittingDept, setIsSubmittingDept] = useState(false);
+  const [isDeletingDept, setIsDeletingDept] = useState<string | null>(null);
+  const [isSavingDept, setIsSavingDept] = useState(false);
 
-  useEffect(() => {
-    if (companyId) {
-      loadCompanyData();
-      loadDepartments();
+  // Helper function to extract detailed error messages
+  const getErrorMessage = (err: any): string => {
+    // Check for validation errors in 'details' array (new format)
+    if (
+      err.response?.data?.details &&
+      Array.isArray(err.response.data.details)
+    ) {
+      return err.response.data.details
+        .map((detail: any) => {
+          const field = detail.path?.[0] || "";
+          const message = detail.message || "";
+          return field ? `${field}: ${message}` : message;
+        })
+        .join(", ");
     }
-  }, [companyId]);
 
-  const loadCompanyData = async () => {
-    try {
-      setLoading(true);
-      const data = await companiesService.getCompanyById(companyId!);
+    // Check for validation errors in 'errors' array (old format)
+    if (err.response?.data?.errors) {
+      const errors = err.response.data.errors;
+      if (Array.isArray(errors)) {
+        return errors.map((e: any) => e.msg || e.message).join(", ");
+      }
+      if (typeof errors === "object") {
+        return Object.entries(errors)
+          .map(([field, msg]) => `${field}: ${msg}`)
+          .join(", ");
+      }
+    }
+
+    // Check for specific error message
+    if (err.response?.data?.message) {
+      return err.response.data.message;
+    }
+
+    // Check for general error message
+    if (err.message) {
+      return err.message;
+    }
+
+    return "An unexpected error occurred";
+  };
+
+  // Update form when company data loads
+  useState(() => {
+    if (company) {
       setCompanyForm({
-        name: data.name,
-        address: data.address || "",
-        industry: data.industry || "",
-        contactEmail: data.contactEmail || "",
-        phone: data.phone || "",
+        name: company.name,
+        address: company.address || "",
+        contactEmail: company.contactEmail || "",
+        phone: company.phone || "",
       });
-      setError(null);
-    } catch (err) {
-      const errorMessage =
-        err instanceof CompaniesApiError
-          ? err.message
-          : "Failed to load company";
-      setError(errorMessage);
-      console.error("Error loading company:", err);
-    } finally {
-      setLoading(false);
     }
-  };
-
-  const loadDepartments = async () => {
-    try {
-      const data = await departmentsService.getAllDepartments(companyId);
-      setDepartments(data);
-    } catch (err) {
-      console.error("Error loading departments:", err);
-    }
-  };
+  });
 
   const handleCompanyChange = (
     e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
@@ -128,32 +156,66 @@ export default function PreviewCompany() {
 
   const handleCompanySubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    setCompanyError("");
+
+    // Validation
+    if (!companyForm.name?.trim()) {
+      setCompanyError("Company name is required");
+      return;
+    }
+
     try {
-      await companiesService.updateCompany(companyId!, companyForm);
-      await loadCompanyData();
+      await updateCompanyMutation.mutateAsync({
+        id: companyId!,
+        data: companyForm,
+      });
+
+      await Swal.fire({
+        title: "Success!",
+        text: "Company updated successfully.",
+        icon: "success",
+        timer: 2000,
+        showConfirmButton: false,
+      });
+
       setCompanyStatus("Company updated successfully");
       setIsEditingCompany(false);
       setTimeout(() => setCompanyStatus(""), 2500);
     } catch (err) {
-      const errorMessage =
-        err instanceof CompaniesApiError
-          ? err.message
-          : "Failed to update company";
-      setError(errorMessage);
+      console.error("Error updating company:", err);
+      const errorMsg = getErrorMessage(err);
+      setCompanyError(errorMsg);
     }
   };
 
   const handleDepartmentSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    setDepartmentError("");
+
+    // Validation
+    if (!departmentForm.name?.trim()) {
+      setDepartmentError("Department name is required");
+      return;
+    }
+
     try {
+      setIsSubmittingDept(true);
       // Use current user's ID as managerId if not explicitly set
       const payload = {
         ...departmentForm,
         managerId: departmentForm.managerId || user?.id || undefined,
       };
 
-      await departmentsService.createDepartment(payload);
-      await loadDepartments();
+      await createDepartmentMutation.mutateAsync(payload);
+
+      await Swal.fire({
+        title: "Success!",
+        text: "Department created successfully.",
+        icon: "success",
+        timer: 2000,
+        showConfirmButton: false,
+      });
+
       setDepartmentStatus("Department created successfully");
       setDepartmentForm({
         companyId: companyId || "",
@@ -164,25 +226,45 @@ export default function PreviewCompany() {
       });
       setTimeout(() => setDepartmentStatus(""), 2500);
     } catch (err) {
-      const errorMessage =
-        err instanceof DepartmentsApiError
-          ? err.message
-          : "Failed to create department";
-      setError(errorMessage);
+      console.error("Error creating department:", err);
+      const errorMsg = getErrorMessage(err);
+      setDepartmentError(errorMsg);
+    } finally {
+      setIsSubmittingDept(false);
     }
   };
 
   const handleDeleteDepartment = async (deptId: string) => {
-    if (!confirm("Are you sure you want to delete this department?")) return;
+    const result = await Swal.fire({
+      title: "Delete Department?",
+      text: "Are you sure you want to delete this department?",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#3085d6",
+      cancelButtonColor: "#d33",
+      confirmButtonText: "Yes, delete it!",
+    });
+
+    if (!result.isConfirmed) return;
+
+    setDepartmentError("");
+
     try {
-      await departmentsService.deleteDepartment(deptId);
-      await loadDepartments();
+      setIsDeletingDept(deptId);
+      await deleteDepartmentMutation.mutateAsync(deptId);
+      await Swal.fire({
+        title: "Deleted!",
+        text: "Department has been deleted successfully.",
+        icon: "success",
+        timer: 2000,
+        showConfirmButton: false,
+      });
     } catch (err) {
-      const errorMessage =
-        err instanceof DepartmentsApiError
-          ? err.message
-          : "Failed to delete department";
-      setError(errorMessage);
+      console.error("Error deleting department:", err);
+      const errorMsg = getErrorMessage(err);
+      setDepartmentError(errorMsg);
+    } finally {
+      setIsDeletingDept(null);
     }
   };
 
@@ -193,25 +275,36 @@ export default function PreviewCompany() {
 
   const handleSaveDepartment = async () => {
     if (editingDept) {
+      setDepartmentError("");
+
+      // Validation
+      if (!editingDept.name?.trim()) {
+        setDepartmentError("Department name is required");
+        return;
+      }
+
       try {
-        await departmentsService.updateDepartment(editingDept._id, {
-          name: editingDept.name,
-          description: editingDept.description,
-          managerId:
-            typeof editingDept.managerId === "string"
-              ? editingDept.managerId
-              : editingDept.managerId?._id,
-          location: editingDept.location,
+        setIsSavingDept(true);
+        await updateDepartmentMutation.mutateAsync({
+          id: editingDept._id,
+          data: {
+            name: editingDept.name,
+            description: editingDept.description,
+            managerId:
+              typeof editingDept.managerId === "string"
+                ? editingDept.managerId
+                : editingDept.managerId?._id,
+            location: editingDept.location,
+          },
         });
-        await loadDepartments();
         setEditingDeptId(null);
         setEditingDept(null);
       } catch (err) {
-        const errorMessage =
-          err instanceof DepartmentsApiError
-            ? err.message
-            : "Failed to update department";
-        setError(errorMessage);
+        console.error("Error updating department:", err);
+        const errorMsg = getErrorMessage(err);
+        setDepartmentError(errorMsg);
+      } finally {
+        setIsSavingDept(false);
       }
     }
   };
@@ -262,7 +355,7 @@ export default function PreviewCompany() {
 
       {error && (
         <div className="p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg">
-          {error}
+          {String(error instanceof Error ? error.message : error)}
         </div>
       )}
 
@@ -288,13 +381,24 @@ export default function PreviewCompany() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => setIsEditingCompany(!isEditingCompany)}
+                  onClick={() => {
+                    setIsEditingCompany(!isEditingCompany);
+                    setCompanyError("");
+                  }}
                   className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
                 >
                   <PencilIcon className="size-4" />
                   {isEditingCompany ? "Cancel" : "Edit"}
                 </button>
               </div>
+
+              {companyError && (
+                <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                  <p className="text-sm text-red-600 dark:text-red-400">
+                    <strong>Error:</strong> {companyError}
+                  </p>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
@@ -308,17 +412,7 @@ export default function PreviewCompany() {
                     disabled={!isEditingCompany}
                   />
                 </div>
-                <div>
-                  <Label htmlFor="industry">Industry</Label>
-                  <Input
-                    id="industry"
-                    name="industry"
-                    value={companyForm.industry}
-                    onChange={handleCompanyChange}
-                    placeholder="Technology, Finance, etc."
-                    disabled={!isEditingCompany}
-                  />
-                </div>
+
                 <div>
                   <Label htmlFor="contactEmail">Contact email</Label>
                   <Input
@@ -381,6 +475,20 @@ export default function PreviewCompany() {
             desc="Manage departments for this company"
           >
             <div className="space-y-6">
+              {departmentError && (
+                <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                  <p className="text-sm text-red-600 dark:text-red-400">
+                    <strong>Error:</strong> {departmentError}
+                  </p>
+                  <button
+                    onClick={() => setDepartmentError("")}
+                    className="mt-2 text-xs text-red-600 dark:text-red-400 hover:underline"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              )}
+
               <form className="space-y-4" onSubmit={handleDepartmentSubmit}>
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div>
@@ -424,10 +532,11 @@ export default function PreviewCompany() {
                 <div className="flex flex-wrap items-center gap-3">
                   <button
                     type="submit"
-                    className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+                    disabled={isSubmittingDept}
+                    className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <PlusIcon className="size-4" />
-                    Add Department
+                    {isSubmittingDept ? "Creating..." : "Add Department"}
                   </button>
                   {departmentStatus && (
                     <span className="inline-flex items-center gap-2 rounded-full bg-success-50 px-3 py-1 text-xs font-semibold text-success-600 ring-1 ring-inset ring-success-200 dark:bg-success-500/10 dark:text-success-200 dark:ring-success-400/40">
@@ -526,10 +635,11 @@ export default function PreviewCompany() {
                                 <div className="flex items-center gap-2">
                                   <button
                                     onClick={handleSaveDepartment}
-                                    className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-3 py-1.5 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600"
+                                    disabled={isSavingDept}
+                                    className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-3 py-1.5 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600 disabled:opacity-50 disabled:cursor-not-allowed"
                                   >
                                     <CheckCircleIcon className="size-4" />
-                                    Save
+                                    {isSavingDept ? "Saving..." : "Save"}
                                   </button>
                                   <button
                                     onClick={handleCancelEdit}
@@ -574,8 +684,9 @@ export default function PreviewCompany() {
                                     onClick={() =>
                                       handleDeleteDepartment(dept._id)
                                     }
-                                    className="rounded p-1 text-error-600 transition hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-500/10"
-                                    title="Delete department"
+                                    disabled={isDeletingDept === dept._id}
+                                    className="rounded p-1 text-error-600 transition hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-500/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    title={isDeletingDept === dept._id ? "Deleting..." : "Delete department"}
                                   >
                                     <TrashBinIcon className="size-4" />
                                   </button>

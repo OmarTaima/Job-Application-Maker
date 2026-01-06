@@ -110,10 +110,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!user) return false;
 
     // Admin can access all companies
-    if (user.role === "admin") return true;
+    if (user.roleId?.name === "admin") return true;
 
     // Company users can only access assigned companies
-    return user.assignedCompanyIds?.includes(companyId) || false;
+    const userCompanyIds =
+      user.companies?.map((c) =>
+        typeof c.companyId === "string" ? c.companyId : c.companyId._id
+      ) || [];
+
+    return (
+      userCompanyIds.includes(companyId) ||
+      user.assignedCompanyIds?.includes(companyId) ||
+      false
+    );
   };
 
   return (

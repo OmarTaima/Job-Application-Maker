@@ -1,4 +1,5 @@
 import { useMemo, useState, useEffect, useRef } from "react";
+import Swal from "sweetalert2";
 import { useNavigate, useSearchParams } from "react-router";
 import ComponentCard from "../../components/common/ComponentCard";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
@@ -11,10 +12,7 @@ import Switch from "../../components/form/switch/Switch";
 import Select from "../../components/form/Select";
 import { PlusIcon, TrashBinIcon, CheckCircleIcon } from "../../icons";
 import { useAuth } from "../../context/AuthContext";
-import {
-  jobPositionsService,
-  ApiError,
-} from "../../services/jobPositionsService";
+import { jobPositionsService } from "../../services/jobPositionsService";
 import { companiesService } from "../../services/companiesService";
 import { departmentsService } from "../../services/departmentsService";
 
@@ -112,7 +110,7 @@ export default function CreateJob() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const editJobId = searchParams.get("id");
-  const { user, canAccessCompany } = useAuth();
+  const { user } = useAuth();
   // Handle different admin role formats - roleId can be an object with name property
   const userRole = user?.role ? String(user.role).toLowerCase() : undefined;
 
@@ -134,44 +132,80 @@ export default function CreateJob() {
   const [departments, setDepartments] = useState<
     Array<{ value: string; label: string }>
   >([]);
-  const [isLoadingCompanies, setIsLoadingCompanies] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
 
   const loadCompanies = async () => {
     try {
-      setIsLoadingCompanies(true);
-      const data = await companiesService.getAllCompanies();
-      console.log("Loaded companies:", data);
-      console.log("User role:", user?.role, "isAdmin:", isAdmin);
+      setIsLoading(true);
 
-      const companyOptions = data.map((company) => ({
-        value: company._id,
-        label: company.name,
-      }));
+      let companyOptions;
 
-      // Filter companies based on user access
-      const filteredCompanies = isAdmin
-        ? companyOptions
-        : companyOptions.filter((c) => canAccessCompany(c.value));
+      if (isAdmin) {
+        // Admin: fetch all companies from API
+        const data = await companiesService.getAllCompanies();
+        companyOptions = data.map((company) => ({
+          value: company._id,
+          label: company.name,
+        }));
+      } else {
+        // Non-admin: build options from user's assigned companies
+        companyOptions =
+          user?.companies?.map((c) => ({
+            value:
+              typeof c.companyId === "string" ? c.companyId : c.companyId._id,
+            label:
+              typeof c.companyId === "string" ? c.companyId : c.companyId.name,
+          })) || [];
+      }
 
-      console.log("Filtered companies:", filteredCompanies);
-      setCompanies(filteredCompanies);
+      setCompanies(companyOptions);
     } catch (err) {
       console.error("Failed to load companies:", err);
+      const errorMsg = getErrorMessage(err);
+      setFormError(errorMsg);
     } finally {
-      setIsLoadingCompanies(false);
+      setIsLoading(false);
     }
   };
 
   const loadDepartments = async (companyId: string) => {
     try {
-      const data = await departmentsService.getAllDepartments(companyId);
-      const departmentOptions = data.map((dept) => ({
-        value: dept._id,
-        label: dept.name,
-      }));
-      setDepartments(departmentOptions);
+      if (isAdmin) {
+        // Admin: fetch departments from API
+        const data = await departmentsService.getAllDepartments(companyId);
+        const departmentOptions = data.map((dept) => ({
+          value: dept._id,
+          label: dept.name,
+        }));
+        setDepartments(departmentOptions);
+      } else {
+        // Non-admin: get departments from user's assigned company
+        console.log("🔍 All user companies:", user?.companies);
+        console.log("🔍 Looking for companyId:", companyId);
+
+        const userCompany = user?.companies?.find((c) => {
+          const id =
+            typeof c.companyId === "string" ? c.companyId : c.companyId._id;
+          console.log("🔍 Checking company:", id, "against", companyId);
+          return id === companyId;
+        });
+
+        console.log("🔍 Found userCompany:", userCompany);
+        console.log("🔍 userCompany departments:", userCompany?.departments);
+
+        const departmentOptions =
+          userCompany?.departments?.map((dept) => ({
+            value: typeof dept === "string" ? dept : dept._id,
+            label: typeof dept === "string" ? dept : dept.name || dept._id,
+          })) || [];
+
+        console.log("🔍 Final department options:", departmentOptions);
+        setDepartments(departmentOptions);
+      }
     } catch (err) {
       console.error("Failed to load departments:", err);
+      const errorMsg = getErrorMessage(err);
+      setFormError(errorMsg);
     }
   };
 
@@ -199,7 +233,39 @@ export default function CreateJob() {
   );
   const [jobStatus, setJobStatus] = useState("");
   const [isEditMode, setIsEditMode] = useState(false);
-  const [isLoadingJob, setIsLoadingJob] = useState(false);
+  const [formError, setFormError] = useState("");
+
+  // Helper function to extract detailed error messages
+  const getErrorMessage = (err: any): string => {
+    // Check for validation errors in 'details' array (new format)
+    if (
+      err.response?.data?.details &&
+      Array.isArray(err.response.data.details)
+    ) {
+      return err.response.data.details
+        .map((detail: any) => {
+          const field = detail.path?.[0] || "";
+          const message = detail.message || "";
+          return field ? `${field}: ${message}` : message;
+        })
+        .join(", ");
+    }
+    // Check for validation errors in 'errors' array (old format)
+    if (err.response?.data?.errors) {
+      const errors = err.response.data.errors;
+      if (Array.isArray(errors)) {
+        return errors.map((e: any) => e.msg || e.message).join(", ");
+      }
+      if (typeof errors === "object") {
+        return Object.entries(errors)
+          .map(([field, msg]) => `${field}: ${msg}`)
+          .join(", ");
+      }
+    }
+    if (err.response?.data?.message) return err.response.data.message;
+    if (err.message) return err.message;
+    return "An unexpected error occurred";
+  };
   const companyAutoSet = useRef(false);
   const companiesLoaded = useRef(false);
   const jobDataLoaded = useRef(false);
@@ -217,7 +283,7 @@ export default function CreateJob() {
     const loadJobData = async () => {
       if (editJobId && !jobDataLoaded.current && companies.length > 0) {
         try {
-          setIsLoadingJob(true);
+          setIsLoading(true);
           setIsEditMode(true);
           const job = await jobPositionsService.getJobPositionById(editJobId);
 
@@ -267,9 +333,11 @@ export default function CreateJob() {
           jobDataLoaded.current = true;
         } catch (err) {
           console.error("Failed to load job data:", err);
-          setJobStatus("Error: Failed to load job data");
+          const errorMsg = getErrorMessage(err);
+          setFormError(errorMsg);
+          setJobStatus(`Error: ${errorMsg}`);
         } finally {
-          setIsLoadingJob(false);
+          setIsLoading(false);
         }
       }
     };
@@ -279,20 +347,34 @@ export default function CreateJob() {
 
   // Auto-select company for non-admin users
   useEffect(() => {
-    if (user && !isAdmin && companies.length > 0 && !companyAutoSet.current) {
-      const userCompanyId = user.assignedCompanyIds?.[0];
+    if (
+      user &&
+      !isAdmin &&
+      companies.length > 0 &&
+      !companyAutoSet.current &&
+      !editJobId
+    ) {
+      // Extract the first company ID from user.companies array
+      const firstCompany = (user as any)?.companies?.[0];
+      const userCompanyId =
+        typeof firstCompany?.companyId === "string"
+          ? firstCompany.companyId
+          : firstCompany?.companyId?._id;
+
       if (userCompanyId) {
         setJobForm((prev) => ({ ...prev, companyId: userCompanyId }));
         companyAutoSet.current = true;
       }
     }
-  }, [user, isAdmin, companies]);
+  }, [user, isAdmin, companies, editJobId]);
 
   useEffect(() => {
     if (jobForm.companyId) {
       loadDepartments(jobForm.companyId);
+    } else {
+      setDepartments([]);
     }
-  }, [jobForm.companyId]);
+  }, [jobForm.companyId, user, isAdmin]);
 
   const handleInputChange = (field: keyof JobForm, value: any) => {
     setJobForm((prev) => ({ ...prev, [field]: value }));
@@ -550,16 +632,24 @@ export default function CreateJob() {
         setJobStatus("Job created successfully");
       }
 
+      await Swal.fire({
+        title: "Success!",
+        text: isEditMode
+          ? "Job updated successfully."
+          : "Job created successfully.",
+        icon: "success",
+        timer: 2000,
+        showConfirmButton: false,
+      });
+
       setTimeout(() => {
         setJobStatus("");
         navigate("/jobs");
       }, 1500);
     } catch (err) {
-      const errorMessage =
-        err instanceof ApiError
-          ? err.message
-          : `Failed to ${isEditMode ? "update" : "create"} job`;
-      setJobStatus(`Error: ${errorMessage}`);
+      const errorMsg = getErrorMessage(err);
+      setFormError(errorMsg);
+      setJobStatus(`Error: ${errorMsg}`);
       console.error(`Error ${isEditMode ? "updating" : "creating"} job:`, err);
     }
   };
@@ -605,10 +695,29 @@ export default function CreateJob() {
 
       <PageBreadcrumb pageTitle={isEditMode ? "Edit Job" : "Create Job"} />
 
-      {isLoadingJob ? (
-        <LoadingSpinner fullPage message="Loading job data..." />
+      {isLoading ? (
+        <LoadingSpinner
+          fullPage
+          message={isEditMode ? "Loading job data..." : "Loading form..."}
+        />
       ) : (
         <form onSubmit={handleSubmit} className="space-y-6">
+          {formError && (
+            <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+              <div className="flex items-start justify-between">
+                <p className="text-sm text-red-600 dark:text-red-400">
+                  <strong>Error:</strong> {formError}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setFormError("")}
+                  className="ml-3 text-red-400 hover:text-red-600 dark:hover:text-red-300"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          )}
           {/* Company & Department Selection */}
           <ComponentCard
             title="Company & Department"
@@ -617,35 +726,25 @@ export default function CreateJob() {
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
                 <Label htmlFor="companyId">Company</Label>
-                {isLoadingCompanies ? (
-                  <Input
-                    id="companyId"
-                    value="Loading companies..."
-                    disabled={true}
-                    className="bg-gray-50 dark:bg-gray-800"
-                  />
-                ) : isAdmin ? (
-                  <Select
-                    options={companies}
-                    placeholder="Select company"
-                    value={jobForm.companyId}
-                    onChange={(value) => {
-                      handleInputChange("companyId", value);
-                      handleInputChange("departmentId", ""); // Reset department when company changes
-                    }}
-                  />
-                ) : companies.length > 0 ? (
-                  <Input
-                    id="companyId"
-                    value={
-                      companies.find((c) => c.value === jobForm.companyId)
-                        ?.label ||
-                      companies[0]?.label ||
-                      "No company"
-                    }
-                    disabled={true}
-                    className="bg-gray-50 dark:bg-gray-800"
-                  />
+                {companies.length > 0 ? (
+                  !isAdmin && companies.length === 1 ? (
+                    <Input
+                      id="companyId"
+                      value={companies[0].label}
+                      disabled={true}
+                      className="bg-gray-50 dark:bg-gray-800"
+                    />
+                  ) : (
+                    <Select
+                      options={companies}
+                      placeholder="Select company"
+                      value={jobForm.companyId}
+                      onChange={(value) => {
+                        handleInputChange("companyId", value);
+                        handleInputChange("departmentId", ""); // Reset department when company changes
+                      }}
+                    />
+                  )
                 ) : (
                   <Input
                     id="companyId"

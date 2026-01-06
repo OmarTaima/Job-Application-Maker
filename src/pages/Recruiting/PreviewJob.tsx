@@ -1,91 +1,80 @@
-import { useState, useEffect } from "react";
+import { useMemo, useState } from "react";
+import Swal from "sweetalert2";
 import { useParams, useNavigate } from "react-router";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
 import PageMeta from "../../components/common/PageMeta";
 import ComponentCard from "../../components/common/ComponentCard";
 import LoadingSpinner from "../../components/common/LoadingSpinner";
-import {
-  jobPositionsService,
-  ApiError,
-} from "../../services/jobPositionsService";
-import type { JobPosition } from "../../services/jobPositionsService";
-import { companiesService } from "../../services/companiesService";
-import { departmentsService } from "../../services/departmentsService";
 import { PencilIcon, TrashBinIcon } from "../../icons";
-
-type JobDetails = JobPosition & {
-  companyName?: string;
-  departmentName?: string;
-};
+import {
+  useJobPosition,
+  useCompany,
+  useDepartment,
+  useDeleteJobPosition,
+} from "../../hooks/queries";
 
 export default function PreviewJob() {
   const { jobId } = useParams<{ jobId: string }>();
   const navigate = useNavigate();
-  const [job, setJob] = useState<JobDetails | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (jobId) {
-      loadJobDetails();
+  // React Query hooks - data fetching happens automatically
+  const { data: job, isLoading: loading, error } = useJobPosition(jobId || "");
+
+  // Extract company and department IDs
+  const companyId = useMemo(() => {
+    if (!job) return undefined;
+    return typeof job.companyId === "string"
+      ? job.companyId
+      : (job.companyId as any)?._id;
+  }, [job]);
+
+  const departmentId = useMemo(() => {
+    if (!job) return undefined;
+    return typeof job.departmentId === "string"
+      ? job.departmentId
+      : (job.departmentId as any)?._id;
+  }, [job]);
+
+  // Fetch company and department names
+  const { data: company } = useCompany(companyId || "");
+  const { data: department } = useDepartment(departmentId || "");
+
+  // Mutations
+  const deleteJobMutation = useDeleteJobPosition();
+
+  const [deleteError, setDeleteError] = useState("");
+  const [isDeletingJob, setIsDeletingJob] = useState(false);
+
+  // Helper function to extract detailed error messages
+  const getErrorMessage = (err: any): string => {
+    // Check for validation errors in 'details' array (new format)
+    if (
+      err.response?.data?.details &&
+      Array.isArray(err.response.data.details)
+    ) {
+      return err.response.data.details
+        .map((detail: any) => {
+          const field = detail.path?.[0] || "";
+          const message = detail.message || "";
+          return field ? `${field}: ${message}` : message;
+        })
+        .join(", ");
     }
-  }, [jobId]);
-
-  const loadJobDetails = async () => {
-    if (!jobId) return;
-
-    try {
-      setLoading(true);
-      const position = await jobPositionsService.getJobPositionById(jobId);
-
-      // Fetch company and department names
-      let companyName = "Unknown Company";
-      let departmentName = "Unknown Department";
-
-      const companyId =
-        typeof position.companyId === "string"
-          ? position.companyId
-          : (position.companyId as any)?._id;
-
-      const departmentId =
-        typeof position.departmentId === "string"
-          ? position.departmentId
-          : (position.departmentId as any)?._id;
-
-      try {
-        if (companyId) {
-          const company = await companiesService.getCompanyById(companyId);
-          companyName = company.name;
-        }
-      } catch (err) {
-        console.error(`Failed to fetch company ${companyId}:`, err);
+    // Check for validation errors in 'errors' array (old format)
+    if (err.response?.data?.errors) {
+      const errors = err.response.data.errors;
+      if (Array.isArray(errors)) {
+        return errors.map((e: any) => e.msg || e.message).join(", ");
       }
-
-      try {
-        if (departmentId) {
-          const department = await departmentsService.getDepartmentById(
-            departmentId
-          );
-          departmentName = department.name;
-        }
-      } catch (err) {
-        console.error(`Failed to fetch department ${departmentId}:`, err);
+      if (typeof errors === "object") {
+        return Object.entries(errors)
+          .map(([field, msg]) => `${field}: ${msg}`)
+          .join(", ");
       }
-
-      setJob({
-        ...position,
-        companyName,
-        departmentName,
-      });
-      setError(null);
-    } catch (err) {
-      const errorMessage =
-        err instanceof ApiError ? err.message : "Failed to load job details";
-      setError(errorMessage);
-      console.error("Error loading job details:", err);
-    } finally {
-      setLoading(false);
     }
+    if (err.response?.data?.message) return err.response.data.message;
+    if (err.message) return err.message;
+    return "An unexpected error occurred";
   };
 
   const handleEdit = () => {
@@ -93,16 +82,37 @@ export default function PreviewJob() {
   };
 
   const handleDelete = async () => {
-    if (!jobId || !confirm("Are you sure you want to delete this job?")) return;
+    if (!jobId) return;
+
+    const result = await Swal.fire({
+      title: "Delete Job?",
+      text: "Are you sure you want to delete this job?",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#3085d6",
+      cancelButtonColor: "#d33",
+      confirmButtonText: "Yes, delete it!",
+    });
+
+    if (!result.isConfirmed) return;
 
     try {
-      await jobPositionsService.deleteJobPosition(jobId);
+      setIsDeletingJob(true);
+      await deleteJobMutation.mutateAsync(jobId);
+      await Swal.fire({
+        title: "Deleted!",
+        text: "Job has been deleted successfully.",
+        icon: "success",
+        timer: 1500,
+        showConfirmButton: false,
+      });
       navigate("/jobs");
     } catch (err) {
-      const errorMessage =
-        err instanceof ApiError ? err.message : "Failed to delete job";
-      setError(errorMessage);
       console.error("Error deleting job:", err);
+      const errorMsg = getErrorMessage(err);
+      setDeleteError(errorMsg);
+    } finally {
+      setIsDeletingJob(false);
     }
   };
 
@@ -132,7 +142,7 @@ export default function PreviewJob() {
         <PageBreadcrumb pageTitle="Job Details" />
         <div className="p-12 text-center">
           <p className="text-red-600 dark:text-red-400">
-            {error || "Job not found"}
+            {error instanceof Error ? error.message : "Job not found"}
           </p>
           <button
             onClick={() => navigate("/jobs")}
@@ -151,6 +161,23 @@ export default function PreviewJob() {
         title={`${job.title} | Job Preview`}
         description={`View details for ${job.title}`}
       />
+
+      {deleteError && (
+        <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+          <div className="flex items-start justify-between">
+            <p className="text-sm text-red-600 dark:text-red-400">
+              <strong>Error:</strong> {deleteError}
+            </p>
+            <button
+              type="button"
+              onClick={() => setDeleteError("")}
+              className="ml-3 text-red-400 hover:text-red-600 dark:hover:text-red-300"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="flex items-center gap-4">
         <button
@@ -197,10 +224,11 @@ export default function PreviewJob() {
           </button>
           <button
             onClick={handleDelete}
-            className="inline-flex items-center gap-2 rounded-lg bg-red-500 px-4 py-2 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-red-600"
+            disabled={isDeletingJob}
+            className="inline-flex items-center gap-2 rounded-lg bg-red-500 px-4 py-2 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <TrashBinIcon className="size-4" />
-            Delete
+            {isDeletingJob ? "Deleting..." : "Delete"}
           </button>
         </div>
       </div>
@@ -234,7 +262,7 @@ export default function PreviewJob() {
               Company
             </label>
             <p className="mt-1 text-base text-gray-900 dark:text-white">
-              {job.companyName}
+              {company?.name || "Unknown Company"}
             </p>
           </div>
           <div>
@@ -242,23 +270,7 @@ export default function PreviewJob() {
               Department
             </label>
             <p className="mt-1 text-base text-gray-900 dark:text-white">
-              {job.departmentName}
-            </p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Employment Type
-            </label>
-            <p className="mt-1 text-base text-gray-900 dark:text-white">
-              {job.employmentType || "N/A"}
-            </p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Location
-            </label>
-            <p className="mt-1 text-base text-gray-900 dark:text-white">
-              {job.location || "N/A"}
+              {department?.name || "Unknown Department"}
             </p>
           </div>
         </div>

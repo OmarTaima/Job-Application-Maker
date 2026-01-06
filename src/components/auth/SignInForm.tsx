@@ -33,7 +33,6 @@ export default function SignInForm() {
 
     try {
       await login(email, password);
-      console.log("Login completed, navigating to dashboard...");
       // Redirect to dashboard after successful login
       navigate("/", { replace: true });
     } catch (err) {

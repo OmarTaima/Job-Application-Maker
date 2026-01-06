@@ -1,10 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState, useMemo } from "react";
+import Swal from "sweetalert2";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
 import PageMeta from "../../components/common/PageMeta";
 import ComponentCard from "../../components/common/ComponentCard";
 import LoadingSpinner from "../../components/common/LoadingSpinner";
 import { Link, useNavigate } from "react-router";
 import { PlusIcon, PencilIcon, TrashBinIcon } from "../../icons";
+import { useAuth } from "../../context/AuthContext";
 import Switch from "../../components/form/switch/Switch";
 import {
   Table,
@@ -14,12 +16,13 @@ import {
   TableRow,
 } from "../../components/ui/table";
 import {
-  jobPositionsService,
-  ApiError,
-} from "../../services/jobPositionsService";
-import type { JobPosition } from "../../services/jobPositionsService";
-import { companiesService } from "../../services/companiesService";
-import { departmentsService } from "../../services/departmentsService";
+  useJobPositions,
+  useCompanies,
+  useDepartments,
+  useDeleteJobPosition,
+  useUpdateJobPosition,
+} from "../../hooks/queries";
+import type { JobPosition } from "../../store/slices/jobPositionsSlice";
 
 type Job = JobPosition & {
   companyName?: string;
@@ -28,76 +31,133 @@ type Job = JobPosition & {
 
 export default function Jobs() {
   const navigate = useNavigate();
-  const [jobs, setJobs] = useState<Job[]>([]);
+  const { user } = useAuth();
+
   const [searchTerm, setSearchTerm] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadJobs();
-  }, []);
+  // Memoize user-derived values
+  const { isAdmin, companyIds } = useMemo(() => {
+    if (!user) return { isAdmin: false, companyIds: undefined };
 
-  const loadJobs = async () => {
-    try {
-      setLoading(true);
-      const positions = await jobPositionsService.getAllJobPositions();
+    const isAdmin = user?.roleId?.name?.toLowerCase().includes("admin");
+    const userCompanyIds = user?.companies?.map((c) =>
+      typeof c.companyId === "string" ? c.companyId : c.companyId._id
+    );
 
-      // Fetch company and department names
-      const jobsWithNames = await Promise.all(
-        positions.map(async (position) => {
-          let companyName = "Unknown Company";
-          let departmentName = "Unknown Department";
+    const companyIds =
+      !isAdmin && userCompanyIds?.length ? userCompanyIds : undefined;
 
-          // Normalize IDs (handle cases where the API returns populated objects)
-          const companyId =
-            typeof position.companyId === "string"
-              ? position.companyId
-              : (position.companyId as any)?._id;
+    return { isAdmin, companyIds };
+  }, [user?._id, user?.roleId?.name, user?.companies?.length]);
 
-          const departmentId =
-            typeof position.departmentId === "string"
-              ? position.departmentId
-              : (position.departmentId as any)?._id;
+  // Use React Query hooks
+  const {
+    data: jobPositions = [],
+    isLoading: jobsLoading,
+    error,
+  } = useJobPositions(companyIds);
+  const { data: companies = [] } = useCompanies();
+  const { data: departments = [] } = useDepartments();
+  const deleteJobMutation = useDeleteJobPosition();
+  const updateJobMutation = useUpdateJobPosition();
 
-          try {
-            if (companyId) {
-              const company = await companiesService.getCompanyById(companyId);
-              companyName = company.name;
-            }
-          } catch (err) {
-            console.error(`Failed to fetch company ${companyId}:`, err);
-          }
+  const [statusError, setStatusError] = useState("");
+  const [deleteError, setDeleteError] = useState("");
+  const [isDeletingJob, setIsDeletingJob] = useState<string | null>(null);
+  const [isUpdatingJob, setIsUpdatingJob] = useState<string | null>(null);
 
-          try {
-            if (departmentId) {
-              const department = await departmentsService.getDepartmentById(
-                departmentId
-              );
-              departmentName = department.name;
-            }
-          } catch (err) {
-            console.error(`Failed to fetch department ${departmentId}:`, err);
-          }
-
-          return {
-            ...position,
-            companyName,
-            departmentName,
-          };
+  // Helper function to extract detailed error messages
+  const getErrorMessage = (err: any): string => {
+    // Check for validation errors in 'details' array (new format)
+    if (
+      err.response?.data?.details &&
+      Array.isArray(err.response.data.details)
+    ) {
+      return err.response.data.details
+        .map((detail: any) => {
+          const field = detail.path?.[0] || "";
+          const message = detail.message || "";
+          return field ? `${field}: ${message}` : message;
         })
-      );
-
-      setJobs(jobsWithNames);
-      setError(null);
-    } catch (err) {
-      const errorMessage =
-        err instanceof ApiError ? err.message : "Failed to load jobs";
-      setError(errorMessage);
-      console.error("Error loading jobs:", err);
-    } finally {
-      setLoading(false);
+        .join(", ");
     }
+    // Check for validation errors in 'errors' array (old format)
+    if (err.response?.data?.errors) {
+      const errors = err.response.data.errors;
+      if (Array.isArray(errors)) {
+        return errors.map((e: any) => e.msg || e.message).join(", ");
+      }
+      if (typeof errors === "object") {
+        return Object.entries(errors)
+          .map(([field, msg]) => `${field}: ${msg}`)
+          .join(", ");
+      }
+    }
+    if (err.response?.data?.message) return err.response.data.message;
+    if (err.message) return err.message;
+    return "An unexpected error occurred";
   };
+
+  // Enrich job positions with company and department names
+  const jobs = useMemo(() => {
+    // Extract user's assigned company IDs for filtering
+    const userCompanyIds = user?.companies?.map((c) =>
+      typeof c.companyId === "string" ? c.companyId : c.companyId._id
+    );
+
+    // Filter and enrich job positions
+    return jobPositions
+      .filter((position) => {
+        // Admin users see all jobs
+        if (isAdmin) return true;
+
+        // Non-admin users only see jobs from their assigned companies
+        if (!userCompanyIds || userCompanyIds.length === 0) return false;
+
+        // Get the company ID from the position (handle both string and object)
+        const positionCompanyId =
+          typeof position.companyId === "string"
+            ? position.companyId
+            : (position.companyId as any)?._id;
+
+        return userCompanyIds.includes(positionCompanyId);
+      })
+      .map((position) => {
+        // Try to get company name from nested object first, then fall back to lookup
+        let companyName = "Unknown Company";
+        let departmentName = "Unknown Department";
+
+        // If companyId is an object (populated), use its name
+        if (typeof position.companyId === "object" && position.companyId) {
+          companyName = (position.companyId as any).name || companyName;
+        } else if (typeof position.companyId === "string") {
+          // If it's a string ID, look it up in the companies array
+          const company = companies.find((c) => c._id === position.companyId);
+          if (company) companyName = company.name;
+        }
+
+        // If departmentId is an object (populated), use its name
+        if (
+          typeof position.departmentId === "object" &&
+          position.departmentId
+        ) {
+          departmentName =
+            (position.departmentId as any).name || departmentName;
+        } else if (typeof position.departmentId === "string") {
+          // If it's a string ID, look it up in the departments array
+          const department = departments.find(
+            (d) => d._id === position.departmentId
+          );
+          if (department) departmentName = department.name;
+        }
+
+        return {
+          ...position,
+          companyName,
+          departmentName,
+        };
+      });
+  }, [jobPositions, companies, departments, user, isAdmin]);
 
   const filteredJobs = jobs.filter(
     (job) =>
@@ -110,39 +170,68 @@ export default function Jobs() {
   const handleToggleActive = async (jobId: string, currentStatus: string) => {
     try {
       const newStatus = currentStatus === "open" ? "closed" : "open";
-      await jobPositionsService.updateJobPosition(jobId, {
-        status: newStatus as "open" | "closed",
+      await updateJobMutation.mutateAsync({
+        id: jobId,
+        data: { status: newStatus as "open" | "closed" },
       });
-
-      // Update local state
-      setJobs(
-        jobs.map((job) =>
-          job._id === jobId
-            ? { ...job, status: newStatus as "open" | "closed" }
-            : job
-        )
-      );
-    } catch (err) {
-      const errorMessage =
-        err instanceof ApiError ? err.message : "Failed to update job status";
-      setError(errorMessage);
+    } catch (err: any) {
       console.error("Error updating job status:", err);
+      const errorMsg = getErrorMessage(err);
+      setStatusError(errorMsg);
+    } finally {
+      setIsUpdatingJob(null);
     }
   };
 
   const handleDeleteJob = async (jobId: string) => {
-    if (!confirm("Are you sure you want to delete this job?")) return;
+    const result = await Swal.fire({
+      title: "Delete Job?",
+      text: "Are you sure you want to delete this job?",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#3085d6",
+      cancelButtonColor: "#d33",
+      confirmButtonText: "Yes, delete it!",
+    });
+
+    if (!result.isConfirmed) return;
 
     try {
-      await jobPositionsService.deleteJobPosition(jobId);
-      setJobs(jobs.filter((job) => job._id !== jobId));
-    } catch (err) {
-      const errorMessage =
-        err instanceof ApiError ? err.message : "Failed to delete job";
-      setError(errorMessage);
+      setIsDeletingJob(jobId);
+      await deleteJobMutation.mutateAsync(jobId);
+      await Swal.fire({
+        title: "Deleted!",
+        text: "Job has been deleted successfully.",
+        icon: "success",
+        timer: 2000,
+        showConfirmButton: false,
+      });
+    } catch (err: any) {
       console.error("Error deleting job:", err);
+      const errorMsg = getErrorMessage(err);
+      setDeleteError(errorMsg);
+    } finally {
+      setIsDeletingJob(null);
     }
   };
+
+  const isLoading = jobsLoading;
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <LoadingSpinner />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-screen text-red-600">
+        Error loading jobs: {(error as Error).message}
+      </div>
+    );
+  }
 
   const handleEditJob = (job: Job) => {
     // Navigate to edit job page - TODO: implement edit page
@@ -168,6 +257,40 @@ export default function Jobs() {
             </div>
           )}
 
+          {statusError && (
+            <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+              <div className="flex items-start justify-between">
+                <p className="text-sm text-red-600 dark:text-red-400">
+                  <strong>Error updating status:</strong> {statusError}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setStatusError("")}
+                  className="ml-3 text-red-400 hover:text-red-600 dark:hover:text-red-300"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          )}
+
+          {deleteError && (
+            <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+              <div className="flex items-start justify-between">
+                <p className="text-sm text-red-600 dark:text-red-400">
+                  <strong>Error deleting job:</strong> {deleteError}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setDeleteError("")}
+                  className="ml-3 text-red-400 hover:text-red-600 dark:hover:text-red-300"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex-1">
               <input
@@ -187,7 +310,7 @@ export default function Jobs() {
             </Link>
           </div>
 
-          {loading ? (
+          {isLoading ? (
             <LoadingSpinner message="Loading jobs..." />
           ) : filteredJobs.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 py-12 dark:border-gray-700">
@@ -322,6 +445,7 @@ export default function Jobs() {
                               onChange={() =>
                                 handleToggleActive(job._id, job.status)
                               }
+                              disabled={isUpdatingJob === job._id}
                             />
                           </div>
                         </TableCell>
@@ -339,8 +463,9 @@ export default function Jobs() {
                             </button>
                             <button
                               onClick={() => handleDeleteJob(job._id)}
-                              className="rounded p-1.5 text-error-600 transition hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-500/10"
-                              title="Delete job"
+                              disabled={isDeletingJob === job._id}
+                              className="rounded p-1.5 text-error-600 transition hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-500/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                              title={isDeletingJob === job._id ? "Deleting..." : "Delete job"}
                             >
                               <TrashBinIcon className="size-4" />
                             </button>

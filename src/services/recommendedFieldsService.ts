@@ -1,4 +1,4 @@
-import { API_CONFIG, tokenStorage } from "../config/api";
+import axios from "../config/axios";
 
 // API Error Class
 export class ApiError extends Error {
@@ -10,42 +10,6 @@ export class ApiError extends Error {
     super(message);
     this.name = "ApiError";
   }
-}
-
-// Helper function for authenticated requests
-async function fetchWithAuth(endpoint: string, options: RequestInit = {}) {
-  const token = tokenStorage.getAccessToken();
-  if (!token) {
-    throw new ApiError("No authentication token found", 401);
-  }
-
-  const response = await fetch(`${API_CONFIG.baseUrl}${endpoint}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-      ...options.headers,
-    },
-  });
-
-  if (!response.ok) {
-    let errorMessage = `HTTP Error: ${response.status}`;
-    try {
-      const errorData = await response.json();
-      errorMessage = errorData.message || errorMessage;
-    } catch {
-      // If error response is not JSON, use status text
-      errorMessage = response.statusText || errorMessage;
-    }
-    throw new ApiError(errorMessage, response.status);
-  }
-
-  // Handle 204 No Content responses
-  if (response.status === 204) {
-    return null;
-  }
-
-  return response;
 }
 
 // Types
@@ -93,9 +57,9 @@ export type CreateRecommendedFieldRequest = {
 };
 
 export type UpdateRecommendedFieldRequest = {
-  label: string;
-  type: FieldType;
-  required: boolean;
+  label?: string;
+  type?: FieldType;
+  required?: boolean;
   options?: string[];
   validation?: FieldValidation;
   description?: string;
@@ -109,17 +73,14 @@ class RecommendedFieldsService {
    */
   async getAllRecommendedFields(): Promise<RecommendedField[]> {
     try {
-      const response = await fetchWithAuth(
-        "/system-settings/recommended-fields"
+      const response = await axios.get("/system-settings/recommended-fields");
+      return response.data.data || [];
+    } catch (error: any) {
+      throw new ApiError(
+        error.response?.data?.message || "Failed to fetch recommended fields",
+        error.response?.status,
+        error.response?.data?.details
       );
-      if (!response) return [];
-      const data = await response.json();
-      return data.data || [];
-    } catch (error) {
-      if (error instanceof ApiError) {
-        throw error;
-      }
-      throw new ApiError("Failed to fetch recommended fields");
     }
   }
 
@@ -131,21 +92,17 @@ class RecommendedFieldsService {
     fieldData: CreateRecommendedFieldRequest
   ): Promise<RecommendedField> {
     try {
-      const response = await fetchWithAuth(
+      const response = await axios.post(
         "/system-settings/recommended-fields",
-        {
-          method: "POST",
-          body: JSON.stringify(fieldData),
-        }
+        fieldData
       );
-      if (!response) throw new ApiError("No response from server");
-      const data = await response.json();
-      return data.data;
-    } catch (error) {
-      if (error instanceof ApiError) {
-        throw error;
-      }
-      throw new ApiError("Failed to create recommended field");
+      return response.data.data;
+    } catch (error: any) {
+      throw new ApiError(
+        error.response?.data?.message || "Failed to create recommended field",
+        error.response?.status,
+        error.response?.data?.details
+      );
     }
   }
 
@@ -159,26 +116,20 @@ class RecommendedFieldsService {
   ): Promise<RecommendedField> {
     try {
       const encodedFieldName = encodeURIComponent(fieldName);
-      const response = await fetchWithAuth(
+      const response = await axios.put(
         `/system-settings/recommended-fields/${encodedFieldName}`,
-        {
-          method: "PUT",
-          body: JSON.stringify(fieldData),
-        }
+        fieldData
       );
-
-      // Handle 204 No Content
-      if (response === null) {
-        return { name: fieldName, ...fieldData } as RecommendedField;
-      }
-
-      const data = await response.json();
-      return data.data;
-    } catch (error) {
-      if (error instanceof ApiError) {
-        throw error;
-      }
-      throw new ApiError("Failed to update recommended field");
+      return (
+        response.data.data ||
+        ({ name: fieldName, ...fieldData } as RecommendedField)
+      );
+    } catch (error: any) {
+      throw new ApiError(
+        error.response?.data?.message || "Failed to update recommended field",
+        error.response?.status,
+        error.response?.data?.details
+      );
     }
   }
 
@@ -189,17 +140,15 @@ class RecommendedFieldsService {
   async deleteRecommendedField(fieldName: string): Promise<void> {
     try {
       const encodedFieldName = encodeURIComponent(fieldName);
-      await fetchWithAuth(
-        `/system-settings/recommended-fields/${encodedFieldName}`,
-        {
-          method: "DELETE",
-        }
+      await axios.delete(
+        `/system-settings/recommended-fields/${encodedFieldName}`
       );
-    } catch (error) {
-      if (error instanceof ApiError) {
-        throw error;
-      }
-      throw new ApiError("Failed to delete recommended field");
+    } catch (error: any) {
+      throw new ApiError(
+        error.response?.data?.message || "Failed to delete recommended field",
+        error.response?.status,
+        error.response?.data?.details
+      );
     }
   }
 }

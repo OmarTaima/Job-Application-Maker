@@ -1,4 +1,4 @@
-import { API_CONFIG, tokenStorage } from "../config/api";
+import axios from "../config/axios";
 
 // Types
 export interface Company {
@@ -56,94 +56,52 @@ export class ApiError extends Error {
   }
 }
 
-// Helper function to make authenticated requests
-async function fetchWithAuth(
-  endpoint: string,
-  options: RequestInit = {}
-): Promise<Response> {
-  const token = tokenStorage.getAccessToken();
-  const headers: HeadersInit = {
-    "Content-Type": "application/json",
-    ...(token && { Authorization: `Bearer ${token}` }),
-    ...options.headers,
-  };
-
-  const response = await fetch(`${API_CONFIG.baseUrl}${endpoint}`, {
-    ...options,
-    headers,
-  });
-
-  return response;
-}
-
 // Companies API service
 export const companiesService = {
   // Get all companies
   async getAllCompanies(): Promise<Company[]> {
     try {
-      const response = await fetchWithAuth("/companies");
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new ApiError(
-          errorData.message || "Failed to fetch companies",
-          response.status,
-          errorData.details
-        );
-      }
-
-      const data: CompaniesResponse = await response.json();
-      return data.data;
-    } catch (error) {
-      if (error instanceof ApiError) throw error;
-      throw new ApiError("Network error while fetching companies");
+      const response = await axios.get<CompaniesResponse>("/companies");
+      return response.data.data;
+    } catch (error: any) {
+      throw new ApiError(
+        error.response?.data?.message || "Failed to fetch companies",
+        error.response?.status,
+        error.response?.data?.details
+      );
     }
   },
 
   // Get company by ID
   async getCompanyById(companyId: string): Promise<Company> {
     try {
-      const response = await fetchWithAuth(`/companies/${companyId}`);
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new ApiError(
-          errorData.message || "Failed to fetch company",
-          response.status,
-          errorData.details
-        );
-      }
-
-      const data: CompanyResponse = await response.json();
-      return data.data;
-    } catch (error) {
-      if (error instanceof ApiError) throw error;
-      throw new ApiError("Network error while fetching company");
+      const response = await axios.get<CompanyResponse>(
+        `/companies/${companyId}`
+      );
+      return response.data.data;
+    } catch (error: any) {
+      throw new ApiError(
+        error.response?.data?.message || "Failed to fetch company",
+        error.response?.status,
+        error.response?.data?.details
+      );
     }
   },
 
   // Create company
   async createCompany(companyData: CreateCompanyRequest): Promise<Company> {
     try {
-      const response = await fetchWithAuth("/companies", {
-        method: "POST",
-        body: JSON.stringify(companyData),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new ApiError(
-          errorData.message || "Failed to create company",
-          response.status,
-          errorData.details
-        );
-      }
-
-      const data: CompanyResponse = await response.json();
-      return data.data;
-    } catch (error) {
-      if (error instanceof ApiError) throw error;
-      throw new ApiError("Network error while creating company");
+      const response = await axios.post<CompanyResponse>(
+        "/companies",
+        companyData
+      );
+      return response.data.data;
+    } catch (error: any) {
+      throw new ApiError(
+        error.response?.data?.message || "Failed to create company",
+        error.response?.status,
+        error.response?.data?.details
+      );
     }
   },
 
@@ -153,46 +111,30 @@ export const companiesService = {
     companyData: UpdateCompanyRequest
   ): Promise<Company> {
     try {
-      const response = await fetchWithAuth(`/companies/${companyId}`, {
-        method: "PUT",
-        body: JSON.stringify(companyData),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new ApiError(
-          errorData.message || "Failed to update company",
-          response.status,
-          errorData.details
-        );
-      }
-
-      const data: CompanyResponse = await response.json();
-      return data.data;
-    } catch (error) {
-      if (error instanceof ApiError) throw error;
-      throw new ApiError("Network error while updating company");
+      const response = await axios.put<CompanyResponse>(
+        `/companies/${companyId}`,
+        companyData
+      );
+      return response.data.data;
+    } catch (error: any) {
+      throw new ApiError(
+        error.response?.data?.message || "Failed to update company",
+        error.response?.status,
+        error.response?.data?.details
+      );
     }
   },
 
   // Delete company
   async deleteCompany(companyId: string): Promise<void> {
     try {
-      const response = await fetchWithAuth(`/companies/${companyId}`, {
-        method: "DELETE",
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new ApiError(
-          errorData.message || "Failed to delete company",
-          response.status,
-          errorData.details
-        );
-      }
-    } catch (error) {
-      if (error instanceof ApiError) throw error;
-      throw new ApiError("Network error while deleting company");
+      await axios.delete(`/companies/${companyId}`);
+    } catch (error: any) {
+      throw new ApiError(
+        error.response?.data?.message || "Failed to delete company",
+        error.response?.status,
+        error.response?.data?.details
+      );
     }
   },
 };

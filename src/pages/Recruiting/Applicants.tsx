@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo, useCallback, memo } from "react";
+import { useState, useMemo, useCallback, memo } from "react";
+import Swal from "sweetalert2";
 import { useNavigate } from "react-router";
 import ComponentCard from "../../components/common/ComponentCard";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
@@ -11,10 +12,14 @@ import {
   TableHeader,
   TableRow,
 } from "../../components/ui/table";
-import { applicantsService, ApiError } from "../../services/applicantsService";
-import type { Applicant } from "../../services/applicantsService";
-import { jobPositionsService } from "../../services/jobPositionsService";
 import { TrashBinIcon } from "../../icons";
+import { useAuth } from "../../context/AuthContext";
+import {
+  useApplicants,
+  useJobPositions,
+  useUpdateApplicantStatus,
+} from "../../hooks/queries";
+import type { Applicant } from "../../store/slices/applicantsSlice";
 
 type JobGroup = {
   jobPositionId: string;
@@ -110,100 +115,94 @@ ApplicantRow.displayName = "ApplicantRow";
 
 const Applicants = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
+
+  // Local state
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [expandedJobs, setExpandedJobs] = useState<string[]>([]);
-  const [applicants, setApplicants] = useState<Applicant[]>([]);
-  const [jobTitles, setJobTitles] = useState<Record<string, string>>({});
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [selectedApplicants, setSelectedApplicants] = useState<string[]>([]);
   const [isDeleting, setIsDeleting] = useState(false);
   const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
-  // UI bulk actions
-  type BulkAction = "" | "pending" | "approved" | "interview" | "rejected";
-  // API allowed status values
-  type ApiStatus =
-    | "applied"
-    | "under_review"
-    | "interviewed"
-    | "accepted"
-    | "rejected"
-    | "trashed";
-  // map UI actions to API statuses
-  const actionToApiStatus: Record<Exclude<BulkAction, "">, ApiStatus> = {
-    pending: "under_review",
-    approved: "accepted",
-    interview: "interviewed",
-    rejected: "rejected",
-  };
-  const [bulkAction, setBulkAction] = useState<BulkAction>("");
+  const [bulkAction, setBulkAction] = useState<string>("");
   const [isProcessing, setIsProcessing] = useState(false);
 
-  useEffect(() => {
-    loadApplicants();
-  }, []);
+  // Memoize user-derived values
+  const { companyIds, singleCompanyId } = useMemo(() => {
+    if (!user) return { companyIds: undefined, singleCompanyId: undefined };
 
-  const loadApplicants = useCallback(async () => {
-    try {
-      setLoading(true);
-      const data = await applicantsService.getAllApplicants();
-      setApplicants(data);
+    const isAdmin = user?.roleId?.name?.toLowerCase().includes("admin");
+    const userCompanyIds = user?.companies?.map((c) =>
+      typeof c.companyId === "string" ? c.companyId : c.companyId._id
+    );
 
-      // Fetch job titles for each unique job position
-      const uniqueJobIds = [
-        ...new Set(
-          data.map((app) =>
-            typeof app.jobPositionId === "string"
-              ? app.jobPositionId
-              : (app.jobPositionId as any)?._id
-          )
-        ),
-      ].filter((id): id is string => !!id);
+    const companyIds =
+      !isAdmin && userCompanyIds?.length ? userCompanyIds : undefined;
 
-      if (uniqueJobIds.length === 0) {
-        setJobTitles({});
-        setError(null);
-        setLoading(false);
-        return;
-      }
+    const singleCompanyId =
+      companyIds && companyIds.length === 1 ? companyIds[0] : undefined;
 
-      const titles: Record<string, string> = {};
+    return { companyIds, singleCompanyId };
+  }, [user?._id, user?.roleId?.name, user?.companies?.length]);
 
-      // Batch fetch with better error handling and Promise.allSettled for resilience
-      const results = await Promise.allSettled(
-        uniqueJobIds.map((jobId) =>
-          jobPositionsService.getJobPositionById(jobId)
-        )
-      );
+  // Use React Query hooks
+  const {
+    data: applicants = [],
+    isLoading: applicantsLoading,
+    error,
+  } = useApplicants(singleCompanyId);
+  const { data: jobPositions = [], isLoading: jobPositionsLoading } =
+    useJobPositions(companyIds);
+  const updateStatusMutation = useUpdateApplicantStatus();
 
-      results.forEach((result, index) => {
-        const jobId = uniqueJobIds[index];
-        if (result.status === "fulfilled") {
-          titles[jobId] = result.value.title;
-        } else {
-          console.error(`Failed to fetch job ${jobId}:`, result.reason);
-          titles[jobId] = "Unknown Job";
-        }
-      });
+  const [bulkStatusError, setBulkStatusError] = useState("");
+  const [bulkDeleteError, setBulkDeleteError] = useState("");
 
-      setJobTitles(titles);
-      setError(null);
-    } catch (err) {
-      const errorMessage =
-        err instanceof ApiError ? err.message : "Failed to load applicants";
-      setError(errorMessage);
-      console.error("Error loading applicants:", err);
-    } finally {
-      setLoading(false);
+  // Helper function to extract detailed error messages
+  const getErrorMessage = (err: any): string => {
+    // Check for validation errors in 'details' array (new format)
+    if (
+      err.response?.data?.details &&
+      Array.isArray(err.response.data.details)
+    ) {
+      return err.response.data.details
+        .map((detail: any) => {
+          const field = detail.path?.[0] || "";
+          const message = detail.message || "";
+          return field ? `${field}: ${message}` : message;
+        })
+        .join(", ");
     }
-  }, []);
+    // Check for validation errors in 'errors' array (old format)
+    if (err.response?.data?.errors) {
+      const errors = err.response.data.errors;
+      if (Array.isArray(errors)) {
+        return errors.map((e: any) => e.msg || e.message).join(", ");
+      }
+      if (typeof errors === "object") {
+        return Object.entries(errors)
+          .map(([field, msg]) => `${field}: ${msg}`)
+          .join(", ");
+      }
+    }
+    if (err.response?.data?.message) return err.response.data.message;
+    if (err.message) return err.message;
+    return "An unexpected error occurred";
+  };
 
+  // Create job titles map from job positions
+  const jobTitles = useMemo(() => {
+    const titles: Record<string, string> = {};
+    jobPositions.forEach((job) => {
+      titles[job._id] = job.title;
+    });
+    return titles;
+  }, [jobPositions]);
   // Group applicants by job (memoized for performance)
   const groupedApplicants: JobGroup[] = useMemo(() => {
     return Object.keys(jobTitles).map((jobId) => ({
       jobPositionId: jobId,
       jobTitle: jobTitles[jobId],
-      applicants: applicants.filter((app) => {
+      applicants: applicants.filter((app: Applicant) => {
         const appJobId =
           typeof app.jobPositionId === "string"
             ? app.jobPositionId
@@ -301,335 +300,404 @@ const Applicants = () => {
   const handleBulkChangeStatus = useCallback(async () => {
     if (selectedApplicants.length === 0 || !bulkAction) return;
 
-    const confirmed = window.confirm(
-      `Are you sure you want to change the status of ${selectedApplicants.length} applicant(s) to ${bulkAction}?`
-    );
+    const result = await Swal.fire({
+      title: "Change Status?",
+      text: `Are you sure you want to change the status of ${selectedApplicants.length} applicant(s) to ${bulkAction}?`,
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonColor: "#3085d6",
+      cancelButtonColor: "#d33",
+      confirmButtonText: "Yes, change it!",
+    });
 
-    if (!confirmed) return;
-
-    // map the UI bulk action to the API status value
-    const apiStatus = bulkAction
-      ? actionToApiStatus[bulkAction as Exclude<BulkAction, "">]
-      : undefined;
-    if (!apiStatus) {
-      setError("Invalid status selected");
-      return;
-    }
+    if (!result.isConfirmed) return;
 
     try {
       setIsProcessing(true);
+      // Make API calls
       await Promise.all(
         selectedApplicants.map((id) =>
-          applicantsService.updateApplicantStatus(id, {
-            status: apiStatus,
-            notes: `Bulk status change to ${apiStatus} on ${new Date().toLocaleDateString()}`,
+          updateStatusMutation.mutateAsync({
+            id,
+            data: {
+              status: bulkAction as
+                | "applied"
+                | "under_review"
+                | "interviewed"
+                | "accepted"
+                | "rejected"
+                | "trashed",
+              notes: `Bulk status change to ${bulkAction} on ${new Date().toLocaleDateString()}`,
+            },
           })
         )
       );
+
+      await Swal.fire({
+        title: "Success!",
+        text: `Status updated for ${selectedApplicants.length} applicant(s).`,
+        icon: "success",
+        timer: 2000,
+        showConfirmButton: false,
+      });
+
       setSelectedApplicants([]);
       setBulkAction("");
-      await loadApplicants();
-    } catch (err) {
-      const errorMessage =
-        err instanceof ApiError ? err.message : "Failed to change status";
-      setError(errorMessage);
+    } catch (err: any) {
       console.error("Error changing status:", err);
+      const errorMsg = getErrorMessage(err);
+      setBulkStatusError(errorMsg);
     } finally {
       setIsProcessing(false);
     }
-  }, [selectedApplicants, bulkAction, loadApplicants]);
+  }, [selectedApplicants, bulkAction, updateStatusMutation]);
 
   const handleBulkDelete = useCallback(async () => {
     if (selectedApplicants.length === 0) return;
 
-    const confirmed = window.confirm(
-      `Are you sure you want to delete ${selectedApplicants.length} applicant(s)? They will be moved to trash.`
-    );
+    const result = await Swal.fire({
+      title: "Delete Applicants?",
+      text: `Are you sure you want to delete ${selectedApplicants.length} applicant(s)? They will be moved to trash.`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#3085d6",
+      cancelButtonColor: "#d33",
+      confirmButtonText: "Yes, delete them!",
+    });
 
-    if (!confirmed) return;
+    if (!result.isConfirmed) return;
 
     try {
       setIsDeleting(true);
+      // Make API calls
       await Promise.all(
         selectedApplicants.map((id) =>
-          applicantsService.updateApplicantStatus(id, {
-            status: "trashed",
-            notes: `Moved to trash on ${new Date().toLocaleDateString()}`,
+          updateStatusMutation.mutateAsync({
+            id,
+            data: {
+              status: "trashed",
+              notes: `Moved to trash on ${new Date().toLocaleDateString()}`,
+            },
           })
         )
       );
+
+      await Swal.fire({
+        title: "Success!",
+        text: `${selectedApplicants.length} applicant(s) moved to trash.`,
+        icon: "success",
+        timer: 2000,
+        showConfirmButton: false,
+      });
+
       setSelectedApplicants([]);
-      await loadApplicants();
-    } catch (err) {
-      const errorMessage =
-        err instanceof ApiError ? err.message : "Failed to delete applicants";
-      setError(errorMessage);
+    } catch (err: any) {
       console.error("Error deleting applicants:", err);
+      const errorMsg = getErrorMessage(err);
+      setBulkDeleteError(errorMsg);
     } finally {
       setIsDeleting(false);
     }
-  }, [selectedApplicants, loadApplicants]);
+  }, [selectedApplicants, updateStatusMutation]);
 
   return (
     <>
       <PageMeta title="Applicants" description="Manage job applicants" />
       <PageBreadcrumb pageTitle="Applicants" />
 
-      <div className="grid gap-6">
-        <ComponentCard
-          title="Job Applicants"
-          desc="View and manage all applicants"
-        >
-          <>
-            {/* Bulk Actions Bar */}
-            {selectedApplicants.length > 0 && (
-              <div className="mb-4 flex items-center justify-between rounded-lg bg-brand-50 px-4 py-3 dark:bg-brand-900/20">
-                <span className="text-sm font-medium text-brand-700 dark:text-brand-300">
-                  {selectedApplicants.length} applicant(s) selected
-                </span>
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-2">
-                    <select
-                      value={bulkAction}
-                      onChange={(e) =>
-                        setBulkAction(e.target.value as BulkAction)
-                      }
-                      className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-transparent"
-                    >
-                      <option value="">Select Status</option>
-                      <option value="pending">Pending</option>
-                      <option value="approved">Approved</option>
-                      <option value="interview">Interview</option>
-                      <option value="rejected">Rejected</option>
-                    </select>
+      {applicantsLoading || jobPositionsLoading ? (
+        <LoadingSpinner fullPage message="Loading applicants..." />
+      ) : (
+        <div className="grid gap-6">
+          <ComponentCard
+            title="Job Applicants"
+            desc="View and manage all applicants"
+          >
+            <>
+              {/* Error Messages */}
+              {bulkStatusError && (
+                <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                  <div className="flex items-start justify-between">
+                    <p className="text-sm text-red-600 dark:text-red-400">
+                      <strong>Error changing status:</strong> {bulkStatusError}
+                    </p>
                     <button
-                      onClick={handleBulkChangeStatus}
-                      disabled={isProcessing || !bulkAction}
-                      className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                      type="button"
+                      onClick={() => setBulkStatusError("")}
+                      className="ml-3 text-red-400 hover:text-red-600 dark:hover:text-red-300"
                     >
-                      {isProcessing ? "Changing..." : "Change Status"}
+                      ✕
                     </button>
                   </div>
-                  <button
-                    onClick={handleBulkDelete}
-                    disabled={isDeleting}
-                    className="inline-flex items-center gap-2 rounded-lg bg-red-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <TrashBinIcon className="h-4 w-4" />
-                    {isDeleting ? "Deleting..." : "Delete"}
-                  </button>
                 </div>
-              </div>
-            )}
+              )}
 
-            {error && (
-              <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg">
-                {error}
-              </div>
-            )}
-
-            {loading ? (
-              <LoadingSpinner message="Loading applicants..." />
-            ) : (
-              <>
-                {/* Status Filter */}
-                <div className="mb-6 flex flex-wrap gap-2">
-                  <button
-                    onClick={() => setStatusFilter("all")}
-                    className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
-                      statusFilter === "all"
-                        ? "bg-brand-500 text-white"
-                        : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
-                    }`}
-                  >
-                    View All
-                  </button>
-                  <button
-                    onClick={() => setStatusFilter("pending")}
-                    className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
-                      statusFilter === "pending"
-                        ? "bg-yellow-500 text-white"
-                        : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
-                    }`}
-                  >
-                    Pending
-                  </button>
-                  <button
-                    onClick={() => setStatusFilter("approved")}
-                    className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
-                      statusFilter === "approved"
-                        ? "bg-green-500 text-white"
-                        : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
-                    }`}
-                  >
-                    Approved
-                  </button>
-                  <button
-                    onClick={() => setStatusFilter("interview")}
-                    className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
-                      statusFilter === "interview"
-                        ? "bg-blue-500 text-white"
-                        : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
-                    }`}
-                  >
-                    Interview
-                  </button>
-                  <button
-                    onClick={() => setStatusFilter("rejected")}
-                    className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
-                      statusFilter === "rejected"
-                        ? "bg-red-500 text-white"
-                        : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
-                    }`}
-                  >
-                    Rejected
-                  </button>
-                  <button
-                    onClick={() => setStatusFilter("trashed")}
-                    className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
-                      statusFilter === "trashed"
-                        ? "bg-gray-500 text-white"
-                        : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
-                    }`}
-                  >
-                    Trashed
-                  </button>
-                </div>
-
-                {/* Grouped Applicants by Job */}
-                <div className="space-y-4">
-                  {filteredGroups.map((group) => (
-                    <div
-                      key={group.jobPositionId}
-                      className="rounded-lg border border-stroke dark:border-strokedark"
+              {bulkDeleteError && (
+                <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                  <div className="flex items-start justify-between">
+                    <p className="text-sm text-red-600 dark:text-red-400">
+                      <strong>Error deleting applicants:</strong>{" "}
+                      {bulkDeleteError}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setBulkDeleteError("")}
+                      className="ml-3 text-red-400 hover:text-red-600 dark:hover:text-red-300"
                     >
-                      {/* Job Title Header - Clickable */}
-                      <button
-                        onClick={() => toggleJobExpand(group.jobPositionId)}
-                        className="flex w-full items-center justify-between bg-gray-50 px-6 py-4 text-left transition hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700"
-                      >
-                        <div>
-                          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                            {group.jobTitle}
-                          </h3>
-                          <p className="text-sm text-gray-500 dark:text-gray-400">
-                            {group.applicants.length} applicant
-                            {group.applicants.length !== 1 ? "s" : ""}
-                          </p>
-                        </div>
-                        <svg
-                          className={`h-5 w-5 transition-transform ${
-                            expandedJobs.includes(group.jobPositionId)
-                              ? "rotate-180"
-                              : ""
-                          }`}
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M19 9l-7 7-7-7"
-                          />
-                        </svg>
-                      </button>
-
-                      {/* Applicants Table - Expandable */}
-                      {expandedJobs.includes(group.jobPositionId) && (
-                        <div className="overflow-x-auto">
-                          <Table>
-                            <TableHeader className="bg-gray-50 dark:bg-gray-800">
-                              <TableRow>
-                                <TableCell
-                                  isHeader
-                                  className="px-4 py-3 align-middle text-left font-semibold w-12"
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={group.applicants.every((app) =>
-                                      selectedApplicants.includes(app._id)
-                                    )}
-                                    onChange={() =>
-                                      handleSelectAll(group.applicants)
-                                    }
-                                    className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500 dark:border-gray-600 dark:bg-gray-700"
-                                  />
-                                </TableCell>
-                                <TableCell
-                                  isHeader
-                                  className="px-4 py-3 align-middle text-left font-semibold"
-                                >
-                                  Photo
-                                </TableCell>
-                                <TableCell
-                                  isHeader
-                                  className="px-4 py-3 align-middle text-left font-semibold"
-                                >
-                                  Name
-                                </TableCell>
-                                <TableCell
-                                  isHeader
-                                  className="px-4 py-3 align-middle text-left font-semibold"
-                                >
-                                  Email
-                                </TableCell>
-                                <TableCell
-                                  isHeader
-                                  className="px-4 py-3 align-middle text-left font-semibold"
-                                >
-                                  Phone
-                                </TableCell>
-                                <TableCell
-                                  isHeader
-                                  className="px-4 py-3 align-middle text-left font-semibold"
-                                >
-                                  Status
-                                </TableCell>
-                                <TableCell
-                                  isHeader
-                                  className="px-4 py-3 align-middle text-left font-semibold"
-                                >
-                                  Submitted
-                                </TableCell>
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              {group.applicants.map((applicant) => (
-                                <ApplicantRow
-                                  key={applicant._id}
-                                  applicant={applicant}
-                                  isSelected={selectedApplicants.includes(
-                                    applicant._id
-                                  )}
-                                  onSelect={handleSelectApplicant}
-                                  onNavigate={handleNavigate}
-                                  onPhotoPreview={handlePhotoPreview}
-                                  getStatusColor={getStatusColor}
-                                  formatDate={formatDate}
-                                />
-                              ))}
-                            </TableBody>
-                          </Table>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-
-                  {filteredGroups.length === 0 && (
-                    <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-6 py-12 text-center dark:border-gray-700 dark:bg-gray-800/30">
-                      <p className="text-gray-500 dark:text-gray-400">
-                        No applicants found for the selected status.
-                      </p>
-                    </div>
-                  )}
+                      ✕
+                    </button>
+                  </div>
                 </div>
-              </>
-            )}
-          </>
-        </ComponentCard>
-      </div>
+              )}
+
+              {/* Bulk Actions Bar */}
+              {selectedApplicants.length > 0 && (
+                <div className="mb-4 flex items-center justify-between rounded-lg bg-brand-50 px-4 py-3 dark:bg-brand-900/20">
+                  <span className="text-sm font-medium text-brand-700 dark:text-brand-300">
+                    {selectedApplicants.length} applicant(s) selected
+                  </span>
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={bulkAction}
+                        onChange={(e) => setBulkAction(e.target.value)}
+                        className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+                      >
+                        <option value="">Select Status</option>
+                        <option value="pending">Pending</option>
+                        <option value="approved">Approved</option>
+                        <option value="interview">Interview</option>
+                        <option value="rejected">Rejected</option>
+                      </select>
+                      <button
+                        onClick={handleBulkChangeStatus}
+                        disabled={isProcessing || !bulkAction}
+                        className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {isProcessing ? "Changing..." : "Change Status"}
+                      </button>
+                    </div>
+                    <button
+                      onClick={handleBulkDelete}
+                      disabled={isDeleting}
+                      className="inline-flex items-center gap-2 rounded-lg bg-red-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <TrashBinIcon className="h-4 w-4" />
+                      {isDeleting ? "Deleting..." : "Delete"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {error && (
+                <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg">
+                  {String(error)}
+                </div>
+              )}
+
+              {applicantsLoading || jobPositionsLoading ? (
+                <LoadingSpinner message="Loading applicants..." />
+              ) : (
+                <>
+                  {/* Status Filter */}
+                  <div className="mb-6 flex flex-wrap gap-2">
+                    <button
+                      onClick={() => setStatusFilter("all")}
+                      className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                        statusFilter === "all"
+                          ? "bg-brand-500 text-white"
+                          : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                      }`}
+                    >
+                      View All
+                    </button>
+                    <button
+                      onClick={() => setStatusFilter("pending")}
+                      className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                        statusFilter === "pending"
+                          ? "bg-yellow-500 text-white"
+                          : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                      }`}
+                    >
+                      Pending
+                    </button>
+                    <button
+                      onClick={() => setStatusFilter("approved")}
+                      className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                        statusFilter === "approved"
+                          ? "bg-green-500 text-white"
+                          : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                      }`}
+                    >
+                      Approved
+                    </button>
+                    <button
+                      onClick={() => setStatusFilter("interview")}
+                      className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                        statusFilter === "interview"
+                          ? "bg-blue-500 text-white"
+                          : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                      }`}
+                    >
+                      Interview
+                    </button>
+                    <button
+                      onClick={() => setStatusFilter("rejected")}
+                      className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                        statusFilter === "rejected"
+                          ? "bg-red-500 text-white"
+                          : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                      }`}
+                    >
+                      Rejected
+                    </button>
+                    <button
+                      onClick={() => setStatusFilter("trashed")}
+                      className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                        statusFilter === "trashed"
+                          ? "bg-gray-500 text-white"
+                          : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                      }`}
+                    >
+                      Trashed
+                    </button>
+                  </div>
+
+                  {/* Grouped Applicants by Job */}
+                  <div className="space-y-4">
+                    {filteredGroups.map((group) => (
+                      <div
+                        key={group.jobPositionId}
+                        className="rounded-lg border border-stroke dark:border-strokedark"
+                      >
+                        {/* Job Title Header - Clickable */}
+                        <button
+                          onClick={() => toggleJobExpand(group.jobPositionId)}
+                          className="flex w-full items-center justify-between bg-gray-50 px-6 py-4 text-left transition hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700"
+                        >
+                          <div>
+                            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                              {group.jobTitle}
+                            </h3>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">
+                              {group.applicants.length} applicant
+                              {group.applicants.length !== 1 ? "s" : ""}
+                            </p>
+                          </div>
+                          <svg
+                            className={`h-5 w-5 transition-transform ${
+                              expandedJobs.includes(group.jobPositionId)
+                                ? "rotate-180"
+                                : ""
+                            }`}
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M19 9l-7 7-7-7"
+                            />
+                          </svg>
+                        </button>
+
+                        {/* Applicants Table - Expandable */}
+                        {expandedJobs.includes(group.jobPositionId) && (
+                          <div className="overflow-x-auto">
+                            <Table>
+                              <TableHeader className="bg-gray-50 dark:bg-gray-800">
+                                <TableRow>
+                                  <TableCell
+                                    isHeader
+                                    className="px-4 py-3 align-middle text-left font-semibold w-12"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={group.applicants.every((app) =>
+                                        selectedApplicants.includes(app._id)
+                                      )}
+                                      onChange={() =>
+                                        handleSelectAll(group.applicants)
+                                      }
+                                      className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500 dark:border-gray-600 dark:bg-gray-700"
+                                    />
+                                  </TableCell>
+                                  <TableCell
+                                    isHeader
+                                    className="px-4 py-3 align-middle text-left font-semibold"
+                                  >
+                                    Photo
+                                  </TableCell>
+                                  <TableCell
+                                    isHeader
+                                    className="px-4 py-3 align-middle text-left font-semibold"
+                                  >
+                                    Name
+                                  </TableCell>
+                                  <TableCell
+                                    isHeader
+                                    className="px-4 py-3 align-middle text-left font-semibold"
+                                  >
+                                    Email
+                                  </TableCell>
+                                  <TableCell
+                                    isHeader
+                                    className="px-4 py-3 align-middle text-left font-semibold"
+                                  >
+                                    Phone
+                                  </TableCell>
+                                  <TableCell
+                                    isHeader
+                                    className="px-4 py-3 align-middle text-left font-semibold"
+                                  >
+                                    Status
+                                  </TableCell>
+                                  <TableCell
+                                    isHeader
+                                    className="px-4 py-3 align-middle text-left font-semibold"
+                                  >
+                                    Submitted
+                                  </TableCell>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {group.applicants.map((applicant) => (
+                                  <ApplicantRow
+                                    key={applicant._id}
+                                    applicant={applicant}
+                                    isSelected={selectedApplicants.includes(
+                                      applicant._id
+                                    )}
+                                    onSelect={handleSelectApplicant}
+                                    onNavigate={handleNavigate}
+                                    onPhotoPreview={handlePhotoPreview}
+                                    getStatusColor={getStatusColor}
+                                    formatDate={formatDate}
+                                  />
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+
+                    {filteredGroups.length === 0 && (
+                      <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-6 py-12 text-center dark:border-gray-700 dark:bg-gray-800/30">
+                        <p className="text-gray-500 dark:text-gray-400">
+                          No applicants found for the selected status.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </>
+          </ComponentCard>
+        </div>
+      )}
 
       {/* Photo Preview Modal */}
       {previewPhoto && (

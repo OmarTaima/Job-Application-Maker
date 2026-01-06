@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import Swal from "sweetalert2";
 import { useParams, useNavigate } from "react-router";
 import ComponentCard from "../../components/common/ComponentCard";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
@@ -11,15 +12,120 @@ import Select from "../../components/form/Select";
 import DatePicker from "../../components/form/date-picker";
 import { Modal } from "../../components/ui/modal";
 import { PlusIcon } from "../../icons";
-import { applicantsService, ApiError } from "../../services/applicantsService";
-import type { Applicant } from "../../services/applicantsService";
-import { jobPositionsService } from "../../services/jobPositionsService";
-import { companiesService } from "../../services/companiesService";
-import { departmentsService } from "../../services/departmentsService";
+import { useAuth } from "../../context/AuthContext";
+import {
+  useApplicant,
+  useJobPositions,
+  useCompanies,
+  useDepartments,
+  useUpdateApplicantStatus,
+  useScheduleInterview,
+  useAddComment,
+  useSendMessage,
+} from "../../hooks/queries";
+import type { Applicant } from "../../store/slices/applicantsSlice";
 
 const ApplicantData = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const {} = useAuth();
+
+  // React Query hooks - data fetching happens automatically
+  const { data: applicant, isLoading: loading, error } = useApplicant(id || "");
+  const { data: jobPositions = [] } = useJobPositions();
+  const { data: companies = [] } = useCompanies();
+  const { data: departments = [] } = useDepartments();
+
+  // Mutations
+  const updateStatusMutation = useUpdateApplicantStatus();
+  const scheduleInterviewMutation = useScheduleInterview();
+  const addCommentMutation = useAddComment();
+  const sendMessageMutation = useSendMessage();
+
+  // Derived data - handle both string IDs and populated objects
+  const getJobTitle = () => {
+    if (!applicant) return "";
+    // If jobPositionId is populated object, use its title directly
+    if (
+      typeof applicant.jobPositionId === "object" &&
+      (applicant.jobPositionId as any)?.title
+    ) {
+      return (applicant.jobPositionId as any).title;
+    }
+    // Otherwise look it up
+    const jobPosId =
+      typeof applicant.jobPositionId === "string"
+        ? applicant.jobPositionId
+        : (applicant.jobPositionId as any)?._id;
+    return jobPositions.find((j) => j._id === jobPosId)?.title || "";
+  };
+
+  const getCompanyName = () => {
+    if (!applicant) return "";
+    // Company info is nested in jobPositionId when populated
+    if (typeof applicant.jobPositionId === "object") {
+      const jobPos = applicant.jobPositionId as any;
+      if (typeof jobPos.companyId === "object" && jobPos.companyId?.name) {
+        return jobPos.companyId.name;
+      }
+      // Try to look up using the ID from jobPosition
+      const compId =
+        typeof jobPos.companyId === "string"
+          ? jobPos.companyId
+          : jobPos.companyId?._id;
+      const found = companies.find((c) => c._id === compId);
+      if (found) return found.name;
+    }
+    // Fallback to direct companyId if exists
+    if (
+      typeof applicant.companyId === "object" &&
+      (applicant.companyId as any)?.name
+    ) {
+      return (applicant.companyId as any).name;
+    }
+    const compId =
+      typeof applicant.companyId === "string"
+        ? applicant.companyId
+        : (applicant.companyId as any)?._id;
+    return companies.find((c) => c._id === compId)?.name || "";
+  };
+
+  const getDepartmentName = () => {
+    if (!applicant) return "";
+    // Department info is nested in jobPositionId when populated
+    if (typeof applicant.jobPositionId === "object") {
+      const jobPos = applicant.jobPositionId as any;
+      if (
+        typeof jobPos.departmentId === "object" &&
+        jobPos.departmentId?.name
+      ) {
+        return jobPos.departmentId.name;
+      }
+      // Try to look up using the ID from jobPosition
+      const deptId =
+        typeof jobPos.departmentId === "string"
+          ? jobPos.departmentId
+          : jobPos.departmentId?._id;
+      const found = departments.find((d) => d._id === deptId);
+      if (found) return found.name;
+    }
+    // Fallback to direct departmentId if exists
+    if (
+      typeof applicant.departmentId === "object" &&
+      (applicant.departmentId as any)?.name
+    ) {
+      return (applicant.departmentId as any).name;
+    }
+    const deptId =
+      typeof applicant.departmentId === "string"
+        ? applicant.departmentId
+        : (applicant.departmentId as any)?._id;
+    return departments.find((d) => d._id === deptId)?.name || "";
+  };
+
+  const jobTitle = getJobTitle();
+  const companyName = getCompanyName();
+  const departmentName = getDepartmentName();
 
   // Modal states
   const [showInterviewModal, setShowInterviewModal] = useState(false);
@@ -27,14 +133,6 @@ const ApplicantData = () => {
   const [showCommentModal, setShowCommentModal] = useState(false);
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [expandedHistory, setExpandedHistory] = useState<string | null>(null);
-
-  // Data states
-  const [applicant, setApplicant] = useState<Applicant | null>(null);
-  const [jobTitle, setJobTitle] = useState<string>("");
-  const [companyName, setCompanyName] = useState<string>("");
-  const [departmentName, setDepartmentName] = useState<string>("");
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   // Form states
   const [interviewForm, setInterviewForm] = useState({
@@ -60,6 +158,9 @@ const ApplicantData = () => {
   >("company");
   const [customPhone, setCustomPhone] = useState("");
   const [isSubmittingInterview, setIsSubmittingInterview] = useState(false);
+  const [isSubmittingMessage, setIsSubmittingMessage] = useState(false);
+  const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+  const [isSubmittingStatus, setIsSubmittingStatus] = useState(false);
   const [messageForm, setMessageForm] = useState({
     subject: "",
     body: "",
@@ -72,58 +173,44 @@ const ApplicantData = () => {
     status: "" as Applicant["status"] | "",
     notes: "",
   });
+  const [interviewError, setInterviewError] = useState("");
+  const [messageError, setMessageError] = useState("");
+  const [commentError, setCommentError] = useState("");
+  const [statusError, setStatusError] = useState("");
 
-  useEffect(() => {
-    if (id) {
-      loadApplicantData(id);
+  // Helper function to extract detailed error messages
+  const getErrorMessage = (err: any): string => {
+    // Check for validation errors in 'details' array (new format)
+    if (
+      err.response?.data?.details &&
+      Array.isArray(err.response.data.details)
+    ) {
+      return err.response.data.details
+        .map((detail: any) => {
+          const field = detail.path?.[0] || "";
+          const message = detail.message || "";
+          return field ? `${field}: ${message}` : message;
+        })
+        .join(", ");
     }
-  }, [id]);
-
-  const loadApplicantData = async (applicantId: string) => {
-    try {
-      setLoading(true);
-      const data = await applicantsService.getApplicantById(applicantId);
-      setApplicant(data);
-
-      // Handle populated vs string IDs
-      let jobPosition: any;
-      if (typeof data.jobPositionId === "string") {
-        jobPosition = await jobPositionsService.getJobPositionById(
-          data.jobPositionId
-        );
-      } else {
-        jobPosition = data.jobPositionId;
+    // Check for validation errors in 'errors' array (old format)
+    if (err.response?.data?.errors) {
+      const errors = err.response.data.errors;
+      if (Array.isArray(errors)) {
+        return errors.map((e: any) => e.msg || e.message).join(", ");
       }
-
-      let company: any;
-      if (typeof jobPosition.companyId === "string") {
-        company = await companiesService.getCompanyById(jobPosition.companyId);
-      } else {
-        company = jobPosition.companyId;
+      if (typeof errors === "object") {
+        return Object.entries(errors)
+          .map(([field, msg]) => `${field}: ${msg}`)
+          .join(", ");
       }
-
-      let department: any;
-      if (typeof jobPosition.departmentId === "string") {
-        department = await departmentsService.getDepartmentById(
-          jobPosition.departmentId
-        );
-      } else {
-        department = jobPosition.departmentId;
-      }
-
-      setJobTitle(jobPosition?.title || "Unknown Job");
-      setCompanyName(company?.name || "Unknown Company");
-      setDepartmentName(department?.name || "Unknown Department");
-      setError(null);
-    } catch (err) {
-      const errorMessage =
-        err instanceof ApiError ? err.message : "Failed to load applicant data";
-      setError(errorMessage);
-      console.error("Error loading applicant:", err);
-    } finally {
-      setLoading(false);
     }
+    if (err.response?.data?.message) return err.response.data.message;
+    if (err.message) return err.message;
+    return "An unexpected error occurred";
   };
+
+  // React Query automatically handles data fetching, no useEffect needed
 
   const statusOptions = [
     { value: "applied", label: "Applied" },
@@ -139,13 +226,13 @@ const ApplicantData = () => {
 
     // Validate required comment field
     if (!interviewForm.comment || !interviewForm.comment.trim()) {
-      alert("Comment is required when scheduling an interview");
+      setInterviewError("Comment is required when scheduling an interview");
       return;
     }
 
     // Validate notification options
     if (emailOption === "custom" && !customEmail.trim()) {
-      alert("Please provide a custom email address");
+      setInterviewError("Please provide a custom email address");
       return;
     }
     if (
@@ -153,7 +240,7 @@ const ApplicantData = () => {
       phoneOption === "custom" &&
       !customPhone.trim()
     ) {
-      alert("Please provide a custom phone number");
+      setInterviewError("Please provide a custom phone number");
       return;
     }
 
@@ -192,17 +279,8 @@ const ApplicantData = () => {
       };
 
       // Schedule interview
-      await applicantsService.scheduleInterview(id, interviewData);
-
-      // Automatically update status to "under_review" if not already
-      if (applicant.status !== "under_review") {
-        await applicantsService.updateApplicantStatus(id, {
-          status: "under_review",
-          notes: `Status automatically updated to under_review upon scheduling an interview on ${new Date().toLocaleDateString()}`,
-        });
-      }
-
-      await loadApplicantData(id);
+      // Optimistic update - add to UI immediately
+      // Close modal and reset form immediately
       setInterviewForm({
         date: "",
         time: "",
@@ -218,10 +296,34 @@ const ApplicantData = () => {
       setPhoneOption("company");
       setCustomPhone("");
       setShowInterviewModal(false);
-    } catch (err) {
-      const errorMessage =
-        err instanceof ApiError ? err.message : "Failed to schedule interview";
-      alert(errorMessage);
+
+      // API calls
+      await scheduleInterviewMutation.mutateAsync({
+        id: id!,
+        data: interviewData,
+      });
+
+      // Automatically update status to "under_review" if not already
+      if (applicant && applicant.status !== "under_review") {
+        await updateStatusMutation.mutateAsync({
+          id: id!,
+          data: {
+            status: "under_review",
+            notes: `Status automatically updated to under_review upon scheduling an interview on ${new Date().toLocaleDateString()}`,
+          },
+        });
+      }
+
+      await Swal.fire({
+        title: "Success!",
+        text: "Interview scheduled successfully.",
+        icon: "success",
+        timer: 2000,
+        showConfirmButton: false,
+      });
+    } catch (err: any) {
+      const errorMsg = getErrorMessage(err);
+      setInterviewError(errorMsg);
       console.error("Error scheduling interview:", err);
     } finally {
       setIsSubmittingInterview(false);
@@ -237,14 +339,15 @@ const ApplicantData = () => {
       messageForm.type === "email" &&
       (!messageForm.subject || !messageForm.subject.trim())
     ) {
-      alert("Subject is required when sending an email");
+      setMessageError("Subject is required when sending an email");
       return;
     }
     if (!messageForm.body || !messageForm.body.trim()) {
-      alert("Message body is required when sending a message");
+      setMessageError("Message body is required when sending a message");
       return;
     }
 
+    setIsSubmittingMessage(true);
     try {
       const messageData: any = {
         content: messageForm.body,
@@ -256,15 +359,26 @@ const ApplicantData = () => {
         messageData.subject = messageForm.subject;
       }
 
-      await applicantsService.sendMessage(id, messageData);
-      await loadApplicantData(id);
+      // Close modal and reset form immediately
       setMessageForm({ subject: "", body: "", type: "email" });
       setShowMessageModal(false);
-    } catch (err) {
-      const errorMessage =
-        err instanceof ApiError ? err.message : "Failed to send message";
-      alert(errorMessage);
+
+      // API call
+      await sendMessageMutation.mutateAsync({ id: id!, data: messageData });
+
+      await Swal.fire({
+        title: "Success!",
+        text: "Message sent successfully.",
+        icon: "success",
+        timer: 2000,
+        showConfirmButton: false,
+      });
+    } catch (err: any) {
+      const errorMsg = getErrorMessage(err);
+      setMessageError(errorMsg);
       console.error("Error sending message:", err);
+    } finally {
+      setIsSubmittingMessage(false);
     }
   };
 
@@ -272,20 +386,34 @@ const ApplicantData = () => {
     e.preventDefault();
     if (!id || !applicant) return;
 
+    setIsSubmittingComment(true);
     try {
       const commentData = {
         comment: commentForm.text,
+        changedBy: "current-user",
+        changedAt: new Date().toISOString(),
       };
 
-      await applicantsService.addComment(id, commentData);
-      await loadApplicantData(id);
+      // Close modal and reset form immediately
       setCommentForm({ text: "" });
       setShowCommentModal(false);
-    } catch (err) {
-      const errorMessage =
-        err instanceof ApiError ? err.message : "Failed to add comment";
-      alert(errorMessage);
+
+      // API call
+      await addCommentMutation.mutateAsync({ id: id!, data: commentData });
+
+      await Swal.fire({
+        title: "Success!",
+        text: "Comment added successfully.",
+        icon: "success",
+        timer: 2000,
+        showConfirmButton: false,
+      });
+    } catch (err: any) {
+      const errorMsg = getErrorMessage(err);
+      setCommentError(errorMsg);
       console.error("Error adding comment:", err);
+    } finally {
+      setIsSubmittingComment(false);
     }
   };
 
@@ -293,21 +421,48 @@ const ApplicantData = () => {
     e.preventDefault();
     if (!id || !applicant || !statusForm.status) return;
 
+    setIsSubmittingStatus(true);
     try {
-      const statusData = {
-        status: statusForm.status,
+      const statusData: {
+        status:
+          | "applied"
+          | "under_review"
+          | "interviewed"
+          | "accepted"
+          | "rejected"
+          | "trashed";
+        notes?: string;
+      } = {
+        status: statusForm.status as
+          | "applied"
+          | "under_review"
+          | "interviewed"
+          | "accepted"
+          | "rejected"
+          | "trashed",
         notes: statusForm.notes || undefined,
       };
 
-      await applicantsService.updateApplicantStatus(id, statusData);
-      await loadApplicantData(id);
+      // Close modal and reset form immediately
       setStatusForm({ status: "", notes: "" });
       setShowStatusModal(false);
-    } catch (err) {
-      const errorMessage =
-        err instanceof ApiError ? err.message : "Failed to update status";
-      alert(errorMessage);
+
+      // Update status via React Query mutation
+      await updateStatusMutation.mutateAsync({ id: id!, data: statusData });
+
+      await Swal.fire({
+        title: "Success!",
+        text: "Status updated successfully.",
+        icon: "success",
+        timer: 2000,
+        showConfirmButton: false,
+      });
+    } catch (err: any) {
+      const errorMsg = getErrorMessage(err);
+      setStatusError(errorMsg);
       console.error("Error updating status:", err);
+    } finally {
+      setIsSubmittingStatus(false);
     }
   };
 
@@ -350,7 +505,7 @@ const ApplicantData = () => {
         />
         <div className="p-12 text-center">
           <div className="mb-4 text-red-600 dark:text-red-400">
-            {error || "Applicant not found"}
+            {error instanceof Error ? error.message : "Applicant not found"}
           </div>
           <button
             onClick={() => navigate("/applicants")}
@@ -955,7 +1110,10 @@ const ApplicantData = () => {
       {/* Interview Modal */}
       <Modal
         isOpen={showInterviewModal}
-        onClose={() => setShowInterviewModal(false)}
+        onClose={() => {
+          setShowInterviewModal(false);
+          setInterviewError("");
+        }}
         className="max-w-[1100px] p-6 lg:p-10"
         closeOnBackdrop={false}
       >
@@ -971,6 +1129,23 @@ const ApplicantData = () => {
               Set up an interview and choose notification preferences
             </p>
           </div>
+
+          {interviewError && (
+            <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+              <div className="flex items-start justify-between">
+                <p className="text-sm text-red-600 dark:text-red-400">
+                  <strong>Error:</strong> {interviewError}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setInterviewError("")}
+                  className="ml-3 text-red-400 hover:text-red-600 dark:hover:text-red-300"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="mt-6 space-y-4">
             {/* Date, Time, and Type Grid */}
@@ -1326,7 +1501,10 @@ const ApplicantData = () => {
       {/* Message Modal */}
       <Modal
         isOpen={showMessageModal}
-        onClose={() => setShowMessageModal(false)}
+        onClose={() => {
+          setShowMessageModal(false);
+          setMessageError("");
+        }}
         className="max-w-2xl p-6"
         closeOnBackdrop={false}
       >
@@ -1334,6 +1512,23 @@ const ApplicantData = () => {
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
             Send Message
           </h2>
+
+          {messageError && (
+            <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+              <div className="flex items-start justify-between">
+                <p className="text-sm text-red-600 dark:text-red-400">
+                  <strong>Error:</strong> {messageError}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setMessageError("")}
+                  className="ml-3 text-red-400 hover:text-red-600 dark:hover:text-red-300"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          )}
 
           <div>
             <Label htmlFor="message-type">Message Type</Label>
@@ -1388,14 +1583,42 @@ const ApplicantData = () => {
               type="button"
               onClick={() => setShowMessageModal(false)}
               className="rounded-lg border border-stroke px-6 py-2 hover:bg-gray-100 dark:border-strokedark dark:hover:bg-gray-800"
+              disabled={isSubmittingMessage}
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="rounded-lg bg-purple-600 px-6 py-2 text-white hover:bg-purple-700"
+              className="rounded-lg bg-purple-600 px-6 py-2 text-white hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              disabled={isSubmittingMessage}
             >
-              Send Message
+              {isSubmittingMessage ? (
+                <>
+                  <svg
+                    className="animate-spin h-5 w-5"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    ></circle>
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    ></path>
+                  </svg>
+                  <span>Sending...</span>
+                </>
+              ) : (
+                <span>Send Message</span>
+              )}
             </button>
           </div>
         </form>
@@ -1404,7 +1627,10 @@ const ApplicantData = () => {
       {/* Comment Modal */}
       <Modal
         isOpen={showCommentModal}
-        onClose={() => setShowCommentModal(false)}
+        onClose={() => {
+          setShowCommentModal(false);
+          setCommentError("");
+        }}
         className="max-w-2xl p-6"
         closeOnBackdrop={false}
       >
@@ -1412,6 +1638,23 @@ const ApplicantData = () => {
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
             Add Comment
           </h2>
+
+          {commentError && (
+            <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+              <div className="flex items-start justify-between">
+                <p className="text-sm text-red-600 dark:text-red-400">
+                  <strong>Error:</strong> {commentError}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setCommentError("")}
+                  className="ml-3 text-red-400 hover:text-red-600 dark:hover:text-red-300"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          )}
 
           <div>
             <Label htmlFor="comment-text">Comment</Label>
@@ -1428,14 +1671,42 @@ const ApplicantData = () => {
               type="button"
               onClick={() => setShowCommentModal(false)}
               className="rounded-lg border border-stroke px-6 py-2 hover:bg-gray-100 dark:border-strokedark dark:hover:bg-gray-800"
+              disabled={isSubmittingComment}
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="rounded-lg bg-gray-600 px-6 py-2 text-white hover:bg-gray-700"
+              className="rounded-lg bg-gray-600 px-6 py-2 text-white hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              disabled={isSubmittingComment}
             >
-              Add Comment
+              {isSubmittingComment ? (
+                <>
+                  <svg
+                    className="animate-spin h-5 w-5"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    ></circle>
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    ></path>
+                  </svg>
+                  <span>Adding...</span>
+                </>
+              ) : (
+                <span>Add Comment</span>
+              )}
             </button>
           </div>
         </form>
@@ -1444,7 +1715,10 @@ const ApplicantData = () => {
       {/* Status Change Modal */}
       <Modal
         isOpen={showStatusModal}
-        onClose={() => setShowStatusModal(false)}
+        onClose={() => {
+          setShowStatusModal(false);
+          setStatusError("");
+        }}
         className="max-w-2xl p-6"
         closeOnBackdrop={false}
       >
@@ -1452,6 +1726,23 @@ const ApplicantData = () => {
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
             Change Status
           </h2>
+
+          {statusError && (
+            <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+              <div className="flex items-start justify-between">
+                <p className="text-sm text-red-600 dark:text-red-400">
+                  <strong>Error:</strong> {statusError}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setStatusError("")}
+                  className="ml-3 text-red-400 hover:text-red-600 dark:hover:text-red-300"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          )}
 
           <div>
             <Label htmlFor="status-select">New Status</Label>
@@ -1484,14 +1775,42 @@ const ApplicantData = () => {
               type="button"
               onClick={() => setShowStatusModal(false)}
               className="rounded-lg border border-stroke px-6 py-2 hover:bg-gray-100 dark:border-strokedark dark:hover:bg-gray-800"
+              disabled={isSubmittingStatus}
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="rounded-lg bg-green-600 px-6 py-2 text-white hover:bg-green-700"
+              className="rounded-lg bg-green-600 px-6 py-2 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              disabled={isSubmittingStatus}
             >
-              Update Status
+              {isSubmittingStatus ? (
+                <>
+                  <svg
+                    className="animate-spin h-5 w-5"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    ></circle>
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    ></path>
+                  </svg>
+                  <span>Updating...</span>
+                </>
+              ) : (
+                <span>Update Status</span>
+              )}
             </button>
           </div>
         </form>

@@ -2,9 +2,7 @@ import { Navigate, Outlet } from "react-router";
 import { useAuth } from "../../context/AuthContext";
 
 export default function ProtectedRoute() {
-  const { isAuthenticated, isLoading, user } = useAuth();
-
-  console.log("ProtectedRoute check:", { isAuthenticated, isLoading, user });
+  const { isAuthenticated, isLoading } = useAuth();
 
   if (isLoading) {
     return (
@@ -18,10 +16,8 @@ export default function ProtectedRoute() {
   }
 
   if (!isAuthenticated) {
-    console.log("Not authenticated, redirecting to signin");
     return <Navigate to="/signin" replace />;
   }
 
-  console.log("Authenticated, rendering protected content");
   return <Outlet />;
 }

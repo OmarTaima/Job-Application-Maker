@@ -1,4 +1,4 @@
-import { API_CONFIG, tokenStorage } from "../config/api";
+import axios from "../config/axios";
 
 // Types
 export interface User {
@@ -78,140 +78,81 @@ export class ApiError extends Error {
   }
 }
 
-// Helper function to make authenticated requests
-async function fetchWithAuth(
-  endpoint: string,
-  options: RequestInit = {}
-): Promise<Response> {
-  const token = tokenStorage.getAccessToken();
-  const headers: HeadersInit = {
-    "Content-Type": "application/json",
-    ...(token && { Authorization: `Bearer ${token}` }),
-    ...options.headers,
-  };
-
-  const response = await fetch(`${API_CONFIG.baseUrl}${endpoint}`, {
-    ...options,
-    headers,
-  });
-
-  return response;
-}
-
 // Users API service
 export const usersService = {
   // Get all users
-  async getAllUsers(): Promise<User[]> {
+  async getAllUsers(companyIds?: string[]): Promise<User[]> {
     try {
-      const response = await fetchWithAuth("/users");
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new ApiError(
-          errorData.message || "Failed to fetch users",
-          response.status,
-          errorData.details
-        );
-      }
-
-      const data: UsersResponse = await response.json();
-      return data.data;
-    } catch (error) {
-      if (error instanceof ApiError) throw error;
-      throw new ApiError("Network error while fetching users");
+      const params =
+        companyIds && companyIds.length > 0
+          ? { companyIds: companyIds.join(",") }
+          : {};
+      const response = await axios.get<UsersResponse>("/users", { params });
+      return response.data.data;
+    } catch (error: any) {
+      throw new ApiError(
+        error.response?.data?.message || "Failed to fetch users",
+        error.response?.status,
+        error.response?.data?.details
+      );
     }
   },
 
   // Get user by ID
   async getUserById(userId: string): Promise<User> {
     try {
-      const response = await fetchWithAuth(`/users/${userId}`);
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new ApiError(
-          errorData.message || "Failed to fetch user",
-          response.status,
-          errorData.details
-        );
-      }
-
-      const data: UserResponse = await response.json();
-      return data.data;
-    } catch (error) {
-      if (error instanceof ApiError) throw error;
-      throw new ApiError("Network error while fetching user");
+      const response = await axios.get<UserResponse>(`/users/${userId}`);
+      return response.data.data;
+    } catch (error: any) {
+      throw new ApiError(
+        error.response?.data?.message || "Failed to fetch user",
+        error.response?.status,
+        error.response?.data?.details
+      );
     }
   },
 
   // Create user
   async createUser(userData: CreateUserRequest): Promise<User> {
     try {
-      const response = await fetchWithAuth("/users", {
-        method: "POST",
-        body: JSON.stringify(userData),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new ApiError(
-          errorData.message || "Failed to create user",
-          response.status,
-          errorData.details
-        );
-      }
-
-      const data: UserResponse = await response.json();
-      return data.data;
-    } catch (error) {
-      if (error instanceof ApiError) throw error;
-      throw new ApiError("Network error while creating user");
+      const response = await axios.post<UserResponse>("/users", userData);
+      return response.data.data;
+    } catch (error: any) {
+      throw new ApiError(
+        error.response?.data?.message || "Failed to create user",
+        error.response?.status,
+        error.response?.data?.details
+      );
     }
   },
 
   // Update user
   async updateUser(userId: string, userData: UpdateUserRequest): Promise<User> {
     try {
-      const response = await fetchWithAuth(`/users/${userId}`, {
-        method: "PUT",
-        body: JSON.stringify(userData),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new ApiError(
-          errorData.message || "Failed to update user",
-          response.status,
-          errorData.details
-        );
-      }
-
-      const data: UserResponse = await response.json();
-      return data.data;
-    } catch (error) {
-      if (error instanceof ApiError) throw error;
-      throw new ApiError("Network error while updating user");
+      const response = await axios.put<UserResponse>(
+        `/users/${userId}`,
+        userData
+      );
+      return response.data.data;
+    } catch (error: any) {
+      throw new ApiError(
+        error.response?.data?.message || "Failed to update user",
+        error.response?.status,
+        error.response?.data?.details
+      );
     }
   },
 
   // Delete user
   async deleteUser(userId: string): Promise<void> {
     try {
-      const response = await fetchWithAuth(`/users/${userId}`, {
-        method: "DELETE",
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new ApiError(
-          errorData.message || "Failed to delete user",
-          response.status,
-          errorData.details
-        );
-      }
-    } catch (error) {
-      if (error instanceof ApiError) throw error;
-      throw new ApiError("Network error while deleting user");
+      await axios.delete(`/users/${userId}`);
+    } catch (error: any) {
+      throw new ApiError(
+        error.response?.data?.message || "Failed to delete user",
+        error.response?.status,
+        error.response?.data?.details
+      );
     }
   },
 
@@ -221,25 +162,17 @@ export const usersService = {
     companyData: AddCompanyAccessRequest
   ): Promise<User> {
     try {
-      const response = await fetchWithAuth(`/users/${userId}/companies`, {
-        method: "POST",
-        body: JSON.stringify(companyData),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new ApiError(
-          errorData.message || "Failed to add company access",
-          response.status,
-          errorData.details
-        );
-      }
-
-      const data: UserResponse = await response.json();
-      return data.data;
-    } catch (error) {
-      if (error instanceof ApiError) throw error;
-      throw new ApiError("Network error while adding company access");
+      const response = await axios.post<UserResponse>(
+        `/users/${userId}/companies`,
+        companyData
+      );
+      return response.data.data;
+    } catch (error: any) {
+      throw new ApiError(
+        error.response?.data?.message || "Failed to add company access",
+        error.response?.status,
+        error.response?.data?.details
+      );
     }
   },
 
@@ -250,52 +183,30 @@ export const usersService = {
     departmentsData: UpdateDepartmentsRequest
   ): Promise<User> {
     try {
-      const response = await fetchWithAuth(
+      const response = await axios.put<UserResponse>(
         `/users/${userId}/companies/${companyId}/departments`,
-        {
-          method: "PUT",
-          body: JSON.stringify(departmentsData),
-        }
+        departmentsData
       );
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new ApiError(
-          errorData.message || "Failed to update departments",
-          response.status,
-          errorData.details
-        );
-      }
-
-      const data: UserResponse = await response.json();
-      return data.data;
-    } catch (error) {
-      if (error instanceof ApiError) throw error;
-      throw new ApiError("Network error while updating departments");
+      return response.data.data;
+    } catch (error: any) {
+      throw new ApiError(
+        error.response?.data?.message || "Failed to update departments",
+        error.response?.status,
+        error.response?.data?.details
+      );
     }
   },
 
   // Remove company access
   async removeCompanyAccess(userId: string, companyId: string): Promise<void> {
     try {
-      const response = await fetchWithAuth(
-        `/users/${userId}/companies/${companyId}`,
-        {
-          method: "DELETE",
-        }
+      await axios.delete(`/users/${userId}/companies/${companyId}`);
+    } catch (error: any) {
+      throw new ApiError(
+        error.response?.data?.message || "Failed to remove company access",
+        error.response?.status,
+        error.response?.data?.details
       );
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new ApiError(
-          errorData.message || "Failed to remove company access",
-          response.status,
-          errorData.details
-        );
-      }
-    } catch (error) {
-      if (error instanceof ApiError) throw error;
-      throw new ApiError("Network error while removing company access");
     }
   },
 };

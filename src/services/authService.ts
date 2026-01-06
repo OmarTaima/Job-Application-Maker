@@ -15,11 +15,28 @@ export interface RegisterRequest {
 }
 
 export interface User {
-  id: string;
+  _id?: string;
+  id?: string;
   email: string;
+  fullName?: string;
   name?: string;
+  roleId?: {
+    _id: string;
+    name: string;
+  };
   role?: "admin" | "company_user";
   assignedCompanyIds?: string[];
+  companies?: Array<{
+    _id?: string;
+    companyId: {
+      _id: string;
+      name: string;
+    };
+    departments?: Array<{
+      _id: string;
+      name: string;
+    }>;
+  }>;
 }
 
 export interface AuthResponse {

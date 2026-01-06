@@ -1,4 +1,4 @@
-import { API_CONFIG, tokenStorage } from "../config/api";
+import axios from "../config/axios";
 
 export class ApiError extends Error {
   constructor(
@@ -9,26 +9,6 @@ export class ApiError extends Error {
     super(message);
     this.name = "ApiError";
   }
-}
-
-// Helper function to make authenticated requests
-async function fetchWithAuth(
-  endpoint: string,
-  options: RequestInit = {}
-): Promise<Response> {
-  const token = tokenStorage.getAccessToken();
-  const headers: HeadersInit = {
-    "Content-Type": "application/json",
-    ...(token && { Authorization: `Bearer ${token}` }),
-    ...options.headers,
-  };
-
-  const response = await fetch(`${API_CONFIG.baseUrl}${endpoint}`, {
-    ...options,
-    headers,
-  });
-
-  return response;
 }
 
 export type Interview = {
@@ -164,7 +144,7 @@ export type UpdateStatusRequest = {
 };
 
 export type ScheduleInterviewRequest = {
-  date: string;
+  date?: string;
   time?: string;
   description: string;
   comment?: string;
@@ -192,24 +172,17 @@ class ApplicantsService {
   /**
    * Get all applicants
    */
-  async getAllApplicants(): Promise<Applicant[]> {
+  async getAllApplicants(companyId?: string): Promise<Applicant[]> {
     try {
-      const response = await fetchWithAuth("/applicants");
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new ApiError(
-          errorData.message || "Failed to fetch applicants",
-          response.status,
-          errorData.details
-        );
-      }
-
-      const data = await response.json();
-      return data.data;
-    } catch (error) {
-      if (error instanceof ApiError) throw error;
-      throw new ApiError("Network error while fetching applicants");
+      const params = companyId ? { companyId } : {};
+      const response = await axios.get("/applicants", { params });
+      return response.data.data;
+    } catch (error: any) {
+      throw new ApiError(
+        error.response?.data?.message || "Failed to fetch applicants",
+        error.response?.status,
+        error.response?.data?.details
+      );
     }
   }
 
@@ -218,22 +191,14 @@ class ApplicantsService {
    */
   async getApplicantById(applicantId: string): Promise<Applicant> {
     try {
-      const response = await fetchWithAuth(`/applicants/${applicantId}`);
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new ApiError(
-          errorData.message || "Failed to fetch applicant",
-          response.status,
-          errorData.details
-        );
-      }
-
-      const data = await response.json();
-      return data.data;
-    } catch (error) {
-      if (error instanceof ApiError) throw error;
-      throw new ApiError("Network error while fetching applicant");
+      const response = await axios.get(`/applicants/${applicantId}`);
+      return response.data.data;
+    } catch (error: any) {
+      throw new ApiError(
+        error.response?.data?.message || "Failed to fetch applicant",
+        error.response?.status,
+        error.response?.data?.details
+      );
     }
   }
 
@@ -242,25 +207,14 @@ class ApplicantsService {
    */
   async createApplicant(data: CreateApplicantRequest): Promise<Applicant> {
     try {
-      const response = await fetchWithAuth("/applicants", {
-        method: "POST",
-        body: JSON.stringify(data),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new ApiError(
-          errorData.message || "Failed to create applicant",
-          response.status,
-          errorData.details
-        );
-      }
-
-      const responseData = await response.json();
-      return responseData.data;
-    } catch (error) {
-      if (error instanceof ApiError) throw error;
-      throw new ApiError("Network error while creating applicant");
+      const response = await axios.post("/applicants", data);
+      return response.data.data;
+    } catch (error: any) {
+      throw new ApiError(
+        error.response?.data?.message || "Failed to create applicant",
+        error.response?.status,
+        error.response?.data?.details
+      );
     }
   }
 
@@ -272,25 +226,14 @@ class ApplicantsService {
     data: UpdateApplicantRequest
   ): Promise<Applicant> {
     try {
-      const response = await fetchWithAuth(`/applicants/${applicantId}`, {
-        method: "PUT",
-        body: JSON.stringify(data),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new ApiError(
-          errorData.message || "Failed to update applicant",
-          response.status,
-          errorData.details
-        );
-      }
-
-      const responseData = await response.json();
-      return responseData.data;
-    } catch (error) {
-      if (error instanceof ApiError) throw error;
-      throw new ApiError("Network error while updating applicant");
+      const response = await axios.put(`/applicants/${applicantId}`, data);
+      return response.data.data;
+    } catch (error: any) {
+      throw new ApiError(
+        error.response?.data?.message || "Failed to update applicant",
+        error.response?.status,
+        error.response?.data?.details
+      );
     }
   }
 
@@ -302,28 +245,17 @@ class ApplicantsService {
     data: UpdateStatusRequest
   ): Promise<Applicant> {
     try {
-      const response = await fetchWithAuth(
+      const response = await axios.put(
         `/applicants/${applicantId}/status`,
-        {
-          method: "PUT",
-          body: JSON.stringify(data),
-        }
+        data
       );
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new ApiError(
-          errorData.message || "Failed to update applicant status",
-          response.status,
-          errorData.details
-        );
-      }
-
-      const responseData = await response.json();
-      return responseData.data;
-    } catch (error) {
-      if (error instanceof ApiError) throw error;
-      throw new ApiError("Network error while updating applicant status");
+      return response.data.data;
+    } catch (error: any) {
+      throw new ApiError(
+        error.response?.data?.message || "Failed to update applicant status",
+        error.response?.status,
+        error.response?.data?.details
+      );
     }
   }
 
@@ -333,30 +265,19 @@ class ApplicantsService {
   async scheduleInterview(
     applicantId: string,
     data: ScheduleInterviewRequest
-  ): Promise<Interview> {
+  ): Promise<Applicant> {
     try {
-      const response = await fetchWithAuth(
+      const response = await axios.post(
         `/applicants/${applicantId}/interviews`,
-        {
-          method: "POST",
-          body: JSON.stringify(data),
-        }
+        data
       );
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new ApiError(
-          errorData.message || "Failed to schedule interview",
-          response.status,
-          errorData.details
-        );
-      }
-
-      const responseData = await response.json();
-      return responseData.data;
-    } catch (error) {
-      if (error instanceof ApiError) throw error;
-      throw new ApiError("Network error while scheduling interview");
+      return response.data.data;
+    } catch (error: any) {
+      throw new ApiError(
+        error.response?.data?.message || "Failed to schedule interview",
+        error.response?.status,
+        error.response?.data?.details
+      );
     }
   }
 
@@ -366,30 +287,19 @@ class ApplicantsService {
   async addComment(
     applicantId: string,
     data: AddCommentRequest
-  ): Promise<Comment> {
+  ): Promise<Applicant> {
     try {
-      const response = await fetchWithAuth(
+      const response = await axios.post(
         `/applicants/${applicantId}/comments`,
-        {
-          method: "POST",
-          body: JSON.stringify(data),
-        }
+        data
       );
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new ApiError(
-          errorData.message || "Failed to add comment",
-          response.status,
-          errorData.details
-        );
-      }
-
-      const responseData = await response.json();
-      return responseData.data;
-    } catch (error) {
-      if (error instanceof ApiError) throw error;
-      throw new ApiError("Network error while adding comment");
+      return response.data.data;
+    } catch (error: any) {
+      throw new ApiError(
+        error.response?.data?.message || "Failed to add comment",
+        error.response?.status,
+        error.response?.data?.details
+      );
     }
   }
 
@@ -399,30 +309,34 @@ class ApplicantsService {
   async sendMessage(
     applicantId: string,
     data: SendMessageRequest
-  ): Promise<Message> {
+  ): Promise<Applicant> {
     try {
-      const response = await fetchWithAuth(
+      const response = await axios.post(
         `/applicants/${applicantId}/messages`,
-        {
-          method: "POST",
-          body: JSON.stringify(data),
-        }
+        data
       );
+      return response.data.data;
+    } catch (error: any) {
+      throw new ApiError(
+        error.response?.data?.message || "Failed to send message",
+        error.response?.status,
+        error.response?.data?.details
+      );
+    }
+  }
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new ApiError(
-          errorData.message || "Failed to send message",
-          response.status,
-          errorData.details
-        );
-      }
-
-      const responseData = await response.json();
-      return responseData.data;
-    } catch (error) {
-      if (error instanceof ApiError) throw error;
-      throw new ApiError("Network error while sending message");
+  /**
+   * Delete an applicant
+   */
+  async deleteApplicant(applicantId: string): Promise<void> {
+    try {
+      await axios.delete(`/applicants/${applicantId}`);
+    } catch (error: any) {
+      throw new ApiError(
+        error.response?.data?.message || "Failed to delete applicant",
+        error.response?.status,
+        error.response?.data?.details
+      );
     }
   }
 }

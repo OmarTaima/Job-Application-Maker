@@ -1,4 +1,4 @@
-import { API_CONFIG, tokenStorage } from "../config/api";
+import axios from "../config/axios";
 
 export class ApiError extends Error {
   constructor(
@@ -9,26 +9,6 @@ export class ApiError extends Error {
     super(message);
     this.name = "ApiError";
   }
-}
-
-// Helper function to make authenticated requests
-async function fetchWithAuth(
-  endpoint: string,
-  options: RequestInit = {}
-): Promise<Response> {
-  const token = tokenStorage.getAccessToken();
-  const headers: HeadersInit = {
-    "Content-Type": "application/json",
-    ...(token && { Authorization: `Bearer ${token}` }),
-    ...options.headers,
-  };
-
-  const response = await fetch(`${API_CONFIG.baseUrl}${endpoint}`, {
-    ...options,
-    headers,
-  });
-
-  return response;
 }
 
 export type JobPosition = {
@@ -129,24 +109,20 @@ class JobPositionsService {
   /**
    * Get all job positions
    */
-  async getAllJobPositions(): Promise<JobPosition[]> {
+  async getAllJobPositions(companyIds?: string[]): Promise<JobPosition[]> {
     try {
-      const response = await fetchWithAuth("/job-positions");
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new ApiError(
-          errorData.message || "Failed to fetch job positions",
-          response.status,
-          errorData.details
-        );
-      }
-
-      const data = await response.json();
-      return data.data;
-    } catch (error) {
-      if (error instanceof ApiError) throw error;
-      throw new ApiError("Network error while fetching job positions");
+      const params =
+        companyIds && companyIds.length > 0
+          ? { companyIds: companyIds.join(",") }
+          : {};
+      const response = await axios.get("/job-positions", { params });
+      return response.data.data;
+    } catch (error: any) {
+      throw new ApiError(
+        error.response?.data?.message || "Failed to fetch job positions",
+        error.response?.status,
+        error.response?.data?.details
+      );
     }
   }
 
@@ -155,22 +131,14 @@ class JobPositionsService {
    */
   async getJobPositionById(jobPositionId: string): Promise<JobPosition> {
     try {
-      const response = await fetchWithAuth(`/job-positions/${jobPositionId}`);
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new ApiError(
-          errorData.message || "Failed to fetch job position",
-          response.status,
-          errorData.details
-        );
-      }
-
-      const data = await response.json();
-      return data.data;
-    } catch (error) {
-      if (error instanceof ApiError) throw error;
-      throw new ApiError("Network error while fetching job position");
+      const response = await axios.get(`/job-positions/${jobPositionId}`);
+      return response.data.data;
+    } catch (error: any) {
+      throw new ApiError(
+        error.response?.data?.message || "Failed to fetch job position",
+        error.response?.status,
+        error.response?.data?.details
+      );
     }
   }
 
@@ -209,25 +177,14 @@ class JobPositionsService {
       if (data.customFields && data.customFields.length > 0)
         payload.customFields = data.customFields;
 
-      const response = await fetchWithAuth("/job-positions", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new ApiError(
-          errorData.message || "Failed to create job position",
-          response.status,
-          errorData.details
-        );
-      }
-
-      const responseData = await response.json();
-      return responseData.data;
-    } catch (error) {
-      if (error instanceof ApiError) throw error;
-      throw new ApiError("Network error while creating job position");
+      const response = await axios.post("/job-positions", payload);
+      return response.data.data;
+    } catch (error: any) {
+      throw new ApiError(
+        error.response?.data?.message || "Failed to create job position",
+        error.response?.status,
+        error.response?.data?.details
+      );
     }
   }
 
@@ -263,25 +220,17 @@ class JobPositionsService {
       if (data.jobSpecs) payload.jobSpecs = data.jobSpecs;
       if (data.customFields) payload.customFields = data.customFields;
 
-      const response = await fetchWithAuth(`/job-positions/${jobPositionId}`, {
-        method: "PUT",
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new ApiError(
-          errorData.message || "Failed to update job position",
-          response.status,
-          errorData.details
-        );
-      }
-
-      const responseData = await response.json();
-      return responseData.data;
-    } catch (error) {
-      if (error instanceof ApiError) throw error;
-      throw new ApiError("Network error while updating job position");
+      const response = await axios.put(
+        `/job-positions/${jobPositionId}`,
+        payload
+      );
+      return response.data.data;
+    } catch (error: any) {
+      throw new ApiError(
+        error.response?.data?.message || "Failed to update job position",
+        error.response?.status,
+        error.response?.data?.details
+      );
     }
   }
 
@@ -290,21 +239,13 @@ class JobPositionsService {
    */
   async deleteJobPosition(jobPositionId: string): Promise<void> {
     try {
-      const response = await fetchWithAuth(`/job-positions/${jobPositionId}`, {
-        method: "DELETE",
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new ApiError(
-          errorData.message || "Failed to delete job position",
-          response.status,
-          errorData.details
-        );
-      }
-    } catch (error) {
-      if (error instanceof ApiError) throw error;
-      throw new ApiError("Network error while deleting job position");
+      await axios.delete(`/job-positions/${jobPositionId}`);
+    } catch (error: any) {
+      throw new ApiError(
+        error.response?.data?.message || "Failed to delete job position",
+        error.response?.status,
+        error.response?.data?.details
+      );
     }
   }
 
@@ -313,24 +254,16 @@ class JobPositionsService {
    */
   async getApplicantsForPosition(jobPositionId: string): Promise<Applicant[]> {
     try {
-      const response = await fetchWithAuth(
+      const response = await axios.get(
         `/job-positions/${jobPositionId}/applicants`
       );
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new ApiError(
-          errorData.message || "Failed to fetch applicants",
-          response.status,
-          errorData.details
-        );
-      }
-
-      const data = await response.json();
-      return data.data;
-    } catch (error) {
-      if (error instanceof ApiError) throw error;
-      throw new ApiError("Network error while fetching applicants");
+      return response.data.data;
+    } catch (error: any) {
+      throw new ApiError(
+        error.response?.data?.message || "Failed to fetch applicants",
+        error.response?.status,
+        error.response?.data?.details
+      );
     }
   }
 
@@ -339,27 +272,16 @@ class JobPositionsService {
    */
   async cloneJobPosition(jobPositionId: string): Promise<JobPosition> {
     try {
-      const response = await fetchWithAuth(
-        `/job-positions/${jobPositionId}/clone`,
-        {
-          method: "POST",
-        }
+      const response = await axios.post(
+        `/job-positions/${jobPositionId}/clone`
       );
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new ApiError(
-          errorData.message || "Failed to clone job position",
-          response.status,
-          errorData.details
-        );
-      }
-
-      const data = await response.json();
-      return data.data;
-    } catch (error) {
-      if (error instanceof ApiError) throw error;
-      throw new ApiError("Network error while cloning job position");
+      return response.data.data;
+    } catch (error: any) {
+      throw new ApiError(
+        error.response?.data?.message || "Failed to clone job position",
+        error.response?.status,
+        error.response?.data?.details
+      );
     }
   }
 }

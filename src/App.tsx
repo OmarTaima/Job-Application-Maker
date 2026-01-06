@@ -20,7 +20,6 @@ import Home from "./pages/Dashboard/Home";
 import RecruitingDashboard from "./pages/Recruiting/RecruitingDashboard";
 import Companies from "./pages/Recruiting/Companies";
 import PreviewCompany from "./pages/Recruiting/PreviewCompany";
-import JobCreation from "./pages/Recruiting/JobCreation";
 import Jobs from "./pages/Recruiting/Jobs";
 import CreateJob from "./pages/Recruiting/CreateJob";
 import PreviewJob from "./pages/Recruiting/PreviewJob";
@@ -53,7 +52,7 @@ export default function App() {
               <Route path="company/:companyId" element={<PreviewCompany />} />
               <Route
                 path="company/:companyId/create-job"
-                element={<JobCreation />}
+                element={<CreateJob />}
               />
 
               {/* User Management */}

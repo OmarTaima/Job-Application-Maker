@@ -1,4 +1,4 @@
-import { API_CONFIG, tokenStorage } from "../config/api";
+import axios from "../config/axios";
 
 // Types
 export interface Permission {
@@ -25,6 +25,15 @@ export interface CreateRoleRequest {
   name: string;
   description: string;
   permissions: {
+    permission: string;
+    access: string[];
+  }[];
+}
+
+export interface UpdateRoleRequest {
+  name?: string;
+  description?: string;
+  permissions?: {
     permission: string;
     access: string[];
   }[];
@@ -58,93 +67,87 @@ export class ApiError extends Error {
   }
 }
 
-// Helper function to make API requests
-async function apiRequest<T>(
-  endpoint: string,
-  options: RequestInit = {}
-): Promise<T> {
-  const url = `${API_CONFIG.baseUrl}${endpoint}`;
-
-  const config: RequestInit = {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  };
-
-  try {
-    const response = await fetch(url, config);
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new ApiError(
-        data.message || "An error occurred",
-        response.status,
-        data
-      );
-    }
-
-    return data;
-  } catch (error) {
-    if (error instanceof ApiError) {
-      throw error;
-    }
-
-    throw new ApiError(
-      error instanceof Error ? error.message : "Network error occurred"
-    );
-  }
-}
-
-// Helper to add auth header
-function getAuthHeaders(): HeadersInit {
-  const token = tokenStorage.getAccessToken();
-  if (token) {
-    return {
-      Authorization: `Bearer ${token}`,
-    };
-  }
-  return {};
-}
-
 // Roles & Permissions Service
 export const rolesService = {
   /**
    * Get all permissions
    */
   async getAllPermissions(): Promise<Permission[]> {
-    const response = await apiRequest<PermissionsResponse>("/permissions", {
-      method: "GET",
-      headers: getAuthHeaders(),
-    });
-
-    return response.data;
+    try {
+      const response = await axios.get<PermissionsResponse>("/permissions");
+      return response.data.data;
+    } catch (error: any) {
+      throw new ApiError(
+        error.response?.data?.message || "Failed to fetch permissions",
+        error.response?.status,
+        error.response?.data
+      );
+    }
   },
 
   /**
    * Get all roles
    */
   async getAllRoles(): Promise<Role[]> {
-    const response = await apiRequest<RolesResponse>("/roles", {
-      method: "GET",
-      headers: getAuthHeaders(),
-    });
-
-    return response.data;
+    try {
+      const response = await axios.get<RolesResponse>("/roles");
+      return response.data.data;
+    } catch (error: any) {
+      throw new ApiError(
+        error.response?.data?.message || "Failed to fetch roles",
+        error.response?.status,
+        error.response?.data
+      );
+    }
   },
 
   /**
    * Create a new role
    */
   async createRole(roleData: CreateRoleRequest): Promise<Role> {
-    const response = await apiRequest<CreateRoleResponse>("/roles", {
-      method: "POST",
-      headers: getAuthHeaders(),
-      body: JSON.stringify(roleData),
-    });
+    try {
+      const response = await axios.post<CreateRoleResponse>("/roles", roleData);
+      return response.data.data;
+    } catch (error: any) {
+      throw new ApiError(
+        error.response?.data?.message || "Failed to create role",
+        error.response?.status,
+        error.response?.data
+      );
+    }
+  },
 
-    return response.data;
+  /**
+   * Update an existing role
+   */
+  async updateRole(id: string, roleData: UpdateRoleRequest): Promise<Role> {
+    try {
+      const response = await axios.put<CreateRoleResponse>(
+        `/roles/${id}`,
+        roleData
+      );
+      return response.data.data;
+    } catch (error: any) {
+      throw new ApiError(
+        error.response?.data?.message || "Failed to update role",
+        error.response?.status,
+        error.response?.data
+      );
+    }
+  },
+
+  /**
+   * Delete a role
+   */
+  async deleteRole(id: string): Promise<void> {
+    try {
+      await axios.delete(`/roles/${id}`);
+    } catch (error: any) {
+      throw new ApiError(
+        error.response?.data?.message || "Failed to delete role",
+        error.response?.status,
+        error.response?.data
+      );
+    }
   },
 };
