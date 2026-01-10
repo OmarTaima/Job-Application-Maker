@@ -23,7 +23,10 @@ import {
   useUsers,
   useCreateUser,
   useDeleteUser,
+  useUpdateUser,
   useUpdateUserCompanies,
+  useAddUserCompany,
+  useRemoveUserCompany,
   useRoles,
   usePermissions,
   useCompanies,
@@ -78,12 +81,16 @@ export default function Users() {
   // Mutations
   const createUserMutation = useCreateUser();
   const deleteUserMutation = useDeleteUser();
+  const updateUserMutation = useUpdateUser();
   const updateUserCompaniesMutation = useUpdateUserCompanies();
+  const addUserCompanyMutation = useAddUserCompany();
+  const removeUserCompanyMutation = useRemoveUserCompany();
 
   const [userForm, setUserForm] = useState<UserForm>(defaultUserForm);
   const [showForm, setShowForm] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const [originalUser, setOriginalUser] = useState<UserForm | null>(null);
   const [formError, setFormError] = useState("");
   const [isDeletingUser, setIsDeletingUser] = useState<string | null>(null);
 
@@ -173,18 +180,70 @@ export default function Users() {
       return;
     }
 
- 
-
     setIsCreating(true);
     try {
-      if (editingUserId) {
-        // Update existing user - update each company assignment
-        for (const company of userForm.companies) {
-          await updateUserCompaniesMutation.mutateAsync({
-            userId: editingUserId,
-            companyId: company.companyId,
-            data: { departments: company.departments },
+      if (editingUserId && originalUser) {
+        // Update existing user - detect what changed and send appropriate requests
+        
+        // 1. Check if permissions changed
+        const permissionsChanged = JSON.stringify(userForm.permissions) !== JSON.stringify(originalUser.permissions);
+        const roleChanged = userForm.roleId !== originalUser.roleId;
+        
+        if (permissionsChanged || roleChanged) {
+          // PUT /users/:userId - update permissions and/or role
+          await updateUserMutation.mutateAsync({
+            id: editingUserId,
+            data: {
+              ...(roleChanged && { roleId: userForm.roleId }),
+              ...(permissionsChanged && { permissions: userForm.permissions }),
+            },
           });
+        }
+        
+        // 2. Detect company changes
+        const originalCompanyIds = originalUser.companies.map(c => c.companyId);
+        const currentCompanyIds = userForm.companies.map(c => c.companyId);
+        
+        // Find added companies
+        const addedCompanyIds = currentCompanyIds.filter(id => !originalCompanyIds.includes(id));
+        
+        // Find removed companies
+        const removedCompanyIds = originalCompanyIds.filter(id => !currentCompanyIds.includes(id));
+        
+        // POST /users/:userId/companies - add new companies
+        for (const companyId of addedCompanyIds) {
+          await addUserCompanyMutation.mutateAsync({
+            userId: editingUserId,
+            companyId,
+          });
+        }
+        
+        // DELETE /users/:userId/companies/:companyId - remove companies
+        for (const companyId of removedCompanyIds) {
+          await removeUserCompanyMutation.mutateAsync({
+            userId: editingUserId,
+            companyId,
+          });
+        }
+        
+        // 3. PUT /users/:userId/companies/:companyId/departments - update departments for existing companies
+        for (const company of userForm.companies) {
+          // Skip newly added companies (already handled above)
+          if (addedCompanyIds.includes(company.companyId)) continue;
+          
+          // Check if departments changed
+          const originalCompany = originalUser.companies.find(c => c.companyId === company.companyId);
+          if (originalCompany) {
+            const depsChanged = JSON.stringify(company.departments.sort()) !== JSON.stringify(originalCompany.departments.sort());
+            
+            if (depsChanged) {
+              await updateUserCompaniesMutation.mutateAsync({
+                userId: editingUserId,
+                companyId: company.companyId,
+                data: { departments: company.departments },
+              });
+            }
+          }
         }
       } else {
         // Create new user
@@ -278,17 +337,33 @@ export default function Users() {
       user.companies?.map((c: any) => ({
         companyId:
           typeof c.companyId === "string" ? c.companyId : c.companyId._id,
-        departments: c.departments || [],
+        departments: (c.departments || []).map((dept: any) => 
+          typeof dept === "string" ? dept : dept._id
+        ),
         isPrimary: c.isPrimary || false,
       })) || [];
 
     const userPermissions =
-      user.permissions?.map((p: any) => ({
-        permission: typeof p === "string" ? p : p._id,
-        access: p.access || [],
-      })) || [];
+      user.permissions?.map((p: any) => {
+        // Handle different permission structures
+        let permissionId: string;
+        if (typeof p === "string") {
+          permissionId = p;
+        } else if (p.permission) {
+          // If permission is nested (e.g., {permission: {_id, name}, access: []})
+          permissionId = typeof p.permission === "string" ? p.permission : p.permission._id;
+        } else {
+          // If permission is at top level (e.g., {_id, name, access: []})
+          permissionId = p._id;
+        }
+        
+        return {
+          permission: permissionId,
+          access: p.access || [],
+        };
+      }) || [];
 
-    setUserForm({
+    const formData = {
       email: user.email || "",
       password: "", // Don't populate password for security
       fullName: user.fullName || user.name || "",
@@ -297,14 +372,17 @@ export default function Users() {
         typeof user.roleId === "string" ? user.roleId : user.roleId?._id || "",
       companies: userCompanies,
       permissions: userPermissions,
-    });
-
+    };
+    
+    setUserForm(formData);
+    setOriginalUser(formData); // Store original state for comparison
     setEditingUserId(user._id);
     setShowForm(true);
   };
 
   const handleCancelEdit = () => {
     setUserForm(defaultUserForm);
+    setOriginalUser(null);
     setEditingUserId(null);
     setShowForm(false);
     setFormError("");
@@ -965,8 +1043,10 @@ export default function Users() {
                   {users.map((user) => {
                     const roleName =
                       typeof user.roleId === "object" && user.roleId
-                        ? user.roleId.name
-                        : user.roleId || "-";
+                        ? user.roleId.name || "-"
+                        : typeof user.roleId === "string" 
+                        ? user.roleId 
+                        : "-";
                     const userName = user.fullName || user.name || "-";
 
                     return (
