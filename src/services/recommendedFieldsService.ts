@@ -1,4 +1,5 @@
 import axios from "../config/axios";
+import { getErrorMessage } from "../utils/errorHandler";
 
 // API Error Class
 export class ApiError extends Error {
@@ -77,7 +78,7 @@ class RecommendedFieldsService {
       return response.data.data || [];
     } catch (error: any) {
       throw new ApiError(
-        error.response?.data?.message || "Failed to fetch recommended fields",
+        getErrorMessage(error),
         error.response?.status,
         error.response?.data?.details
       );
@@ -99,7 +100,7 @@ class RecommendedFieldsService {
       return response.data.data;
     } catch (error: any) {
       throw new ApiError(
-        error.response?.data?.message || "Failed to create recommended field",
+        getErrorMessage(error),
         error.response?.status,
         error.response?.data?.details
       );
@@ -126,7 +127,7 @@ class RecommendedFieldsService {
       );
     } catch (error: any) {
       throw new ApiError(
-        error.response?.data?.message || "Failed to update recommended field",
+        getErrorMessage(error),
         error.response?.status,
         error.response?.data?.details
       );
@@ -145,7 +146,7 @@ class RecommendedFieldsService {
       );
     } catch (error: any) {
       throw new ApiError(
-        error.response?.data?.message || "Failed to delete recommended field",
+        getErrorMessage(error),
         error.response?.status,
         error.response?.data?.details
       );

@@ -1,4 +1,5 @@
 import axios from "../config/axios";
+import { getErrorMessage } from "../utils/errorHandler";
 
 // Types
 export interface Company {
@@ -9,6 +10,8 @@ export interface Company {
   contactEmail?: string;
   phone?: string;
   website?: string;
+  logoPath?: string;
+  isActive?: boolean;
   description?: string;
   createdAt?: string;
   __v?: number;
@@ -21,6 +24,8 @@ export interface CreateCompanyRequest {
   contactEmail?: string;
   phone?: string;
   website?: string;
+  logoPath?: string;
+  isActive?: boolean;
   description?: string;
 }
 
@@ -31,6 +36,8 @@ export interface UpdateCompanyRequest {
   contactEmail?: string;
   phone?: string;
   website?: string;
+  logoPath?: string;
+  isActive?: boolean;
   description?: string;
 }
 
@@ -65,7 +72,7 @@ export const companiesService = {
       return response.data.data;
     } catch (error: any) {
       throw new ApiError(
-        error.response?.data?.message || "Failed to fetch companies",
+        getErrorMessage(error),
         error.response?.status,
         error.response?.data?.details
       );
@@ -81,7 +88,7 @@ export const companiesService = {
       return response.data.data;
     } catch (error: any) {
       throw new ApiError(
-        error.response?.data?.message || "Failed to fetch company",
+        getErrorMessage(error),
         error.response?.status,
         error.response?.data?.details
       );
@@ -98,7 +105,7 @@ export const companiesService = {
       return response.data.data;
     } catch (error: any) {
       throw new ApiError(
-        error.response?.data?.message || "Failed to create company",
+        getErrorMessage(error),
         error.response?.status,
         error.response?.data?.details
       );
@@ -118,7 +125,7 @@ export const companiesService = {
       return response.data.data;
     } catch (error: any) {
       throw new ApiError(
-        error.response?.data?.message || "Failed to update company",
+        getErrorMessage(error),
         error.response?.status,
         error.response?.data?.details
       );
@@ -131,7 +138,7 @@ export const companiesService = {
       await axios.delete(`/companies/${companyId}`);
     } catch (error: any) {
       throw new ApiError(
-        error.response?.data?.message || "Failed to delete company",
+        getErrorMessage(error),
         error.response?.status,
         error.response?.data?.details
       );
@@ -146,7 +153,7 @@ export const companiesService = {
       return allCompanies.filter(company => companyIds.includes(company._id));
     } catch (error: any) {
       throw new ApiError(
-        error.response?.data?.message || "Failed to fetch companies",
+        getErrorMessage(error),
         error.response?.status,
         error.response?.data?.details
       );

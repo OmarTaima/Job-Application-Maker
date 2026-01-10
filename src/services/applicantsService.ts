@@ -1,4 +1,5 @@
 import axios from "../config/axios";
+import { getErrorMessage } from "../utils/errorHandler";
 
 export class ApiError extends Error {
   constructor(
@@ -13,15 +14,11 @@ export class ApiError extends Error {
 
 export type Interview = {
   _id?: string;
-  issuedBy: string;
-  issuedAt: string;
-  description: string;
-  comment?: string;
-  date?: string;
-  time?: string;
+  issuedBy?: string;
+  scheduledAt?: string;
+  videoLink?: string;
+  notes?: string;
   interviewers?: string[];
-  location?: string;
-  link?: string;
   type?: string;
   notifications?: {
     channels: {
@@ -38,14 +35,11 @@ export type Interview = {
 
 export type Message = {
   _id?: string;
-  status: string;
-  text: string;
-  sentAt: string;
-  sentBy: string;
-  comment?: string;
+  type: "email" | "sms" | "internal" | "whatsapp";
+  content: string;
+  sentAt?: string;
+  sentBy?: string;
   subject?: string;
-  body?: string;
-  type?: string;
 };
 
 export type Comment = {
@@ -84,8 +78,11 @@ export type Applicant = {
   status:
     | "applied"
     | "under_review"
+    | "pending"
+    | "interview"
     | "interviewed"
     | "accepted"
+    | "approved"
     | "rejected"
     | "trashed";
   submittedAt: string;
@@ -136,21 +133,21 @@ export type UpdateStatusRequest = {
   status:
     | "applied"
     | "under_review"
+    | "pending"
+    | "interview"
     | "interviewed"
     | "accepted"
+    | "approved"
     | "rejected"
     | "trashed";
   notes?: string;
 };
 
 export type ScheduleInterviewRequest = {
-  date?: string;
-  time?: string;
-  description: string;
-  comment?: string;
+  scheduledAt?: string;
+  videoLink?: string;
+  notes?: string;
   interviewers?: string[];
-  location?: string;
-  link?: string;
   type?: string;
 };
 
@@ -162,10 +159,9 @@ export type AddCommentRequest = {
 
 export type SendMessageRequest = {
   subject?: string;
-  text?: string;
-  body?: string;
+  content?: string;
   comment?: string;
-  type?: string;
+  type?: "email" | "sms" | "internal" | "whatsapp";
 };
 
 class ApplicantsService {
@@ -179,7 +175,7 @@ class ApplicantsService {
       return response.data.data;
     } catch (error: any) {
       throw new ApiError(
-        error.response?.data?.message || "Failed to fetch applicants",
+        getErrorMessage(error),
         error.response?.status,
         error.response?.data?.details
       );
@@ -195,7 +191,7 @@ class ApplicantsService {
       return response.data.data;
     } catch (error: any) {
       throw new ApiError(
-        error.response?.data?.message || "Failed to fetch applicant",
+        getErrorMessage(error),
         error.response?.status,
         error.response?.data?.details
       );
@@ -211,7 +207,7 @@ class ApplicantsService {
       return response.data.data;
     } catch (error: any) {
       throw new ApiError(
-        error.response?.data?.message || "Failed to create applicant",
+        getErrorMessage(error),
         error.response?.status,
         error.response?.data?.details
       );
@@ -230,7 +226,7 @@ class ApplicantsService {
       return response.data.data;
     } catch (error: any) {
       throw new ApiError(
-        error.response?.data?.message || "Failed to update applicant",
+        getErrorMessage(error),
         error.response?.status,
         error.response?.data?.details
       );
@@ -252,7 +248,7 @@ class ApplicantsService {
       return response.data.data;
     } catch (error: any) {
       throw new ApiError(
-        error.response?.data?.message || "Failed to update applicant status",
+        getErrorMessage(error),
         error.response?.status,
         error.response?.data?.details
       );
@@ -274,7 +270,7 @@ class ApplicantsService {
       return response.data.data;
     } catch (error: any) {
       throw new ApiError(
-        error.response?.data?.message || "Failed to schedule interview",
+        getErrorMessage(error),
         error.response?.status,
         error.response?.data?.details
       );
@@ -296,7 +292,7 @@ class ApplicantsService {
       return response.data.data;
     } catch (error: any) {
       throw new ApiError(
-        error.response?.data?.message || "Failed to add comment",
+        getErrorMessage(error),
         error.response?.status,
         error.response?.data?.details
       );
@@ -318,7 +314,7 @@ class ApplicantsService {
       return response.data.data;
     } catch (error: any) {
       throw new ApiError(
-        error.response?.data?.message || "Failed to send message",
+        getErrorMessage(error),
         error.response?.status,
         error.response?.data?.details
       );
@@ -333,7 +329,7 @@ class ApplicantsService {
       await axios.delete(`/applicants/${applicantId}`);
     } catch (error: any) {
       throw new ApiError(
-        error.response?.data?.message || "Failed to delete applicant",
+        getErrorMessage(error),
         error.response?.status,
         error.response?.data?.details
       );

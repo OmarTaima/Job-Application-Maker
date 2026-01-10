@@ -18,18 +18,20 @@ import AppLayout from "./layout/AppLayout";
 import { ScrollToTop } from "./components/common/ScrollToTop";
 import Home from "./pages/Dashboard/Home";
 import RecruitingDashboard from "./pages/Recruiting/RecruitingDashboard";
-import Companies from "./pages/Recruiting/Companies";
-import PreviewCompany from "./pages/Recruiting/PreviewCompany";
-import Jobs from "./pages/Recruiting/Jobs";
-import CreateJob from "./pages/Recruiting/CreateJob";
-import PreviewJob from "./pages/Recruiting/PreviewJob";
-import Users from "./pages/Recruiting/Users";
-import Permissions from "./pages/Recruiting/Permissions";
-import PreviewRole from "./pages/Recruiting/PreviewRole";
-import RecommendedFields from "./pages/Recruiting/RecommendedFields";
-import Applicants from "./pages/Recruiting/Applicants";
-import ApplicantData from "./pages/Recruiting/ApplicantData";
+import Companies from "./pages/Recruiting/companies/Companies";
+import PreviewCompany from "./pages/Recruiting/companies/PreviewCompany";
+import Jobs from "./pages/Recruiting/jobs/Jobs";
+import CreateJob from "./pages/Recruiting/jobs/CreateJob";
+import PreviewJob from "./pages/Recruiting/jobs/PreviewJob";
+import Users from "./pages/Recruiting/users/Users";
+import Permissions from "./pages/Recruiting/roles/Permissions";
+import PreviewRole from "./pages/Recruiting/roles/PreviewRole";
+import PreviewUser from "./pages/Recruiting/users/PreviewUser";
+import RecommendedFields from "./pages/Recruiting/systemSettings/RecommendedFields";
+import Applicants from "./pages/Recruiting/applicants/Applicants";
+import ApplicantData from "./pages/Recruiting/applicants/ApplicantData";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
+import PermissionProtectedRoute from "./components/auth/PermissionProtectedRoute";
 
 export default function App() {
   return (
@@ -55,17 +57,31 @@ export default function App() {
                 path="company/:companyId/create-job"
                 element={<CreateJob />}
               />
-
-              {/* User Management */}
-              <Route path="users" element={<Users />} />
-              <Route path="permissions" element={<Permissions />} />
-              <Route path="role/:id" element={<PreviewRole />} />
-              <Route
-                path="recommended-fields"
-                element={<RecommendedFields />}
-              />
               <Route path="applicants" element={<Applicants />} />
               <Route path="applicant/:id" element={<ApplicantData />} />
+
+              {/* Admin Routes - Protected by permissions */}
+              <Route
+                element={
+                  <PermissionProtectedRoute
+                    requiredPermissions={[
+                      "User Management",
+                      "Role Management",
+                      "Settings Management",
+                    ]}
+                    requireAll={false}
+                  />
+                }
+              >
+                <Route path="users" element={<Users />} />
+                <Route path="user/:id" element={<PreviewUser />} />
+                <Route path="permissions" element={<Permissions />} />
+                <Route path="role/:id" element={<PreviewRole />} />
+                <Route
+                  path="recommended-fields"
+                  element={<RecommendedFields />}
+                />
+              </Route>
 
               {/* Others Page */}
               <Route path="profile" element={<UserProfiles />} />

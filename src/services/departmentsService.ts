@@ -1,4 +1,5 @@
 import axios from "../config/axios";
+import { getErrorMessage } from "../utils/errorHandler";
 
 // Types
 export interface Department {
@@ -7,7 +8,7 @@ export interface Department {
   description?: string;
   companyId: string | { _id: string; name: string };
   managerId?: string | { _id: string; fullName: string };
-  location?: string;
+  isActive?: boolean;
   createdAt?: string;
   __v?: number;
 }
@@ -17,14 +18,13 @@ export interface CreateDepartmentRequest {
   description?: string;
   companyId: string;
   managerId?: string;
-  location?: string;
 }
 
 export interface UpdateDepartmentRequest {
   name?: string;
   description?: string;
   managerId?: string;
-  location?: string;
+  isActive?: boolean;
 }
 
 export interface DepartmentsResponse {
@@ -61,7 +61,7 @@ export const departmentsService = {
       return response.data.data;
     } catch (error: any) {
       throw new ApiError(
-        error.response?.data?.message || "Failed to fetch departments",
+        getErrorMessage(error),
         error.response?.status,
         error.response?.data?.details
       );
@@ -77,7 +77,7 @@ export const departmentsService = {
       return response.data.data;
     } catch (error: any) {
       throw new ApiError(
-        error.response?.data?.message || "Failed to fetch department",
+        getErrorMessage(error),
         error.response?.status,
         error.response?.data?.details
       );
@@ -96,7 +96,7 @@ export const departmentsService = {
       return response.data.data;
     } catch (error: any) {
       throw new ApiError(
-        error.response?.data?.message || "Failed to create department",
+        getErrorMessage(error),
         error.response?.status,
         error.response?.data?.details
       );
@@ -116,7 +116,7 @@ export const departmentsService = {
       return response.data.data;
     } catch (error: any) {
       throw new ApiError(
-        error.response?.data?.message || "Failed to update department",
+        getErrorMessage(error),
         error.response?.status,
         error.response?.data?.details
       );
@@ -129,7 +129,7 @@ export const departmentsService = {
       await axios.delete(`/departments/${departmentId}`);
     } catch (error: any) {
       throw new ApiError(
-        error.response?.data?.message || "Failed to delete department",
+        getErrorMessage(error),
         error.response?.status,
         error.response?.data?.details
       );

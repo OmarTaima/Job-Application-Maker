@@ -4,15 +4,11 @@ import { applicantsService } from "../../services/applicantsService";
 // Types
 export type Interview = {
   _id?: string;
-  issuedBy: string;
-  issuedAt: string;
-  description: string;
-  comment?: string;
-  date?: string;
-  time?: string;
+  issuedBy?: string;
+  scheduledAt?: string;
+  videoLink?: string;
+  notes?: string;
   interviewers?: string[];
-  location?: string;
-  link?: string;
   type?: string;
   notifications?: {
     channels: {
@@ -29,14 +25,11 @@ export type Interview = {
 
 export type Message = {
   _id?: string;
-  status: string;
-  text: string;
-  sentAt: string;
-  sentBy: string;
-  comment?: string;
+  type: "email" | "sms" | "internal" | "whatsapp";
+  content: string;
+  sentAt?: string;
+  sentBy?: string;
   subject?: string;
-  body?: string;
-  type?: string;
 };
 
 export type Comment = {
@@ -75,12 +68,12 @@ export type Applicant = {
   status:
     | "applied"
     | "under_review"
+    | "pending"
+    | "interview"
     | "interviewed"
     | "accepted"
-    | "rejected"
-    | "pending"
     | "approved"
-    | "interview"
+    | "rejected"
     | "trashed";
   submittedAt: string;
   fullName: string;
@@ -127,13 +120,7 @@ export type UpdateApplicantRequest = {
 };
 
 export type UpdateStatusRequest = {
-  status:
-    | "applied"
-    | "under_review"
-    | "interviewed"
-    | "accepted"
-    | "rejected"
-    | "trashed";
+  status: "pending" | "interview" | "interviewed" | "approved" | "rejected" | "trashed";
   notes?: string;
   notifications?: {
     channels: {

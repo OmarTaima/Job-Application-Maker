@@ -10,12 +10,11 @@ export interface User {
   phone?: string;
   department?: string;
   isActive?: boolean;
-  permissions?: Array<{ _id: string; name: string; access?: string[] }>;
+  permissions?: Array<{ permission: string; access?: string[] }>;
   companies?: {
     companyId: string;
-    role?: string;
-    accessLevel?: string;
     departments?: string[];
+    isPrimary?: boolean;
   }[];
   createdAt?: string;
   __v?: number;
@@ -29,16 +28,19 @@ export interface CreateUserRequest {
   phone?: string;
   companies?: Array<{
     companyId: string;
-    departments: string[];
-    isPrimary: boolean;
+    departments?: string[];
+    isPrimary?: boolean;
   }>;
+  isActive?: boolean;
+  permissions?: Array<{ permission: string; access?: string[] }>;
 }
 
 export interface UpdateUserRequest {
   name?: string;
+  fullName?: string;
   email?: string;
-  role?: string;
-  permissions?: string[];
+  roleId?: string;
+  permissions?: Array<{ permission: string; access?: string[] }>;
   isActive?: boolean;
   phone?: string;
   department?: string;

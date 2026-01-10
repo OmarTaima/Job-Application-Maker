@@ -23,6 +23,7 @@ type AuthContextType = {
   isLoading: boolean;
   error: string | null;
   canAccessCompany: (companyId: string) => boolean;
+  hasPermission: (permissionName: string, accessLevel?: "read" | "write" | "create") => boolean;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -39,6 +40,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (token) {
         try {
           const currentUser = await authService.getCurrentUser();
+          console.log("Loaded user data:", currentUser);
+          console.log("User roleId:", currentUser.roleId);
           setUser(currentUser);
         } catch (err) {
           console.error("Failed to load user:", err);
@@ -109,8 +112,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const canAccessCompany = (companyId: string): boolean => {
     if (!user) return false;
 
-    // Admin can access all companies
-    if (user.roleId?.name === "admin") return true;
+    // Admin and Super Admin can access all companies
+    const roleName = user.roleId?.name?.toLowerCase();
+    if (roleName === "admin" || roleName === "super admin") return true;
 
     // Company users can only access assigned companies
     const userCompanyIds =
@@ -125,6 +129,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     );
   };
 
+  const hasPermission = (permissionName: string, accessLevel?: "read" | "write" | "create"): boolean => {
+    if (!user) return false;
+
+    // Admin and Super Admin roles have all permissions
+    const roleName = user.roleId?.name?.toLowerCase();
+    if (roleName === "admin" || roleName === "super admin") {
+      return true;
+    }
+
+    // Check both user-level permissions (custom) and role-level permissions
+    // User-level permissions take precedence over role permissions
+    const userPermissions = (user as any).permissions || [];
+    const rolePermissions = user.roleId?.permissions || [];
+    const allPermissions = [...userPermissions, ...rolePermissions];
+    
+    // Find the permission object
+    const permissionObj = allPermissions.find((p) => {
+      if (typeof p === 'string') {
+        return p === permissionName;
+      }
+      // Handle both p.permission.name (populated) and p.permission (string ID)
+      const permName = p.permission?.name || p.permission;
+      return permName === permissionName;
+    });
+
+    // If no permission found, deny access
+    if (!permissionObj) {
+      return false;
+    }
+
+    // If no access level specified, just check if permission exists
+    if (!accessLevel) {
+      return true;
+    }
+
+    // If permission is a string (old format), grant all access
+    if (typeof permissionObj === 'string') {
+      return true;
+    }
+
+    // Check if the user has the required access level
+    const accessArray = permissionObj.access || [];
+    return accessArray.includes(accessLevel);
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -136,6 +185,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isLoading,
         error,
         canAccessCompany,
+        hasPermission,
       }}
     >
       {children}

@@ -1,28 +1,32 @@
 import { useState, useMemo } from "react";
 import Swal from "sweetalert2";
-import PageBreadcrumb from "../../components/common/PageBreadCrumb";
-import PageMeta from "../../components/common/PageMeta";
-import ComponentCard from "../../components/common/ComponentCard";
-import LoadingSpinner from "../../components/common/LoadingSpinner";
+import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
+import PageMeta from "../../../components/common/PageMeta";
+import ComponentCard from "../../../components/common/ComponentCard";
+import LoadingSpinner from "../../../components/common/LoadingSpinner";
 import { Link, useNavigate } from "react-router";
-import { PlusIcon } from "../../icons";
-import { useAuth } from "../../context/AuthContext";
+import { PlusIcon } from "../../../icons";
+import { useAuth } from "../../../context/AuthContext";
 import {
   Table,
   TableBody,
   TableCell,
   TableHeader,
   TableRow,
-} from "../../components/ui/table";
+} from "../../../components/ui/table";
 import {
   useCompanies,
   useDepartments,
   useDeleteCompany,
-} from "../../hooks/queries";
+} from "../../../hooks/queries";
 
 export default function Companies() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
+
+  // Check permissions
+  const canRead = hasPermission("Company Management", "read");
+  const canCreate = hasPermission("Company Management", "create");
 
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [showRaw, setShowRaw] = useState(false);
@@ -125,8 +129,13 @@ export default function Companies() {
         title: "Deleted!",
         text: "Company has been deleted successfully.",
         icon: "success",
+        toast: true,
+        position: "top-end",
         timer: 2000,
         showConfirmButton: false,
+        customClass: {
+          container: "!mt-16",
+        },
       });
     } catch (err: any) {
       console.error("Error deleting company:", err);
@@ -174,6 +183,40 @@ export default function Companies() {
   const handleRowClick = (companyId: string) => {
     navigate(`/company/${companyId}`);
   };
+
+  // If user doesn't have read permission, show access denied
+  if (!canRead) {
+    return (
+      <div className="space-y-6">
+        <PageMeta
+          title="Companies | TailAdmin React"
+          description="View and manage all recruiting companies in the system."
+        />
+        <PageBreadcrumb pageTitle="Companies" />
+        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 py-24 dark:border-gray-700">
+          <svg
+            className="mb-4 size-16 text-gray-400"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+            />
+          </svg>
+          <p className="text-lg font-semibold text-gray-700 dark:text-gray-300">
+            Access Denied
+          </p>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            You don't have permission to view companies
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -224,13 +267,15 @@ export default function Companies() {
                   className="h-11 w-full max-w-md rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/20 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800"
                 />
               </div>
-              <Link
-                to="/recruiting"
-                className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600"
-              >
-                <PlusIcon className="size-4" />
-                Create Company
-              </Link>
+              {canCreate && (
+                <Link
+                  to="/recruiting"
+                  className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600"
+                >
+                  <PlusIcon className="size-4" />
+                  Create Company
+                </Link>
+              )}
               <button
                 onClick={() => setShowRaw((s) => !s)}
                 className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 ml-2"
@@ -358,15 +403,17 @@ export default function Companies() {
                               : "-"}
                           </TableCell>
                           <TableCell className="px-5 py-4 text-start">
-                            <button
-                              onClick={(e) =>
-                                handleDeleteCompany(company._id, e)
-                              }
-                              disabled={isDeletingCompany === company._id}
-                              className="px-3 py-1 text-xs bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 rounded hover:bg-red-200 dark:hover:bg-red-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                              {isDeletingCompany === company._id ? "Deleting..." : "Delete"}
-                            </button>
+                            {canCreate && (
+                              <button
+                                onClick={(e) =>
+                                  handleDeleteCompany(company._id, e)
+                                }
+                                disabled={isDeletingCompany === company._id}
+                                className="px-3 py-1 text-xs bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 rounded hover:bg-red-200 dark:hover:bg-red-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                {isDeletingCompany === company._id ? "Deleting..." : "Delete"}
+                              </button>
+                            )}
                           </TableCell>
                         </TableRow>
                       ))}

@@ -1,4 +1,5 @@
 import axios from "../config/axios";
+import { getErrorMessage } from "../utils/errorHandler";
 
 export class ApiError extends Error {
   constructor(
@@ -11,40 +12,46 @@ export class ApiError extends Error {
   }
 }
 
+export type LocalizedString = { en: string; ar: string };
+
 export type JobPosition = {
   _id: string;
-  title: string;
-  description: string;
+  title: LocalizedString;
+  description?: LocalizedString;
   departmentId: string;
   companyId: string;
   jobCode?: string;
   requirements?: string[];
-  termsAndConditions?: string[];
-  salary?: {
-    min?: number;
-    max?: number;
-    currency?: string;
-  };
+  termsAndConditions?: LocalizedString[];
+  salary?: number;
   salaryVisible?: boolean;
-  location?: string;
+  bilingual?: boolean;
+  isActive?: boolean;
   employmentType?: string;
   status: "open" | "closed" | "archived";
   openPositions?: number;
   registrationStart?: string;
   registrationEnd?: string;
   jobSpecs?: Array<{
-    spec: string;
+    spec: LocalizedString;
     weight: number;
   }>;
   customFields?: Array<{
     fieldId: string;
-    label: string;
+    label: LocalizedString;
     inputType: string;
     isRequired: boolean;
     minValue?: number;
     maxValue?: number;
-    choices?: string[];
-    subFields?: any[];
+    choices?: Array<LocalizedString>;
+    groupFields?: Array<{
+      fieldId: string;
+      label: LocalizedString;
+      inputType: string;
+      isRequired: boolean;
+      choices?: Array<LocalizedString>;
+      displayOrder?: number;
+    }>;
     displayOrder: number;
   }>;
   createdAt?: string;
@@ -52,38 +59,42 @@ export type JobPosition = {
 };
 
 export type CreateJobPositionRequest = {
-  title: string;
-  description: string;
+  title: LocalizedString;
+  description?: LocalizedString;
   departmentId: string;
   companyId: string;
   jobCode?: string;
   requirements?: string[];
-  termsAndConditions?: string[];
-  salary?: {
-    min?: number;
-    max?: number;
-    currency?: string;
-  };
+  termsAndConditions?: LocalizedString[];
+  salary?: number;
   salaryVisible?: boolean;
-  location?: string;
+  bilingual?: boolean;
+  isActive?: boolean;
   employmentType?: string;
   status?: "open" | "closed" | "archived";
   openPositions?: number;
   registrationStart?: string;
   registrationEnd?: string;
   jobSpecs?: Array<{
-    spec: string;
+    spec: LocalizedString;
     weight: number;
   }>;
   customFields?: Array<{
     fieldId: string;
-    label: string;
+    label: LocalizedString;
     inputType: string;
     isRequired: boolean;
     minValue?: number;
     maxValue?: number;
-    choices?: string[];
-    subFields?: any[];
+    choices?: Array<LocalizedString>;
+    groupFields?: Array<{
+      fieldId: string;
+      label: LocalizedString;
+      inputType: string;
+      isRequired: boolean;
+      choices?: Array<LocalizedString>;
+      displayOrder?: number;
+    }>;
     displayOrder: number;
   }>;
 };
@@ -119,7 +130,7 @@ class JobPositionsService {
       return response.data.data;
     } catch (error: any) {
       throw new ApiError(
-        error.response?.data?.message || "Failed to fetch job positions",
+        getErrorMessage(error),
         error.response?.status,
         error.response?.data?.details
       );
@@ -135,7 +146,7 @@ class JobPositionsService {
       return response.data.data;
     } catch (error: any) {
       throw new ApiError(
-        error.response?.data?.message || "Failed to fetch job position",
+        getErrorMessage(error),
         error.response?.status,
         error.response?.data?.details
       );
@@ -152,7 +163,7 @@ class JobPositionsService {
       // Build payload with only non-empty fields
       const payload: any = {
         title: data.title,
-        description: data.description,
+        description: data.description ?? { en: "", ar: "" },
         departmentId: data.departmentId,
         companyId: data.companyId,
       };
@@ -162,10 +173,11 @@ class JobPositionsService {
         payload.requirements = data.requirements;
       if (data.termsAndConditions && data.termsAndConditions.length > 0)
         payload.termsAndConditions = data.termsAndConditions;
-      if (data.salary) payload.salary = data.salary;
+      if (data.salary !== undefined) payload.salary = data.salary;
       if (data.salaryVisible !== undefined)
         payload.salaryVisible = data.salaryVisible;
-      if (data.location) payload.location = data.location;
+      if (data.bilingual !== undefined) payload.bilingual = data.bilingual;
+      if (data.isActive !== undefined) payload.isActive = data.isActive;
       if (data.employmentType) payload.employmentType = data.employmentType;
       if (data.status) payload.status = data.status;
       if (data.openPositions) payload.openPositions = data.openPositions;
@@ -181,7 +193,7 @@ class JobPositionsService {
       return response.data.data;
     } catch (error: any) {
       throw new ApiError(
-        error.response?.data?.message || "Failed to create job position",
+        getErrorMessage(error),
         error.response?.status,
         error.response?.data?.details
       );
@@ -210,7 +222,8 @@ class JobPositionsService {
       if (data.salary) payload.salary = data.salary;
       if (data.salaryVisible !== undefined)
         payload.salaryVisible = data.salaryVisible;
-      if (data.location) payload.location = data.location;
+      if (data.bilingual !== undefined) payload.bilingual = data.bilingual;
+      if (data.isActive !== undefined) payload.isActive = data.isActive;
       if (data.employmentType) payload.employmentType = data.employmentType;
       if (data.status) payload.status = data.status;
       if (data.openPositions) payload.openPositions = data.openPositions;
@@ -227,7 +240,7 @@ class JobPositionsService {
       return response.data.data;
     } catch (error: any) {
       throw new ApiError(
-        error.response?.data?.message || "Failed to update job position",
+        getErrorMessage(error),
         error.response?.status,
         error.response?.data?.details
       );
@@ -242,7 +255,7 @@ class JobPositionsService {
       await axios.delete(`/job-positions/${jobPositionId}`);
     } catch (error: any) {
       throw new ApiError(
-        error.response?.data?.message || "Failed to delete job position",
+        getErrorMessage(error),
         error.response?.status,
         error.response?.data?.details
       );
@@ -260,7 +273,7 @@ class JobPositionsService {
       return response.data.data;
     } catch (error: any) {
       throw new ApiError(
-        error.response?.data?.message || "Failed to fetch applicants",
+        getErrorMessage(error),
         error.response?.status,
         error.response?.data?.details
       );
@@ -278,7 +291,7 @@ class JobPositionsService {
       return response.data.data;
     } catch (error: any) {
       throw new ApiError(
-        error.response?.data?.message || "Failed to clone job position",
+        getErrorMessage(error),
         error.response?.status,
         error.response?.data?.details
       );

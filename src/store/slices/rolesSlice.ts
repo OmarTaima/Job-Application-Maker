@@ -14,7 +14,9 @@ export interface Role {
   _id: string;
   name: string;
   description: string;
-  permissions?: string[];
+  permissions?: Array<string | { permission: string; access?: string[] }>;
+  isSystemRole?: boolean;
+  singleCompany?: boolean;
   permissionsCount?: number;
   usersCount?: number;
   createdAt?: string;
@@ -28,6 +30,8 @@ export interface CreateRoleRequest {
     permission: string;
     access: string[];
   }[];
+  isSystemRole?: boolean;
+  singleCompany?: boolean;
 }
 
 export interface UpdateRoleRequest {
@@ -37,6 +41,8 @@ export interface UpdateRoleRequest {
     permission: string;
     access: string[];
   }[];
+  isSystemRole?: boolean;
+  singleCompany?: boolean;
 }
 
 interface RolesState {

@@ -9,6 +9,8 @@ export interface Company {
   contactEmail?: string;
   phone?: string;
   website?: string;
+  logoPath?: string;
+  isActive?: boolean;
   description?: string;
   createdAt?: string;
   __v?: number;
@@ -21,6 +23,8 @@ export interface CreateCompanyRequest {
   contactEmail?: string;
   phone?: string;
   website?: string;
+  logoPath?: string;
+  isActive?: boolean;
   description?: string;
 }
 
@@ -31,6 +35,8 @@ export interface UpdateCompanyRequest {
   contactEmail?: string;
   phone?: string;
   website?: string;
+  logoPath?: string;
+  isActive?: boolean;
   description?: string;
 }
 

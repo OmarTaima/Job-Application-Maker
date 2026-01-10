@@ -1,28 +1,28 @@
 import { useState } from "react";
 import Swal from "sweetalert2";
-import ComponentCard from "../../components/common/ComponentCard";
-import PageBreadcrumb from "../../components/common/PageBreadCrumb";
-import PageMeta from "../../components/common/PageMeta";
-import LoadingSpinner from "../../components/common/LoadingSpinner";
-import Label from "../../components/form/Label";
-import Input from "../../components/form/input/InputField";
-import Switch from "../../components/form/switch/Switch";
-import Select from "../../components/form/Select";
-import { PlusIcon, TrashBinIcon, PencilIcon } from "../../icons";
+import ComponentCard from "../../../components/common/ComponentCard";
+import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
+import PageMeta from "../../../components/common/PageMeta";
+import LoadingSpinner from "../../../components/common/LoadingSpinner";
+import Label from "../../../components/form/Label";
+import Input from "../../../components/form/input/InputField";
+import Switch from "../../../components/form/switch/Switch";
+import Select from "../../../components/form/Select";
+import { PlusIcon, TrashBinIcon, PencilIcon } from "../../../icons";
 import {
   Table,
   TableBody,
   TableCell,
   TableHeader,
   TableRow,
-} from "../../components/ui/table";
+} from "../../../components/ui/table";
 import {
   useRecommendedFields,
   useCreateRecommendedField,
   useUpdateRecommendedField,
   useDeleteRecommendedField,
-} from "../../hooks/queries";
-import type { FieldType } from "../../store/slices/recommendedFieldsSlice";
+} from "../../../hooks/queries";
+import type { FieldType } from "../../../store/slices/recommendedFieldsSlice";
 
 type FormField = {
   label: string;
@@ -212,8 +212,13 @@ const RecommendedFields = () => {
           ? "Field updated successfully."
           : "Field created successfully.",
         icon: "success",
+        toast: true,
+        position: "top-end",
         timer: 2000,
         showConfirmButton: false,
+        customClass: {
+          container: "!mt-16",
+        },
       });
 
       setForm({
@@ -252,8 +257,13 @@ const RecommendedFields = () => {
         title: "Deleted!",
         text: "Field has been deleted successfully.",
         icon: "success",
+        toast: true,
+        position: "top-end",
         timer: 2000,
         showConfirmButton: false,
+        customClass: {
+          container: "!mt-16",
+        },
       });
     } catch (err: any) {
       const errorMsg = getErrorMessage(err);

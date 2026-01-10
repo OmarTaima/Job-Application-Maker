@@ -1,14 +1,14 @@
 import { useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router";
-import ComponentCard from "../../components/common/ComponentCard";
-import PageBreadcrumb from "../../components/common/PageBreadCrumb";
-import PageMeta from "../../components/common/PageMeta";
-import Label from "../../components/form/Label";
-import Input from "../../components/form/input/InputField";
-import TextArea from "../../components/form/input/TextArea";
-import Switch from "../../components/form/switch/Switch";
-import Select from "../../components/form/Select";
-import { PlusIcon, TrashBinIcon, CheckCircleIcon } from "../../icons";
+import ComponentCard from "../../../components/common/ComponentCard";
+import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
+import PageMeta from "../../../components/common/PageMeta";
+import Label from "../../../components/form/Label";
+import Input from "../../../components/form/input/InputField";
+import TextArea from "../../../components/form/input/TextArea";
+import Switch from "../../../components/form/switch/Switch";
+import Select from "../../../components/form/Select";
+import { PlusIcon, TrashBinIcon, CheckCircleIcon } from "../../../icons";
 
 type JobSpec = {
   spec: string;

@@ -1,22 +1,24 @@
 import type { ChangeEvent, FormEvent } from "react";
 import { useState } from "react";
 import Swal from "sweetalert2";
-import { Link } from "react-router";
-import PageBreadcrumb from "../../components/common/PageBreadCrumb";
-import PageMeta from "../../components/common/PageMeta";
-import ComponentCard from "../../components/common/ComponentCard";
-import LoadingSpinner from "../../components/common/LoadingSpinner";
-import Label from "../../components/form/Label";
-import Input from "../../components/form/input/InputField";
-import MultiSelect from "../../components/form/MultiSelect";
-import { PlusIcon, PencilIcon } from "../../icons";
+import { Link, useNavigate } from "react-router";
+import { useAuth } from "../../../context/AuthContext";
+import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
+import PageMeta from "../../../components/common/PageMeta";
+import ComponentCard from "../../../components/common/ComponentCard";
+import LoadingSpinner from "../../../components/common/LoadingSpinner";
+import { ValidationErrorAlert } from "../../../components/common/ValidationErrorAlert";
+import Label from "../../../components/form/Label";
+import Input from "../../../components/form/input/InputField";
+import MultiSelect from "../../../components/form/MultiSelect";
+import { PlusIcon, PencilIcon } from "../../../icons";
 import {
   Table,
   TableBody,
   TableCell,
   TableHeader,
   TableRow,
-} from "../../components/ui/table";
+} from "../../../components/ui/table";
 import {
   useUsers,
   useCreateUser,
@@ -26,7 +28,7 @@ import {
   usePermissions,
   useCompanies,
   useDepartments,
-} from "../../hooks/queries";
+} from "../../../hooks/queries";
 
 type CompanyAssignment = {
   companyId: string;
@@ -58,6 +60,14 @@ const defaultUserForm: UserForm = {
 };
 
 export default function Users() {
+  const navigate = useNavigate();
+  const { hasPermission } = useAuth();
+
+  // Check permissions
+  const canRead = hasPermission("User Management", "read");
+  const canCreate = hasPermission("User Management", "create");
+  const canWrite = hasPermission("User Management", "write");
+  
   // React Query hooks - data fetching happens automatically
   const { data: users = [], isLoading: usersLoading, error } = useUsers();
   const { data: roles = [] } = useRoles();
@@ -111,6 +121,40 @@ export default function Users() {
 
   const loading = usersLoading;
 
+  // If user doesn't have read permission, show access denied
+  if (!canRead) {
+    return (
+      <div className="space-y-6">
+        <PageMeta
+          title="Users | TailAdmin React"
+          description="Manage users in the system"
+        />
+        <PageBreadcrumb pageTitle="Users" />
+        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 py-24 dark:border-gray-700">
+          <svg
+            className="mb-4 size-16 text-gray-400"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+            />
+          </svg>
+          <p className="text-lg font-semibold text-gray-700 dark:text-gray-300">
+            Access Denied
+          </p>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            You don't have permission to view users
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const handleInputChange = (
     e: ChangeEvent<HTMLInputElement | HTMLSelectElement>
   ) => {
@@ -129,12 +173,7 @@ export default function Users() {
       return;
     }
 
-    // Validate at least one primary company
-    const hasPrimary = userForm.companies.some((c) => c.isPrimary);
-    if (!hasPrimary) {
-      setFormError("Please select a primary company");
-      return;
-    }
+ 
 
     setIsCreating(true);
     try {
@@ -171,8 +210,13 @@ export default function Users() {
           ? "User updated successfully."
           : "User created successfully.",
         icon: "success",
+        toast: true,
+        position: "top-end",
         timer: 2000,
         showConfirmButton: false,
+        customClass: {
+          container: "!mt-16",
+        },
       });
 
       // Reset form
@@ -211,8 +255,13 @@ export default function Users() {
         title: "Deleted!",
         text: "User has been deleted successfully.",
         icon: "success",
+        toast: true,
+        position: "top-end",
         timer: 2000,
         showConfirmButton: false,
+        customClass: {
+          container: "!mt-16",
+        },
       });
     } catch (err: any) {
       console.error("Error deleting user:", err);
@@ -286,19 +335,21 @@ export default function Users() {
                 <PlusIcon className="w-5 h-5" />
                 Manage Permissions
               </Link>
-              <button
-                onClick={() => {
-                  if (showForm) {
-                    handleCancelEdit();
-                  } else {
-                    setShowForm(true);
-                  }
-                }}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-lg transition-colors"
-              >
-                <PlusIcon className="w-5 h-5" />
-                {showForm ? "Cancel" : "Create User"}
-              </button>
+              {canCreate && (
+                <button
+                  onClick={() => {
+                    if (showForm) {
+                      handleCancelEdit();
+                    } else {
+                      setShowForm(true);
+                    }
+                  }}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-lg transition-colors"
+                >
+                  <PlusIcon className="w-5 h-5" />
+                  {showForm ? "Cancel" : "Create User"}
+                </button>
+              )}
             </div>
           </div>
 
@@ -316,20 +367,10 @@ export default function Users() {
                 </div>
               ) : (
                 <form onSubmit={handleSubmit} className="space-y-6">
-                  {formError && (
-                    <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-                      <p className="text-sm text-red-600 dark:text-red-400">
-                        <strong>Error:</strong> {formError}
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => setFormError("")}
-                        className="mt-2 text-xs text-red-600 dark:text-red-400 hover:underline"
-                      >
-                        Dismiss
-                      </button>
-                    </div>
-                  )}
+                  <ValidationErrorAlert 
+                    error={formError} 
+                    onDismiss={() => setFormError("")}
+                  />
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {/* Basic Information */}
@@ -675,8 +716,7 @@ export default function Users() {
                                 {
                                   companyId: availableCompanies[0]._id,
                                   departments: [],
-                                  isPrimary: userForm.companies.length === 0,
-                                },
+                                  isPrimary: false,},
                               ],
                             });
                           }
@@ -717,13 +757,7 @@ export default function Users() {
                                     userForm.companies.filter(
                                       (_, i) => i !== index
                                     );
-                                  // If removing primary, make first one primary
-                                  if (
-                                    companyAssignment.isPrimary &&
-                                    newCompanies.length > 0
-                                  ) {
-                                    newCompanies[0].isPrimary = true;
-                                  }
+                            
                                   setUserForm({
                                     ...userForm,
                                     companies: newCompanies,
@@ -810,19 +844,18 @@ export default function Users() {
                                 />
                               </div>
 
-                              {/* Primary Company Checkbox */}
+                              {/* Primary Company (optional) */}
                               <div className="flex items-center gap-2">
                                 <input
-                                  type="radio"
+                                  type="checkbox"
                                   id={`primary-${index}`}
-                                  name="primaryCompany"
                                   checked={companyAssignment.isPrimary}
                                   onChange={() => {
                                     const newCompanies = userForm.companies.map(
-                                      (c, i) => ({
-                                        ...c,
-                                        isPrimary: i === index,
-                                      })
+                                      (c, i) =>
+                                        i === index
+                                          ? { ...c, isPrimary: !c.isPrimary }
+                                          : c
                                     );
                                     setUserForm({
                                       ...userForm,
@@ -835,7 +868,7 @@ export default function Users() {
                                   htmlFor={`primary-${index}`}
                                   className="!mb-0"
                                 >
-                                  Primary Company
+                                  Primary Company (optional)
                                 </Label>
                               </div>
                             </div>
@@ -939,7 +972,8 @@ export default function Users() {
                     return (
                       <TableRow
                         key={user._id}
-                        className="hover:bg-gray-50 dark:hover:bg-gray-800"
+                        onClick={() => navigate(`/user/${user._id}`)}
+                        className="hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer"
                       >
                         <TableCell className="px-4 py-3 text-sm font-mono">
                           {user._id.slice(-8)}
@@ -968,21 +1002,25 @@ export default function Users() {
                           </span>
                         </TableCell>
                         <TableCell className="px-4 py-3 text-sm">
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => handleEditUser(user)}
-                              className="px-3 py-1 text-xs bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-200 rounded hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors inline-flex items-center gap-1"
-                            >
-                              <PencilIcon className="w-3 h-3" />
-                              Edit
-                            </button>
-                            <button
-                              onClick={() => handleDeleteUser(user._id)}
-                              disabled={isDeletingUser === user._id}
-                              className="px-3 py-1 text-xs bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 rounded hover:bg-red-200 dark:hover:bg-red-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                              {isDeletingUser === user._id ? "Deleting..." : "Delete"}
-                            </button>
+                          <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                            {canWrite && (
+                              <button
+                                onClick={() => handleEditUser(user)}
+                                className="px-3 py-1 text-xs bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-200 rounded hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors inline-flex items-center gap-1"
+                              >
+                                <PencilIcon className="w-3 h-3" />
+                                Edit
+                              </button>
+                            )}
+                            {canCreate && (
+                              <button
+                                onClick={() => handleDeleteUser(user._id)}
+                                disabled={isDeletingUser === user._id}
+                                className="px-3 py-1 text-xs bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 rounded hover:bg-red-200 dark:hover:bg-red-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                {isDeletingUser === user._id ? "Deleting..." : "Delete"}
+                              </button>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>

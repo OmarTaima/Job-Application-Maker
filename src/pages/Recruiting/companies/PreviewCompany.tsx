@@ -1,23 +1,23 @@
 import type { ChangeEvent, FormEvent } from "react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Swal from "sweetalert2";
 import { useParams, useNavigate } from "react-router";
-import ComponentCard from "../../components/common/ComponentCard";
-import PageBreadcrumb from "../../components/common/PageBreadCrumb";
-import PageMeta from "../../components/common/PageMeta";
-import LoadingSpinner from "../../components/common/LoadingSpinner";
-import Label from "../../components/form/Label";
-import Input from "../../components/form/input/InputField";
-import TextArea from "../../components/form/input/TextArea";
+import ComponentCard from "../../../components/common/ComponentCard";
+import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
+import PageMeta from "../../../components/common/PageMeta";
+import LoadingSpinner from "../../../components/common/LoadingSpinner";
+import Label from "../../../components/form/Label";
+import Input from "../../../components/form/input/InputField";
+import TextArea from "../../../components/form/input/TextArea";
 import {
   CheckCircleIcon,
   PlusIcon,
   TrashBinIcon,
   PencilIcon,
   CloseIcon,
-} from "../../icons";
-import type { Department } from "../../services/departmentsService";
-import { useAuth } from "../../context/AuthContext";
+} from "../../../icons";
+import type { Department } from "../../../services/departmentsService";
+import { useAuth } from "../../../context/AuthContext";
 import {
   useCompany,
   useDepartments,
@@ -25,13 +25,16 @@ import {
   useCreateDepartment,
   useUpdateDepartment,
   useDeleteDepartment,
-} from "../../hooks/queries";
+} from "../../../hooks/queries";
 
 type CompanyForm = {
   name: string;
   address?: string;
   contactEmail?: string;
   phone?: string;
+  website?: string;
+  logoPath?: string;
+  isActive?: boolean;
 };
 
 type DepartmentForm = {
@@ -39,7 +42,6 @@ type DepartmentForm = {
   description?: string;
   companyId: string;
   managerId?: string;
-  location?: string;
 };
 
 export default function PreviewCompany() {
@@ -66,13 +68,15 @@ export default function PreviewCompany() {
     address: company?.address || "",
     contactEmail: company?.contactEmail || "",
     phone: company?.phone || "",
+    website: company?.website || "",
+    logoPath: company?.logoPath || "",
+    isActive: company?.isActive ?? true,
   });
   const [departmentForm, setDepartmentForm] = useState<DepartmentForm>({
     companyId: companyId || "",
     name: "",
     description: "",
     managerId: "",
-    location: "",
   });
 
   const [companyStatus, setCompanyStatus] = useState("");
@@ -129,16 +133,19 @@ export default function PreviewCompany() {
   };
 
   // Update form when company data loads
-  useState(() => {
+  useEffect(() => {
     if (company) {
       setCompanyForm({
-        name: company.name,
+        name: company.name || "",
         address: company.address || "",
         contactEmail: company.contactEmail || "",
         phone: company.phone || "",
+        website: company.website || "",
+        logoPath: company.logoPath || "",
+        isActive: company.isActive ?? true,
       });
     }
-  });
+  }, [company]);
 
   const handleCompanyChange = (
     e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
@@ -163,6 +170,11 @@ export default function PreviewCompany() {
       setCompanyError("Company name is required");
       return;
     }
+    // Ensure contact email is provided (backend requires it)
+    if (!companyForm.contactEmail || !companyForm.contactEmail.trim()) {
+      setCompanyError("Contact email is required");
+      return;
+    }
 
     try {
       await updateCompanyMutation.mutateAsync({
@@ -174,8 +186,13 @@ export default function PreviewCompany() {
         title: "Success!",
         text: "Company updated successfully.",
         icon: "success",
+        toast: true,
+        position: "top-end",
         timer: 2000,
         showConfirmButton: false,
+        customClass: {
+          container: "!mt-16",
+        },
       });
 
       setCompanyStatus("Company updated successfully");
@@ -212,8 +229,13 @@ export default function PreviewCompany() {
         title: "Success!",
         text: "Department created successfully.",
         icon: "success",
+        toast: true,
+        position: "top-end",
         timer: 2000,
         showConfirmButton: false,
+        customClass: {
+          container: "!mt-16",
+        },
       });
 
       setDepartmentStatus("Department created successfully");
@@ -222,7 +244,6 @@ export default function PreviewCompany() {
         name: "",
         description: "",
         managerId: "",
-        location: "",
       });
       setTimeout(() => setDepartmentStatus(""), 2500);
     } catch (err) {
@@ -256,8 +277,13 @@ export default function PreviewCompany() {
         title: "Deleted!",
         text: "Department has been deleted successfully.",
         icon: "success",
+        toast: true,
+        position: "top-end",
         timer: 2000,
         showConfirmButton: false,
+        customClass: {
+          container: "!mt-16",
+        },
       });
     } catch (err) {
       console.error("Error deleting department:", err);
@@ -294,9 +320,9 @@ export default function PreviewCompany() {
               typeof editingDept.managerId === "string"
                 ? editingDept.managerId
                 : editingDept.managerId?._id,
-            location: editingDept.location,
+            isActive: typeof editingDept?.isActive === "boolean" ? editingDept.isActive : undefined,
           },
-        });
+        } as any);
         setEditingDeptId(null);
         setEditingDept(null);
       } catch (err) {
@@ -436,6 +462,30 @@ export default function PreviewCompany() {
                     disabled={!isEditingCompany}
                   />
                 </div>
+                <div>
+                  <Label htmlFor="website">Website</Label>
+                  <Input
+                    id="website"
+                    name="website"
+                    type="url"
+                    value={companyForm.website}
+                    onChange={handleCompanyChange}
+                    placeholder="https://company.com"
+                    disabled={!isEditingCompany}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="logoPath">Logo URL</Label>
+                  <Input
+                    id="logoPath"
+                    name="logoPath"
+                    type="url"
+                    value={companyForm.logoPath}
+                    onChange={handleCompanyChange}
+                    placeholder="https://.../logo.png"
+                    disabled={!isEditingCompany}
+                  />
+                </div>
               </div>
               <div>
                 <Label htmlFor="address">Address</Label>
@@ -459,6 +509,23 @@ export default function PreviewCompany() {
                     <CheckCircleIcon className="size-4" />
                     Save Changes
                   </button>
+                  <div className="flex items-center gap-3">
+                    <input
+                      id="isActive"
+                      type="checkbox"
+                      checked={!!companyForm.isActive}
+                      onChange={(e) =>
+                        setCompanyForm((prev) => ({
+                          ...prev,
+                          isActive: e.target.checked,
+                        }))
+                      }
+                      className="w-4 h-4 text-brand-500"
+                    />
+                    <Label htmlFor="isActive" className="!mb-0">
+                      Active
+                    </Label>
+                  </div>
                   {companyStatus && (
                     <span className="inline-flex items-center gap-2 rounded-full bg-success-50 px-3 py-1 text-xs font-semibold text-success-600 ring-1 ring-inset ring-success-200 dark:bg-success-500/10 dark:text-success-200 dark:ring-success-400/40">
                       <CheckCircleIcon className="size-4" />
@@ -503,18 +570,7 @@ export default function PreviewCompany() {
                       placeholder="Engineering"
                     />
                   </div>
-                  <div>
-                    <Label htmlFor="departmentLocation">Location</Label>
-                    <Input
-                      id="departmentLocation"
-                      name="location"
-                      value={departmentForm.location}
-                      onChange={(e) =>
-                        handleDepartmentChange("location", e.target.value)
-                      }
-                      placeholder="Building A, Floor 3"
-                    />
-                  </div>
+                  {/* location field removed to match backend schema */}
                 </div>
                 <div>
                   <Label htmlFor="departmentDescription">Description</Label>
@@ -592,26 +648,7 @@ export default function PreviewCompany() {
                                     placeholder="Department name"
                                   />
                                 </div>
-                                <div>
-                                  <Label htmlFor={`edit-location-${dept._id}`}>
-                                    Location
-                                  </Label>
-                                  <Input
-                                    id={`edit-location-${dept._id}`}
-                                    value={currentDept.location}
-                                    onChange={(e) =>
-                                      setEditingDept(
-                                        editingDept
-                                          ? {
-                                              ...editingDept,
-                                              location: e.target.value,
-                                            }
-                                          : null
-                                      )
-                                    }
-                                    placeholder="Building A, Floor 3"
-                                  />
-                                </div>
+                                {/* location removed to match backend schema */}
                                 <div>
                                   <Label htmlFor={`edit-desc-${dept._id}`}>
                                     Description
@@ -633,6 +670,24 @@ export default function PreviewCompany() {
                                   />
                                 </div>
                                 <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-3">
+                                      <input
+                                        id={`edit-isActive-${dept._id}`}
+                                        type="checkbox"
+                                        checked={!!editingDept?.isActive}
+                                        onChange={(e) =>
+                                          setEditingDept(
+                                            editingDept
+                                              ? { ...editingDept, isActive: e.target.checked }
+                                              : null
+                                          )
+                                        }
+                                        className="w-4 h-4 text-brand-500"
+                                      />
+                                      <Label htmlFor={`edit-isActive-${dept._id}`} className="!mb-0">
+                                        Active
+                                      </Label>
+                                    </div>
                                   <button
                                     onClick={handleSaveDepartment}
                                     disabled={isSavingDept}
@@ -658,11 +713,11 @@ export default function PreviewCompany() {
                                   <span className="text-sm font-semibold text-gray-800 dark:text-white/90">
                                     {dept.name}
                                   </span>
-                                  {dept.location && (
-                                    <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold bg-gray-100 text-gray-600 ring-1 ring-inset ring-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:ring-gray-700">
-                                      {dept.location}
+                                  {dept.isActive === false ? (
+                                    <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200">
+                                      Inactive
                                     </span>
-                                  )}
+                                  ) : null}
                                 </div>
                                 <div className="flex items-center gap-2">
                                   {dept.managerId && (

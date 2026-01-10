@@ -1,18 +1,18 @@
 import { useState } from "react";
 import Swal from "sweetalert2";
 import { useParams, useNavigate } from "react-router";
-import ComponentCard from "../../components/common/ComponentCard";
-import PageBreadcrumb from "../../components/common/PageBreadCrumb";
-import PageMeta from "../../components/common/PageMeta";
-import LoadingSpinner from "../../components/common/LoadingSpinner";
-import Label from "../../components/form/Label";
-import Input from "../../components/form/input/InputField";
-import TextArea from "../../components/form/input/TextArea";
-import Select from "../../components/form/Select";
-import DatePicker from "../../components/form/date-picker";
-import { Modal } from "../../components/ui/modal";
-import { PlusIcon } from "../../icons";
-import { useAuth } from "../../context/AuthContext";
+import ComponentCard from "../../../components/common/ComponentCard";
+import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
+import PageMeta from "../../../components/common/PageMeta";
+import LoadingSpinner from "../../../components/common/LoadingSpinner";
+import Label from "../../../components/form/Label";
+import Input from "../../../components/form/input/InputField";
+import TextArea from "../../../components/form/input/TextArea";
+import Select from "../../../components/form/Select";
+import DatePicker from "../../../components/form/date-picker";
+import { Modal } from "../../../components/ui/modal";
+import { PlusIcon } from "../../../icons";
+import { useAuth } from "../../../context/AuthContext";
 import {
   useApplicant,
   useJobPositions,
@@ -22,8 +22,8 @@ import {
   useScheduleInterview,
   useAddComment,
   useSendMessage,
-} from "../../hooks/queries";
-import type { Applicant } from "../../store/slices/applicantsSlice";
+} from "../../../hooks/queries";
+import type { Applicant, UpdateStatusRequest } from "../../../store/slices/applicantsSlice";
 
 const ApplicantData = () => {
   const { id } = useParams<{ id: string }>();
@@ -158,6 +158,7 @@ const ApplicantData = () => {
     "company" | "user" | "whatsapp" | "custom"
   >("company");
   const [customPhone, setCustomPhone] = useState("");
+  const [messageTemplate, setMessageTemplate] = useState("");
   const [isSubmittingInterview, setIsSubmittingInterview] = useState(false);
   const [isSubmittingMessage, setIsSubmittingMessage] = useState(false);
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
@@ -178,6 +179,29 @@ const ApplicantData = () => {
   const [messageError, setMessageError] = useState("");
   const [commentError, setCommentError] = useState("");
   const [statusError, setStatusError] = useState("");
+
+  // Generate message template based on selected notification channels
+  const generateMessageTemplate = () => {
+    if (!applicant) return "";
+    
+    const applicantName = applicant.fullName;
+    const interviewDate = interviewForm.date ? new Date(interviewForm.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : "[Interview Date]";
+    const interviewTime = interviewForm.time || "[Interview Time]";
+    const interviewType = interviewForm.type;
+    const location = interviewForm.location || "our office";
+    const link = interviewForm.link || "[Video Link]";
+
+    // Only one channel can be active at a time
+    if (notificationChannels.email) {
+      return `Dear ${applicantName},\n\nWe are pleased to invite you for an interview for the position you applied for.\n\nInterview Details:\n• Date: ${interviewDate}\n• Time: ${interviewTime}\n• Type: ${interviewType.charAt(0).toUpperCase() + interviewType.slice(1)}\n${interviewType === 'video' ? `• Link: ${link}` : interviewType === 'in-person' ? `• Location: ${location}` : `• Mode: Phone Call`}\n\nPlease confirm your availability at your earliest convenience.\n\nBest regards,\nHR Team`;
+    } else if (notificationChannels.whatsapp) {
+      return `Hi ${applicantName}! 👋\n\nGreat news! We'd like to invite you for an interview:\n\n📅 ${interviewDate}\n⏰ ${interviewTime}\n${interviewType === 'video' ? `🎥 ${link}` : interviewType === 'in-person' ? `📍 ${location}` : `📞 Phone Interview`}\n\nPlease confirm if you're available. Looking forward to meeting you!`;
+    } else if (notificationChannels.sms) {
+      return `Hi ${applicantName}, You're invited for a ${interviewType} interview on ${interviewDate} at ${interviewTime}. ${interviewType === 'in-person' ? `Location: ${location}` : ''}Please confirm. - HR Team`;
+    }
+    
+    return "";
+  };
 
   // Helper function to extract detailed error messages
   const getErrorMessage = (err: any): string => {
@@ -214,10 +238,10 @@ const ApplicantData = () => {
   // React Query automatically handles data fetching, no useEffect needed
 
   const statusOptions = [
-    { value: "applied", label: "Applied" },
-    { value: "under_review", label: "Under Review" },
+    { value: "pending", label: "Pending" },
+    { value: "interview", label: "Interview" },
     { value: "interviewed", label: "Interviewed" },
-    { value: "accepted", label: "Accepted" },
+    { value: "approved", label: "Approved" },
     { value: "rejected", label: "Rejected" },
   ];
 
@@ -255,28 +279,14 @@ const ApplicantData = () => {
         scheduledAt = `${interviewForm.date}T00:00:00`;
       }
 
+      // Build payload matching backend scheduleInterviewSchema
       const interviewData: any = {
-        description: interviewForm.description,
-        type: interviewForm.type,
         scheduledAt,
-      };
-
-      if (interviewForm.comment) interviewData.comment = interviewForm.comment;
-      if (interviewForm.location)
-        interviewData.location = interviewForm.location;
-      if (interviewForm.link) interviewData.link = interviewForm.link;
-
-      // Add notification preferences
-      interviewData.notifications = {
-        channels: notificationChannels,
-        emailOption,
-        customEmail: emailOption === "custom" ? customEmail : undefined,
-        phoneOption,
-        customPhone:
-          (notificationChannels.sms || notificationChannels.whatsapp) &&
-          phoneOption === "custom"
-            ? customPhone
-            : undefined,
+        description: interviewForm.description || undefined,
+        type: interviewForm.type || undefined,
+        location: interviewForm.location || undefined,
+        videoLink: interviewForm.link || undefined,
+        notes: interviewForm.comment || undefined,
       };
 
       // Schedule interview
@@ -304,14 +314,14 @@ const ApplicantData = () => {
         data: interviewData,
       });
 
-      // Automatically update status to "under_review" if not already
-      if (applicant && applicant.status !== "under_review") {
+      // Automatically update status to "interview" if not already
+      if (applicant && applicant.status !== "interview") {
         await updateStatusMutation.mutateAsync({
           id: id!,
           data: {
-            status: "under_review",
-            notes: `Status automatically updated to under_review upon scheduling an interview on ${new Date().toLocaleDateString()}`,
-          },
+            status: "interview",
+            notes: `Status automatically updated to interview upon scheduling an interview on ${new Date().toLocaleDateString()}`,
+          } as UpdateStatusRequest,
         });
       }
 
@@ -319,8 +329,13 @@ const ApplicantData = () => {
         title: "Success!",
         text: "Interview scheduled successfully.",
         icon: "success",
+        toast: true,
+        position: "top-end",
         timer: 2000,
         showConfirmButton: false,
+        customClass: {
+          container: "!mt-16",
+        },
       });
     } catch (err: any) {
       const errorMsg = getErrorMessage(err);
@@ -355,11 +370,6 @@ const ApplicantData = () => {
         type: messageForm.type,
       };
 
-      // Only include subject for email type
-      if (messageForm.type === "email") {
-        messageData.subject = messageForm.subject;
-      }
-
       // Close modal and reset form immediately
       setMessageForm({ subject: "", body: "", type: "email" });
       setShowMessageModal(false);
@@ -371,8 +381,13 @@ const ApplicantData = () => {
         title: "Success!",
         text: "Message sent successfully.",
         icon: "success",
+        toast: true,
+        position: "top-end",
         timer: 2000,
         showConfirmButton: false,
+        customClass: {
+          container: "!mt-16",
+        },
       });
     } catch (err: any) {
       const errorMsg = getErrorMessage(err);
@@ -391,8 +406,7 @@ const ApplicantData = () => {
     try {
       const commentData = {
         comment: commentForm.text,
-        changedBy: "current-user",
-        changedAt: new Date().toISOString(),
+        isInternal: true,
       };
 
       // Close modal and reset form immediately
@@ -406,8 +420,13 @@ const ApplicantData = () => {
         title: "Success!",
         text: "Comment added successfully.",
         icon: "success",
+        toast: true,
+        position: "top-end",
         timer: 2000,
         showConfirmButton: false,
+        customClass: {
+          container: "!mt-16",
+        },
       });
     } catch (err: any) {
       const errorMsg = getErrorMessage(err);
@@ -424,23 +443,8 @@ const ApplicantData = () => {
 
     setIsSubmittingStatus(true);
     try {
-      const statusData: {
-        status:
-          | "applied"
-          | "under_review"
-          | "interviewed"
-          | "accepted"
-          | "rejected"
-          | "trashed";
-        notes?: string;
-      } = {
-        status: statusForm.status as
-          | "applied"
-          | "under_review"
-          | "interviewed"
-          | "accepted"
-          | "rejected"
-          | "trashed",
+      const statusData: UpdateStatusRequest = {
+        status: statusForm.status as UpdateStatusRequest["status"],
         notes: statusForm.notes || undefined,
       };
 
@@ -455,8 +459,13 @@ const ApplicantData = () => {
         title: "Success!",
         text: "Status updated successfully.",
         icon: "success",
+        toast: true,
+        position: "top-end",
         timer: 2000,
         showConfirmButton: false,
+        customClass: {
+          container: "!mt-16",
+        },
       });
     } catch (err: any) {
       const errorMsg = getErrorMessage(err);
@@ -469,13 +478,13 @@ const ApplicantData = () => {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case "applied":
+      case "pending":
         return "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400";
-      case "under_review":
+      case "interview":
         return "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400";
       case "interviewed":
         return "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400";
-      case "accepted":
+      case "approved":
         return "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400";
       case "rejected":
         return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400";
@@ -719,7 +728,7 @@ const ApplicantData = () => {
               applicant.messages?.forEach((message) => {
                 activities.push({
                   type: "message",
-                  date: message.sentAt,
+                  date: message.sentAt || (message as any).createdAt || new Date().toISOString(),
                   data: message,
                 });
               });
@@ -741,7 +750,7 @@ const ApplicantData = () => {
               applicant.interviews?.forEach((interview) => {
                 activities.push({
                   type: "interview",
-                  date: interview.issuedAt,
+                  date: interview.scheduledAt || (interview as any).issuedAt || new Date().toISOString(),
                   data: interview,
                 });
               });
@@ -1286,30 +1295,22 @@ const ApplicantData = () => {
                 <div className="flex flex-wrap gap-3">
                   <label className="group relative inline-flex items-center gap-3 cursor-pointer rounded-lg border border-gray-300 bg-white px-4 py-2.5 transition-all hover:border-brand-400 hover:bg-brand-50/50 dark:border-gray-600 dark:bg-gray-800 dark:hover:border-brand-600 dark:hover:bg-brand-900/20">
                     <input
-                      type="checkbox"
+                      type="radio"
+                      name="notificationChannel"
                       checked={notificationChannels.email}
-                      onChange={(e) =>
+                      onChange={() => {
                         setNotificationChannels({
-                          ...notificationChannels,
-                          email: e.target.checked,
-                        })
-                      }
+                          email: true,
+                          sms: false,
+                          whatsapp: false,
+                        });
+                        setEmailOption("company");
+                        setMessageTemplate(generateMessageTemplate());
+                      }}
                       className="peer sr-only"
                     />
-                    <div className="h-5 w-5 rounded border-2 border-gray-300 bg-white transition-all peer-checked:border-brand-600 peer-checked:bg-brand-600 dark:border-gray-600 dark:bg-gray-700 dark:peer-checked:border-brand-500 dark:peer-checked:bg-brand-500">
-                      <svg
-                        className="h-full w-full scale-0 text-white transition-transform peer-checked:scale-100"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                        strokeWidth="3"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M5 13l4 4L19 7"
-                        />
-                      </svg>
+                    <div className="h-5 w-5 rounded-full border-2 border-gray-300 bg-white transition-all peer-checked:border-brand-600 peer-checked:bg-brand-600 dark:border-gray-600 dark:bg-gray-700 dark:peer-checked:border-brand-500 dark:peer-checked:bg-brand-500 flex items-center justify-center">
+                      <div className="h-2 w-2 rounded-full bg-white scale-0 peer-checked:scale-100 transition-transform"></div>
                     </div>
                     <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
                       📧 Email
@@ -1317,30 +1318,22 @@ const ApplicantData = () => {
                   </label>
                   <label className="group relative inline-flex items-center gap-3 cursor-pointer rounded-lg border border-gray-300 bg-white px-4 py-2.5 transition-all hover:border-brand-400 hover:bg-brand-50/50 dark:border-gray-600 dark:bg-gray-800 dark:hover:border-brand-600 dark:hover:bg-brand-900/20">
                     <input
-                      type="checkbox"
+                      type="radio"
+                      name="notificationChannel"
                       checked={notificationChannels.sms}
-                      onChange={(e) =>
+                      onChange={() => {
                         setNotificationChannels({
-                          ...notificationChannels,
-                          sms: e.target.checked,
-                        })
-                      }
+                          email: false,
+                          sms: true,
+                          whatsapp: false,
+                        });
+                        setPhoneOption("company");
+                        setMessageTemplate(generateMessageTemplate());
+                      }}
                       className="peer sr-only"
                     />
-                    <div className="h-5 w-5 rounded border-2 border-gray-300 bg-white transition-all peer-checked:border-brand-600 peer-checked:bg-brand-600 dark:border-gray-600 dark:bg-gray-700 dark:peer-checked:border-brand-500 dark:peer-checked:bg-brand-500">
-                      <svg
-                        className="h-full w-full scale-0 text-white transition-transform peer-checked:scale-100"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                        strokeWidth="3"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M5 13l4 4L19 7"
-                        />
-                      </svg>
+                    <div className="h-5 w-5 rounded-full border-2 border-gray-300 bg-white transition-all peer-checked:border-brand-600 peer-checked:bg-brand-600 dark:border-gray-600 dark:bg-gray-700 dark:peer-checked:border-brand-500 dark:peer-checked:bg-brand-500 flex items-center justify-center">
+                      <div className="h-2 w-2 rounded-full bg-white scale-0 peer-checked:scale-100 transition-transform"></div>
                     </div>
                     <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
                       💬 SMS
@@ -1348,38 +1341,27 @@ const ApplicantData = () => {
                   </label>
                   <label className="group relative inline-flex items-center gap-3 cursor-pointer rounded-lg border border-gray-300 bg-white px-4 py-2.5 transition-all hover:border-brand-400 hover:bg-brand-50/50 dark:border-gray-600 dark:bg-gray-800 dark:hover:border-brand-600 dark:hover:bg-brand-900/20">
                     <input
-                      type="checkbox"
+                      type="radio"
+                      name="notificationChannel"
                       checked={notificationChannels.whatsapp}
-                      onChange={(e) =>
+                      onChange={() => {
                         setNotificationChannels({
-                          ...notificationChannels,
-                          whatsapp: e.target.checked,
-                        })
-                      }
+                          email: false,
+                          sms: false,
+                          whatsapp: true,
+                        });
+                        setMessageTemplate(generateMessageTemplate());
+                      }}
                       className="peer sr-only"
                     />
-                    <div className="h-5 w-5 rounded border-2 border-gray-300 bg-white transition-all peer-checked:border-brand-600 peer-checked:bg-brand-600 dark:border-gray-600 dark:bg-gray-700 dark:peer-checked:border-brand-500 dark:peer-checked:bg-brand-500">
-                      <svg
-                        className="h-full w-full scale-0 text-white transition-transform peer-checked:scale-100"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                        strokeWidth="3"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M5 13l4 4L19 7"
-                        />
-                      </svg>
+                    <div className="h-5 w-5 rounded-full border-2 border-gray-300 bg-white transition-all peer-checked:border-brand-600 peer-checked:bg-brand-600 dark:border-gray-600 dark:bg-gray-700 dark:peer-checked:border-brand-500 dark:peer-checked:bg-brand-500 flex items-center justify-center">
+                      <div className="h-2 w-2 rounded-full bg-white scale-0 peer-checked:scale-100 transition-transform"></div>
                     </div>
                     <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
                       📱 WhatsApp
                     </span>
                   </label>
                 </div>
-              </div>
-
               {/* Email and Phone Options Grid */}
               <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
                 {/* Email Options */}
@@ -1416,40 +1398,78 @@ const ApplicantData = () => {
                   notificationChannels.whatsapp) && (
                   <div className="space-y-2">
                     <Label htmlFor="phone-option">Phone Number</Label>
-                    <Select
-                      options={[
-                        { value: "company", label: "Company Number" },
-                        { value: "user", label: "My Phone" },
-                        { value: "whatsapp", label: "Current WhatsApp Number" },
-                        { value: "custom", label: "Custom Number" },
-                      ]}
-                      value={phoneOption}
-                      placeholder="Select phone option"
-                      onChange={(value) =>
-                        setPhoneOption(
-                          value as "company" | "user" | "whatsapp" | "custom"
-                        )
-                      }
-                    />
-                    {phoneOption === "custom" && (
-                      <Input
-                        id="custom-phone"
-                        type="tel"
-                        value={customPhone}
-                        onChange={(e) => setCustomPhone(e.target.value)}
-                        placeholder="Enter custom phone number"
-                        className="mt-2"
-                      />
-                    )}
-                    {phoneOption === "whatsapp" && (
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                        Will use the number currently logged in to WhatsApp
-                        Web/Desktop
-                      </p>
+                    {notificationChannels.sms ? (
+                      <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-600 dark:bg-gray-700/50">
+                        <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Company Number (SMS)</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">SMS will be sent from the company number only</p>
+                      </div>
+                    ) : (
+                      <>
+                        <Select
+                          options={[
+                            { value: "company", label: "Company Number" },
+                            { value: "user", label: "My Phone" },
+                            { value: "whatsapp", label: "Current WhatsApp Number" },
+                            { value: "custom", label: "Custom Number" },
+                          ]}
+                          value={phoneOption}
+                          placeholder="Select phone option"
+                          onChange={(value) =>
+                            setPhoneOption(
+                              value as "company" | "user" | "whatsapp" | "custom"
+                            )
+                          }
+                        />
+                        {phoneOption === "custom" && (
+                          <Input
+                            id="custom-phone"
+                            type="tel"
+                            value={customPhone}
+                            onChange={(e) => setCustomPhone(e.target.value)}
+                            placeholder="Enter custom phone number"
+                            className="mt-2"
+                          />
+                        )}
+                        {phoneOption === "whatsapp" && (
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            Will use the number currently logged in to WhatsApp
+                            Web/Desktop
+                          </p>
+                        )}
+                      </>
                     )}
                   </div>
                 )}
               </div>
+            </div>
+              {/* Message Template */}
+              {(notificationChannels.email || notificationChannels.sms || notificationChannels.whatsapp) && (
+                <div className="mt-4">
+                  <Label htmlFor="message-template">
+                    Message Template
+                    <button
+                      type="button"
+                      onClick={() => setMessageTemplate(generateMessageTemplate())}
+                      className="ml-2 text-xs text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300"
+                    >
+                      🔄 Regenerate
+                    </button>
+                  </Label>
+                  <TextArea
+                    value={messageTemplate}
+                    onChange={(value) => setMessageTemplate(value)}
+                    placeholder="Message content will appear here..."
+                    rows={8}
+                  />
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Templates for: {[
+                      notificationChannels.email && "Email",
+                      notificationChannels.whatsapp && "WhatsApp", 
+                      notificationChannels.sms && "SMS"
+                    ].filter(Boolean).join(", ")}
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 

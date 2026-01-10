@@ -1,28 +1,28 @@
 import { useState, useMemo } from "react";
 import Swal from "sweetalert2";
-import PageBreadcrumb from "../../components/common/PageBreadCrumb";
-import PageMeta from "../../components/common/PageMeta";
-import ComponentCard from "../../components/common/ComponentCard";
-import LoadingSpinner from "../../components/common/LoadingSpinner";
+import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
+import PageMeta from "../../../components/common/PageMeta";
+import ComponentCard from "../../../components/common/ComponentCard";
+import LoadingSpinner from "../../../components/common/LoadingSpinner";
 import { Link, useNavigate } from "react-router";
-import { PlusIcon, PencilIcon, TrashBinIcon } from "../../icons";
-import { useAuth } from "../../context/AuthContext";
-import Switch from "../../components/form/switch/Switch";
+import { PlusIcon, PencilIcon, TrashBinIcon } from "../../../icons";
+import { useAuth } from "../../../context/AuthContext";
+import Switch from "../../../components/form/switch/Switch";
 import {
   Table,
   TableBody,
   TableCell,
   TableHeader,
   TableRow,
-} from "../../components/ui/table";
+} from "../../../components/ui/table";
 import {
   useJobPositions,
   useCompanies,
   useDepartments,
   useDeleteJobPosition,
   useUpdateJobPosition,
-} from "../../hooks/queries";
-import type { JobPosition } from "../../store/slices/jobPositionsSlice";
+} from "../../../hooks/queries";
+import type { JobPosition } from "../../../store/slices/jobPositionsSlice";
 
 type Job = JobPosition & {
   companyName?: string;
@@ -31,7 +31,12 @@ type Job = JobPosition & {
 
 export default function Jobs() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
+
+  // Check permissions
+  const canRead = hasPermission("Job Position Management", "read");
+  const canCreate = hasPermission("Job Position Management", "create");
+  const canWrite = hasPermission("Job Position Management", "write");
 
   const [searchTerm, setSearchTerm] = useState("");
 
@@ -160,11 +165,15 @@ export default function Jobs() {
   }, [jobPositions, companies, departments, user, isAdmin]);
 
   const filteredJobs = jobs.filter(
-    (job) =>
-      job.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      job.jobCode?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      job.companyName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      job.departmentName?.toLowerCase().includes(searchTerm.toLowerCase())
+    (job) => {
+      const title = typeof job.title === "string" ? job.title : job.title?.en || "";
+      return (
+        title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        job.jobCode?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        job.companyName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        job.departmentName?.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
   );
 
   const handleToggleActive = async (jobId: string, currentStatus: string) => {
@@ -203,8 +212,13 @@ export default function Jobs() {
         title: "Deleted!",
         text: "Job has been deleted successfully.",
         icon: "success",
+        toast: true,
+        position: "top-end",
         timer: 2000,
         showConfirmButton: false,
+        customClass: {
+          container: "!mt-16",
+        },
       });
     } catch (err: any) {
       console.error("Error deleting job:", err);
@@ -229,6 +243,40 @@ export default function Jobs() {
     return (
       <div className="flex items-center justify-center min-h-screen text-red-600">
         Error loading jobs: {(error as Error).message}
+      </div>
+    );
+  }
+
+  // If user doesn't have read permission, show access denied
+  if (!canRead) {
+    return (
+      <div className="space-y-6">
+        <PageMeta
+          title="Jobs | TailAdmin React"
+          description="View and manage all job positions in the system."
+        />
+        <PageBreadcrumb pageTitle="Jobs" />
+        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 py-24 dark:border-gray-700">
+          <svg
+            className="mb-4 size-16 text-gray-400"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+            />
+          </svg>
+          <p className="text-lg font-semibold text-gray-700 dark:text-gray-300">
+            Access Denied
+          </p>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            You don't have permission to view jobs
+          </p>
+        </div>
       </div>
     );
   }
@@ -301,13 +349,15 @@ export default function Jobs() {
                 className="h-11 w-full max-w-md rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/20 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800"
               />
             </div>
-            <Link
-              to="/create-job"
-              className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
-            >
-              <PlusIcon className="size-4" />
-              Create Job
-            </Link>
+            {canCreate && (
+              <Link
+                to="/create-job"
+                className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+              >
+                <PlusIcon className="size-4" />
+                Create Job
+              </Link>
+            )}
           </div>
 
           {isLoading ? (
@@ -402,7 +452,7 @@ export default function Jobs() {
                       >
                         <TableCell className="px-5 py-4 text-start">
                           <span className="font-medium text-gray-800 text-theme-sm dark:text-white/90">
-                            {job.title}
+                            {typeof job.title === "string" ? job.title : job.title?.en || "Untitled"}
                           </span>
                         </TableCell>
                         <TableCell className="px-5 py-4 text-start">
@@ -439,14 +489,20 @@ export default function Jobs() {
                         </TableCell>
                         <TableCell className="px-5 py-4 text-start">
                           <div onClick={(e) => e.stopPropagation()}>
-                            <Switch
-                              label=""
-                              defaultChecked={job.status === "open"}
-                              onChange={() =>
-                                handleToggleActive(job._id, job.status)
-                              }
-                              disabled={isUpdatingJob === job._id}
-                            />
+                            {canWrite ? (
+                              <Switch
+                                label=""
+                                checked={job.status === "open"}
+                                onChange={() =>
+                                  handleToggleActive(job._id, job.status)
+                                }
+                                disabled={isUpdatingJob === job._id}
+                              />
+                            ) : (
+                              <span className="text-sm text-gray-500 dark:text-gray-400">
+                                {job.status === "open" ? "Active" : "Inactive"}
+                              </span>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell className="px-5 py-4 text-start">
@@ -454,21 +510,25 @@ export default function Jobs() {
                             className="flex items-center gap-2"
                             onClick={(e) => e.stopPropagation()}
                           >
-                            <button
-                              onClick={() => handleEditJob(job)}
-                              className="rounded p-1.5 text-brand-600 transition hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-brand-500/10"
-                              title="Edit job"
-                            >
-                              <PencilIcon className="size-4" />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteJob(job._id)}
-                              disabled={isDeletingJob === job._id}
-                              className="rounded p-1.5 text-error-600 transition hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-500/10 disabled:opacity-50 disabled:cursor-not-allowed"
-                              title={isDeletingJob === job._id ? "Deleting..." : "Delete job"}
-                            >
-                              <TrashBinIcon className="size-4" />
-                            </button>
+                            {canWrite && (
+                              <button
+                                onClick={() => handleEditJob(job)}
+                                className="rounded p-1.5 text-brand-600 transition hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-brand-500/10"
+                                title="Edit job"
+                              >
+                                <PencilIcon className="size-4" />
+                              </button>
+                            )}
+                            {canCreate && (
+                              <button
+                                onClick={() => handleDeleteJob(job._id)}
+                                disabled={isDeletingJob === job._id}
+                                className="rounded p-1.5 text-error-600 transition hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-500/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                                title={isDeletingJob === job._id ? "Deleting..." : "Delete job"}
+                              >
+                                <TrashBinIcon className="size-4" />
+                              </button>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>

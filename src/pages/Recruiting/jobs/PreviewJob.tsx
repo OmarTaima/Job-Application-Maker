@@ -1,17 +1,17 @@
 import { useMemo, useState } from "react";
 import Swal from "sweetalert2";
 import { useParams, useNavigate } from "react-router";
-import PageBreadcrumb from "../../components/common/PageBreadCrumb";
-import PageMeta from "../../components/common/PageMeta";
-import ComponentCard from "../../components/common/ComponentCard";
-import LoadingSpinner from "../../components/common/LoadingSpinner";
-import { PencilIcon, TrashBinIcon } from "../../icons";
+import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
+import PageMeta from "../../../components/common/PageMeta";
+import ComponentCard from "../../../components/common/ComponentCard";
+import LoadingSpinner from "../../../components/common/LoadingSpinner";
+import { PencilIcon, TrashBinIcon } from "../../../icons";
 import {
   useJobPosition,
   useCompany,
   useDepartment,
   useDeleteJobPosition,
-} from "../../hooks/queries";
+} from "../../../hooks/queries";
 
 export default function PreviewJob() {
   const { jobId } = useParams<{ jobId: string }>();
@@ -103,8 +103,13 @@ export default function PreviewJob() {
         title: "Deleted!",
         text: "Job has been deleted successfully.",
         icon: "success",
+        toast: true,
+        position: "top-end",
         timer: 1500,
         showConfirmButton: false,
+        customClass: {
+          container: "!mt-16",
+        },
       });
       navigate("/jobs");
     } catch (err) {
@@ -202,13 +207,13 @@ export default function PreviewJob() {
         </button>
       </div>
 
-      <PageBreadcrumb pageTitle={job.title} />
+      <PageBreadcrumb pageTitle={typeof job.title === "string" ? job.title : job.title?.en || "Job"} />
 
       {/* Header with Actions */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-            {job.title}
+            {typeof job.title === "string" ? job.title : job.title?.en || "Untitled Job"}
           </h1>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
             Job Code: {job.jobCode || "N/A"}
@@ -280,35 +285,23 @@ export default function PreviewJob() {
       <ComponentCard title="Job Description" desc="Detailed job description">
         <div className="prose max-w-none dark:prose-invert">
           <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
-            {job.description || "No description provided"}
+            {typeof job.description === "string" ? job.description : job.description?.en || "No description provided"}
           </p>
         </div>
       </ComponentCard>
 
       {/* Salary Information */}
-      {job.salary && (job.salary.min || job.salary.max) && (
+      {job.salary && typeof job.salary === "number" && (
         <ComponentCard title="Salary Information" desc="Compensation details">
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-            {job.salary.min && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Minimum Salary
-                </label>
-                <p className="mt-1 text-xl font-semibold text-gray-900 dark:text-white">
-                  {job.salary.currency || "$"} {job.salary.min.toLocaleString()}
-                </p>
-              </div>
-            )}
-            {job.salary.max && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Maximum Salary
-                </label>
-                <p className="mt-1 text-xl font-semibold text-gray-900 dark:text-white">
-                  {job.salary.currency || "$"} {job.salary.max.toLocaleString()}
-                </p>
-              </div>
-            )}
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Salary
+              </label>
+              <p className="mt-1 text-xl font-semibold text-gray-900 dark:text-white">
+                $ {job.salary.toLocaleString()}
+              </p>
+            </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                 Salary Visibility
@@ -396,7 +389,7 @@ export default function PreviewJob() {
                     clipRule="evenodd"
                   />
                 </svg>
-                <span>{term}</span>
+                <span>{typeof term === "string" ? term : term?.en || ""}</span>
               </li>
             ))}
           </ul>
@@ -425,7 +418,7 @@ export default function PreviewJob() {
                 {job.jobSpecs.map((spec, index) => (
                   <tr key={index}>
                     <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900 dark:text-gray-100">
-                      {spec.spec}
+                      {typeof spec.spec === "string" ? spec.spec : spec.spec?.en || ""}
                     </td>
                     <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500 dark:text-gray-400">
                       {spec.weight}%
@@ -463,7 +456,7 @@ export default function PreviewJob() {
                 <div className="flex items-start justify-between">
                   <div>
                     <h4 className="font-medium text-gray-900 dark:text-white">
-                      {field.label}
+                      {typeof field.label === "string" ? field.label : field.label?.en || ""}
                       {field.isRequired && (
                         <span className="ml-1 text-red-500">*</span>
                       )}
@@ -496,7 +489,7 @@ export default function PreviewJob() {
                               key={idx}
                               className="inline-flex items-center rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-medium text-brand-700 dark:bg-brand-900/30 dark:text-brand-300"
                             >
-                              {choice}
+                              {typeof choice === "string" ? choice : choice?.en || ""}
                             </span>
                           ))}
                         </div>

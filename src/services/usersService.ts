@@ -1,4 +1,5 @@
 import axios from "../config/axios";
+import { getErrorMessage } from "../utils/errorHandler";
 
 // Types
 export interface User {
@@ -10,12 +11,11 @@ export interface User {
   phone?: string;
   department?: string;
   isActive?: boolean;
-  permissions?: Array<{ _id: string; name: string; access?: string[] }>;
+  permissions?: Array<{ permission: string; access?: string[] }>;
   companies?: {
     companyId: string;
-    role?: string;
-    accessLevel?: string;
     departments?: string[];
+    isPrimary?: boolean;
   }[];
   createdAt?: string;
   __v?: number;
@@ -28,13 +28,21 @@ export interface CreateUserRequest {
   roleId: string;
   phone?: string;
   department?: string;
+  companies?: Array<{
+    companyId: string;
+    departments?: string[];
+    isPrimary?: boolean;
+  }>;
+  isActive?: boolean;
+  permissions?: Array<{ permission: string; access?: string[] }>;
 }
 
 export interface UpdateUserRequest {
   name?: string;
+  fullName?: string;
   email?: string;
-  role?: string;
-  permissions?: string[];
+  roleId?: string;
+  permissions?: Array<{ permission: string; access?: string[] }>;
   isActive?: boolean;
   phone?: string;
   department?: string;
@@ -91,7 +99,7 @@ export const usersService = {
       return response.data.data;
     } catch (error: any) {
       throw new ApiError(
-        error.response?.data?.message || "Failed to fetch users",
+        getErrorMessage(error),
         error.response?.status,
         error.response?.data?.details
       );
@@ -105,7 +113,7 @@ export const usersService = {
       return response.data.data;
     } catch (error: any) {
       throw new ApiError(
-        error.response?.data?.message || "Failed to fetch user",
+        getErrorMessage(error),
         error.response?.status,
         error.response?.data?.details
       );
@@ -119,7 +127,7 @@ export const usersService = {
       return response.data.data;
     } catch (error: any) {
       throw new ApiError(
-        error.response?.data?.message || "Failed to create user",
+        getErrorMessage(error),
         error.response?.status,
         error.response?.data?.details
       );
@@ -136,7 +144,7 @@ export const usersService = {
       return response.data.data;
     } catch (error: any) {
       throw new ApiError(
-        error.response?.data?.message || "Failed to update user",
+        getErrorMessage(error),
         error.response?.status,
         error.response?.data?.details
       );
@@ -149,7 +157,7 @@ export const usersService = {
       await axios.delete(`/users/${userId}`);
     } catch (error: any) {
       throw new ApiError(
-        error.response?.data?.message || "Failed to delete user",
+        getErrorMessage(error),
         error.response?.status,
         error.response?.data?.details
       );
@@ -169,7 +177,7 @@ export const usersService = {
       return response.data.data;
     } catch (error: any) {
       throw new ApiError(
-        error.response?.data?.message || "Failed to add company access",
+        getErrorMessage(error),
         error.response?.status,
         error.response?.data?.details
       );
@@ -190,7 +198,7 @@ export const usersService = {
       return response.data.data;
     } catch (error: any) {
       throw new ApiError(
-        error.response?.data?.message || "Failed to update departments",
+        getErrorMessage(error),
         error.response?.status,
         error.response?.data?.details
       );
@@ -203,7 +211,7 @@ export const usersService = {
       await axios.delete(`/users/${userId}/companies/${companyId}`);
     } catch (error: any) {
       throw new ApiError(
-        error.response?.data?.message || "Failed to remove company access",
+        getErrorMessage(error),
         error.response?.status,
         error.response?.data?.details
       );

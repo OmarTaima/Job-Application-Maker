@@ -4,6 +4,7 @@ import { Link, useLocation } from "react-router";
 // Assume these icons are imported from an icon library
 import { ChevronDownIcon, GridIcon, HorizontaLDots, TaskIcon } from "../icons";
 import { useSidebar } from "../context/SidebarContext";
+import { useAuth } from "../context/AuthContext";
 
 type NavItem = {
   name: string;
@@ -69,39 +70,20 @@ const adminItems: NavItem[] = [
       { name: "Recommended Fields", path: "/recommended-fields", pro: false },
     ],
   },
-  // {
-  //   icon: <PieChartIcon />,
-  //   name: "Charts",
-  //   subItems: [
-  //     { name: "Line Chart", path: "/line-chart", pro: false },
-  //     { name: "Bar Chart", path: "/bar-chart", pro: false },
-  //   ],
-  // },
-  // {
-  //   icon: <BoxCubeIcon />,
-  //   name: "UI Elements",
-  //   subItems: [
-  //     { name: "Alerts", path: "/alerts", pro: false },
-  //     { name: "Avatar", path: "/avatars", pro: false },
-  //     { name: "Badge", path: "/badge", pro: false },
-  //     { name: "Buttons", path: "/buttons", pro: false },
-  //     { name: "Images", path: "/images", pro: false },
-  //     { name: "Videos", path: "/videos", pro: false },
-  //   ],
-  // },
-  // {
-  //   icon: <PlugInIcon />,
-  //   name: "Authentication",
-  //   subItems: [
-  //     { name: "Sign In", path: "/signin", pro: false },
-  //     { name: "Sign Up", path: "/signup", pro: false },
-  //   ],
-  // },
 ];
 
 const AppSidebar: React.FC = () => {
   const { isExpanded, isMobileOpen, isHovered, setIsHovered } = useSidebar();
+  const { hasPermission } = useAuth();
   const location = useLocation();
+
+  // Check if user has read access to admin features
+  const hasUserManagementRead = hasPermission("User Management", "read");
+  const hasRoleManagementRead = hasPermission("Role Management", "read");
+  const hasSettingsManagementRead = hasPermission("Settings Management", "read");
+  
+  // Show admin section if user has read access to any admin feature
+  const hasAdminPermissions = hasUserManagementRead || hasRoleManagementRead || hasSettingsManagementRead;
 
   const [openSubmenu, setOpenSubmenu] = useState<{
     type: "main" | "admin";
@@ -167,128 +149,159 @@ const AppSidebar: React.FC = () => {
     });
   };
 
-  const renderMenuItems = (items: NavItem[], menuType: "main" | "admin") => (
-    <ul className="flex flex-col gap-4">
-      {items.map((nav, index) => (
-        <li key={nav.name}>
-          {nav.subItems ? (
-            <button
-              onClick={() => handleSubmenuToggle(index, menuType)}
-              className={`menu-item group ${
-                openSubmenu?.type === menuType && openSubmenu?.index === index
-                  ? "menu-item-active"
-                  : "menu-item-inactive"
-              } cursor-pointer ${
-                !isExpanded && !isHovered
-                  ? "lg:justify-center"
-                  : "lg:justify-start"
-              }`}
-            >
-              <span
-                className={`menu-item-icon-size  ${
-                  openSubmenu?.type === menuType && openSubmenu?.index === index
-                    ? "menu-item-icon-active"
-                    : "menu-item-icon-inactive"
-                }`}
-              >
-                {nav.icon}
-              </span>
-              {(isExpanded || isHovered || isMobileOpen) && (
-                <span className="menu-item-text">{nav.name}</span>
-              )}
-              {(isExpanded || isHovered || isMobileOpen) && (
-                <ChevronDownIcon
-                  className={`ml-auto w-5 h-5 transition-transform duration-200 ${
-                    openSubmenu?.type === menuType &&
-                    openSubmenu?.index === index
-                      ? "rotate-180 text-brand-500"
-                      : ""
-                  }`}
-                />
-              )}
-            </button>
-          ) : (
-            nav.path && (
-              <Link
-                to={nav.path}
-                className={`menu-item group ${
-                  isActive(nav.path) ? "menu-item-active" : "menu-item-inactive"
-                }`}
-              >
-                <span
-                  className={`menu-item-icon-size ${
-                    isActive(nav.path)
-                      ? "menu-item-icon-active"
-                      : "menu-item-icon-inactive"
-                  }`}
-                >
-                  {nav.icon}
-                </span>
-                {(isExpanded || isHovered || isMobileOpen) && (
-                  <span className="menu-item-text">{nav.name}</span>
-                )}
-              </Link>
-            )
-          )}
-          {nav.subItems && (isExpanded || isHovered || isMobileOpen) && (
-            <div
-              ref={(el) => {
-                subMenuRefs.current[`${menuType}-${index}`] = el;
-              }}
-              className="overflow-hidden transition-all duration-300"
-              style={{
-                height:
-                  openSubmenu?.type === menuType && openSubmenu?.index === index
-                    ? `${subMenuHeight[`${menuType}-${index}`]}px`
-                    : "0px",
-              }}
-            >
-              <ul className="mt-2 space-y-1 ml-9">
-                {nav.subItems.map((subItem) => (
-                  <li key={subItem.name}>
-                    <Link
-                      to={subItem.path}
-                      className={`menu-dropdown-item ${
-                        isActive(subItem.path)
-                          ? "menu-dropdown-item-active"
-                          : "menu-dropdown-item-inactive"
+  const renderMenuItems = (items: NavItem[], menuType: "main" | "admin") => {
+    // Filter menu items based on permissions
+    const filterSubItems = (subItems: { name: string; path: string; pro?: boolean; new?: boolean }[]) => {
+      return subItems.filter((subItem) => {
+        // Map menu items to their required permissions
+        if (subItem.path === "/applicants") return hasPermission("Applicant Management", "read");
+        if (subItem.path === "/recruiting") return hasPermission("Company Management", "create");
+        if (subItem.path === "/companies") return hasPermission("Company Management", "read");
+        if (subItem.path === "/create-job") return hasPermission("Job Position Management", "create");
+        if (subItem.path === "/jobs") return hasPermission("Job Position Management", "read");
+        if (subItem.path === "/users") return hasPermission("User Management", "read");
+        if (subItem.path === "/permissions") return hasPermission("Role Management", "read");
+        if (subItem.path === "/recommended-fields") return hasPermission("Settings Management", "read");
+        // Default: allow access (for dashboard, etc.)
+        return true;
+      });
+    };
+
+    return (
+      <ul className="flex flex-col gap-4">
+        {items.map((nav, index) => {
+          // Filter sub-items if they exist
+          const visibleSubItems = nav.subItems ? filterSubItems(nav.subItems) : undefined;
+          
+          // Don't render if no visible sub-items and it's a submenu
+          if (nav.subItems && visibleSubItems && visibleSubItems.length === 0) {
+            return null;
+          }
+
+          return (
+            <li key={nav.name}>
+              {visibleSubItems ? (
+                <>
+                  <button
+                    onClick={() => handleSubmenuToggle(index, menuType)}
+                    className={`menu-item group ${
+                      openSubmenu?.type === menuType && openSubmenu?.index === index
+                        ? "menu-item-active"
+                        : "menu-item-inactive"
+                    } cursor-pointer ${
+                      !isExpanded && !isHovered
+                        ? "lg:justify-center"
+                        : "lg:justify-start"
+                    }`}
+                  >
+                    <span
+                      className={`menu-item-icon-size  ${
+                        openSubmenu?.type === menuType && openSubmenu?.index === index
+                          ? "menu-item-icon-active"
+                          : "menu-item-icon-inactive"
                       }`}
                     >
-                      {subItem.name}
-                      <span className="flex items-center gap-1 ml-auto">
-                        {subItem.new && (
-                          <span
-                            className={`ml-auto ${
-                              isActive(subItem.path)
-                                ? "menu-dropdown-badge-active"
-                                : "menu-dropdown-badge-inactive"
-                            } menu-dropdown-badge`}
-                          >
-                            new
-                          </span>
-                        )}
-                        {subItem.pro && (
-                          <span
-                            className={`ml-auto ${
-                              isActive(subItem.path)
-                                ? "menu-dropdown-badge-active"
-                                : "menu-dropdown-badge-inactive"
-                            } menu-dropdown-badge`}
-                          >
-                            pro
-                          </span>
-                        )}
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </li>
-      ))}
-    </ul>
-  );
+                      {nav.icon}
+                    </span>
+                    {(isExpanded || isHovered || isMobileOpen) && (
+                      <span className="menu-item-text">{nav.name}</span>
+                    )}
+                    {(isExpanded || isHovered || isMobileOpen) && (
+                      <ChevronDownIcon
+                        className={`ml-auto w-5 h-5 transition-transform duration-200 ${
+                          openSubmenu?.type === menuType &&
+                          openSubmenu?.index === index
+                            ? "rotate-180 text-brand-500"
+                            : ""
+                        }`}
+                      />
+                    )}
+                  </button>
+                  {(isExpanded || isHovered || isMobileOpen) && (
+                    <div
+                      ref={(el) => {
+                        subMenuRefs.current[`${menuType}-${index}`] = el;
+                      }}
+                      className="overflow-hidden transition-all duration-300"
+                      style={{
+                        height:
+                          openSubmenu?.type === menuType && openSubmenu?.index === index
+                            ? `${subMenuHeight[`${menuType}-${index}`]}px`
+                            : "0px",
+                      }}
+                    >
+                      <ul className="mt-2 space-y-1 ml-9">
+                        {visibleSubItems.map((subItem) => (
+                          <li key={subItem.name}>
+                            <Link
+                              to={subItem.path}
+                              className={`menu-dropdown-item ${
+                                isActive(subItem.path)
+                                  ? "menu-dropdown-item-active"
+                                  : "menu-dropdown-item-inactive"
+                              }`}
+                            >
+                              {subItem.name}
+                              <span className="flex items-center gap-1 ml-auto">
+                                {subItem.new && (
+                                  <span
+                                    className={`ml-auto ${
+                                      isActive(subItem.path)
+                                        ? "menu-dropdown-badge-active"
+                                        : "menu-dropdown-badge-inactive"
+                                    } menu-dropdown-badge`}
+                                  >
+                                    new
+                                  </span>
+                                )}
+                                {subItem.pro && (
+                                  <span
+                                    className={`ml-auto ${
+                                      isActive(subItem.path)
+                                        ? "menu-dropdown-badge-active"
+                                        : "menu-dropdown-badge-inactive"
+                                    } menu-dropdown-badge`}
+                                  >
+                                    pro
+                                  </span>
+                                )}
+                              </span>
+                            </Link>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </>
+              ) : (
+                nav.path && (
+                  <Link
+                    to={nav.path}
+                    className={`menu-item group ${
+                      isActive(nav.path) ? "menu-item-active" : "menu-item-inactive"
+                    }`}
+                  >
+                    <span
+                      className={`menu-item-icon-size ${
+                        isActive(nav.path)
+                          ? "menu-item-icon-active"
+                          : "menu-item-icon-inactive"
+                      }`}
+                    >
+                      {nav.icon}
+                    </span>
+                    {(isExpanded || isHovered || isMobileOpen) && (
+                      <span className="menu-item-text">{nav.name}</span>
+                    )}
+                  </Link>
+                )
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    );
+  };
 
   return (
     <aside
@@ -357,22 +370,24 @@ const AppSidebar: React.FC = () => {
               </h2>
               {renderMenuItems(navItems, "main")}
             </div>
-            <div className="">
-              <h2
-                className={`mb-4 text-xs uppercase flex leading-[20px] text-gray-400 ${
-                  !isExpanded && !isHovered
-                    ? "lg:justify-center"
-                    : "justify-start"
-                }`}
-              >
-                {isExpanded || isHovered || isMobileOpen ? (
-                  "admin"
-                ) : (
-                  <HorizontaLDots />
-                )}
-              </h2>
-              {renderMenuItems(adminItems, "admin")}
-            </div>
+            {hasAdminPermissions && (
+              <div className="">
+                <h2
+                  className={`mb-4 text-xs uppercase flex leading-[20px] text-gray-400 ${
+                    !isExpanded && !isHovered
+                      ? "lg:justify-center"
+                      : "justify-start"
+                  }`}
+                >
+                  {isExpanded || isHovered || isMobileOpen ? (
+                    "admin"
+                  ) : (
+                    <HorizontaLDots />
+                  )}
+                </h2>
+                {renderMenuItems(adminItems, "admin")}
+              </div>
+            )}
           </div>
         </nav>
       </div>

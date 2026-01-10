@@ -1,25 +1,25 @@
 import { useState, useMemo, useCallback, memo } from "react";
 import Swal from "sweetalert2";
 import { useNavigate } from "react-router";
-import ComponentCard from "../../components/common/ComponentCard";
-import PageBreadcrumb from "../../components/common/PageBreadCrumb";
-import PageMeta from "../../components/common/PageMeta";
-import LoadingSpinner from "../../components/common/LoadingSpinner";
+import ComponentCard from "../../../components/common/ComponentCard";
+import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
+import PageMeta from "../../../components/common/PageMeta";
+import LoadingSpinner from "../../../components/common/LoadingSpinner";
 import {
   Table,
   TableBody,
   TableCell,
   TableHeader,
   TableRow,
-} from "../../components/ui/table";
-import { TrashBinIcon } from "../../icons";
-import { useAuth } from "../../context/AuthContext";
+} from "../../../components/ui/table";
+import { TrashBinIcon } from "../../../icons";
+import { useAuth } from "../../../context/AuthContext";
 import {
   useApplicants,
   useJobPositions,
   useUpdateApplicantStatus,
-} from "../../hooks/queries";
-import type { Applicant } from "../../store/slices/applicantsSlice";
+} from "../../../hooks/queries";
+import type { Applicant } from "../../../store/slices/applicantsSlice";
 
 type JobGroup = {
   jobPositionId: string;
@@ -193,7 +193,7 @@ const Applicants = () => {
   const jobTitles = useMemo(() => {
     const titles: Record<string, string> = {};
     jobPositions.forEach((job) => {
-      titles[job._id] = job.title;
+      titles[job._id] = typeof job.title === "string" ? job.title : job.title?.en || "Untitled";
     });
     return titles;
   }, [jobPositions]);
@@ -219,7 +219,7 @@ const Applicants = () => {
         ...group,
         applicants:
           statusFilter === "all"
-            ? group.applicants
+            ? group.applicants.filter((app) => app.status !== "trashed")
             : group.applicants.filter((app) => app.status === statusFilter),
       }))
       .filter((group) => group.applicants.length > 0);
@@ -337,8 +337,13 @@ const Applicants = () => {
         title: "Success!",
         text: `Status updated for ${selectedApplicants.length} applicant(s).`,
         icon: "success",
+        toast: true,
+        position: "top-end",
         timer: 2000,
         showConfirmButton: false,
+        customClass: {
+          container: "!mt-16",
+        },
       });
 
       setSelectedApplicants([]);
@@ -386,8 +391,13 @@ const Applicants = () => {
         title: "Success!",
         text: `${selectedApplicants.length} applicant(s) moved to trash.`,
         icon: "success",
+        toast: true,
+        position: "top-end",
         timer: 2000,
         showConfirmButton: false,
+        customClass: {
+          container: "!mt-16",
+        },
       });
 
       setSelectedApplicants([]);

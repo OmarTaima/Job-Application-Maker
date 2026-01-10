@@ -1,4 +1,5 @@
 import axios from "../config/axios";
+import { getErrorMessage } from "../utils/errorHandler";
 
 // Types
 export interface Permission {
@@ -14,7 +15,9 @@ export interface Role {
   _id: string;
   name: string;
   description: string;
-  permissions?: string[];
+  permissions?: Array<string | { permission: string; access?: string[] }>;
+  isSystemRole?: boolean;
+  singleCompany?: boolean;
   permissionsCount?: number;
   usersCount?: number;
   createdAt?: string;
@@ -28,6 +31,8 @@ export interface CreateRoleRequest {
     permission: string;
     access: string[];
   }[];
+  isSystemRole?: boolean;
+  singleCompany?: boolean;
 }
 
 export interface UpdateRoleRequest {
@@ -37,6 +42,8 @@ export interface UpdateRoleRequest {
     permission: string;
     access: string[];
   }[];
+  isSystemRole?: boolean;
+  singleCompany?: boolean;
 }
 
 export interface PermissionsResponse {
@@ -78,7 +85,7 @@ export const rolesService = {
       return response.data.data;
     } catch (error: any) {
       throw new ApiError(
-        error.response?.data?.message || "Failed to fetch permissions",
+        getErrorMessage(error),
         error.response?.status,
         error.response?.data
       );
@@ -94,7 +101,7 @@ export const rolesService = {
       return response.data.data;
     } catch (error: any) {
       throw new ApiError(
-        error.response?.data?.message || "Failed to fetch roles",
+        getErrorMessage(error),
         error.response?.status,
         error.response?.data
       );
@@ -110,7 +117,7 @@ export const rolesService = {
       return response.data.data;
     } catch (error: any) {
       throw new ApiError(
-        error.response?.data?.message || "Failed to create role",
+        getErrorMessage(error),
         error.response?.status,
         error.response?.data
       );
@@ -129,7 +136,7 @@ export const rolesService = {
       return response.data.data;
     } catch (error: any) {
       throw new ApiError(
-        error.response?.data?.message || "Failed to update role",
+        getErrorMessage(error),
         error.response?.status,
         error.response?.data
       );
@@ -144,7 +151,7 @@ export const rolesService = {
       await axios.delete(`/roles/${id}`);
     } catch (error: any) {
       throw new ApiError(
-        error.response?.data?.message || "Failed to delete role",
+        getErrorMessage(error),
         error.response?.status,
         error.response?.data
       );

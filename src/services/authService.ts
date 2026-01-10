@@ -23,6 +23,13 @@ export interface User {
   roleId?: {
     _id: string;
     name: string;
+    permissions?: Array<{
+      permission: {
+        _id: string;
+        name: string;
+      };
+      access?: string[];
+    }>;
   };
   role?: "admin" | "company_user";
   assignedCompanyIds?: string[];
@@ -175,11 +182,12 @@ export const authService = {
    * Get current user profile
    */
   async getCurrentUser(): Promise<User> {
-    const response = await apiRequest<UserProfileResponse>("/auth/me", {
+    const response = await apiRequest<UserProfileResponse>("/auth/me?populate=roleId.permissions.permission", {
       method: "GET",
       headers: getAuthHeaders(),
     });
 
+    console.log("API response for getCurrentUser:", response.data);
     return response.data;
   },
 
