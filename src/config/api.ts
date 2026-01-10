@@ -1,8 +1,7 @@
 // API Configuration
 export const API_CONFIG = {
-  baseUrl: import.meta.env.VITE_API_BASE_URL || "http://localhost:3000",
-  timeout: 30000,
-};
+  baseUrl: import.meta.env.VITE_API_BASE_URL || "https://application-maker.onrender.com/api/",
+} as const;
 
 // Token storage keys
 export const TOKEN_KEYS = {

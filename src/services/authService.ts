@@ -1,4 +1,4 @@
-import { API_CONFIG, tokenStorage } from "../config/api";
+import { tokenStorage } from "../config/api";
 
 // Types
 export interface LoginRequest {
@@ -76,7 +76,7 @@ async function apiRequest<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const url = `${API_CONFIG.baseUrl}${endpoint}`;
+  const url = `${import.meta.env.VITE_API_BASE_URL}${endpoint}`;
 
   const config: RequestInit = {
     ...options,

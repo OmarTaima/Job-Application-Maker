@@ -1,8 +1,8 @@
 import axios from "axios";
-import { API_CONFIG, tokenStorage } from "./api";
+import {  tokenStorage } from "./api";
 
 const axiosInstance = axios.create({
-  baseURL: API_CONFIG.baseUrl,
+  baseURL: import.meta.env.VITE_API_BASE_URL,
   headers: {
     "Content-Type": "application/json",
   },
