@@ -225,8 +225,6 @@ export function useUpdateUserCompanies() {
 
 // Add company access to user
 export function useAddUserCompany() {
-  const queryClient = useQueryClient();
-
   return useMutation({
     mutationFn: ({
       userId,
@@ -243,8 +241,6 @@ export function useAddUserCompany() {
 
 // Remove company access from user
 export function useRemoveUserCompany() {
-  const queryClient = useQueryClient();
-
   return useMutation({
     mutationFn: ({
       userId,
