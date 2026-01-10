@@ -137,4 +137,19 @@ export const companiesService = {
       );
     }
   },
+
+  // Get multiple companies by IDs
+  async getCompaniesByIds(companyIds: string[]): Promise<Company[]> {
+    try {
+      // Fetch companies individually and filter
+      const allCompanies = await this.getAllCompanies();
+      return allCompanies.filter(company => companyIds.includes(company._id));
+    } catch (error: any) {
+      throw new ApiError(
+        error.response?.data?.message || "Failed to fetch companies",
+        error.response?.status,
+        error.response?.data?.details
+      );
+    }
+  },
 };

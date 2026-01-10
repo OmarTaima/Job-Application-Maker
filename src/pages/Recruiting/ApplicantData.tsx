@@ -16,7 +16,7 @@ import { useAuth } from "../../context/AuthContext";
 import {
   useApplicant,
   useJobPositions,
-  useCompanies,
+  useCompaniesWithApplicants,
   useDepartments,
   useUpdateApplicantStatus,
   useScheduleInterview,
@@ -33,7 +33,8 @@ const ApplicantData = () => {
   // React Query hooks - data fetching happens automatically
   const { data: applicant, isLoading: loading, error } = useApplicant(id || "");
   const { data: jobPositions = [] } = useJobPositions();
-  const { data: companies = [] } = useCompanies();
+  // Fetch only companies that have applicants (in this case, just the current applicant's company)
+  const { data: companies = [] } = useCompaniesWithApplicants(applicant ? [applicant] : undefined);
   const { data: departments = [] } = useDepartments();
 
   // Mutations

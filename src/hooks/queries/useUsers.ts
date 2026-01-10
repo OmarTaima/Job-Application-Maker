@@ -41,8 +41,42 @@ export function useCreateUser() {
 
   return useMutation({
     mutationFn: (data: CreateUserRequest) => usersService.createUser(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: usersKeys.lists() });
+    onMutate: async (newUser) => {
+      await queryClient.cancelQueries({ queryKey: usersKeys.lists() });
+      const previousUsers = queryClient.getQueriesData({ queryKey: usersKeys.lists() });
+
+      queryClient.setQueriesData({ queryKey: usersKeys.lists() }, (old: any) => {
+        if (!old) return old;
+        const tempUser = {
+          ...newUser,
+          _id: `temp-${Date.now()}`,
+          createdAt: new Date().toISOString(),
+          isActive: true,
+        };
+        return [...old, tempUser];
+      });
+
+      return { previousUsers };
+    },
+    onError: (_err, _variables, context) => {
+      if (context?.previousUsers) {
+        context.previousUsers.forEach(([queryKey, data]) => {
+          queryClient.setQueryData(queryKey, data);
+        });
+      }
+    },
+    onSuccess: (newUser) => {
+      queryClient.setQueriesData({ queryKey: usersKeys.lists() }, (old: any) => {
+        if (!old) return [newUser];
+        return old.map((user: any) => 
+          user._id.startsWith('temp-') ? newUser : user
+        ).filter((user: any, index: number, self: any[]) => 
+          self.findIndex((u: any) => u._id === user._id) === index
+        );
+      });
+    },
+    onSettled: () => {
+      // No refetch
     },
   });
 }
@@ -54,11 +88,39 @@ export function useUpdateUser() {
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: UpdateUserRequest }) =>
       usersService.updateUser(id, data),
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: usersKeys.lists() });
-      queryClient.invalidateQueries({
-        queryKey: usersKeys.detail(variables.id),
+    onMutate: async ({ id, data }) => {
+      await queryClient.cancelQueries({ queryKey: usersKeys.lists() });
+      await queryClient.cancelQueries({ queryKey: usersKeys.detail(id) });
+
+      const previousLists = queryClient.getQueriesData({ queryKey: usersKeys.lists() });
+      const previousDetail = queryClient.getQueryData(usersKeys.detail(id));
+
+      queryClient.setQueriesData({ queryKey: usersKeys.lists() }, (old: any) => {
+        if (!old) return old;
+        return old.map((user: any) =>
+          user._id === id ? { ...user, ...data } : user
+        );
       });
+
+      queryClient.setQueryData(usersKeys.detail(id), (old: any) => {
+        if (!old) return old;
+        return { ...old, ...data };
+      });
+
+      return { previousLists, previousDetail };
+    },
+    onError: (_err, _variables, context) => {
+      if (context?.previousLists) {
+        context.previousLists.forEach(([queryKey, data]) => {
+          queryClient.setQueryData(queryKey, data);
+        });
+      }
+      if (context?.previousDetail) {
+        queryClient.setQueryData(usersKeys.detail(_variables.id), context.previousDetail);
+      }
+    },
+    onSettled: () => {
+      // No refetch
     },
   });
 }
@@ -69,8 +131,26 @@ export function useDeleteUser() {
 
   return useMutation({
     mutationFn: (id: string) => usersService.deleteUser(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: usersKeys.lists() });
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: usersKeys.lists() });
+      const previousUsers = queryClient.getQueriesData({ queryKey: usersKeys.lists() });
+
+      queryClient.setQueriesData({ queryKey: usersKeys.lists() }, (old: any) => {
+        if (!old) return old;
+        return old.filter((user: any) => user._id !== id);
+      });
+
+      return { previousUsers };
+    },
+    onError: (_err, _variables, context) => {
+      if (context?.previousUsers) {
+        context.previousUsers.forEach(([queryKey, data]) => {
+          queryClient.setQueryData(queryKey, data);
+        });
+      }
+    },
+    onSettled: () => {
+      // No refetch
     },
   });
 }
@@ -89,11 +169,56 @@ export function useUpdateUserCompanies() {
       companyId: string;
       data: UpdateDepartmentsRequest;
     }) => usersService.updateCompanyDepartments(userId, companyId, data),
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: usersKeys.lists() });
-      queryClient.invalidateQueries({
-        queryKey: usersKeys.detail(variables.userId),
+    onMutate: async ({ userId, companyId, data }) => {
+      await queryClient.cancelQueries({ queryKey: usersKeys.lists() });
+      await queryClient.cancelQueries({ queryKey: usersKeys.detail(userId) });
+
+      const previousLists = queryClient.getQueriesData({ queryKey: usersKeys.lists() });
+      const previousDetail = queryClient.getQueryData(usersKeys.detail(userId));
+
+      queryClient.setQueriesData({ queryKey: usersKeys.lists() }, (old: any) => {
+        if (!old) return old;
+        return old.map((user: any) => {
+          if (user._id === userId) {
+            const updatedCompanies = user.companies?.map((c: any) => {
+              const cId = typeof c.companyId === 'string' ? c.companyId : c.companyId._id;
+              if (cId === companyId) {
+                return { ...c, departments: data.departments };
+              }
+              return c;
+            }) || [];
+            return { ...user, companies: updatedCompanies };
+          }
+          return user;
+        });
       });
+
+      queryClient.setQueryData(usersKeys.detail(userId), (old: any) => {
+        if (!old) return old;
+        const updatedCompanies = old.companies?.map((c: any) => {
+          const cId = typeof c.companyId === 'string' ? c.companyId : c.companyId._id;
+          if (cId === companyId) {
+            return { ...c, departments: data.departments };
+          }
+          return c;
+        }) || [];
+        return { ...old, companies: updatedCompanies };
+      });
+
+      return { previousLists, previousDetail };
+    },
+    onError: (_err, _variables, context) => {
+      if (context?.previousLists) {
+        context.previousLists.forEach(([queryKey, data]) => {
+          queryClient.setQueryData(queryKey, data);
+        });
+      }
+      if (context?.previousDetail) {
+        queryClient.setQueryData(usersKeys.detail(_variables.userId), context.previousDetail);
+      }
+    },
+    onSettled: () => {
+      // No refetch
     },
   });
 }

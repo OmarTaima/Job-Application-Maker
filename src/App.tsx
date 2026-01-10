@@ -25,6 +25,7 @@ import CreateJob from "./pages/Recruiting/CreateJob";
 import PreviewJob from "./pages/Recruiting/PreviewJob";
 import Users from "./pages/Recruiting/Users";
 import Permissions from "./pages/Recruiting/Permissions";
+import PreviewRole from "./pages/Recruiting/PreviewRole";
 import RecommendedFields from "./pages/Recruiting/RecommendedFields";
 import Applicants from "./pages/Recruiting/Applicants";
 import ApplicantData from "./pages/Recruiting/ApplicantData";
@@ -58,6 +59,7 @@ export default function App() {
               {/* User Management */}
               <Route path="users" element={<Users />} />
               <Route path="permissions" element={<Permissions />} />
+              <Route path="role/:id" element={<PreviewRole />} />
               <Route
                 path="recommended-fields"
                 element={<RecommendedFields />}

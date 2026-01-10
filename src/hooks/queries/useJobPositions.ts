@@ -53,8 +53,42 @@ export function useCreateJobPosition() {
   return useMutation({
     mutationFn: (data: CreateJobPositionRequest) =>
       jobPositionsService.createJobPosition(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: jobPositionsKeys.lists() });
+    onMutate: async (newJobPosition) => {
+      await queryClient.cancelQueries({ queryKey: jobPositionsKeys.lists() });
+      const previousJobPositions = queryClient.getQueriesData({ queryKey: jobPositionsKeys.lists() });
+
+      queryClient.setQueriesData({ queryKey: jobPositionsKeys.lists() }, (old: any) => {
+        if (!old) return old;
+        const tempJobPosition = {
+          ...newJobPosition,
+          _id: `temp-${Date.now()}`,
+          createdAt: new Date().toISOString(),
+          status: 'active',
+        };
+        return [...old, tempJobPosition];
+      });
+
+      return { previousJobPositions };
+    },
+    onError: (_err, _variables, context) => {
+      if (context?.previousJobPositions) {
+        context.previousJobPositions.forEach(([queryKey, data]) => {
+          queryClient.setQueryData(queryKey, data);
+        });
+      }
+    },
+    onSuccess: (newJobPosition) => {
+      queryClient.setQueriesData({ queryKey: jobPositionsKeys.lists() }, (old: any) => {
+        if (!old) return [newJobPosition];
+        return old.map((job: any) => 
+          job._id.startsWith('temp-') ? newJobPosition : job
+        ).filter((job: any, index: number, self: any[]) => 
+          self.findIndex((j: any) => j._id === job._id) === index
+        );
+      });
+    },
+    onSettled: () => {
+      // No refetch
     },
   });
 }
@@ -71,11 +105,39 @@ export function useUpdateJobPosition() {
       id: string;
       data: UpdateJobPositionRequest;
     }) => jobPositionsService.updateJobPosition(id, data),
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: jobPositionsKeys.lists() });
-      queryClient.invalidateQueries({
-        queryKey: jobPositionsKeys.detail(variables.id),
+    onMutate: async ({ id, data }) => {
+      await queryClient.cancelQueries({ queryKey: jobPositionsKeys.lists() });
+      await queryClient.cancelQueries({ queryKey: jobPositionsKeys.detail(id) });
+
+      const previousLists = queryClient.getQueriesData({ queryKey: jobPositionsKeys.lists() });
+      const previousDetail = queryClient.getQueryData(jobPositionsKeys.detail(id));
+
+      queryClient.setQueriesData({ queryKey: jobPositionsKeys.lists() }, (old: any) => {
+        if (!old) return old;
+        return old.map((job: any) =>
+          job._id === id ? { ...job, ...data } : job
+        );
       });
+
+      queryClient.setQueryData(jobPositionsKeys.detail(id), (old: any) => {
+        if (!old) return old;
+        return { ...old, ...data };
+      });
+
+      return { previousLists, previousDetail };
+    },
+    onError: (_err, _variables, context) => {
+      if (context?.previousLists) {
+        context.previousLists.forEach(([queryKey, data]) => {
+          queryClient.setQueryData(queryKey, data);
+        });
+      }
+      if (context?.previousDetail) {
+        queryClient.setQueryData(jobPositionsKeys.detail(_variables.id), context.previousDetail);
+      }
+    },
+    onSettled: () => {
+      // No refetch
     },
   });
 }
@@ -86,8 +148,26 @@ export function useDeleteJobPosition() {
 
   return useMutation({
     mutationFn: (id: string) => jobPositionsService.deleteJobPosition(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: jobPositionsKeys.lists() });
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: jobPositionsKeys.lists() });
+      const previousJobPositions = queryClient.getQueriesData({ queryKey: jobPositionsKeys.lists() });
+
+      queryClient.setQueriesData({ queryKey: jobPositionsKeys.lists() }, (old: any) => {
+        if (!old) return old;
+        return old.filter((job: any) => job._id !== id);
+      });
+
+      return { previousJobPositions };
+    },
+    onError: (_err, _variables, context) => {
+      if (context?.previousJobPositions) {
+        context.previousJobPositions.forEach(([queryKey, data]) => {
+          queryClient.setQueryData(queryKey, data);
+        });
+      }
+    },
+    onSettled: () => {
+      // No refetch
     },
   });
 }
@@ -98,8 +178,45 @@ export function useCloneJobPosition() {
 
   return useMutation({
     mutationFn: (id: string) => jobPositionsService.cloneJobPosition(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: jobPositionsKeys.lists() });
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: jobPositionsKeys.lists() });
+      const previousJobPositions = queryClient.getQueriesData({ queryKey: jobPositionsKeys.lists() });
+      const originalJob = queryClient.getQueryData(jobPositionsKeys.detail(id));
+
+      if (originalJob) {
+        queryClient.setQueriesData({ queryKey: jobPositionsKeys.lists() }, (old: any) => {
+          if (!old) return old;
+          const clonedJob = {
+            ...(originalJob as any),
+            _id: `temp-${Date.now()}`,
+            title: `${(originalJob as any).title} (Copy)`,
+            createdAt: new Date().toISOString(),
+          };
+          return [...old, clonedJob];
+        });
+      }
+
+      return { previousJobPositions };
+    },
+    onError: (_err, _variables, context) => {
+      if (context?.previousJobPositions) {
+        context.previousJobPositions.forEach(([queryKey, data]) => {
+          queryClient.setQueryData(queryKey, data);
+        });
+      }
+    },
+    onSuccess: (clonedJob) => {
+      queryClient.setQueriesData({ queryKey: jobPositionsKeys.lists() }, (old: any) => {
+        if (!old) return [clonedJob];
+        return old.map((job: any) => 
+          job._id.startsWith('temp-') ? clonedJob : job
+        ).filter((job: any, index: number, self: any[]) => 
+          self.findIndex((j: any) => j._id === job._id) === index
+        );
+      });
+    },
+    onSettled: () => {
+      // No refetch
     },
   });
 }

@@ -41,8 +41,41 @@ export function useCreateDepartment() {
   return useMutation({
     mutationFn: (data: CreateDepartmentRequest) =>
       departmentsService.createDepartment(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: departmentsKeys.lists() });
+    onMutate: async (newDepartment) => {
+      await queryClient.cancelQueries({ queryKey: departmentsKeys.lists() });
+      const previousDepartments = queryClient.getQueriesData({ queryKey: departmentsKeys.lists() });
+
+      queryClient.setQueriesData({ queryKey: departmentsKeys.lists() }, (old: any) => {
+        if (!old) return old;
+        const tempDepartment = {
+          ...newDepartment,
+          _id: `temp-${Date.now()}`,
+          createdAt: new Date().toISOString(),
+        };
+        return [...old, tempDepartment];
+      });
+
+      return { previousDepartments };
+    },
+    onError: (_err, _variables, context) => {
+      if (context?.previousDepartments) {
+        context.previousDepartments.forEach(([queryKey, data]) => {
+          queryClient.setQueryData(queryKey, data);
+        });
+      }
+    },
+    onSuccess: (newDepartment) => {
+      queryClient.setQueriesData({ queryKey: departmentsKeys.lists() }, (old: any) => {
+        if (!old) return [newDepartment];
+        return old.map((dept: any) => 
+          dept._id.startsWith('temp-') ? newDepartment : dept
+        ).filter((dept: any, index: number, self: any[]) => 
+          self.findIndex((d: any) => d._id === dept._id) === index
+        );
+      });
+    },
+    onSettled: () => {
+      // No refetch
     },
   });
 }
@@ -54,11 +87,39 @@ export function useUpdateDepartment() {
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: UpdateDepartmentRequest }) =>
       departmentsService.updateDepartment(id, data),
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: departmentsKeys.lists() });
-      queryClient.invalidateQueries({
-        queryKey: departmentsKeys.detail(variables.id),
+    onMutate: async ({ id, data }) => {
+      await queryClient.cancelQueries({ queryKey: departmentsKeys.lists() });
+      await queryClient.cancelQueries({ queryKey: departmentsKeys.detail(id) });
+
+      const previousLists = queryClient.getQueriesData({ queryKey: departmentsKeys.lists() });
+      const previousDetail = queryClient.getQueryData(departmentsKeys.detail(id));
+
+      queryClient.setQueriesData({ queryKey: departmentsKeys.lists() }, (old: any) => {
+        if (!old) return old;
+        return old.map((dept: any) =>
+          dept._id === id ? { ...dept, ...data } : dept
+        );
       });
+
+      queryClient.setQueryData(departmentsKeys.detail(id), (old: any) => {
+        if (!old) return old;
+        return { ...old, ...data };
+      });
+
+      return { previousLists, previousDetail };
+    },
+    onError: (_err, _variables, context) => {
+      if (context?.previousLists) {
+        context.previousLists.forEach(([queryKey, data]) => {
+          queryClient.setQueryData(queryKey, data);
+        });
+      }
+      if (context?.previousDetail) {
+        queryClient.setQueryData(departmentsKeys.detail(_variables.id), context.previousDetail);
+      }
+    },
+    onSettled: () => {
+      // No refetch
     },
   });
 }
@@ -69,8 +130,26 @@ export function useDeleteDepartment() {
 
   return useMutation({
     mutationFn: (id: string) => departmentsService.deleteDepartment(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: departmentsKeys.lists() });
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: departmentsKeys.lists() });
+      const previousDepartments = queryClient.getQueriesData({ queryKey: departmentsKeys.lists() });
+
+      queryClient.setQueriesData({ queryKey: departmentsKeys.lists() }, (old: any) => {
+        if (!old) return old;
+        return old.filter((dept: any) => dept._id !== id);
+      });
+
+      return { previousDepartments };
+    },
+    onError: (_err, _variables, context) => {
+      if (context?.previousDepartments) {
+        context.previousDepartments.forEach(([queryKey, data]) => {
+          queryClient.setQueryData(queryKey, data);
+        });
+      }
+    },
+    onSettled: () => {
+      // No refetch
     },
   });
 }

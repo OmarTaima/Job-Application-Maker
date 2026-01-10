@@ -1,5 +1,6 @@
 import type { ChangeEvent, FormEvent } from "react";
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import { useNavigate } from "react-router";
 import Swal from "sweetalert2";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
 import PageMeta from "../../components/common/PageMeta";
@@ -16,7 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from "../../components/ui/table";
-import { useRoles, usePermissions, useCreateRole } from "../../hooks/queries";
+import { useRoles, usePermissions, useCreateRole, useUsers } from "../../hooks/queries";
 
 type RoleForm = {
   name: string;
@@ -31,13 +32,28 @@ const defaultRoleForm: RoleForm = {
 };
 
 export default function Permissions() {
+  const navigate = useNavigate();
+
   // React Query hooks - data fetching happens automatically
   const { data: roles = [], isLoading: rolesLoading, error } = useRoles();
   const { data: permissions = [], isLoading: permissionsLoading } =
     usePermissions();
+  const { data: users = [], isLoading: usersLoading } = useUsers();
 
   // Mutations
   const createRoleMutation = useCreateRole();
+
+  // Calculate user counts per role
+  const roleUserCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    users.forEach((user) => {
+      const userRoleId = typeof user.roleId === "string" ? user.roleId : user.roleId?._id;
+      if (userRoleId) {
+        counts[userRoleId] = (counts[userRoleId] || 0) + 1;
+      }
+    });
+    return counts;
+  }, [users]);
 
   const [roleForm, setRoleForm] = useState<RoleForm>(defaultRoleForm);
   const [showRoleForm, setShowRoleForm] = useState(false);
@@ -184,7 +200,7 @@ export default function Permissions() {
       />
       <PageBreadcrumb pageTitle="Permissions & Roles" />
 
-      {rolesLoading || permissionsLoading ? (
+      {rolesLoading || permissionsLoading || usersLoading ? (
         <LoadingSpinner fullPage message="Loading permissions..." />
       ) : (
         <div className="space-y-6">
@@ -479,30 +495,33 @@ export default function Permissions() {
                     </TableRow>
                   </TableHeader>
                   <TableBody className="divide-y divide-gray-200 dark:divide-gray-700">
-                    {roles.map((role) => (
-                      <TableRow
-                        key={role._id}
-                        className="hover:bg-gray-50 dark:hover:bg-gray-800"
-                      >
-                        <TableCell className="px-4 py-3 align-middle">
-                          <span className="font-medium">{role.name}</span>
-                        </TableCell>
-                        <TableCell className="px-4 py-3 align-middle">
-                          {role.description}
-                        </TableCell>
-                        <TableCell className="px-4 py-3 align-middle">
-                          <span className="px-2 py-1 text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded">
-                            {role.permissionsCount ||
-                              role.permissions?.length ||
-                              0}{" "}
-                            permissions
-                          </span>
-                        </TableCell>
-                        <TableCell className="px-4 py-3 align-middle">
-                          <span className="px-2 py-1 text-xs bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 rounded">
-                            {role.usersCount || 0} users
-                          </span>
-                        </TableCell>
+                    {roles.map((role) => {
+                      const userCount = roleUserCounts[role._id] || 0;
+                      return (
+                        <TableRow
+                          key={role._id}
+                          onClick={() => navigate(`/role/${role._id}`)}
+                          className="hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer"
+                        >
+                          <TableCell className="px-4 py-3 align-middle">
+                            <span className="font-medium">{role.name}</span>
+                          </TableCell>
+                          <TableCell className="px-4 py-3 align-middle">
+                            {role.description}
+                          </TableCell>
+                          <TableCell className="px-4 py-3 align-middle">
+                            <span className="px-2 py-1 text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded">
+                              {role.permissionsCount ||
+                                role.permissions?.length ||
+                                0}{" "}
+                              permissions
+                            </span>
+                          </TableCell>
+                          <TableCell className="px-4 py-3 align-middle">
+                            <span className="px-2 py-1 text-xs bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 rounded">
+                              {userCount} {userCount === 1 ? "user" : "users"}
+                            </span>
+                          </TableCell>
                         <TableCell className="px-4 py-3 align-middle">
                           {role.createdAt
                             ? new Date(role.createdAt).toLocaleDateString()
@@ -511,9 +530,9 @@ export default function Permissions() {
                         <TableCell className="px-4 py-3 align-middle">
                           <div className="flex items-center gap-2">
                             <button
-                              onClick={() => {
-                                // TODO: Implement edit functionality
-                                console.log("Edit role:", role._id);
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigate(`/role/${role._id}`);
                               }}
                               className="inline-flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50 rounded-lg transition-colors"
                             >
@@ -527,13 +546,20 @@ export default function Permissions() {
                                   strokeLinecap="round"
                                   strokeLinejoin="round"
                                   strokeWidth={2}
-                                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                                />
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
                                 />
                               </svg>
-                              Edit
+                              View
                             </button>
                             <button
-                              onClick={async () => {
+                              onClick={async (e) => {
+                                e.stopPropagation();
                                 // TODO: Implement delete functionality
                                 const result = await Swal.fire({
                                   title: "Delete Role?",
@@ -577,7 +603,8 @@ export default function Permissions() {
                           </div>
                         </TableCell>
                       </TableRow>
-                    ))}
+                    );
+                    })}
                   </TableBody>
                 </Table>
               )}
