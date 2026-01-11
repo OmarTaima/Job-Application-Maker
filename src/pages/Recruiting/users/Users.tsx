@@ -999,12 +999,6 @@ export default function Users() {
                       isHeader
                       className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
                     >
-                      User ID
-                    </TableCell>
-                    <TableCell
-                      isHeader
-                      className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
-                    >
                       Name
                     </TableCell>
                     <TableCell
@@ -1055,9 +1049,7 @@ export default function Users() {
                         onClick={() => navigate(`/user/${user._id}`)}
                         className="hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer"
                       >
-                        <TableCell className="px-4 py-3 text-sm font-mono">
-                          {user._id.slice(-8)}
-                        </TableCell>
+            
                         <TableCell className="px-4 py-3 text-sm">
                           {userName}
                         </TableCell>

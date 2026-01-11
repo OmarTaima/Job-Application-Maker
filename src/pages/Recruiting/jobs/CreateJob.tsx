@@ -1151,6 +1151,12 @@ export default function CreateJob() {
                 <Input
                   value={newTerm}
                   onChange={(e) => setNewTerm(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleAddTerm();
+                    }
+                  }}
                   placeholder={jobForm.bilingual ? "Add a term or condition (English)" : "Add a term or condition"}
                 />
                 {jobForm.bilingual && (
@@ -1158,6 +1164,12 @@ export default function CreateJob() {
                     <Input
                       value={newTermAr}
                       onChange={(e) => setNewTermAr(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          handleAddTerm();
+                        }
+                      }}
                       placeholder="أضف شرط أو حكم (العربية)"
                     />
                   </div>
@@ -1272,6 +1284,12 @@ export default function CreateJob() {
                             onChange={(e) =>
                               handleJobSpecChange(index, "spec", e.target.value)
                             }
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                setEditingSpecIndex(null);
+                              }
+                            }}
                             placeholder={jobForm.bilingual ? "Specification (English)" : "Specification"}
                           />
                         </div>
@@ -1282,6 +1300,12 @@ export default function CreateJob() {
                               onChange={(e) =>
                                 handleJobSpecChange(index, "specAr", e.target.value)
                               }
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  setEditingSpecIndex(null);
+                                }
+                              }}
                               placeholder="المواصفة (العربية)"
                             />
                           </div>
@@ -1424,23 +1448,7 @@ export default function CreateJob() {
                     </div>
 
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                      <div>
-                        <Label htmlFor={`field-id-${fieldIndex}`}>
-                          Field ID
-                        </Label>
-                        <Input
-                          id={`field-id-${fieldIndex}`}
-                          value={field.fieldId}
-                          onChange={(e) =>
-                            handleCustomFieldChange(
-                              fieldIndex,
-                              "fieldId",
-                              e.target.value
-                            )
-                          }
-                          placeholder="field_name"
-                        />
-                      </div>
+                     
                       <div>
                         <Label htmlFor={`field-label-${fieldIndex}`}>
                           Label{jobForm.bilingual && " (English)"}
