@@ -1,18 +1,18 @@
-import { useState } from "react";
-import Swal from "sweetalert2";
-import { useParams, useNavigate } from "react-router";
-import ComponentCard from "../../../components/common/ComponentCard";
-import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
-import PageMeta from "../../../components/common/PageMeta";
-import LoadingSpinner from "../../../components/common/LoadingSpinner";
-import Label from "../../../components/form/Label";
-import Input from "../../../components/form/input/InputField";
-import TextArea from "../../../components/form/input/TextArea";
-import Select from "../../../components/form/Select";
-import DatePicker from "../../../components/form/date-picker";
-import { Modal } from "../../../components/ui/modal";
-import { PlusIcon } from "../../../icons";
-import { useAuth } from "../../../context/AuthContext";
+import { useState } from 'react';
+import Swal from 'sweetalert2';
+import { useParams, useNavigate } from 'react-router';
+import ComponentCard from '../../../components/common/ComponentCard';
+import PageBreadcrumb from '../../../components/common/PageBreadCrumb';
+import PageMeta from '../../../components/common/PageMeta';
+import LoadingSpinner from '../../../components/common/LoadingSpinner';
+import Label from '../../../components/form/Label';
+import Input from '../../../components/form/input/InputField';
+import TextArea from '../../../components/form/input/TextArea';
+import Select from '../../../components/form/Select';
+import DatePicker from '../../../components/form/date-picker';
+import { Modal } from '../../../components/ui/modal';
+import { PlusIcon } from '../../../icons';
+import { useAuth } from '../../../context/AuthContext';
 import {
   useApplicant,
   useJobPositions,
@@ -22,8 +22,11 @@ import {
   useScheduleInterview,
   useAddComment,
   useSendMessage,
-} from "../../../hooks/queries";
-import type { Applicant, UpdateStatusRequest } from "../../../store/slices/applicantsSlice";
+} from '../../../hooks/queries';
+import type {
+  Applicant,
+  UpdateStatusRequest,
+} from '../../../store/slices/applicantsSlice';
 
 const ApplicantData = () => {
   const { id } = useParams<{ id: string }>();
@@ -31,10 +34,12 @@ const ApplicantData = () => {
   const {} = useAuth();
 
   // React Query hooks - data fetching happens automatically
-  const { data: applicant, isLoading: loading, error } = useApplicant(id || "");
+  const { data: applicant, isLoading: loading, error } = useApplicant(id || '');
   const { data: jobPositions = [] } = useJobPositions();
   // Fetch only companies that have applicants (in this case, just the current applicant's company)
-  const { data: companies = [] } = useCompaniesWithApplicants(applicant ? [applicant] : undefined);
+  const { data: companies = [] } = useCompaniesWithApplicants(
+    applicant ? [applicant] : undefined
+  );
   const { data: departments = [] } = useDepartments();
 
   // Mutations
@@ -45,33 +50,33 @@ const ApplicantData = () => {
 
   // Derived data - handle both string IDs and populated objects
   const getJobTitle = () => {
-    if (!applicant) return "";
+    if (!applicant) return '';
     // If jobPositionId is populated object, use its title directly
     if (
-      typeof applicant.jobPositionId === "object" &&
+      typeof applicant.jobPositionId === 'object' &&
       (applicant.jobPositionId as any)?.title
     ) {
       return (applicant.jobPositionId as any).title;
     }
     // Otherwise look it up
     const jobPosId =
-      typeof applicant.jobPositionId === "string"
+      typeof applicant.jobPositionId === 'string'
         ? applicant.jobPositionId
         : (applicant.jobPositionId as any)?._id;
-    return jobPositions.find((j) => j._id === jobPosId)?.title || "";
+    return jobPositions.find((j) => j._id === jobPosId)?.title.en || '';
   };
 
   const getCompanyName = () => {
-    if (!applicant) return "";
+    if (!applicant) return '';
     // Company info is nested in jobPositionId when populated
-    if (typeof applicant.jobPositionId === "object") {
+    if (typeof applicant.jobPositionId === 'object') {
       const jobPos = applicant.jobPositionId as any;
-      if (typeof jobPos.companyId === "object" && jobPos.companyId?.name) {
+      if (typeof jobPos.companyId === 'object' && jobPos.companyId?.name) {
         return jobPos.companyId.name;
       }
       // Try to look up using the ID from jobPosition
       const compId =
-        typeof jobPos.companyId === "string"
+        typeof jobPos.companyId === 'string'
           ? jobPos.companyId
           : jobPos.companyId?._id;
       const found = companies.find((c) => c._id === compId);
@@ -79,32 +84,32 @@ const ApplicantData = () => {
     }
     // Fallback to direct companyId if exists
     if (
-      typeof applicant.companyId === "object" &&
+      typeof applicant.companyId === 'object' &&
       (applicant.companyId as any)?.name
     ) {
       return (applicant.companyId as any).name;
     }
     const compId =
-      typeof applicant.companyId === "string"
+      typeof applicant.companyId === 'string'
         ? applicant.companyId
         : (applicant.companyId as any)?._id;
-    return companies.find((c) => c._id === compId)?.name || "";
+    return companies.find((c) => c._id === compId)?.name || '';
   };
 
   const getDepartmentName = () => {
-    if (!applicant) return "";
+    if (!applicant) return '';
     // Department info is nested in jobPositionId when populated
-    if (typeof applicant.jobPositionId === "object") {
+    if (typeof applicant.jobPositionId === 'object') {
       const jobPos = applicant.jobPositionId as any;
       if (
-        typeof jobPos.departmentId === "object" &&
+        typeof jobPos.departmentId === 'object' &&
         jobPos.departmentId?.name
       ) {
         return jobPos.departmentId.name;
       }
       // Try to look up using the ID from jobPosition
       const deptId =
-        typeof jobPos.departmentId === "string"
+        typeof jobPos.departmentId === 'string'
           ? jobPos.departmentId
           : jobPos.departmentId?._id;
       const found = departments.find((d) => d._id === deptId);
@@ -112,21 +117,22 @@ const ApplicantData = () => {
     }
     // Fallback to direct departmentId if exists
     if (
-      typeof applicant.departmentId === "object" &&
+      typeof applicant.departmentId === 'object' &&
       (applicant.departmentId as any)?.name
     ) {
       return (applicant.departmentId as any).name;
     }
     const deptId =
-      typeof applicant.departmentId === "string"
+      typeof applicant.departmentId === 'string'
         ? applicant.departmentId
         : (applicant.departmentId as any)?._id;
-    return departments.find((d) => d._id === deptId)?.name || "";
+    return departments.find((d) => d._id === deptId)?.name || '';
   };
 
   const jobTitle = getJobTitle();
   const companyName = getCompanyName();
   const departmentName = getDepartmentName();
+  console.log('jobPosId', jobTitle);
 
   // Modal states
   const [showInterviewModal, setShowInterviewModal] = useState(false);
@@ -137,70 +143,93 @@ const ApplicantData = () => {
 
   // Form states
   const [interviewForm, setInterviewForm] = useState({
-    date: "",
-    time: "",
-    description: "",
-    comment: "",
-    location: "",
-    link: "",
-    type: "phone" as "phone" | "video" | "in-person",
+    date: '',
+    time: '',
+    description: '',
+    comment: '',
+    location: '',
+    link: '',
+    type: 'phone' as 'phone' | 'video' | 'in-person',
   });
   const [notificationChannels, setNotificationChannels] = useState({
     email: true,
     sms: false,
     whatsapp: false,
   });
-  const [emailOption, setEmailOption] = useState<"company" | "user" | "custom">(
-    "company"
+  const [emailOption, setEmailOption] = useState<'company' | 'user' | 'custom'>(
+    'company'
   );
-  const [customEmail, setCustomEmail] = useState("");
+  const [customEmail, setCustomEmail] = useState('');
   const [phoneOption, setPhoneOption] = useState<
-    "company" | "user" | "whatsapp" | "custom"
-  >("company");
-  const [customPhone, setCustomPhone] = useState("");
-  const [messageTemplate, setMessageTemplate] = useState("");
+    'company' | 'user' | 'whatsapp' | 'custom'
+  >('company');
+  const [customPhone, setCustomPhone] = useState('');
+  const [messageTemplate, setMessageTemplate] = useState('');
   const [isSubmittingInterview, setIsSubmittingInterview] = useState(false);
   const [isSubmittingMessage, setIsSubmittingMessage] = useState(false);
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [isSubmittingStatus, setIsSubmittingStatus] = useState(false);
   const [messageForm, setMessageForm] = useState({
-    subject: "",
-    body: "",
-    type: "email" as "email" | "sms" | "whatsapp" | "internal",
+    subject: '',
+    body: '',
+    type: 'email' as 'email' | 'sms' | 'whatsapp' | 'internal',
   });
   const [commentForm, setCommentForm] = useState({
-    text: "",
+    text: '',
   });
   const [statusForm, setStatusForm] = useState({
-    status: "" as Applicant["status"] | "",
-    notes: "",
+    status: '' as Applicant['status'] | '',
+    notes: '',
   });
-  const [interviewError, setInterviewError] = useState("");
-  const [messageError, setMessageError] = useState("");
-  const [commentError, setCommentError] = useState("");
-  const [statusError, setStatusError] = useState("");
+  const [interviewError, setInterviewError] = useState('');
+  const [messageError, setMessageError] = useState('');
+  const [commentError, setCommentError] = useState('');
+  const [statusError, setStatusError] = useState('');
 
   // Generate message template based on selected notification channels
   const generateMessageTemplate = () => {
-    if (!applicant) return "";
-    
+    if (!applicant) return '';
+
     const applicantName = applicant.fullName;
-    const interviewDate = interviewForm.date ? new Date(interviewForm.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : "[Interview Date]";
-    const interviewTime = interviewForm.time || "[Interview Time]";
+    const interviewDate = interviewForm.date
+      ? new Date(interviewForm.date).toLocaleDateString('en-US', {
+          weekday: 'long',
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+        })
+      : '[Interview Date]';
+    const interviewTime = interviewForm.time || '[Interview Time]';
     const interviewType = interviewForm.type;
-    const location = interviewForm.location || "our office";
-    const link = interviewForm.link || "[Video Link]";
+    const location = interviewForm.location || 'our office';
+    const link = interviewForm.link || '[Video Link]';
 
     // Only one channel can be active at a time
     if (notificationChannels.email) {
-      return `Dear ${applicantName},\n\nWe are pleased to invite you for an interview for the position you applied for.\n\nInterview Details:\n• Date: ${interviewDate}\n• Time: ${interviewTime}\n• Type: ${interviewType.charAt(0).toUpperCase() + interviewType.slice(1)}\n${interviewType === 'video' ? `• Link: ${link}` : interviewType === 'in-person' ? `• Location: ${location}` : `• Mode: Phone Call`}\n\nPlease confirm your availability at your earliest convenience.\n\nBest regards,\nHR Team`;
+      return `Dear ${applicantName},\n\nWe are pleased to invite you for an interview for the position you applied for.\n\nInterview Details:\n• Date: ${interviewDate}\n• Time: ${interviewTime}\n• Type: ${
+        interviewType.charAt(0).toUpperCase() + interviewType.slice(1)
+      }\n${
+        interviewType === 'video'
+          ? `• Link: ${link}`
+          : interviewType === 'in-person'
+          ? `• Location: ${location}`
+          : `• Mode: Phone Call`
+      }\n\nPlease confirm your availability at your earliest convenience.\n\nBest regards,\nHR Team`;
     } else if (notificationChannels.whatsapp) {
-      return `Hi ${applicantName}! 👋\n\nGreat news! We'd like to invite you for an interview:\n\n📅 ${interviewDate}\n⏰ ${interviewTime}\n${interviewType === 'video' ? `🎥 ${link}` : interviewType === 'in-person' ? `📍 ${location}` : `📞 Phone Interview`}\n\nPlease confirm if you're available. Looking forward to meeting you!`;
+      return `Hi ${applicantName}! 👋\n\nGreat news! We'd like to invite you for an interview:\n\n📅 ${interviewDate}\n⏰ ${interviewTime}\n${
+        interviewType === 'video'
+          ? `🎥 ${link}`
+          : interviewType === 'in-person'
+          ? `📍 ${location}`
+          : `📞 Phone Interview`
+      }\n\nPlease confirm if you're available. Looking forward to meeting you!`;
     } else if (notificationChannels.sms) {
-      return `Hi ${applicantName}, You're invited for a ${interviewType} interview on ${interviewDate} at ${interviewTime}. ${interviewType === 'in-person' ? `Location: ${location}` : ''}Please confirm. - HR Team`;
+      return `Hi ${applicantName}, You're invited for a ${interviewType} interview on ${interviewDate} at ${interviewTime}. ${
+        interviewType === 'in-person' ? `Location: ${location}` : ''
+      }Please confirm. - HR Team`;
     }
-    
-    return "";
+
+    return '';
   };
 
   // Helper function to extract detailed error messages
@@ -212,37 +241,37 @@ const ApplicantData = () => {
     ) {
       return err.response.data.details
         .map((detail: any) => {
-          const field = detail.path?.[0] || "";
-          const message = detail.message || "";
+          const field = detail.path?.[0] || '';
+          const message = detail.message || '';
           return field ? `${field}: ${message}` : message;
         })
-        .join(", ");
+        .join(', ');
     }
     // Check for validation errors in 'errors' array (old format)
     if (err.response?.data?.errors) {
       const errors = err.response.data.errors;
       if (Array.isArray(errors)) {
-        return errors.map((e: any) => e.msg || e.message).join(", ");
+        return errors.map((e: any) => e.msg || e.message).join(', ');
       }
-      if (typeof errors === "object") {
+      if (typeof errors === 'object') {
         return Object.entries(errors)
           .map(([field, msg]) => `${field}: ${msg}`)
-          .join(", ");
+          .join(', ');
       }
     }
     if (err.response?.data?.message) return err.response.data.message;
     if (err.message) return err.message;
-    return "An unexpected error occurred";
+    return 'An unexpected error occurred';
   };
 
   // React Query automatically handles data fetching, no useEffect needed
 
   const statusOptions = [
-    { value: "pending", label: "Pending" },
-    { value: "interview", label: "Interview" },
-    { value: "interviewed", label: "Interviewed" },
-    { value: "approved", label: "Approved" },
-    { value: "rejected", label: "Rejected" },
+    { value: 'pending', label: 'Pending' },
+    { value: 'interview', label: 'Interview' },
+    { value: 'interviewed', label: 'Interviewed' },
+    { value: 'approved', label: 'Approved' },
+    { value: 'rejected', label: 'Rejected' },
   ];
 
   const handleInterviewSubmit = async (e: React.FormEvent) => {
@@ -251,21 +280,21 @@ const ApplicantData = () => {
 
     // Validate required comment field
     if (!interviewForm.comment || !interviewForm.comment.trim()) {
-      setInterviewError("Comment is required when scheduling an interview");
+      setInterviewError('Comment is required when scheduling an interview');
       return;
     }
 
     // Validate notification options
-    if (emailOption === "custom" && !customEmail.trim()) {
-      setInterviewError("Please provide a custom email address");
+    if (emailOption === 'custom' && !customEmail.trim()) {
+      setInterviewError('Please provide a custom email address');
       return;
     }
     if (
       (notificationChannels.sms || notificationChannels.whatsapp) &&
-      phoneOption === "custom" &&
+      phoneOption === 'custom' &&
       !customPhone.trim()
     ) {
-      setInterviewError("Please provide a custom phone number");
+      setInterviewError('Please provide a custom phone number');
       return;
     }
 
@@ -293,19 +322,19 @@ const ApplicantData = () => {
       // Optimistic update - add to UI immediately
       // Close modal and reset form immediately
       setInterviewForm({
-        date: "",
-        time: "",
-        description: "",
-        comment: "",
-        location: "",
-        link: "",
-        type: "phone",
+        date: '',
+        time: '',
+        description: '',
+        comment: '',
+        location: '',
+        link: '',
+        type: 'phone',
       });
       setNotificationChannels({ email: true, sms: false, whatsapp: false });
-      setEmailOption("company");
-      setCustomEmail("");
-      setPhoneOption("company");
-      setCustomPhone("");
+      setEmailOption('company');
+      setCustomEmail('');
+      setPhoneOption('company');
+      setCustomPhone('');
       setShowInterviewModal(false);
 
       // API calls
@@ -315,32 +344,32 @@ const ApplicantData = () => {
       });
 
       // Automatically update status to "interview" if not already
-      if (applicant && applicant.status !== "interview") {
+      if (applicant && applicant.status !== 'interview') {
         await updateStatusMutation.mutateAsync({
           id: id!,
           data: {
-            status: "interview",
+            status: 'interview',
             notes: `Status automatically updated to interview upon scheduling an interview on ${new Date().toLocaleDateString()}`,
           } as UpdateStatusRequest,
         });
       }
 
       await Swal.fire({
-        title: "Success!",
-        text: "Interview scheduled successfully.",
-        icon: "success",
+        title: 'Success!',
+        text: 'Interview scheduled successfully.',
+        icon: 'success',
         toast: true,
-        position: "top-end",
+        position: 'top-end',
         timer: 2000,
         showConfirmButton: false,
         customClass: {
-          container: "!mt-16",
+          container: '!mt-16',
         },
       });
     } catch (err: any) {
       const errorMsg = getErrorMessage(err);
       setInterviewError(errorMsg);
-      console.error("Error scheduling interview:", err);
+      console.error('Error scheduling interview:', err);
     } finally {
       setIsSubmittingInterview(false);
     }
@@ -352,14 +381,14 @@ const ApplicantData = () => {
 
     // Validate required fields - subject only for email
     if (
-      messageForm.type === "email" &&
+      messageForm.type === 'email' &&
       (!messageForm.subject || !messageForm.subject.trim())
     ) {
-      setMessageError("Subject is required when sending an email");
+      setMessageError('Subject is required when sending an email');
       return;
     }
     if (!messageForm.body || !messageForm.body.trim()) {
-      setMessageError("Message body is required when sending a message");
+      setMessageError('Message body is required when sending a message');
       return;
     }
 
@@ -371,28 +400,28 @@ const ApplicantData = () => {
       };
 
       // Close modal and reset form immediately
-      setMessageForm({ subject: "", body: "", type: "email" });
+      setMessageForm({ subject: '', body: '', type: 'email' });
       setShowMessageModal(false);
 
       // API call
       await sendMessageMutation.mutateAsync({ id: id!, data: messageData });
 
       await Swal.fire({
-        title: "Success!",
-        text: "Message sent successfully.",
-        icon: "success",
+        title: 'Success!',
+        text: 'Message sent successfully.',
+        icon: 'success',
         toast: true,
-        position: "top-end",
+        position: 'top-end',
         timer: 2000,
         showConfirmButton: false,
         customClass: {
-          container: "!mt-16",
+          container: '!mt-16',
         },
       });
     } catch (err: any) {
       const errorMsg = getErrorMessage(err);
       setMessageError(errorMsg);
-      console.error("Error sending message:", err);
+      console.error('Error sending message:', err);
     } finally {
       setIsSubmittingMessage(false);
     }
@@ -410,28 +439,28 @@ const ApplicantData = () => {
       };
 
       // Close modal and reset form immediately
-      setCommentForm({ text: "" });
+      setCommentForm({ text: '' });
       setShowCommentModal(false);
 
       // API call
       await addCommentMutation.mutateAsync({ id: id!, data: commentData });
 
       await Swal.fire({
-        title: "Success!",
-        text: "Comment added successfully.",
-        icon: "success",
+        title: 'Success!',
+        text: 'Comment added successfully.',
+        icon: 'success',
         toast: true,
-        position: "top-end",
+        position: 'top-end',
         timer: 2000,
         showConfirmButton: false,
         customClass: {
-          container: "!mt-16",
+          container: '!mt-16',
         },
       });
     } catch (err: any) {
       const errorMsg = getErrorMessage(err);
       setCommentError(errorMsg);
-      console.error("Error adding comment:", err);
+      console.error('Error adding comment:', err);
     } finally {
       setIsSubmittingComment(false);
     }
@@ -444,33 +473,33 @@ const ApplicantData = () => {
     setIsSubmittingStatus(true);
     try {
       const statusData: UpdateStatusRequest = {
-        status: statusForm.status as UpdateStatusRequest["status"],
+        status: statusForm.status as UpdateStatusRequest['status'],
         notes: statusForm.notes || undefined,
       };
 
       // Close modal and reset form immediately
-      setStatusForm({ status: "", notes: "" });
+      setStatusForm({ status: '', notes: '' });
       setShowStatusModal(false);
 
       // Update status via React Query mutation
       await updateStatusMutation.mutateAsync({ id: id!, data: statusData });
 
       await Swal.fire({
-        title: "Success!",
-        text: "Status updated successfully.",
-        icon: "success",
+        title: 'Success!',
+        text: 'Status updated successfully.',
+        icon: 'success',
         toast: true,
-        position: "top-end",
+        position: 'top-end',
         timer: 2000,
         showConfirmButton: false,
         customClass: {
-          container: "!mt-16",
+          container: '!mt-16',
         },
       });
     } catch (err: any) {
       const errorMsg = getErrorMessage(err);
       setStatusError(errorMsg);
-      console.error("Error updating status:", err);
+      console.error('Error updating status:', err);
     } finally {
       setIsSubmittingStatus(false);
     }
@@ -478,18 +507,18 @@ const ApplicantData = () => {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case "pending":
-        return "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400";
-      case "interview":
-        return "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400";
-      case "interviewed":
-        return "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400";
-      case "approved":
-        return "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400";
-      case "rejected":
-        return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400";
+      case 'pending':
+        return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
+      case 'interview':
+        return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400';
+      case 'interviewed':
+        return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400';
+      case 'approved':
+        return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
+      case 'rejected':
+        return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
       default:
-        return "bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400";
+        return 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400';
     }
   };
 
@@ -515,10 +544,10 @@ const ApplicantData = () => {
         />
         <div className="p-12 text-center">
           <div className="mb-4 text-red-600 dark:text-red-400">
-            {error instanceof Error ? error.message : "Applicant not found"}
+            {error instanceof Error ? error.message : 'Applicant not found'}
           </div>
           <button
-            onClick={() => navigate("/applicants")}
+            onClick={() => navigate('/applicants')}
             className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
           >
             Back to Applicants
@@ -529,12 +558,12 @@ const ApplicantData = () => {
   }
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
+    return new Date(dateString).toLocaleString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
     });
   };
 
@@ -542,7 +571,7 @@ const ApplicantData = () => {
     <>
       <PageMeta
         title={`Applicant - ${applicant.fullName}`}
-        description={`${jobTitle} - ${companyName}`}
+        description={`${jobTitle.en} - ${companyName}`}
       />
       <PageBreadcrumb pageTitle={applicant.fullName} />
 
@@ -550,7 +579,7 @@ const ApplicantData = () => {
         {/* Back Button and Actions */}
         <div className="flex items-center justify-between">
           <button
-            onClick={() => navigate("/applicants")}
+            onClick={() => navigate('/applicants')}
             className="text-sm font-medium text-primary hover:text-primary/80"
           >
             ← Back to Applicants
@@ -627,7 +656,7 @@ const ApplicantData = () => {
               </div>
               <div>
                 <Label>Job Position</Label>
-                <p className="mt-1 text-gray-900 dark:text-white">{jobTitle}</p>
+                <p className="mt-1 text-gray-900 dark:text-white">{jobTitle.en}</p>
               </div>
               <div>
                 <Label>Company</Label>
@@ -688,11 +717,11 @@ const ApplicantData = () => {
                     <div key={key}>
                       <Label>
                         {key
-                          .replace(/_/g, " ")
+                          .replace(/_/g, ' ')
                           .replace(/\b\w/g, (c) => c.toUpperCase())}
                       </Label>
                       <p className="mt-1 text-gray-900 dark:text-white">
-                        {Array.isArray(value) ? value.join(", ") : value}
+                        {Array.isArray(value) ? value.join(', ') : value}
                       </p>
                     </div>
                   )
@@ -710,7 +739,7 @@ const ApplicantData = () => {
             {(() => {
               // Combine all activities into a single timeline
               const activities: Array<{
-                type: "status" | "message" | "comment" | "interview";
+                type: 'status' | 'message' | 'comment' | 'interview';
                 date: string;
                 data: any;
               }> = [];
@@ -718,7 +747,7 @@ const ApplicantData = () => {
               // Add status history
               applicant.statusHistory?.forEach((history) => {
                 activities.push({
-                  type: "status",
+                  type: 'status',
                   date: history.changedAt,
                   data: history,
                 });
@@ -727,8 +756,11 @@ const ApplicantData = () => {
               // Add messages
               applicant.messages?.forEach((message) => {
                 activities.push({
-                  type: "message",
-                  date: message.sentAt || (message as any).createdAt || new Date().toISOString(),
+                  type: 'message',
+                  date:
+                    message.sentAt ||
+                    (message as any).createdAt ||
+                    new Date().toISOString(),
                   data: message,
                 });
               });
@@ -736,7 +768,7 @@ const ApplicantData = () => {
               // Add comments
               applicant.comments?.forEach((comment) => {
                 activities.push({
-                  type: "comment",
+                  type: 'comment',
                   date:
                     (comment as any).commentedAt ||
                     comment.changedAt ||
@@ -749,8 +781,11 @@ const ApplicantData = () => {
               // Add interviews
               applicant.interviews?.forEach((interview) => {
                 activities.push({
-                  type: "interview",
-                  date: interview.scheduledAt || (interview as any).issuedAt || new Date().toISOString(),
+                  type: 'interview',
+                  date:
+                    interview.scheduledAt ||
+                    (interview as any).issuedAt ||
+                    new Date().toISOString(),
                   data: interview,
                 });
               });
@@ -762,7 +797,7 @@ const ApplicantData = () => {
               );
 
               return activities.map((activity, index) => {
-                if (activity.type === "status") {
+                if (activity.type === 'status') {
                   const history = activity.data;
                   return (
                     <div
@@ -792,8 +827,8 @@ const ApplicantData = () => {
                               title="Email"
                               className={`text-sm ${
                                 (history as any).notifications?.channels?.email
-                                  ? "opacity-100"
-                                  : "opacity-30 grayscale"
+                                  ? 'opacity-100'
+                                  : 'opacity-30 grayscale'
                               }`}
                             >
                               📧
@@ -802,8 +837,8 @@ const ApplicantData = () => {
                               title="SMS"
                               className={`text-sm ${
                                 (history as any).notifications?.channels?.sms
-                                  ? "opacity-100"
-                                  : "opacity-30 grayscale"
+                                  ? 'opacity-100'
+                                  : 'opacity-30 grayscale'
                               }`}
                             >
                               💬
@@ -813,8 +848,8 @@ const ApplicantData = () => {
                               className={`text-sm ${
                                 (history as any).notifications?.channels
                                   ?.whatsapp
-                                  ? "opacity-100"
-                                  : "opacity-30 grayscale"
+                                  ? 'opacity-100'
+                                  : 'opacity-30 grayscale'
                               }`}
                             >
                               📱
@@ -824,8 +859,8 @@ const ApplicantData = () => {
                         <svg
                           className={`h-4 w-4 transition-transform ${
                             expandedHistory === `status-${index}`
-                              ? "rotate-180"
-                              : ""
+                              ? 'rotate-180'
+                              : ''
                           }`}
                           fill="none"
                           stroke="currentColor"
@@ -843,12 +878,12 @@ const ApplicantData = () => {
                         {formatDate(history.changedAt)}
                       </p>
                       <p className="text-sm text-gray-600 dark:text-gray-400">
-                        By:{" "}
-                        {typeof history.changedBy === "string"
+                        By:{' '}
+                        {typeof history.changedBy === 'string'
                           ? history.changedBy
                           : (history.changedBy as any)?.fullName ||
                             (history.changedBy as any)?.email ||
-                            "Unknown"}
+                            'Unknown'}
                       </p>
                       {expandedHistory === `status-${index}` &&
                         history.notes && (
@@ -860,7 +895,7 @@ const ApplicantData = () => {
                         )}
                     </div>
                   );
-                } else if (activity.type === "message") {
+                } else if (activity.type === 'message') {
                   const message = activity.data;
                   return (
                     <div
@@ -881,8 +916,8 @@ const ApplicantData = () => {
                         <svg
                           className={`h-4 w-4 transition-transform ${
                             expandedHistory === `message-${index}`
-                              ? "rotate-180"
-                              : ""
+                              ? 'rotate-180'
+                              : ''
                           }`}
                           fill="none"
                           stroke="currentColor"
@@ -900,12 +935,12 @@ const ApplicantData = () => {
                         {formatDate(message.sentAt)}
                       </p>
                       <p className="text-sm text-gray-600 dark:text-gray-400">
-                        By:{" "}
-                        {typeof message.sentBy === "string"
+                        By:{' '}
+                        {typeof message.sentBy === 'string'
                           ? message.sentBy
                           : (message.sentBy as any)?.fullName ||
                             (message.sentBy as any)?.email ||
-                            "Unknown"}
+                            'Unknown'}
                       </p>
                       {message.subject && (
                         <p className="mt-1 text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -922,7 +957,7 @@ const ApplicantData = () => {
                         )}
                     </div>
                   );
-                } else if (activity.type === "comment") {
+                } else if (activity.type === 'comment') {
                   const comment = activity.data;
                   return (
                     <div
@@ -943,8 +978,8 @@ const ApplicantData = () => {
                         <svg
                           className={`h-4 w-4 transition-transform ${
                             expandedHistory === `comment-${index}`
-                              ? "rotate-180"
-                              : ""
+                              ? 'rotate-180'
+                              : ''
                           }`}
                           fill="none"
                           stroke="currentColor"
@@ -967,26 +1002,26 @@ const ApplicantData = () => {
                         )}
                       </p>
                       <p className="text-sm text-gray-600 dark:text-gray-400">
-                        By:{" "}
+                        By:{' '}
                         {(() => {
                           const author =
                             (comment as any).commentedBy ||
                             comment.changedBy ||
                             (comment as any).author ||
                             (comment as any).createdBy;
-                          if (typeof author === "string") {
+                          if (typeof author === 'string') {
                             return author;
                           }
-                          if (author && typeof author === "object") {
+                          if (author && typeof author === 'object') {
                             return (
                               author.fullName ||
                               author.name ||
                               author.email ||
                               author.username ||
-                              "User"
+                              'User'
                             );
                           }
-                          return "Unknown";
+                          return 'Unknown';
                         })()}
                       </p>
                       {expandedHistory === `comment-${index}` &&
@@ -999,7 +1034,7 @@ const ApplicantData = () => {
                         )}
                     </div>
                   );
-                } else if (activity.type === "interview") {
+                } else if (activity.type === 'interview') {
                   const interview = activity.data;
                   return (
                     <div
@@ -1025,8 +1060,8 @@ const ApplicantData = () => {
                               className={`text-sm ${
                                 (interview as any).notifications?.channels
                                   ?.email
-                                  ? "opacity-100"
-                                  : "opacity-30 grayscale"
+                                  ? 'opacity-100'
+                                  : 'opacity-30 grayscale'
                               }`}
                             >
                               📧
@@ -1035,8 +1070,8 @@ const ApplicantData = () => {
                               title="SMS"
                               className={`text-sm ${
                                 (interview as any).notifications?.channels?.sms
-                                  ? "opacity-100"
-                                  : "opacity-30 grayscale"
+                                  ? 'opacity-100'
+                                  : 'opacity-30 grayscale'
                               }`}
                             >
                               💬
@@ -1046,8 +1081,8 @@ const ApplicantData = () => {
                               className={`text-sm ${
                                 (interview as any).notifications?.channels
                                   ?.whatsapp
-                                  ? "opacity-100"
-                                  : "opacity-30 grayscale"
+                                  ? 'opacity-100'
+                                  : 'opacity-30 grayscale'
                               }`}
                             >
                               📱
@@ -1057,8 +1092,8 @@ const ApplicantData = () => {
                         <svg
                           className={`h-4 w-4 transition-transform ${
                             expandedHistory === `interview-${index}`
-                              ? "rotate-180"
-                              : ""
+                              ? 'rotate-180'
+                              : ''
                           }`}
                           fill="none"
                           stroke="currentColor"
@@ -1076,12 +1111,12 @@ const ApplicantData = () => {
                         {formatDate(interview.issuedAt)}
                       </p>
                       <p className="text-sm text-gray-600 dark:text-gray-400">
-                        By:{" "}
-                        {typeof interview.issuedBy === "string"
+                        By:{' '}
+                        {typeof interview.issuedBy === 'string'
                           ? interview.issuedBy
                           : (interview.issuedBy as any)?.fullName ||
                             (interview.issuedBy as any)?.email ||
-                            "Unknown"}
+                            'Unknown'}
                       </p>
                       {(interview as any).scheduledAt && (
                         <p className="mt-1 text-sm font-medium text-blue-600 dark:text-blue-400">
@@ -1122,7 +1157,7 @@ const ApplicantData = () => {
         isOpen={showInterviewModal}
         onClose={() => {
           setShowInterviewModal(false);
-          setInterviewError("");
+          setInterviewError('');
         }}
         className="max-w-[1100px] p-6 lg:p-10"
         closeOnBackdrop={false}
@@ -1148,7 +1183,7 @@ const ApplicantData = () => {
                 </p>
                 <button
                   type="button"
-                  onClick={() => setInterviewError("")}
+                  onClick={() => setInterviewError('')}
                   className="ml-3 text-red-400 hover:text-red-600 dark:hover:text-red-300"
                 >
                   ✕
@@ -1169,7 +1204,7 @@ const ApplicantData = () => {
                   onChange={(selectedDates) => {
                     if (selectedDates.length > 0) {
                       const date = selectedDates[0];
-                      const formattedDate = date.toISOString().split("T")[0];
+                      const formattedDate = date.toISOString().split('T')[0];
                       setInterviewForm({
                         ...interviewForm,
                         date: formattedDate,
@@ -1189,11 +1224,11 @@ const ApplicantData = () => {
                   onChange={(selectedDates) => {
                     if (selectedDates.length > 0) {
                       const date = selectedDates[0];
-                      const hours = date.getHours().toString().padStart(2, "0");
+                      const hours = date.getHours().toString().padStart(2, '0');
                       const minutes = date
                         .getMinutes()
                         .toString()
-                        .padStart(2, "0");
+                        .padStart(2, '0');
                       setInterviewForm({
                         ...interviewForm,
                         time: `${hours}:${minutes}`,
@@ -1207,15 +1242,15 @@ const ApplicantData = () => {
                 <Label htmlFor="interview-type">Interview Type</Label>
                 <Select
                   options={[
-                    { value: "phone", label: "Phone" },
-                    { value: "video", label: "Video" },
-                    { value: "in-person", label: "In-Person" },
+                    { value: 'phone', label: 'Phone' },
+                    { value: 'video', label: 'Video' },
+                    { value: 'in-person', label: 'In-Person' },
                   ]}
                   placeholder="Select interview type"
                   onChange={(value) =>
                     setInterviewForm({
                       ...interviewForm,
-                      type: value as "phone" | "video" | "in-person",
+                      type: value as 'phone' | 'video' | 'in-person',
                     })
                   }
                 />
@@ -1304,7 +1339,7 @@ const ApplicantData = () => {
                           sms: false,
                           whatsapp: false,
                         });
-                        setEmailOption("company");
+                        setEmailOption('company');
                         setMessageTemplate(generateMessageTemplate());
                       }}
                       className="peer sr-only"
@@ -1327,7 +1362,7 @@ const ApplicantData = () => {
                           sms: true,
                           whatsapp: false,
                         });
-                        setPhoneOption("company");
+                        setPhoneOption('company');
                         setMessageTemplate(generateMessageTemplate());
                       }}
                       className="peer sr-only"
@@ -1362,94 +1397,109 @@ const ApplicantData = () => {
                     </span>
                   </label>
                 </div>
-              {/* Email and Phone Options Grid */}
-              <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                {/* Email Options */}
-                {notificationChannels.email && (
-                  <div className="space-y-2">
-                    <Label htmlFor="email-option">Email Address</Label>
-                    <Select
-                      options={[
-                        { value: "company", label: "Company Email" },
-                        { value: "user", label: "My Email" },
-                        { value: "custom", label: "Custom Email" },
-                      ]}
-                      value={emailOption}
-                      placeholder="Select email option"
-                      onChange={(value) =>
-                        setEmailOption(value as "company" | "user" | "custom")
-                      }
-                    />
-                    {emailOption === "custom" && (
-                      <Input
-                        id="custom-email"
-                        type="email"
-                        value={customEmail}
-                        onChange={(e) => setCustomEmail(e.target.value)}
-                        placeholder="Enter custom email address"
-                        className="mt-2"
+                {/* Email and Phone Options Grid */}
+                <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  {/* Email Options */}
+                  {notificationChannels.email && (
+                    <div className="space-y-2">
+                      <Label htmlFor="email-option">Email Address</Label>
+                      <Select
+                        options={[
+                          { value: 'company', label: 'Company Email' },
+                          { value: 'user', label: 'My Email' },
+                          { value: 'custom', label: 'Custom Email' },
+                        ]}
+                        value={emailOption}
+                        placeholder="Select email option"
+                        onChange={(value) =>
+                          setEmailOption(value as 'company' | 'user' | 'custom')
+                        }
                       />
-                    )}
-                  </div>
-                )}
-
-                {/* Phone Options for SMS/WhatsApp */}
-                {(notificationChannels.sms ||
-                  notificationChannels.whatsapp) && (
-                  <div className="space-y-2">
-                    <Label htmlFor="phone-option">Phone Number</Label>
-                    {notificationChannels.sms ? (
-                      <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-600 dark:bg-gray-700/50">
-                        <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Company Number (SMS)</p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">SMS will be sent from the company number only</p>
-                      </div>
-                    ) : (
-                      <>
-                        <Select
-                          options={[
-                            { value: "company", label: "Company Number" },
-                            { value: "user", label: "My Phone" },
-                            { value: "whatsapp", label: "Current WhatsApp Number" },
-                            { value: "custom", label: "Custom Number" },
-                          ]}
-                          value={phoneOption}
-                          placeholder="Select phone option"
-                          onChange={(value) =>
-                            setPhoneOption(
-                              value as "company" | "user" | "whatsapp" | "custom"
-                            )
-                          }
+                      {emailOption === 'custom' && (
+                        <Input
+                          id="custom-email"
+                          type="email"
+                          value={customEmail}
+                          onChange={(e) => setCustomEmail(e.target.value)}
+                          placeholder="Enter custom email address"
+                          className="mt-2"
                         />
-                        {phoneOption === "custom" && (
-                          <Input
-                            id="custom-phone"
-                            type="tel"
-                            value={customPhone}
-                            onChange={(e) => setCustomPhone(e.target.value)}
-                            placeholder="Enter custom phone number"
-                            className="mt-2"
-                          />
-                        )}
-                        {phoneOption === "whatsapp" && (
-                          <p className="text-xs text-gray-500 dark:text-gray-400">
-                            Will use the number currently logged in to WhatsApp
-                            Web/Desktop
+                      )}
+                    </div>
+                  )}
+
+                  {/* Phone Options for SMS/WhatsApp */}
+                  {(notificationChannels.sms ||
+                    notificationChannels.whatsapp) && (
+                    <div className="space-y-2">
+                      <Label htmlFor="phone-option">Phone Number</Label>
+                      {notificationChannels.sms ? (
+                        <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-600 dark:bg-gray-700/50">
+                          <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                            Company Number (SMS)
                           </p>
-                        )}
-                      </>
-                    )}
-                  </div>
-                )}
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            SMS will be sent from the company number only
+                          </p>
+                        </div>
+                      ) : (
+                        <>
+                          <Select
+                            options={[
+                              { value: 'company', label: 'Company Number' },
+                              { value: 'user', label: 'My Phone' },
+                              {
+                                value: 'whatsapp',
+                                label: 'Current WhatsApp Number',
+                              },
+                              { value: 'custom', label: 'Custom Number' },
+                            ]}
+                            value={phoneOption}
+                            placeholder="Select phone option"
+                            onChange={(value) =>
+                              setPhoneOption(
+                                value as
+                                  | 'company'
+                                  | 'user'
+                                  | 'whatsapp'
+                                  | 'custom'
+                              )
+                            }
+                          />
+                          {phoneOption === 'custom' && (
+                            <Input
+                              id="custom-phone"
+                              type="tel"
+                              value={customPhone}
+                              onChange={(e) => setCustomPhone(e.target.value)}
+                              placeholder="Enter custom phone number"
+                              className="mt-2"
+                            />
+                          )}
+                          {phoneOption === 'whatsapp' && (
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              Will use the number currently logged in to
+                              WhatsApp Web/Desktop
+                            </p>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
               {/* Message Template */}
-              {(notificationChannels.email || notificationChannels.sms || notificationChannels.whatsapp) && (
+              {(notificationChannels.email ||
+                notificationChannels.sms ||
+                notificationChannels.whatsapp) && (
                 <div className="mt-4">
                   <Label htmlFor="message-template">
                     Message Template
                     <button
                       type="button"
-                      onClick={() => setMessageTemplate(generateMessageTemplate())}
+                      onClick={() =>
+                        setMessageTemplate(generateMessageTemplate())
+                      }
                       className="ml-2 text-xs text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300"
                     >
                       🔄 Regenerate
@@ -1462,11 +1512,14 @@ const ApplicantData = () => {
                     rows={8}
                   />
                   <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    Templates for: {[
-                      notificationChannels.email && "Email",
-                      notificationChannels.whatsapp && "WhatsApp", 
-                      notificationChannels.sms && "SMS"
-                    ].filter(Boolean).join(", ")}
+                    Templates for:{' '}
+                    {[
+                      notificationChannels.email && 'Email',
+                      notificationChannels.whatsapp && 'WhatsApp',
+                      notificationChannels.sms && 'SMS',
+                    ]
+                      .filter(Boolean)
+                      .join(', ')}
                   </p>
                 </div>
               )}
@@ -1524,7 +1577,7 @@ const ApplicantData = () => {
         isOpen={showMessageModal}
         onClose={() => {
           setShowMessageModal(false);
-          setMessageError("");
+          setMessageError('');
         }}
         className="max-w-2xl p-6"
         closeOnBackdrop={false}
@@ -1542,7 +1595,7 @@ const ApplicantData = () => {
                 </p>
                 <button
                   type="button"
-                  onClick={() => setMessageError("")}
+                  onClick={() => setMessageError('')}
                   className="ml-3 text-red-400 hover:text-red-600 dark:hover:text-red-300"
                 >
                   ✕
@@ -1555,23 +1608,23 @@ const ApplicantData = () => {
             <Label htmlFor="message-type">Message Type</Label>
             <Select
               options={[
-                { value: "email", label: "📧 Email" },
-                { value: "sms", label: "💬 SMS" },
-                { value: "whatsapp", label: "📱 WhatsApp" },
+                { value: 'email', label: '📧 Email' },
+                { value: 'sms', label: '💬 SMS' },
+                { value: 'whatsapp', label: '📱 WhatsApp' },
               ]}
               value={messageForm.type}
               placeholder="Select message type"
               onChange={(value) =>
                 setMessageForm({
                   ...messageForm,
-                  type: value as "email" | "sms" | "whatsapp",
+                  type: value as 'email' | 'sms' | 'whatsapp',
                 })
               }
             />
           </div>
 
           {/* Subject field - only for email */}
-          {messageForm.type === "email" && (
+          {messageForm.type === 'email' && (
             <div>
               <Label htmlFor="message-subject">Subject *</Label>
               <Input
@@ -1650,7 +1703,7 @@ const ApplicantData = () => {
         isOpen={showCommentModal}
         onClose={() => {
           setShowCommentModal(false);
-          setCommentError("");
+          setCommentError('');
         }}
         className="max-w-2xl p-6"
         closeOnBackdrop={false}
@@ -1668,7 +1721,7 @@ const ApplicantData = () => {
                 </p>
                 <button
                   type="button"
-                  onClick={() => setCommentError("")}
+                  onClick={() => setCommentError('')}
                   className="ml-3 text-red-400 hover:text-red-600 dark:hover:text-red-300"
                 >
                   ✕
@@ -1738,7 +1791,7 @@ const ApplicantData = () => {
         isOpen={showStatusModal}
         onClose={() => {
           setShowStatusModal(false);
-          setStatusError("");
+          setStatusError('');
         }}
         className="max-w-2xl p-6"
         closeOnBackdrop={false}
@@ -1756,7 +1809,7 @@ const ApplicantData = () => {
                 </p>
                 <button
                   type="button"
-                  onClick={() => setStatusError("")}
+                  onClick={() => setStatusError('')}
                   className="ml-3 text-red-400 hover:text-red-600 dark:hover:text-red-300"
                 >
                   ✕
@@ -1773,7 +1826,7 @@ const ApplicantData = () => {
               onChange={(value) =>
                 setStatusForm({
                   ...statusForm,
-                  status: value as Applicant["status"],
+                  status: value as Applicant['status'],
                 })
               }
             />
