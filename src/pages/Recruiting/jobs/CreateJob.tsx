@@ -18,6 +18,7 @@ import { departmentsService } from "../../../services/departmentsService";
 
 type JobSpec = {
   spec: string;
+  specAr?: string;
   weight: number;
 };
 
@@ -231,9 +232,9 @@ export default function CreateJob() {
     openPositions: 1,
     registrationStart: "",
     registrationEnd: "",
-    termsAndConditions: [""],
-    termsAndConditionsAr: [""],
-    jobSpecs: [{ spec: "", weight: 0 }],
+    termsAndConditions: [],
+    termsAndConditionsAr: [],
+    jobSpecs: [],
     customFields: [],
   });
 
@@ -246,9 +247,12 @@ export default function CreateJob() {
   const [editingFieldIndex, setEditingFieldIndex] = useState<number | null>(
     null
   );
+  const [editingTermIndex, setEditingTermIndex] = useState<number | null>(null);
+  const [editingSpecIndex, setEditingSpecIndex] = useState<number | null>(null);
   const [jobStatus, setJobStatus] = useState("");
   const [isEditMode, setIsEditMode] = useState(false);
   const [formError, setFormError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Helper function to extract detailed error messages
   const getErrorMessage = (err: any): string => {
@@ -349,20 +353,21 @@ export default function CreateJob() {
                   )
                 : job.requirements && job.requirements.length > 0
                 ? job.requirements
-                : [""],
+                : [],
             termsAndConditionsAr:
               job.termsAndConditions && job.termsAndConditions.length > 0
                 ? job.termsAndConditions.map((t: any) =>
                     typeof t === "string" ? "" : t?.ar || ""
                   )
-                : [""],
+                : [],
             jobSpecs:
               job.jobSpecs && job.jobSpecs.length > 0
                 ? job.jobSpecs.map((s: any) => ({
                     spec: typeof s.spec === "string" ? s.spec : s.spec?.en || "",
+                    specAr: typeof s.spec === "object" ? s.spec?.ar || "" : "",
                     weight: s.weight || 0,
                   }))
-                : [{ spec: "", weight: 0 }],
+                : [],
             customFields: Array.isArray(job.customFields)
               ? (job.customFields as any[]).map((cf: any) => ({
                   fieldId: cf.fieldId,
@@ -485,8 +490,10 @@ export default function CreateJob() {
   const handleAddJobSpec = () => {
     setJobForm((prev) => ({
       ...prev,
-      jobSpecs: [...prev.jobSpecs, { spec: "", weight: 0 }],
+      jobSpecs: [...prev.jobSpecs, { spec: "", specAr: "", weight: 0 }],
     }));
+    // Set the newly added spec to edit mode
+    setEditingSpecIndex(jobForm.jobSpecs.length);
   };
 
   const handleRemoveJobSpec = (index: number) => {
@@ -699,6 +706,7 @@ export default function CreateJob() {
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    setIsSubmitting(true);
 
     try {
       const salaryValue = Number(jobForm.salary);
@@ -718,8 +726,13 @@ export default function CreateJob() {
         registrationStart: jobForm.registrationStart,
         registrationEnd: jobForm.registrationEnd,
         jobSpecs: jobForm.jobSpecs
-          .filter((spec) => spec.spec.trim())
-          .map((spec) => ({ spec: { en: spec.spec, ar: "" }, weight: spec.weight })),
+          .filter((spec) => spec.spec.trim() || (jobForm.bilingual && spec.specAr?.trim()))
+          .map((spec) => ({ 
+            spec: jobForm.bilingual 
+              ? { en: spec.spec || "", ar: spec.specAr || "" }
+              : { en: spec.spec || "", ar: "" }, 
+            weight: spec.weight 
+          })),
         customFields: jobForm.customFields.map((cf) => ({
           fieldId: cf.fieldId,
           label: jobForm.bilingual 
@@ -791,6 +804,7 @@ export default function CreateJob() {
       setFormError(errorMsg);
       setJobStatus(`Error: ${errorMsg}`);
       console.error(`Error ${isEditMode ? "updating" : "creating"} job:`, err);
+      setIsSubmitting(false);
     }
   };
 
@@ -811,8 +825,13 @@ export default function CreateJob() {
       registrationStart: jobForm.registrationStart,
       registrationEnd: jobForm.registrationEnd,
       jobSpecs: jobForm.jobSpecs
-        .filter((spec) => spec.spec.trim())
-        .map((spec) => ({ spec: { en: spec.spec, ar: "" }, weight: spec.weight })),
+        .filter((spec) => spec.spec.trim() || (jobForm.bilingual && spec.specAr?.trim()))
+        .map((spec) => ({ 
+          spec: jobForm.bilingual 
+            ? { en: spec.spec || "", ar: spec.specAr || "" }
+            : { en: spec.spec || "", ar: "" }, 
+          weight: spec.weight 
+        })),
       customFields: jobForm.customFields.map((cf) => ({
         fieldId: cf.fieldId,
         label: jobForm.bilingual 
@@ -1159,25 +1178,77 @@ export default function CreateJob() {
                     key={index}
                     className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-900/50"
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex-1 space-y-1">
-                        <div className="text-sm text-gray-700 dark:text-gray-300">
-                          {jobForm.bilingual && <strong>EN: </strong>}{term || "(empty)"}
+                    {editingTermIndex === index ? (
+                      <div className="space-y-2">
+                        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                          <Input
+                            value={term}
+                            onChange={(e) => {
+                              const newTerms = [...jobForm.termsAndConditions];
+                              newTerms[index] = e.target.value;
+                              setJobForm(prev => ({ ...prev, termsAndConditions: newTerms }));
+                            }}
+                            placeholder={jobForm.bilingual ? "Term (English)" : "Term"}
+                          />
+                          {jobForm.bilingual && (
+                            <div dir="rtl">
+                              <Input
+                                value={jobForm.termsAndConditionsAr[index] || ""}
+                                onChange={(e) => {
+                                  const newTermsAr = [...jobForm.termsAndConditionsAr];
+                                  newTermsAr[index] = e.target.value;
+                                  setJobForm(prev => ({ ...prev, termsAndConditionsAr: newTermsAr }));
+                                }}
+                                placeholder="الشرط (العربية)"
+                              />
+                            </div>
+                          )}
                         </div>
-                        {jobForm.bilingual && (
-                          <div className="text-sm text-gray-700 dark:text-gray-300" dir="rtl">
-                            <strong>AR:</strong> {jobForm.termsAndConditionsAr[index] || "(فارغ)"}
-                          </div>
-                        )}
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setEditingTermIndex(null)}
+                            className="inline-flex items-center gap-1 rounded px-3 py-1 text-sm font-medium text-success-600 transition hover:bg-success-50 dark:text-success-400 dark:hover:bg-success-500/10"
+                          >
+                            <CheckCircleIcon className="size-4" />
+                            Save
+                          </button>
+                        </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveTerm(index)}
-                        className="rounded p-1 text-error-600 transition hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-500/10"
-                      >
-                        <TrashBinIcon className="size-4" />
-                      </button>
-                    </div>
+                    ) : (
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 space-y-1">
+                          <div className="text-sm text-gray-700 dark:text-gray-300">
+                            {jobForm.bilingual && <strong>EN: </strong>}{term || "(empty)"}
+                          </div>
+                          {jobForm.bilingual && (
+                            <div className="text-sm text-gray-700 dark:text-gray-300" dir="rtl">
+                              <strong>AR:</strong> {jobForm.termsAndConditionsAr[index] || "(فارغ)"}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setEditingTermIndex(index)}
+                            className="rounded p-1 text-blue-600 transition hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-500/10"
+                            title="Edit"
+                          >
+                            <svg className="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveTerm(index)}
+                            className="rounded p-1 text-error-600 transition hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-500/10"
+                            title="Delete"
+                          >
+                            <TrashBinIcon className="size-4" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1191,39 +1262,105 @@ export default function CreateJob() {
           >
             <div className="space-y-4">
               {jobForm.jobSpecs.map((spec, index) => (
-                <div key={index} className="flex gap-3">
-                  <div className="flex-1">
-                    <Input
-                      value={spec.spec}
-                      onChange={(e) =>
-                        handleJobSpecChange(index, "spec", e.target.value)
-                      }
-                      placeholder="Specification name"
-                    />
-                  </div>
-                  <div className="w-32">
-                    <Input
-                      type="number"
-                      value={spec.weight}
-                      onChange={(e) =>
-                        handleJobSpecChange(
-                          index,
-                          "weight",
-                          Number(e.target.value)
-                        )
-                      }
-                      placeholder="Weight"
-                      min="0"
-                      max="100"
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveJobSpec(index)}
-                    className="rounded p-2 text-error-600 transition hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-500/10"
-                  >
-                    <TrashBinIcon className="size-4" />
-                  </button>
+                <div key={index}>
+                  {editingSpecIndex === index ? (
+                    <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-900/50 space-y-2">
+                      <div className="flex gap-3">
+                        <div className="flex-1">
+                          <Input
+                            value={spec.spec}
+                            onChange={(e) =>
+                              handleJobSpecChange(index, "spec", e.target.value)
+                            }
+                            placeholder={jobForm.bilingual ? "Specification (English)" : "Specification"}
+                          />
+                        </div>
+                        {jobForm.bilingual && (
+                          <div className="flex-1" dir="rtl">
+                            <Input
+                              value={spec.specAr || ""}
+                              onChange={(e) =>
+                                handleJobSpecChange(index, "specAr", e.target.value)
+                              }
+                              placeholder="المواصفة (العربية)"
+                            />
+                          </div>
+                        )}
+                        <div className="w-32">
+                          <Input
+                            type="number"
+                            value={spec.weight}
+                            onChange={(e) =>
+                              handleJobSpecChange(
+                                index,
+                                "weight",
+                                Number(e.target.value)
+                              )
+                            }
+                            placeholder="Weight"
+                            min="0"
+                            max="100"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setEditingSpecIndex(null)}
+                          className="inline-flex items-center gap-1 rounded px-3 py-1 text-sm font-medium text-success-600 transition hover:bg-success-50 dark:text-success-400 dark:hover:bg-success-500/10"
+                        >
+                          <CheckCircleIcon className="size-4" />
+                          Save
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-900/50">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex-1 flex items-center gap-3">
+                          <div className="flex-1">
+                            <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                              {jobForm.bilingual && <span className="text-gray-500">EN: </span>}
+                              {spec.spec || "(empty)"}
+                            </div>
+                          </div>
+                          {jobForm.bilingual && (
+                            <div className="flex-1" dir="rtl">
+                              <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                <span className="text-gray-500">AR: </span>
+                                {spec.specAr || "(فارغ)"}
+                              </div>
+                            </div>
+                          )}
+                          <div className="w-32 text-center">
+                            <span className="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-sm font-semibold text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
+                              {spec.weight}%
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setEditingSpecIndex(index)}
+                            className="rounded p-1 text-blue-600 transition hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-500/10"
+                            title="Edit"
+                          >
+                            <svg className="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveJobSpec(index)}
+                            className="rounded p-1 text-error-600 transition hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-500/10"
+                            title="Delete"
+                          >
+                            <TrashBinIcon className="size-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
 
@@ -1775,10 +1912,23 @@ export default function CreateJob() {
               <div className="flex flex-wrap items-center gap-3">
                 <button
                   type="submit"
-                  className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-6 py-3 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600"
+                  disabled={isSubmitting}
+                  className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-6 py-3 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <CheckCircleIcon className="size-5" />
-                  {isEditMode ? "Update Job" : "Create Job"}
+                  {isSubmitting ? (
+                    <>
+                      <svg className="size-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      {isEditMode ? "Updating..." : "Creating..."}
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircleIcon className="size-5" />
+                      {isEditMode ? "Update Job" : "Create Job"}
+                    </>
+                  )}
                 </button>
                 {jobStatus && (
                   <span className="inline-flex items-center gap-2 rounded-full bg-success-50 px-4 py-2 text-sm font-semibold text-success-600 ring-1 ring-inset ring-success-200 dark:bg-success-500/10 dark:text-success-200 dark:ring-success-400/40">
