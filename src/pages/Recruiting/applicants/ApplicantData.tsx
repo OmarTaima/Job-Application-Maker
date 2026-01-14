@@ -724,7 +724,7 @@ const ApplicantData = () => {
                           .replace(/\b\w/g, (c) => c.toUpperCase())}
                       </Label>
                       <p className="mt-1 text-gray-900 dark:text-white">
-                        {Array.isArray(value) ? value.join(', ') : value}
+                        {Array.isArray(value) ? value.join(', ') : String(value)}
                       </p>
                     </div>
                   )
@@ -748,7 +748,7 @@ const ApplicantData = () => {
               }> = [];
 
               // Add status history
-              applicant.statusHistory?.forEach((history) => {
+              applicant.statusHistory?.forEach((history: any) => {
                 activities.push({
                   type: 'status',
                   date: history.changedAt,
@@ -757,7 +757,7 @@ const ApplicantData = () => {
               });
 
               // Add messages
-              applicant.messages?.forEach((message) => {
+              applicant.messages?.forEach((message: any) => {
                 activities.push({
                   type: 'message',
                   date:
@@ -769,7 +769,7 @@ const ApplicantData = () => {
               });
 
               // Add comments
-              applicant.comments?.forEach((comment) => {
+              applicant.comments?.forEach((comment: any) => {
                 activities.push({
                   type: 'comment',
                   date:
@@ -782,7 +782,7 @@ const ApplicantData = () => {
               });
 
               // Add interviews
-              applicant.interviews?.forEach((interview) => {
+              applicant.interviews?.forEach((interview: any) => {
                 activities.push({
                   type: 'interview',
                   date:
