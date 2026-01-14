@@ -1077,7 +1077,7 @@ export default function Users() {
                           <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
                             {canWrite && (
                               <button
-                                onClick={() => handleEditUser(user)}
+                                onClick={() => navigate(`/user/${user._id}/edit`)}
                                 className="px-3 py-1 text-xs bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-200 rounded hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors inline-flex items-center gap-1"
                               >
                                 <PencilIcon className="w-3 h-3" />

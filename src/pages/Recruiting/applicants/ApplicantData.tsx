@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import Swal from 'sweetalert2';
-import { useParams, useNavigate } from 'react-router';
+import { useParams, useNavigate, useLocation } from 'react-router';
 import ComponentCard from '../../../components/common/ComponentCard';
 import PageBreadcrumb from '../../../components/common/PageBreadCrumb';
 import PageMeta from '../../../components/common/PageMeta';
@@ -17,7 +17,6 @@ import {
   useApplicant,
   useJobPositions,
   useCompaniesWithApplicants,
-  useDepartments,
   useUpdateApplicantStatus,
   useScheduleInterview,
   useAddComment,
@@ -31,16 +30,27 @@ import type {
 const ApplicantData = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const {} = useAuth();
 
-  // React Query hooks - data fetching happens automatically
-  const { data: applicant, isLoading: loading, error } = useApplicant(id || '');
+  // Get applicant data from location state if available (passed from Applicants page)
+  const stateApplicant = location.state?.applicant as Applicant | undefined;
+
+  // React Query hooks - only fetch if we don't have state data
+  // If we have state data, the query will still run but we use the state data immediately
+  const { data: fetchedApplicant, isLoading: loading, error } = useApplicant(id || '', {
+    // Use initialData if we have it from navigation state
+    initialData: stateApplicant,
+  });
+  
+  // Use state applicant if available, otherwise use fetched data
+  const applicant = stateApplicant || fetchedApplicant;
+  
   const { data: jobPositions = [] } = useJobPositions();
   // Fetch only companies that have applicants (in this case, just the current applicant's company)
   const { data: companies = [] } = useCompaniesWithApplicants(
     applicant ? [applicant] : undefined
   );
-  const { data: departments = [] } = useDepartments();
 
   // Mutations
   const updateStatusMutation = useUpdateApplicantStatus();
@@ -49,21 +59,25 @@ const ApplicantData = () => {
   const sendMessageMutation = useSendMessage();
 
   // Derived data - handle both string IDs and populated objects
-  const getJobTitle = () => {
-    if (!applicant) return '';
+  const getJobTitle = (): { en: string } => {
+    if (!applicant) return { en: '' };
     // If jobPositionId is populated object, use its title directly
     if (
       typeof applicant.jobPositionId === 'object' &&
       (applicant.jobPositionId as any)?.title
     ) {
-      return (applicant.jobPositionId as any).title;
+      const title = (applicant.jobPositionId as any).title;
+      if (typeof title === 'string') return { en: title };
+      if (typeof title === 'object' && title?.en) return { en: title.en };
+      return { en: '' };
     }
     // Otherwise look it up
     const jobPosId =
       typeof applicant.jobPositionId === 'string'
         ? applicant.jobPositionId
         : (applicant.jobPositionId as any)?._id;
-    return jobPositions.find((j) => j._id === jobPosId)?.title.en || '';
+    const found = jobPositions.find((j) => j._id === jobPosId);
+    return { en: found?.title?.en || '' };
   };
 
   const getCompanyName = () => {
@@ -107,13 +121,6 @@ const ApplicantData = () => {
       ) {
         return jobPos.departmentId.name;
       }
-      // Try to look up using the ID from jobPosition
-      const deptId =
-        typeof jobPos.departmentId === 'string'
-          ? jobPos.departmentId
-          : jobPos.departmentId?._id;
-      const found = departments.find((d) => d._id === deptId);
-      if (found) return found.name;
     }
     // Fallback to direct departmentId if exists
     if (
@@ -122,11 +129,7 @@ const ApplicantData = () => {
     ) {
       return (applicant.departmentId as any).name;
     }
-    const deptId =
-      typeof applicant.departmentId === 'string'
-        ? applicant.departmentId
-        : (applicant.departmentId as any)?._id;
-    return departments.find((d) => d._id === deptId)?.name || '';
+    return '';
   };
 
   const jobTitle = getJobTitle();

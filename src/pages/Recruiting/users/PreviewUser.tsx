@@ -4,6 +4,7 @@ import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
 import PageMeta from "../../../components/common/PageMeta";
 import ComponentCard from "../../../components/common/ComponentCard";
 import LoadingSpinner from "../../../components/common/LoadingSpinner";
+import { PencilIcon } from "../../../icons";
 import {
   useUsers,
   useRoles,
@@ -39,35 +40,37 @@ export default function PreviewUser() {
   // Get user's companies with departments
   const userCompanies = useMemo(() => {
     if (!user || !user.companies) return [];
-    return user.companies.map((userCompany: any) => {
-      const companyId =
-        typeof userCompany.companyId === "string"
-          ? userCompany.companyId
-          : userCompany.companyId._id;
-      const companyName =
-        typeof userCompany.companyId === "object"
-          ? userCompany.companyId.name
-          : companies.find((c) => c._id === companyId)?.name || "Unknown";
+    return user.companies
+      .filter((userCompany: any) => userCompany && userCompany.companyId)
+      .map((userCompany: any) => {
+        const companyId =
+          typeof userCompany.companyId === "string"
+            ? userCompany.companyId
+            : userCompany.companyId?._id;
+        const companyName =
+          typeof userCompany.companyId === "object" && userCompany.companyId
+            ? userCompany.companyId.name
+            : companies.find((c) => c._id === companyId)?.name || "Unknown";
 
-      const userDepartments =
-        userCompany.departments?.map((dept: any) => {
-          // Handle both string IDs and populated department objects
-          if (typeof dept === "string") {
-            const deptObj = departments.find((d) => d._id === dept);
-            return deptObj?.name || dept;
-          } else if (dept && typeof dept === "object") {
-            return dept.name || dept._id || "Unknown";
-          }
-          return "Unknown";
-        }) || [];
+        const userDepartments =
+          userCompany.departments?.map((dept: any) => {
+            // Handle both string IDs and populated department objects
+            if (typeof dept === "string") {
+              const deptObj = departments.find((d) => d._id === dept);
+              return deptObj?.name || dept;
+            } else if (dept && typeof dept === "object") {
+              return dept.name || dept._id || "Unknown";
+            }
+            return "Unknown";
+          }) || [];
 
-      return {
-        companyId,
-        companyName,
-        departments: userDepartments,
-        isPrimary: userCompany.isPrimary || false,
-      };
-    });
+        return {
+          companyId,
+          companyName,
+          departments: userDepartments,
+          isPrimary: userCompany.isPrimary || false,
+        };
+      });
   }, [user, companies, departments]);
 
   if (usersLoading) {
@@ -114,7 +117,17 @@ export default function PreviewUser() {
         title={`${userName} - User Details | Job Application Maker`}
         description={`View details for ${userName}`}
       />
-      <PageBreadcrumb pageTitle={`User: ${userName}`} />
+      
+      <div className="flex items-center justify-between">
+        <PageBreadcrumb pageTitle={`User: ${userName}`} />
+        <button
+          onClick={() => navigate(`/user/${id}/edit`)}
+          className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600"
+        >
+          <PencilIcon className="size-4" />
+          Edit User
+        </button>
+      </div>
 
       {/* Basic Information */}
       <ComponentCard title="Basic Information">
@@ -166,12 +179,6 @@ export default function PreviewUser() {
             </span>
           </div>
           <div>
-            <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              User ID
-            </h4>
-            <p className="text-base text-gray-900 dark:text-white font-mono text-xs">
-              {user._id}
-            </p>
           </div>
         </div>
       </ComponentCard>

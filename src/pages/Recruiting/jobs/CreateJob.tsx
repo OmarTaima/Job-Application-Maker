@@ -13,8 +13,10 @@ import Select from "../../../components/form/Select";
 import { PlusIcon, TrashBinIcon, CheckCircleIcon } from "../../../icons";
 import { useAuth } from "../../../context/AuthContext";
 import { jobPositionsService } from "../../../services/jobPositionsService";
-import { companiesService } from "../../../services/companiesService";
-import { departmentsService } from "../../../services/departmentsService";
+import {
+  useCompanies,
+  useDepartments,
+} from "../../../hooks/queries";
 
 type JobSpec = {
   spec: string;
@@ -135,89 +137,6 @@ export default function CreateJob() {
         String((user as any).roleId.name) === "Admin" ||
         String((user as any).roleId.name) === "Super Admin"));
 
-  const [companies, setCompanies] = useState<
-    Array<{ value: string; label: string }>
-  >([]);
-  const [departments, setDepartments] = useState<
-    Array<{ value: string; label: string }>
-  >([]);
-  const [isLoading, setIsLoading] = useState(true);
-
-  const loadCompanies = async () => {
-    try {
-      setIsLoading(true);
-
-      let companyOptions;
-
-      if (isAdmin) {
-        // Admin: fetch all companies from API
-        const data = await companiesService.getAllCompanies();
-        companyOptions = data.map((company) => ({
-          value: company._id,
-          label: company.name,
-        }));
-      } else {
-        // Non-admin: build options from user's assigned companies
-        companyOptions =
-          user?.companies?.map((c) => ({
-            value:
-              typeof c.companyId === "string" ? c.companyId : c.companyId._id,
-            label:
-              typeof c.companyId === "string" ? c.companyId : c.companyId.name,
-          })) || [];
-      }
-
-      setCompanies(companyOptions);
-    } catch (err) {
-      console.error("Failed to load companies:", err);
-      const errorMsg = getErrorMessage(err);
-      setFormError(errorMsg);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const loadDepartments = async (companyId: string) => {
-    try {
-      if (isAdmin) {
-        // Admin: fetch departments from API
-        const data = await departmentsService.getAllDepartments(companyId);
-        const departmentOptions = data.map((dept) => ({
-          value: dept._id,
-          label: dept.name,
-        }));
-        setDepartments(departmentOptions);
-      } else {
-        // Non-admin: get departments from user's assigned company
-        console.log("🔍 All user companies:", user?.companies);
-        console.log("🔍 Looking for companyId:", companyId);
-
-        const userCompany = user?.companies?.find((c) => {
-          const id =
-            typeof c.companyId === "string" ? c.companyId : c.companyId._id;
-          console.log("🔍 Checking company:", id, "against", companyId);
-          return id === companyId;
-        });
-
-        console.log("🔍 Found userCompany:", userCompany);
-        console.log("🔍 userCompany departments:", userCompany?.departments);
-
-        const departmentOptions =
-          userCompany?.departments?.map((dept) => ({
-            value: typeof dept === "string" ? dept : dept._id,
-            label: typeof dept === "string" ? dept : dept.name || dept._id,
-          })) || [];
-
-        console.log("🔍 Final department options:", departmentOptions);
-        setDepartments(departmentOptions);
-      }
-    } catch (err) {
-      console.error("Failed to load departments:", err);
-      const errorMsg = getErrorMessage(err);
-      setFormError(errorMsg);
-    }
-  };
-
   const [jobForm, setJobForm] = useState<JobForm>({
     companyId: "",
     departmentId: "",
@@ -254,6 +173,57 @@ export default function CreateJob() {
   const [formError, setFormError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Use React Query hooks for data fetching
+  const { data: allCompanies = [], isLoading: companiesLoading } = useCompanies();
+  const { data: allDepartments = [], isLoading: departmentsLoading } = useDepartments(
+    jobForm.companyId || undefined
+  );
+
+  // Transform companies based on user role
+  const companies = useMemo(() => {
+    if (isAdmin) {
+      return allCompanies.map((company) => ({
+        value: company._id,
+        label: company.name,
+      }));
+    } else {
+      return (
+        user?.companies?.map((c) => ({
+          value:
+            typeof c.companyId === "string" ? c.companyId : c.companyId._id,
+          label:
+            typeof c.companyId === "string" ? c.companyId : c.companyId.name,
+        })) || []
+      );
+    }
+  }, [allCompanies, isAdmin, user?.companies]);
+
+  // Transform departments based on user role
+  const departments = useMemo(() => {
+    if (isAdmin) {
+      return allDepartments.map((dept) => ({
+        value: dept._id,
+        label: dept.name,
+      }));
+    } else {
+      // Non-admin: get departments from user's assigned company
+      const userCompany = user?.companies?.find((c) => {
+        const id =
+          typeof c.companyId === "string" ? c.companyId : c.companyId._id;
+        return id === jobForm.companyId;
+      });
+
+      return (
+        userCompany?.departments?.map((dept) => ({
+          value: typeof dept === "string" ? dept : dept._id,
+          label: typeof dept === "string" ? dept : dept.name || dept._id,
+        })) || []
+      );
+    }
+  }, [allDepartments, isAdmin, user?.companies, jobForm.companyId]);
+
+  const isLoading = companiesLoading || departmentsLoading;
+
   // Helper function to extract detailed error messages
   const getErrorMessage = (err: any): string => {
     // Check for validation errors in 'details' array (new format)
@@ -286,23 +256,13 @@ export default function CreateJob() {
     return "An unexpected error occurred";
   };
   const companyAutoSet = useRef(false);
-  const companiesLoaded = useRef(false);
   const jobDataLoaded = useRef(false);
-
-  useEffect(() => {
-    // Only load companies once when user is available
-    if (user && !companiesLoaded.current) {
-      loadCompanies();
-      companiesLoaded.current = true;
-    }
-  }, [user]);
 
   // Load existing job data when in edit mode
   useEffect(() => {
     const loadJobData = async () => {
       if (editJobId && !jobDataLoaded.current && companies.length > 0) {
         try {
-          setIsLoading(true);
           setIsEditMode(true);
           const job = await jobPositionsService.getJobPositionById(editJobId);
 
@@ -423,8 +383,6 @@ export default function CreateJob() {
           const errorMsg = getErrorMessage(err);
           setFormError(errorMsg);
           setJobStatus(`Error: ${errorMsg}`);
-        } finally {
-          setIsLoading(false);
         }
       }
     };
@@ -454,14 +412,6 @@ export default function CreateJob() {
       }
     }
   }, [user, isAdmin, companies, editJobId]);
-
-  useEffect(() => {
-    if (jobForm.companyId) {
-      loadDepartments(jobForm.companyId);
-    } else {
-      setDepartments([]);
-    }
-  }, [jobForm.companyId, user, isAdmin]);
 
   const handleInputChange = (field: keyof JobForm, value: any) => {
     setJobForm((prev) => ({ ...prev, [field]: value }));

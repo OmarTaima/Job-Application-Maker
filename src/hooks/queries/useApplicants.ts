@@ -29,12 +29,13 @@ export function useApplicants(companyId?: string) {
 }
 
 // Get applicant by ID
-export function useApplicant(id: string) {
+export function useApplicant(id: string, options?: { initialData?: any }) {
   return useQuery({
     queryKey: applicantsKeys.detail(id),
     queryFn: () => applicantsService.getApplicantById(id),
     enabled: !!id,
     staleTime: 1 * 60 * 1000, // 1 minute - fresher data
+    initialData: options?.initialData,
   });
 }
 

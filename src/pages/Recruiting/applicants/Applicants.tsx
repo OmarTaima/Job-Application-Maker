@@ -288,9 +288,13 @@ const Applicants = () => {
 
   const handleNavigate = useCallback(
     (applicantId: string) => {
-      navigate(`/applicant/${applicantId}`);
+      // Find and pass the applicant data to avoid re-fetching
+      const applicantData = applicants.find((app) => app._id === applicantId);
+      navigate(`/applicant/${applicantId}`, {
+        state: { applicant: applicantData },
+      });
     },
-    [navigate]
+    [navigate, applicants]
   );
 
   const handlePhotoPreview = useCallback((photo: string | null) => {

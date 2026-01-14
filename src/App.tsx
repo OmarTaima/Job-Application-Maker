@@ -24,6 +24,7 @@ import Jobs from "./pages/Recruiting/jobs/Jobs";
 import CreateJob from "./pages/Recruiting/jobs/CreateJob";
 import PreviewJob from "./pages/Recruiting/jobs/PreviewJob";
 import Users from "./pages/Recruiting/users/Users";
+import EditUser from "./pages/Recruiting/users/EditUser";
 import Permissions from "./pages/Recruiting/roles/Permissions";
 import PreviewRole from "./pages/Recruiting/roles/PreviewRole";
 import PreviewUser from "./pages/Recruiting/users/PreviewUser";
@@ -75,6 +76,7 @@ export default function App() {
               >
                 <Route path="users" element={<Users />} />
                 <Route path="user/:id" element={<PreviewUser />} />
+                <Route path="user/:id/edit" element={<EditUser />} />
                 <Route path="permissions" element={<Permissions />} />
                 <Route path="role/:id" element={<PreviewRole />} />
                 <Route
