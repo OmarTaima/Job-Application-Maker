@@ -84,7 +84,7 @@ export default function PreviewJob() {
       }
       if (typeof errors === "object") {
         return Object.entries(errors)
-          .map(([field, msg]) => `${field}: ${msg}`)
+          .map(([field, msg]: [string, any]) => `${field}: ${msg}`)
           .join(", ");
       }
     }
@@ -480,7 +480,7 @@ export default function PreviewJob() {
           desc="Additional fields for applicants"
         >
           <div className="space-y-4">
-            {job.customFields.map((field) => (
+            {job.customFields.map((field: any) => (
               <div
                 key={field.fieldId}
                 className="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800"
