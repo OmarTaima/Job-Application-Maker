@@ -27,11 +27,11 @@ export function useJobPositions(companyIds?: string[]) {
 }
 
 // Get job position by ID
-export function useJobPosition(id: string) {
+export function useJobPosition(id: string, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: jobPositionsKeys.detail(id),
     queryFn: () => jobPositionsService.getJobPositionById(id),
-    enabled: !!id,
+    enabled: options?.enabled !== undefined ? options.enabled : !!id,
     staleTime: 5 * 60 * 1000,
   });
 }

@@ -17,8 +17,6 @@ import {
 } from "../../../components/ui/table";
 import {
   useJobPositions,
-  useCompanies,
-  useDepartments,
   useDeleteJobPosition,
   useUpdateJobPosition,
 } from "../../../hooks/queries";
@@ -61,8 +59,6 @@ export default function Jobs() {
     isLoading: jobsLoading,
     error,
   } = useJobPositions(companyIds);
-  const { data: companies = [] } = useCompanies();
-  const { data: departments = [] } = useDepartments();
   const deleteJobMutation = useDeleteJobPosition();
   const updateJobMutation = useUpdateJobPosition();
 
@@ -128,33 +124,14 @@ export default function Jobs() {
         return userCompanyIds.includes(positionCompanyId);
       })
       .map((position) => {
-        // Try to get company name from nested object first, then fall back to lookup
-        let companyName = "Unknown Company";
-        let departmentName = "Unknown Department";
+        // Extract company and department names from populated data
+        const companyName = typeof position.companyId === "object" && position.companyId
+          ? (position.companyId as any).name || "Unknown Company"
+          : "Unknown Company";
 
-        // If companyId is an object (populated), use its name
-        if (typeof position.companyId === "object" && position.companyId) {
-          companyName = (position.companyId as any).name || companyName;
-        } else if (typeof position.companyId === "string") {
-          // If it's a string ID, look it up in the companies array
-          const company = companies.find((c) => c._id === position.companyId);
-          if (company) companyName = company.name;
-        }
-
-        // If departmentId is an object (populated), use its name
-        if (
-          typeof position.departmentId === "object" &&
-          position.departmentId
-        ) {
-          departmentName =
-            (position.departmentId as any).name || departmentName;
-        } else if (typeof position.departmentId === "string") {
-          // If it's a string ID, look it up in the departments array
-          const department = departments.find(
-            (d) => d._id === position.departmentId
-          );
-          if (department) departmentName = department.name;
-        }
+        const departmentName = typeof position.departmentId === "object" && position.departmentId
+          ? (position.departmentId as any).name || "Unknown Department"
+          : "Unknown Department";
 
         return {
           ...position,
@@ -162,7 +139,7 @@ export default function Jobs() {
           departmentName,
         };
       });
-  }, [jobPositions, companies, departments, user, isAdmin]);
+  }, [jobPositions, user, isAdmin]);
 
   const filteredJobs = jobs.filter(
     (job) => {
@@ -176,12 +153,12 @@ export default function Jobs() {
     }
   );
 
-  const handleToggleActive = async (jobId: string, currentStatus: string) => {
+  const handleToggleActive = async (jobId: string, currentIsActive: boolean) => {
     try {
-      const newStatus = currentStatus === "open" ? "closed" : "open";
+      const newIsActive = !currentIsActive;
       await updateJobMutation.mutateAsync({
         id: jobId,
-        data: { status: newStatus as "open" | "closed" },
+        data: { isActive: newIsActive },
       });
     } catch (err: any) {
       console.error("Error updating job status:", err);
@@ -447,7 +424,7 @@ export default function Jobs() {
                     {filteredJobs.map((job) => (
                       <TableRow
                         key={job._id}
-                        onClick={() => navigate(`/job/${job._id}`)}
+                        onClick={() => navigate(`/job/${job._id}`, { state: { job } })}
                         className="cursor-pointer transition hover:bg-gray-50 dark:hover:bg-white/[0.02]"
                       >
                         <TableCell className="px-5 py-4 text-start">
@@ -492,15 +469,15 @@ export default function Jobs() {
                             {canWrite ? (
                               <Switch
                                 label=""
-                                checked={job.status === "open"}
+                                checked={job.isActive === true}
                                 onChange={() =>
-                                  handleToggleActive(job._id, job.status)
+                                  handleToggleActive(job._id, job.isActive || false)
                                 }
                                 disabled={isUpdatingJob === job._id}
                               />
                             ) : (
                               <span className="text-sm text-gray-500 dark:text-gray-400">
-                                {job.status === "open" ? "Active" : "Inactive"}
+                                {job.isActive ? "Active" : "Inactive"}
                               </span>
                             )}
                           </div>

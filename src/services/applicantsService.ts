@@ -151,6 +151,11 @@ export type ScheduleInterviewRequest = {
   type?: string;
 };
 
+export type UpdateInterviewStatusRequest = {
+  status: "scheduled" | "completed" | "cancelled";
+  notes?: string;
+};
+
 export type AddCommentRequest = {
   comment?: string;
   text?: string;
@@ -266,6 +271,37 @@ class ApplicantsService {
       const response = await axios.post(
         `/applicants/${applicantId}/interviews`,
         data
+      );
+      return response.data.data;
+    } catch (error: any) {
+      throw new ApiError(
+        getErrorMessage(error),
+        error.response?.status,
+        error.response?.data?.details
+      );
+    }
+  }
+
+  /**
+   * Update interview status
+   */
+  async updateInterviewStatus(
+    applicantId: string,
+    interviewId: string,
+    data: UpdateInterviewStatusRequest
+  ): Promise<Applicant> {
+    try {
+      // Explicitly construct payload with only allowed fields
+      const payload: any = {
+        status: data.status,
+      };
+      if (data.notes) {
+        payload.notes = data.notes;
+      }
+
+      const response = await axios.put(
+        `/applicants/${applicantId}/interviews/${interviewId}`,
+        payload
       );
       return response.data.data;
     } catch (error: any) {

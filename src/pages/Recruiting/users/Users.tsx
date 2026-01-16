@@ -36,7 +36,6 @@ import {
 type CompanyAssignment = {
   companyId: string;
   departments: string[];
-  isPrimary: boolean;
 };
 
 type UserForm = {
@@ -252,7 +251,10 @@ export default function Users() {
           email: userForm.email,
           password: userForm.password,
           roleId: userForm.roleId,
-          companies: userForm.companies,
+          companies: userForm.companies.map(c => ({
+            companyId: c.companyId,
+            departments: c.departments,
+          })),
           ...(userForm.phone && { phone: userForm.phone }),
           ...(userForm.permissions.length > 0 && {
             permissions: userForm.permissions,
@@ -340,7 +342,6 @@ export default function Users() {
         departments: (c.departments || []).map((dept: any) => 
           typeof dept === "string" ? dept : dept._id
         ),
-        isPrimary: c.isPrimary || false,
       })) || [];
 
     const userPermissions =
@@ -641,39 +642,59 @@ export default function Users() {
                                         <input
                                           type="checkbox"
                                           checked={isSelected}
-                                          disabled={isFromRole}
                                           onChange={(e) => {
                                             if (e.target.checked) {
-                                              // Add permission with default access
-                                              setUserForm((prev) => ({
-                                                ...prev,
-                                                permissions: [
-                                                  ...prev.permissions,
-                                                  {
-                                                    permission: perm._id,
-                                                    access: ["read"],
-                                                  },
-                                                ],
-                                              }));
+                                              if (!userPerm) {
+                                                // Add permission with default access
+                                                setUserForm((prev) => ({
+                                                  ...prev,
+                                                  permissions: [
+                                                    ...prev.permissions,
+                                                    {
+                                                      permission: perm._id,
+                                                      access: ["read"],
+                                                    },
+                                                  ],
+                                                }));
+                                              }
                                             } else {
-                                              // Remove permission
-                                              setUserForm((prev) => ({
-                                                ...prev,
-                                                permissions:
-                                                  prev.permissions.filter(
-                                                    (p) =>
-                                                      p.permission !== perm._id
-                                                  ),
-                                              }));
+                                              // If unchecking a role permission, add it with empty access to override
+                                              if (isFromRole && !userPerm) {
+                                                setUserForm((prev) => ({
+                                                  ...prev,
+                                                  permissions: [
+                                                    ...prev.permissions,
+                                                    {
+                                                      permission: perm._id,
+                                                      access: [],
+                                                    },
+                                                  ],
+                                                }));
+                                              } else {
+                                                // Remove permission
+                                                setUserForm((prev) => ({
+                                                  ...prev,
+                                                  permissions:
+                                                    prev.permissions.filter(
+                                                      (p) =>
+                                                        p.permission !== perm._id
+                                                    ),
+                                                }));
+                                              }
                                             }
                                           }}
-                                          className="w-4 h-4 text-brand-500 rounded focus:ring-brand-500 disabled:opacity-50"
+                                          className="w-4 h-4 text-brand-500 rounded focus:ring-brand-500"
                                         />
                                         <span className="text-sm text-gray-900 dark:text-gray-100">
                                           {perm.name}
-                                          {isFromRole && (
+                                          {isFromRole && !userPerm && (
                                             <span className="ml-2 text-xs text-green-600 dark:text-green-400">
                                               (from role)
+                                            </span>
+                                          )}
+                                          {isFromRole && userPerm && (
+                                            <span className="ml-2 text-xs text-blue-600 dark:text-blue-400">
+                                              (overridden)
                                             </span>
                                           )}
                                         </span>
@@ -682,25 +703,39 @@ export default function Users() {
                                     <td className="px-4 py-3 text-center">
                                       <input
                                         type="checkbox"
-                                        disabled={!isSelected || isFromRole}
+                                        disabled={!isSelected}
                                         checked={access.includes("read")}
                                         onChange={(e) => {
-                                          setUserForm((prev) => ({
-                                            ...prev,
-                                            permissions: prev.permissions.map(
-                                              (p) =>
-                                                p.permission === perm._id
-                                                  ? {
-                                                      ...p,
-                                                      access: e.target.checked
-                                                        ? [...p.access, "read"]
-                                                        : p.access.filter(
-                                                            (a) => a !== "read"
-                                                          ),
-                                                    }
-                                                  : p
-                                            ),
-                                          }));
+                                          // If modifying a role permission, add it to user permissions
+                                          if (isFromRole && !userPerm) {
+                                            setUserForm((prev) => ({
+                                              ...prev,
+                                              permissions: [
+                                                ...prev.permissions,
+                                                {
+                                                  permission: perm._id,
+                                                  access: e.target.checked ? ["read"] : [],
+                                                },
+                                              ],
+                                            }));
+                                          } else {
+                                            setUserForm((prev) => ({
+                                              ...prev,
+                                              permissions: prev.permissions.map(
+                                                (p) =>
+                                                  p.permission === perm._id
+                                                    ? {
+                                                        ...p,
+                                                        access: e.target.checked
+                                                          ? [...p.access, "read"]
+                                                          : p.access.filter(
+                                                              (a) => a !== "read"
+                                                            ),
+                                                      }
+                                                    : p
+                                              ),
+                                            }));
+                                          }
                                         }}
                                         className="w-4 h-4 text-brand-500 rounded focus:ring-brand-500 disabled:opacity-30"
                                       />
@@ -708,25 +743,38 @@ export default function Users() {
                                     <td className="px-4 py-3 text-center">
                                       <input
                                         type="checkbox"
-                                        disabled={!isSelected || isFromRole}
+                                        disabled={!isSelected}
                                         checked={access.includes("write")}
                                         onChange={(e) => {
-                                          setUserForm((prev) => ({
-                                            ...prev,
-                                            permissions: prev.permissions.map(
-                                              (p) =>
-                                                p.permission === perm._id
-                                                  ? {
-                                                      ...p,
-                                                      access: e.target.checked
-                                                        ? [...p.access, "write"]
-                                                        : p.access.filter(
-                                                            (a) => a !== "write"
-                                                          ),
-                                                    }
-                                                  : p
-                                            ),
-                                          }));
+                                          if (isFromRole && !userPerm) {
+                                            setUserForm((prev) => ({
+                                              ...prev,
+                                              permissions: [
+                                                ...prev.permissions,
+                                                {
+                                                  permission: perm._id,
+                                                  access: e.target.checked ? ["write"] : [],
+                                                },
+                                              ],
+                                            }));
+                                          } else {
+                                            setUserForm((prev) => ({
+                                              ...prev,
+                                              permissions: prev.permissions.map(
+                                                (p) =>
+                                                  p.permission === perm._id
+                                                    ? {
+                                                        ...p,
+                                                        access: e.target.checked
+                                                          ? [...p.access, "write"]
+                                                          : p.access.filter(
+                                                              (a) => a !== "write"
+                                                            ),
+                                                      }
+                                                    : p
+                                              ),
+                                            }));
+                                          }
                                         }}
                                         className="w-4 h-4 text-brand-500 rounded focus:ring-brand-500 disabled:opacity-30"
                                       />
@@ -734,29 +782,42 @@ export default function Users() {
                                     <td className="px-4 py-3 text-center">
                                       <input
                                         type="checkbox"
-                                        disabled={!isSelected || isFromRole}
+                                        disabled={!isSelected}
                                         checked={access.includes("create")}
                                         onChange={(e) => {
-                                          setUserForm((prev) => ({
-                                            ...prev,
-                                            permissions: prev.permissions.map(
-                                              (p) =>
-                                                p.permission === perm._id
-                                                  ? {
-                                                      ...p,
-                                                      access: e.target.checked
-                                                        ? [
-                                                            ...p.access,
-                                                            "create",
-                                                          ]
-                                                        : p.access.filter(
-                                                            (a) =>
-                                                              a !== "create"
-                                                          ),
-                                                    }
-                                                  : p
-                                            ),
-                                          }));
+                                          if (isFromRole && !userPerm) {
+                                            setUserForm((prev) => ({
+                                              ...prev,
+                                              permissions: [
+                                                ...prev.permissions,
+                                                {
+                                                  permission: perm._id,
+                                                  access: e.target.checked ? ["create"] : [],
+                                                },
+                                              ],
+                                            }));
+                                          } else {
+                                            setUserForm((prev) => ({
+                                              ...prev,
+                                              permissions: prev.permissions.map(
+                                                (p) =>
+                                                  p.permission === perm._id
+                                                    ? {
+                                                        ...p,
+                                                        access: e.target.checked
+                                                          ? [
+                                                              ...p.access,
+                                                              "create",
+                                                            ]
+                                                          : p.access.filter(
+                                                              (a) =>
+                                                                a !== "create"
+                                                            ),
+                                                      }
+                                                    : p
+                                              ),
+                                            }));
+                                          }
                                         }}
                                         className="w-4 h-4 text-brand-500 rounded focus:ring-brand-500 disabled:opacity-30"
                                       />
@@ -794,7 +855,7 @@ export default function Users() {
                                 {
                                   companyId: availableCompanies[0]._id,
                                   departments: [],
-                                  isPrimary: false,},
+                                },
                               ],
                             });
                           }
@@ -920,34 +981,6 @@ export default function Users() {
                                   }
                                   disabled={companyDepartments.length === 0}
                                 />
-                              </div>
-
-                              {/* Primary Company (optional) */}
-                              <div className="flex items-center gap-2">
-                                <input
-                                  type="checkbox"
-                                  id={`primary-${index}`}
-                                  checked={companyAssignment.isPrimary}
-                                  onChange={() => {
-                                    const newCompanies = userForm.companies.map(
-                                      (c, i) =>
-                                        i === index
-                                          ? { ...c, isPrimary: !c.isPrimary }
-                                          : c
-                                    );
-                                    setUserForm({
-                                      ...userForm,
-                                      companies: newCompanies,
-                                    });
-                                  }}
-                                  className="w-4 h-4 text-brand-500 focus:ring-brand-500"
-                                />
-                                <Label
-                                  htmlFor={`primary-${index}`}
-                                  className="!mb-0"
-                                >
-                                  Primary Company (optional)
-                                </Label>
                               </div>
                             </div>
                           </div>

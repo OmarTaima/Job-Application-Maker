@@ -25,11 +25,11 @@ export function useCompanies() {
 }
 
 // Get company by ID
-export function useCompany(id: string) {
+export function useCompany(id: string, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: companiesKeys.detail(id),
     queryFn: () => companiesService.getCompanyById(id),
-    enabled: !!id,
+    enabled: options?.enabled !== undefined ? options.enabled : !!id,
     staleTime: 5 * 60 * 1000,
   });
 }

@@ -5,6 +5,7 @@ import type {
   UpdateApplicantRequest,
   UpdateStatusRequest,
   ScheduleInterviewRequest,
+  UpdateInterviewStatusRequest,
   AddCommentRequest,
   SendMessageRequest,
 } from "../../services/applicantsService";
@@ -216,6 +217,52 @@ export function useScheduleInterview() {
     },
     onSuccess: (updatedApplicant, variables) => {
       queryClient.setQueryData(applicantsKeys.detail(variables.id), updatedApplicant);
+    },
+    onSettled: () => {
+      // No refetch
+    },
+  });
+}
+
+// Update interview status
+export function useUpdateInterviewStatus() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      applicantId,
+      interviewId,
+      data,
+    }: {
+      applicantId: string;
+      interviewId: string;
+      data: UpdateInterviewStatusRequest;
+    }) => applicantsService.updateInterviewStatus(applicantId, interviewId, data),
+    onMutate: async ({ applicantId, interviewId, data }) => {
+      await queryClient.cancelQueries({ queryKey: applicantsKeys.detail(applicantId) });
+      const previousDetail = queryClient.getQueryData(applicantsKeys.detail(applicantId));
+
+      queryClient.setQueryData(applicantsKeys.detail(applicantId), (old: any) => {
+        if (!old) return old;
+        return {
+          ...old,
+          interviews: old.interviews?.map((interview: any) =>
+            interview._id === interviewId
+              ? { ...interview, status: data.status, notes: data.notes }
+              : interview
+          ),
+        };
+      });
+
+      return { previousDetail };
+    },
+    onError: (_err, _variables, context) => {
+      if (context?.previousDetail) {
+        queryClient.setQueryData(applicantsKeys.detail(_variables.applicantId), context.previousDetail);
+      }
+    },
+    onSuccess: (updatedApplicant, variables) => {
+      queryClient.setQueryData(applicantsKeys.detail(variables.applicantId), updatedApplicant);
     },
     onSettled: () => {
       // No refetch

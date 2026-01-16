@@ -137,6 +137,11 @@ export default function CreateJob() {
         String((user as any).roleId.name) === "Admin" ||
         String((user as any).roleId.name) === "Super Admin"));
 
+  // Check if user has multiple companies assigned
+  const userCompaniesCount = user?.companies?.length || 0;
+  const hasMultipleCompanies = userCompaniesCount > 1;
+  const shouldShowCompanyField = isAdmin || hasMultipleCompanies;
+
   const [jobForm, setJobForm] = useState<JobForm>({
     companyId: "",
     departmentId: "",
@@ -175,8 +180,11 @@ export default function CreateJob() {
 
   // Use React Query hooks for data fetching
   const { data: allCompanies = [], isLoading: companiesLoading } = useCompanies();
+  
+  // Fetch all departments if admin or has multiple companies, otherwise fetch for specific company
+  const shouldFetchAllDepartments = isAdmin || hasMultipleCompanies;
   const { data: allDepartments = [], isLoading: departmentsLoading } = useDepartments(
-    jobForm.companyId || undefined
+    shouldFetchAllDepartments ? undefined : (jobForm.companyId || undefined)
   );
 
   // Transform companies based on user role
@@ -200,29 +208,35 @@ export default function CreateJob() {
 
   // Transform departments based on user role
   const departments = useMemo(() => {
-    if (isAdmin) {
+    if (shouldFetchAllDepartments) {
+      // Admin or multi-company users: filter departments by selected company
+      if (!jobForm.companyId) {
+        return []; // No company selected, show no departments
+      }
+      
+      return allDepartments
+        .filter((dept) => {
+          const deptCompanyId = typeof dept.companyId === 'string' 
+            ? dept.companyId 
+            : (dept.companyId as any)?._id;
+          return deptCompanyId === jobForm.companyId;
+        })
+        .map((dept) => ({
+          value: dept._id,
+          label: dept.name,
+        }));
+    } else {
+      // Single-company non-admin: show departments for their company
       return allDepartments.map((dept) => ({
         value: dept._id,
         label: dept.name,
       }));
-    } else {
-      // Non-admin: get departments from user's assigned company
-      const userCompany = user?.companies?.find((c) => {
-        const id =
-          typeof c.companyId === "string" ? c.companyId : c.companyId._id;
-        return id === jobForm.companyId;
-      });
-
-      return (
-        userCompany?.departments?.map((dept) => ({
-          value: typeof dept === "string" ? dept : dept._id,
-          label: typeof dept === "string" ? dept : dept.name || dept._id,
-        })) || []
-      );
     }
-  }, [allDepartments, isAdmin, user?.companies, jobForm.companyId]);
+  }, [allDepartments, shouldFetchAllDepartments, jobForm.companyId]);
 
   const isLoading = companiesLoading || departmentsLoading;
+
+  const departmentSelectDisabled = departmentsLoading || (!jobForm.companyId && shouldFetchAllDepartments);
 
   // Helper function to extract detailed error messages
   const getErrorMessage = (err: any): string => {
@@ -717,7 +731,6 @@ export default function CreateJob() {
         status: "open" as const,
         employmentType: "Full-time",
         bilingual: jobForm.bilingual,
-        isActive: true,
       };
 
       if (isEditMode && editJobId) {
@@ -816,7 +829,6 @@ export default function CreateJob() {
       status: "open" as const,
       employmentType: "Full-time",
       bilingual: jobForm.bilingual,
-      isActive: true,
     };
   }, [jobForm]);
 
@@ -884,21 +896,15 @@ export default function CreateJob() {
           )}
           {/* Company & Department Selection */}
           <ComponentCard
-            title="Company & Department"
-            desc="Select the company and department"
+            title={isEditMode ? "Department" : "Company & Department"}
+            desc={isEditMode ? "Select the department" : "Select the company and department"}
           >
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div>
-                <Label htmlFor="companyId">Company</Label>
-                {companies.length > 0 ? (
-                  !isAdmin && companies.length === 1 ? (
-                    <Input
-                      id="companyId"
-                      value={companies[0].label}
-                      disabled={true}
-                      className="bg-gray-50 dark:bg-gray-800"
-                    />
-                  ) : (
+            <div className={`grid grid-cols-1 gap-4 ${!isEditMode && shouldShowCompanyField ? 'md:grid-cols-2' : ''}`}>
+              {/* Only show company field if not in edit mode AND (user is admin OR has multiple companies) */}
+              {!isEditMode && shouldShowCompanyField && (
+                <div>
+                  <Label htmlFor="companyId">Company</Label>
+                  {companies.length > 0 ? (
                     <Select
                       options={companies}
                       placeholder="Select company"
@@ -908,28 +914,36 @@ export default function CreateJob() {
                         handleInputChange("departmentId", ""); // Reset department when company changes
                       }}
                     />
-                  )
-                ) : (
-                  <Input
-                    id="companyId"
-                    value="No company assigned"
-                    disabled={true}
-                    className="bg-gray-50 dark:bg-gray-800"
-                  />
-                )}
-              </div>
+                  ) : (
+                    <Input
+                      id="companyId"
+                      value="No companies available"
+                      disabled={true}
+                      className="bg-gray-50 dark:bg-gray-800"
+                    />
+                  )}
+                </div>
+              )}
               <div>
                 <Label htmlFor="departmentId">Department</Label>
-                <Select
-                  options={departments}
-                  value={jobForm.departmentId}
-                  placeholder={
-                    jobForm.companyId
-                      ? "Select department"
-                      : "Select company first"
-                  }
-                  onChange={(value) => handleInputChange("departmentId", value)}
-                />
+                <div className={departmentSelectDisabled ? "opacity-50 pointer-events-none" : ""}>
+                  <Select
+                    options={departments}
+                    value={jobForm.departmentId}
+                    placeholder={
+                      departmentsLoading
+                        ? "Loading departments..."
+                        : !jobForm.companyId && shouldFetchAllDepartments
+                        ? "Select company first"
+                        : departments.length === 0
+                        ? "No departments available"
+                        : "Select department"
+                    }
+                    onChange={(value) => {
+                      if (!departmentSelectDisabled) handleInputChange("departmentId", value);
+                    }}
+                  />
+                </div>
               </div>
             </div>
           </ComponentCard>

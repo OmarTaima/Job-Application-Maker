@@ -25,11 +25,11 @@ export function useDepartments(companyId?: string) {
 }
 
 // Get department by ID
-export function useDepartment(id: string) {
+export function useDepartment(id: string, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: departmentsKeys.detail(id),
     queryFn: () => departmentsService.getDepartmentById(id),
-    enabled: !!id,
+    enabled: options?.enabled !== undefined ? options.enabled : !!id,
     staleTime: 5 * 60 * 1000,
   });
 }

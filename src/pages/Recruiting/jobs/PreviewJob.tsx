@@ -1,43 +1,59 @@
 import { useMemo, useState } from "react";
 import Swal from "sweetalert2";
-import { useParams, useNavigate } from "react-router";
+import { useParams, useNavigate, useLocation } from "react-router";
 import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
 import PageMeta from "../../../components/common/PageMeta";
 import ComponentCard from "../../../components/common/ComponentCard";
 import LoadingSpinner from "../../../components/common/LoadingSpinner";
 import { PencilIcon, TrashBinIcon } from "../../../icons";
 import {
-  useJobPosition,
   useCompany,
   useDepartment,
   useDeleteJobPosition,
+  useJobPosition,
 } from "../../../hooks/queries";
 
 export default function PreviewJob() {
   const { jobId } = useParams<{ jobId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  
+  // Get job data from navigation state
+  const jobFromState = location.state?.job;
+  
+  // Fallback: Fetch job by ID only if no data in state
+  const { data: jobFromApi, isLoading: isLoadingJob } = useJobPosition(
+    jobId || "",
+    { enabled: !jobFromState && !!jobId }
+  );
+  
+  // Use data from state if available, otherwise use fetched data
+  const job = jobFromState || jobFromApi;
 
-  // React Query hooks - data fetching happens automatically
-  const { data: job, isLoading: loading, error } = useJobPosition(jobId || "");
-
-  // Extract company and department IDs
-  const companyId = useMemo(() => {
-    if (!job) return undefined;
-    return typeof job.companyId === "string"
-      ? job.companyId
-      : (job.companyId as any)?._id;
+  // Extract company and department data or IDs
+  const { companyId, companyData, departmentId, departmentData } = useMemo(() => {
+    if (!job) return { companyId: undefined, companyData: undefined, departmentId: undefined, departmentData: undefined };
+    
+    // Check if company is already populated
+    const companyIsObject = typeof job.companyId === "object" && job.companyId !== null;
+    const companyId = companyIsObject ? (job.companyId as any)?._id : job.companyId as string;
+    const companyData = companyIsObject ? job.companyId as any : undefined;
+    
+    // Check if department is already populated
+    const departmentIsObject = typeof job.departmentId === "object" && job.departmentId !== null;
+    const departmentId = departmentIsObject ? (job.departmentId as any)?._id : job.departmentId as string;
+    const departmentData = departmentIsObject ? job.departmentId as any : undefined;
+    
+    return { companyId, companyData, departmentId, departmentData };
   }, [job]);
 
-  const departmentId = useMemo(() => {
-    if (!job) return undefined;
-    return typeof job.departmentId === "string"
-      ? job.departmentId
-      : (job.departmentId as any)?._id;
-  }, [job]);
-
-  // Fetch company and department names
-  const { data: company } = useCompany(companyId || "");
-  const { data: department } = useDepartment(departmentId || "");
+  // Fetch company and department names ONLY if not already populated
+  const { data: companyFromApi } = useCompany(companyId || "", { enabled: !companyData && !!companyId });
+  const { data: departmentFromApi } = useDepartment(departmentId || "", { enabled: !departmentData && !!departmentId });
+  
+  // Use populated data if available, otherwise use fetched data
+  const company = companyData || companyFromApi;
+  const department = departmentData || departmentFromApi;
 
   // Mutations
   const deleteJobMutation = useDeleteJobPosition();
@@ -130,7 +146,7 @@ export default function PreviewJob() {
     });
   };
 
-  if (loading) {
+  if (isLoadingJob) {
     return (
       <div className="space-y-6">
         <PageMeta title="Loading..." description="Loading job details" />
@@ -140,18 +156,34 @@ export default function PreviewJob() {
     );
   }
 
-  if (error || !job) {
+  if (!job) {
     return (
       <div className="space-y-6">
-        <PageMeta title="Error" description="Failed to load job" />
+        <PageMeta title="Job Not Found" description="Job not found" />
         <PageBreadcrumb pageTitle="Job Details" />
-        <div className="p-12 text-center">
-          <p className="text-red-600 dark:text-red-400">
-            {error instanceof Error ? error.message : "Job not found"}
+        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 py-24 dark:border-gray-700">
+          <svg
+            className="mb-4 size-16 text-gray-400"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+            />
+          </svg>
+          <p className="text-lg font-semibold text-gray-700 dark:text-gray-300">
+            Job Not Found
+          </p>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            The job you're looking for doesn't exist or has been removed.
           </p>
           <button
             onClick={() => navigate("/jobs")}
-            className="mt-4 text-brand-600 hover:text-brand-700 dark:text-brand-400"
+            className="mt-4 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600"
           >
             Back to Jobs
           </button>
@@ -343,7 +375,7 @@ export default function PreviewJob() {
           desc="Job requirements and qualifications"
         >
           <ul className="space-y-2">
-            {job.requirements.map((req, index) => (
+            {job.requirements.map((req: string, index: number) => (
               <li
                 key={index}
                 className="flex items-start gap-3 text-gray-700 dark:text-gray-300"
@@ -373,7 +405,7 @@ export default function PreviewJob() {
           desc="Terms and conditions for this position"
         >
           <ul className="space-y-2">
-            {job.termsAndConditions.map((term, index) => (
+            {job.termsAndConditions.map((term: any, index: number) => (
               <li
                 key={index}
                 className="flex items-start gap-3 text-gray-700 dark:text-gray-300"
@@ -415,7 +447,7 @@ export default function PreviewJob() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 bg-white dark:divide-gray-700 dark:bg-gray-900">
-                {job.jobSpecs.map((spec, index) => (
+                {job.jobSpecs.map((spec: any, index: number) => (
                   <tr key={index}>
                     <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900 dark:text-gray-100">
                       {typeof spec.spec === "string" ? spec.spec : spec.spec?.en || ""}
@@ -432,7 +464,7 @@ export default function PreviewJob() {
                     Total Weight
                   </td>
                   <td className="px-6 py-3 text-sm font-semibold text-gray-900 dark:text-gray-100">
-                    {job.jobSpecs.reduce((sum, spec) => sum + spec.weight, 0)}%
+                    {job.jobSpecs.reduce((sum: number, spec: any) => sum + spec.weight, 0)}%
                   </td>
                 </tr>
               </tfoot>
@@ -484,7 +516,7 @@ export default function PreviewJob() {
                           Options:
                         </span>
                         <div className="mt-1 flex flex-wrap gap-2">
-                          {field.choices.map((choice, idx) => (
+                          {field.choices.map((choice: any, idx: number) => (
                             <span
                               key={idx}
                               className="inline-flex items-center rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-medium text-brand-700 dark:bg-brand-900/30 dark:text-brand-300"

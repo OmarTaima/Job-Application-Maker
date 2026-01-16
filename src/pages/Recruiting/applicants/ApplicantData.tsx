@@ -19,6 +19,7 @@ import {
   useCompaniesWithApplicants,
   useUpdateApplicantStatus,
   useScheduleInterview,
+  useUpdateInterviewStatus,
   useAddComment,
   useSendMessage,
 } from '../../../hooks/queries';
@@ -36,6 +37,12 @@ const ApplicantData = () => {
   // Get applicant data from location state if available (passed from Applicants page)
   const stateApplicant = location.state?.applicant as Applicant | undefined;
 
+  // State for expanded custom responses
+  const [expandedResponses, setExpandedResponses] = useState<Record<string, Set<number>>>({});
+  
+  // State for activity timeline tab
+  const [activityTab, setActivityTab] = useState<'all' | 'status' | 'actions' | 'interview'>('all');
+
   // React Query hooks - only fetch if we don't have state data
   // If we have state data, the query will still run but we use the state data immediately
   const { data: fetchedApplicant, isLoading: loading, error } = useApplicant(id || '', {
@@ -43,8 +50,8 @@ const ApplicantData = () => {
     initialData: stateApplicant,
   });
   
-  // Use state applicant if available, otherwise use fetched data
-  const applicant = stateApplicant || fetchedApplicant;
+  // Always use fetched data (which includes optimistic updates from React Query)
+  const applicant = fetchedApplicant;
   
   const { data: jobPositions = [] } = useJobPositions();
   // Fetch only companies that have applicants (in this case, just the current applicant's company)
@@ -55,8 +62,12 @@ const ApplicantData = () => {
   // Mutations
   const updateStatusMutation = useUpdateApplicantStatus();
   const scheduleInterviewMutation = useScheduleInterview();
+  const updateInterviewMutation = useUpdateInterviewStatus();
   const addCommentMutation = useAddComment();
   const sendMessageMutation = useSendMessage();
+
+  // Interview update state
+  const [updatingInterviewId] = useState<string | null>(null);
 
   // Derived data - handle both string IDs and populated objects
   const getJobTitle = (): { en: string } => {
@@ -142,7 +153,10 @@ const ApplicantData = () => {
   const [showMessageModal, setShowMessageModal] = useState(false);
   const [showCommentModal, setShowCommentModal] = useState(false);
   const [showStatusModal, setShowStatusModal] = useState(false);
+  const [showInterviewSettingsModal, setShowInterviewSettingsModal] = useState(false);
+  const [selectedInterview, setSelectedInterview] = useState<any>(null);
   const [expandedHistory, setExpandedHistory] = useState<string | null>(null);
+  const [formResetKey, setFormResetKey] = useState(0);
 
   // Form states
   const [interviewForm, setInterviewForm] = useState({
@@ -319,11 +333,41 @@ const ApplicantData = () => {
         location: interviewForm.location || undefined,
         videoLink: interviewForm.link || undefined,
         notes: interviewForm.comment || undefined,
+        // Don't include status here - will be set in second request
       };
 
-      // Schedule interview
-      // Optimistic update - add to UI immediately
-      // Close modal and reset form immediately
+      // First: Update applicant status to "interview" if not already
+      if (applicant && applicant.status !== 'interview') {
+        await updateStatusMutation.mutateAsync({
+          id: id!,
+          data: {
+            status: 'interview',
+            notes: `Status automatically updated to interview upon scheduling an interview on ${new Date().toLocaleDateString()}`,
+          } as UpdateStatusRequest,
+        });
+      }
+
+      // Second: Create the interview (returns updated applicant with the new interview)
+      const updatedApplicant = await scheduleInterviewMutation.mutateAsync({
+        id: id!,
+        data: interviewData,
+      });
+
+      // Third: Get the newly created interview ID and set its status to 'scheduled'
+      const createdInterview =
+        updatedApplicant?.interviews && updatedApplicant.interviews.length
+          ? updatedApplicant.interviews[updatedApplicant.interviews.length - 1]
+          : null;
+
+      if (createdInterview && createdInterview._id) {
+        await updateInterviewMutation.mutateAsync({
+          applicantId: id!,
+          interviewId: createdInterview._id,
+          data: { status: 'scheduled' },
+        });
+      }
+
+      // Close modal and reset form after successful API calls
       setInterviewForm({
         date: '',
         time: '',
@@ -339,23 +383,6 @@ const ApplicantData = () => {
       setPhoneOption('company');
       setCustomPhone('');
       setShowInterviewModal(false);
-
-      // API calls
-      await scheduleInterviewMutation.mutateAsync({
-        id: id!,
-        data: interviewData,
-      });
-
-      // Automatically update status to "interview" if not already
-      if (applicant && applicant.status !== 'interview') {
-        await updateStatusMutation.mutateAsync({
-          id: id!,
-          data: {
-            status: 'interview',
-            notes: `Status automatically updated to interview upon scheduling an interview on ${new Date().toLocaleDateString()}`,
-          } as UpdateStatusRequest,
-        });
-      }
 
       await Swal.fire({
         title: 'Success!',
@@ -589,11 +616,27 @@ const ApplicantData = () => {
           </button>
           <div className="flex gap-3">
             <button
-              onClick={() => setShowInterviewModal(true)}
+              onClick={() => {
+                setFormResetKey(prev => prev + 1); // Reset DatePickers
+                setShowInterviewModal(true);
+              }}
               className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
             >
               <PlusIcon className="h-4 w-4" />
               Schedule Interview
+            </button>
+            <button
+              onClick={() => {
+                setSelectedInterview(applicant.interviews?.[0] || null);
+                setShowInterviewSettingsModal(true);
+              }}
+              className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              Interview Settings
             </button>
             <button
               onClick={() => setShowMessageModal(true)}
@@ -716,18 +759,95 @@ const ApplicantData = () => {
             >
               <div className="grid grid-cols-2 gap-6">
                 {Object.entries(applicant.customResponses).map(
-                  ([key, value]) => (
-                    <div key={key}>
-                      <Label>
-                        {key
-                          .replace(/_/g, ' ')
-                          .replace(/\b\w/g, (c) => c.toUpperCase())}
-                      </Label>
-                      <p className="mt-1 text-gray-900 dark:text-white">
-                        {Array.isArray(value) ? value.join(', ') : String(value)}
-                      </p>
-                    </div>
-                  )
+                  ([key, value]) => {
+                    // Helper function to toggle expansion for a specific item
+                    const toggleExpand = (index: number) => {
+                      setExpandedResponses(prev => {
+                        const newState = { ...prev };
+                        if (!newState[key]) {
+                          newState[key] = new Set();
+                        }
+                        const currentSet = new Set(newState[key]);
+                        if (currentSet.has(index)) {
+                          currentSet.delete(index);
+                        } else {
+                          currentSet.add(index);
+                        }
+                        newState[key] = currentSet;
+                        return newState;
+                      });
+                    };
+
+                    // Helper function to render value properly
+                    const renderValue = () => {
+                      if (Array.isArray(value)) {
+                        // Check if array contains objects
+                        if (value.length > 0 && typeof value[0] === 'object' && value[0] !== null) {
+                          // Render each object as an expandable tag
+                          return (
+                            <div className="flex flex-wrap gap-2">
+                              {value.map((item, idx) => {
+                                const isExpanded = expandedResponses[key]?.has(idx) || false;
+                                // Get a summary for the tag (e.g., first field value or index)
+                                const firstKey = Object.keys(item)[0];
+                                const summary = item[firstKey] || `Item ${idx + 1}`;
+                                
+                                return (
+                                  <div key={idx} className="w-full">
+                                    <button
+                                      onClick={() => toggleExpand(idx)}
+                                      className="inline-flex items-center gap-2 rounded-full bg-brand-100 px-3 py-1.5 text-sm font-medium text-brand-700 transition hover:bg-brand-200 dark:bg-brand-900/30 dark:text-brand-300 dark:hover:bg-brand-900/50"
+                                    >
+                                      <span>{String(summary).substring(0, 30)}{String(summary).length > 30 ? '...' : ''}</span>
+                                      <svg
+                                        className={`size-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                      >
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                      </svg>
+                                    </button>
+                                    {isExpanded && (
+                                      <div className="mt-2 rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800">
+                                        {Object.entries(item).map(([itemKey, itemValue]) => (
+                                          <div key={itemKey} className="mb-2 last:mb-0">
+                                            <span className="font-medium text-gray-700 dark:text-gray-300">
+                                              {itemKey.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}:
+                                            </span>{' '}
+                                            <span className="text-gray-900 dark:text-white">
+                                              {String(itemValue)}
+                                            </span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          );
+                        }
+                        // Simple array of primitives
+                        return value.join(', ');
+                      }
+                      // Simple value
+                      return String(value);
+                    };
+
+                    return (
+                      <div key={key}>
+                        <Label>
+                          {key
+                            .replace(/_/g, ' ')
+                            .replace(/\b\w/g, (c) => c.toUpperCase())}
+                        </Label>
+                        <div className="mt-1 text-gray-900 dark:text-white">
+                          {renderValue()}
+                        </div>
+                      </div>
+                    );
+                  }
                 )}
               </div>
             </ComponentCard>
@@ -738,7 +858,53 @@ const ApplicantData = () => {
           title="Activity Timeline"
           desc="Track all activities, status changes, messages, and comments"
         >
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {/* Tabs */}
+          <div className="mb-6 border-b border-gray-200 dark:border-gray-700">
+            <nav className="-mb-px flex space-x-8" aria-label="Tabs">
+              <button
+                onClick={() => setActivityTab('all')}
+                className={`whitespace-nowrap border-b-2 px-1 py-4 text-sm font-medium transition ${
+                  activityTab === 'all'
+                    ? 'border-brand-500 text-brand-600 dark:text-brand-400'
+                    : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
+                }`}
+              >
+                All
+              </button>
+              <button
+                onClick={() => setActivityTab('status')}
+                className={`whitespace-nowrap border-b-2 px-1 py-4 text-sm font-medium transition ${
+                  activityTab === 'status'
+                    ? 'border-brand-500 text-brand-600 dark:text-brand-400'
+                    : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
+                }`}
+              >
+                Status
+              </button>
+              <button
+                onClick={() => setActivityTab('actions')}
+                className={`whitespace-nowrap border-b-2 px-1 py-4 text-sm font-medium transition ${
+                  activityTab === 'actions'
+                    ? 'border-brand-500 text-brand-600 dark:text-brand-400'
+                    : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
+                }`}
+              >
+                Actions
+              </button>
+              <button
+                onClick={() => setActivityTab('interview')}
+                className={`whitespace-nowrap border-b-2 px-1 py-4 text-sm font-medium transition ${
+                  activityTab === 'interview'
+                    ? 'border-brand-500 text-brand-600 dark:text-brand-400'
+                    : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
+                }`}
+              >
+                Interview
+              </button>
+            </nav>
+          </div>
+
+          <div className="flex flex-wrap gap-4">
             {(() => {
               // Combine all activities into a single timeline
               const activities: Array<{
@@ -787,19 +953,32 @@ const ApplicantData = () => {
                   type: 'interview',
                   date:
                     interview.scheduledAt ||
+                    interview.createdAt ||
                     (interview as any).issuedAt ||
                     new Date().toISOString(),
                   data: interview,
                 });
               });
 
-              // Sort by date (oldest first)
+              // Sort by date (newest first)
               activities.sort(
                 (a, b) =>
-                  new Date(a.date).getTime() - new Date(b.date).getTime()
+                  new Date(b.date).getTime() - new Date(a.date).getTime()
               );
 
-              return activities.map((activity, index) => {
+              // Filter activities based on selected tab
+              const filteredActivities = activities.filter((activity) => {
+                if (activityTab === 'all') return true;
+                if (activityTab === 'status') return activity.type === 'status';
+                if (activityTab === 'actions') return activity.type === 'message' || activity.type === 'comment';
+                if (activityTab === 'interview') {
+                  // Show only interviews, not status changes
+                  return activity.type === 'interview';
+                }
+                return false;
+              });
+
+              return filteredActivities.map((activity, index) => {
                 if (activity.type === 'status') {
                   const history = activity.data;
                   return (
@@ -1053,8 +1232,18 @@ const ApplicantData = () => {
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
-                            📅 Interview Scheduled
+                          <span
+                            className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                              interview.status?.toLowerCase() === 'completed'
+                                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                                : interview.status?.toLowerCase() === 'cancelled'
+                                ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                                : interview.status?.toLowerCase() === 'rescheduled'
+                                ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+                                : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                            }`}
+                          >
+                            📅 Interview {interview.status ? `- ${interview.status.charAt(0).toUpperCase() + interview.status.slice(1)}` : 'Scheduled'}
                           </span>
                           {/* Notification Icons */}
                           <div className="flex items-center gap-1">
@@ -1111,7 +1300,7 @@ const ApplicantData = () => {
                         </svg>
                       </div>
                       <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-                        {formatDate(interview.issuedAt)}
+                        {formatDate(interview.createdAt || interview.scheduledAt || (interview as any).issuedAt || new Date().toISOString())}
                       </p>
                       <p className="text-sm text-gray-600 dark:text-gray-400">
                         By:{' '}
@@ -1119,11 +1308,16 @@ const ApplicantData = () => {
                           ? interview.issuedBy
                           : (interview.issuedBy as any)?.fullName ||
                             (interview.issuedBy as any)?.email ||
-                            'Unknown'}
+                            'System'}
                       </p>
                       {(interview as any).scheduledAt && (
                         <p className="mt-1 text-sm font-medium text-blue-600 dark:text-blue-400">
-                          📅 {formatDate((interview as any).scheduledAt)}
+                          📅 Scheduled: {formatDate((interview as any).scheduledAt)}
+                        </p>
+                      )}
+                      {interview.status && (
+                        <p className="mt-1 text-xs font-medium text-gray-500 dark:text-gray-400">
+                          Status: <span className="capitalize">{interview.status}</span>
                         </p>
                       )}
                       {expandedHistory === `interview-${index}` && (
@@ -1143,6 +1337,8 @@ const ApplicantData = () => {
                               Type: {interview.type}
                             </p>
                           )}
+                          
+                         
                         </div>
                       )}
                     </div>
@@ -1161,11 +1357,23 @@ const ApplicantData = () => {
         onClose={() => {
           setShowInterviewModal(false);
           setInterviewError('');
+          // Reset form and increment key when closing
+          setInterviewForm({
+            date: '',
+            time: '',
+            description: '',
+            comment: '',
+            location: '',
+            link: '',
+            type: 'phone',
+          });
+          setFormResetKey(prev => prev + 1);
         }}
         className="max-w-[1100px] p-6 lg:p-10"
         closeOnBackdrop={false}
       >
         <form
+          key={`interview-form-${formResetKey}`}
           onSubmit={handleInterviewSubmit}
           className="flex flex-col px-2 overflow-y-auto custom-scrollbar"
         >
@@ -1203,7 +1411,6 @@ const ApplicantData = () => {
                   id="interview-date"
                   label="Interview Date"
                   placeholder="Select interview date"
-                  defaultDate={interviewForm.date || undefined}
                   onChange={(selectedDates) => {
                     if (selectedDates.length > 0) {
                       const date = selectedDates[0];
@@ -1223,7 +1430,6 @@ const ApplicantData = () => {
                   label="Interview Time"
                   mode="time"
                   placeholder="Select interview time"
-                  defaultDate={interviewForm.time || undefined}
                   onChange={(selectedDates) => {
                     if (selectedDates.length > 0) {
                       const date = selectedDates[0];
@@ -1573,6 +1779,205 @@ const ApplicantData = () => {
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* Interview Settings Modal */}
+      <Modal
+        isOpen={showInterviewSettingsModal}
+        onClose={() => {
+          setShowInterviewSettingsModal(false);
+          setSelectedInterview(null);
+        }}
+        className="max-w-md p-6"
+        closeOnBackdrop={false}
+      >
+        <div className="space-y-6">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+            Interview Settings
+          </h2>
+
+          {selectedInterview && (
+            <div className="space-y-4">
+              {/* Current Interview Info */}
+              <div className="rounded-lg bg-gray-50 dark:bg-gray-800 p-4">
+                <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                  Current Interview
+                </h3>
+                <div className="space-y-1 text-sm">
+                  <p className="text-gray-600 dark:text-gray-400">
+                    <span className="font-medium">Date:</span>{' '}
+                    {selectedInterview.scheduledAt
+                      ? new Date(selectedInterview.scheduledAt).toLocaleString()
+                      : 'Not scheduled'}
+                  </p>
+                  <p className="text-gray-600 dark:text-gray-400">
+                    <span className="font-medium">Type:</span>{' '}
+                    {selectedInterview.type || 'N/A'}
+                  </p>
+                  <p className="text-gray-600 dark:text-gray-400">
+                    <span className="font-medium">Status:</span>{' '}
+                    <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize
+                      {selectedInterview.status === 'completed'
+                        ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+                        : selectedInterview.status === 'cancelled'
+                        ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
+                        : 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400'}
+                    ">
+                      {selectedInterview.status || 'scheduled'}
+                    </span>
+                  </p>
+                </div>
+              </div>
+
+              {/* Status Update Buttons */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                  Update Status
+                </h3>
+                <div className="grid grid-cols-2 gap-2">
+                  {(!selectedInterview.status || selectedInterview.status !== 'scheduled') && (
+                    <button
+                      onClick={async () => {
+                        // Optimistically update local state
+                        setSelectedInterview({ ...selectedInterview, status: 'scheduled' });
+                        try {
+                          await updateInterviewMutation.mutateAsync({
+                            applicantId: applicant._id,
+                            interviewId: selectedInterview._id,
+                            data: { status: 'scheduled' },
+                          });
+                          await Swal.fire({
+                            title: 'Success!',
+                            text: 'Interview status updated to scheduled.',
+                            icon: 'success',
+                            toast: true,
+                            position: 'top-end',
+                            timer: 2000,
+                            showConfirmButton: false,
+                            customClass: { container: '!mt-16' },
+                          });
+                          setShowInterviewSettingsModal(false);
+                          setSelectedInterview(null);
+                        } catch (error) {
+                          console.error('Error updating interview:', error);
+                          Swal.fire({
+                            title: 'Error',
+                            text: 'Failed to update interview status.',
+                            icon: 'error',
+                          });
+                        }
+                      }}
+                      disabled={updatingInterviewId === selectedInterview._id}
+                      className="rounded-lg bg-blue-500 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      📅 Scheduled
+                    </button>
+                  )}
+                  {(!selectedInterview.status || selectedInterview.status !== 'completed') && (
+                    <button
+                      onClick={async () => {
+                        // Optimistically update local state
+                        setSelectedInterview({ ...selectedInterview, status: 'completed' });
+                        try {
+                          await updateInterviewMutation.mutateAsync({
+                            applicantId: applicant._id,
+                            interviewId: selectedInterview._id,
+                            data: { status: 'completed' },
+                          });
+                          await Swal.fire({
+                            title: 'Success!',
+                            text: 'Interview marked as completed.',
+                            icon: 'success',
+                            toast: true,
+                            position: 'top-end',
+                            timer: 2000,
+                            showConfirmButton: false,
+                            customClass: { container: '!mt-16' },
+                          });
+                          setShowInterviewSettingsModal(false);
+                          setSelectedInterview(null);
+                        } catch (error) {
+                          console.error('Error updating interview:', error);
+                          Swal.fire({
+                            title: 'Error',
+                            text: 'Failed to update interview status.',
+                            icon: 'error',
+                          });
+                        }
+                      }}
+                      disabled={updatingInterviewId === selectedInterview._id}
+                      className="rounded-lg bg-green-500 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      ✓ Completed
+                    </button>
+                  )}
+                  {(!selectedInterview.status || selectedInterview.status !== 'cancelled') && (
+                    <button
+                      onClick={async () => {
+                        // Optimistically update local state
+                        setSelectedInterview({ ...selectedInterview, status: 'cancelled' });
+                        try {
+                          await updateInterviewMutation.mutateAsync({
+                            applicantId: applicant._id,
+                            interviewId: selectedInterview._id,
+                            data: { status: 'cancelled' },
+                          });
+                          await Swal.fire({
+                            title: 'Success!',
+                            text: 'Interview cancelled.',
+                            icon: 'success',
+                            toast: true,
+                            position: 'top-end',
+                            timer: 2000,
+                            showConfirmButton: false,
+                            customClass: { container: '!mt-16' },
+                          });
+                          setShowInterviewSettingsModal(false);
+                          setSelectedInterview(null);
+                        } catch (error) {
+                          console.error('Error updating interview:', error);
+                          Swal.fire({
+                            title: 'Error',
+                            text: 'Failed to update interview status.',
+                            icon: 'error',
+                          });
+                        }
+                      }}
+                      disabled={updatingInterviewId === selectedInterview._id}
+                      className="rounded-lg bg-red-500 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      ✕ Cancelled
+                    </button>
+                  )}
+                  
+                </div>
+              </div>
+
+              {/* Add Comment */}
+              <div className="space-y-2">
+                <Label>Add Comment (Optional)</Label>
+                <TextArea
+                  placeholder="Add notes about this status change..."
+                  rows={3}
+                  className="w-full"
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => {
+                setShowInterviewSettingsModal(false);
+                setSelectedInterview(null);
+              }}
+              className="rounded-lg bg-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
+            >
+              Close
+            </button>
+          </div>
+        </div>
       </Modal>
 
       {/* Message Modal */}
