@@ -503,21 +503,7 @@ export default function JobCreation() {
                   </div>
 
                   <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                    <div>
-                      <Label htmlFor={`field-id-${fieldIndex}`}>Field ID</Label>
-                      <Input
-                        id={`field-id-${fieldIndex}`}
-                        value={field.fieldId}
-                        onChange={(e) =>
-                          handleCustomFieldChange(
-                            fieldIndex,
-                            "fieldId",
-                            e.target.value
-                          )
-                        }
-                        placeholder="field_name"
-                      />
-                    </div>
+                   
                     <div>
                       <Label htmlFor={`field-label-${fieldIndex}`}>Label</Label>
                       <Input
