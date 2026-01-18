@@ -27,7 +27,7 @@ export type JobPosition = {
   salaryVisible?: boolean;
   bilingual?: boolean;
   isActive?: boolean;
-  employmentType?: string;
+  employmentType?: 'full-time' | 'part-time' | 'contract' | 'internship';
   status: "open" | "closed" | "archived";
   openPositions?: number;
   registrationStart?: string;
@@ -62,7 +62,7 @@ export type CreateJobPositionRequest = {
   title: LocalizedString;
   description?: LocalizedString;
   departmentId: string;
-  companyId: string;
+  companyId?: string;
   jobCode?: string;
   requirements?: string[];
   termsAndConditions?: LocalizedString[];
@@ -70,7 +70,7 @@ export type CreateJobPositionRequest = {
   salaryVisible?: boolean;
   bilingual?: boolean;
   isActive?: boolean;
-  employmentType?: string;
+  employmentType?: 'full-time' | 'part-time' | 'contract' | 'internship';
   status?: "open" | "closed" | "archived";
   openPositions?: number;
   registrationStart?: string;

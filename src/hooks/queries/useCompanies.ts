@@ -26,9 +26,16 @@ export function useCompanies() {
 
 // Get company by ID
 export function useCompany(id: string, options?: { enabled?: boolean }) {
+  const queryClient = useQueryClient();
+
   return useQuery({
     queryKey: companiesKeys.detail(id),
-    queryFn: () => companiesService.getCompanyById(id),
+    queryFn: async () => {
+      const list = queryClient.getQueryData(companiesKeys.list()) as any[] | undefined;
+      const found = list?.find((c: any) => c._id === id);
+      if (found) return found;
+      return companiesService.getCompanyById(id);
+    },
     enabled: options?.enabled !== undefined ? options.enabled : !!id,
     staleTime: 5 * 60 * 1000,
   });

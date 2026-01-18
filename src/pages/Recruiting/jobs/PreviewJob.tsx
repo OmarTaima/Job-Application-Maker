@@ -146,6 +146,16 @@ export default function PreviewJob() {
     });
   };
 
+  const formatEmploymentType = (val: any) => {
+    if (!val) return undefined;
+    const s = String(val).toLowerCase();
+    if (s.includes("full")) return "Full-time";
+    if (s.includes("part")) return "Part-time";
+    if (s.includes("contract")) return "Contract";
+    if (s.includes("intern")) return "Internship";
+    return String(val);
+  };
+
   if (isLoadingJob) {
     return (
       <div className="space-y-6">
@@ -250,6 +260,9 @@ export default function PreviewJob() {
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
             Job Code: {job.jobCode || "N/A"}
           </p>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            Employment Type: {formatEmploymentType(job?.employmentType) || "N/A"}
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -293,7 +306,7 @@ export default function PreviewJob() {
 
       {/* Basic Information */}
       <ComponentCard title="Basic Information" desc="General job details">
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
               Company
@@ -308,6 +321,21 @@ export default function PreviewJob() {
             </label>
             <p className="mt-1 text-base text-gray-900 dark:text-white">
               {department?.name || "Unknown Department"}
+            </p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Employment Type
+            </label>
+            <p className="mt-1 text-base text-gray-900 dark:text-white">
+              {job?.employmentType
+                ? (
+                    job.employmentType
+                      .split("-")
+                      .map((p: string) => p[0].toUpperCase() + p.slice(1))
+                      .join("-")
+                  )
+                : "N/A"}
             </p>
           </div>
         </div>

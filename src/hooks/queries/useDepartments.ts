@@ -17,18 +17,45 @@ export const departmentsKeys = {
 
 // Get all departments
 export function useDepartments(companyId?: string) {
+  const queryClient = useQueryClient();
+
   return useQuery({
     queryKey: departmentsKeys.list(companyId),
-    queryFn: () => departmentsService.getAllDepartments(companyId),
+    queryFn: async () => {
+      const cachedAll = queryClient.getQueryData(departmentsKeys.list()) as any[] | undefined;
+      if (cachedAll && cachedAll.length > 0) {
+        if (companyId) {
+          return cachedAll.filter((d: any) => {
+            const deptCompanyId = typeof d.companyId === "string" ? d.companyId : d.companyId?._id;
+            return deptCompanyId === companyId;
+          });
+        }
+        return cachedAll;
+      }
+      return departmentsService.getAllDepartments(companyId);
+    },
     staleTime: 5 * 60 * 1000,
   });
 }
 
 // Get department by ID
 export function useDepartment(id: string, options?: { enabled?: boolean }) {
+  const queryClient = useQueryClient();
+
   return useQuery({
     queryKey: departmentsKeys.detail(id),
-    queryFn: () => departmentsService.getDepartmentById(id),
+    queryFn: async () => {
+      const lists = queryClient.getQueriesData({ queryKey: departmentsKeys.lists() }) as Array<[any, any]> | undefined;
+      if (lists && lists.length > 0) {
+        for (const [, data] of lists) {
+          if (Array.isArray(data)) {
+            const found = data.find((d: any) => d._id === id);
+            if (found) return found;
+          }
+        }
+      }
+      return departmentsService.getDepartmentById(id);
+    },
     enabled: options?.enabled !== undefined ? options.enabled : !!id,
     staleTime: 5 * 60 * 1000,
   });

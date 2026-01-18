@@ -69,6 +69,8 @@ type CustomField = {
   displayOrder: number;
 };
 
+type EmploymentType = 'full-time' | 'part-time' | 'contract' | 'internship';
+
 type JobForm = {
   companyId: string;
   departmentId: string;
@@ -87,6 +89,7 @@ type JobForm = {
   termsAndConditionsAr: string[];
   jobSpecs: JobSpec[];
   customFields: CustomField[];
+  employmentType?: EmploymentType;
 };
 
 const inputTypeOptions = [
@@ -160,6 +163,7 @@ export default function CreateJob() {
     termsAndConditionsAr: [],
     jobSpecs: [],
     customFields: [],
+    employmentType: 'full-time',
   });
 
   const [newTerm, setNewTerm] = useState("");
@@ -389,6 +393,7 @@ export default function CreateJob() {
                   displayOrder: cf.displayOrder || 0,
                 }))
               : [],
+            employmentType: normalizeEmploymentType(job.employmentType) || 'full-time',
           });
 
           jobDataLoaded.current = true;
@@ -429,6 +434,17 @@ export default function CreateJob() {
 
   const handleInputChange = (field: keyof JobForm, value: any) => {
     setJobForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  // Normalize various possible employmentType formats to canonical values
+  const normalizeEmploymentType = (val: any): EmploymentType | undefined => {
+    if (!val) return undefined;
+    const s = String(val).toLowerCase().trim();
+    if (s === "full-time" || s === "full time" || s === "fulltime" || s === "full") return "full-time";
+    if (s === "part-time" || s === "part time" || s === "parttime" || s === "part") return "part-time";
+    if (s === "contract") return "contract";
+    if (s === "internship" || s === "intern") return "internship";
+    return undefined;
   };
 
   const handleAddTerm = () => {
@@ -676,11 +692,10 @@ export default function CreateJob() {
       const salaryValue = Number(jobForm.salary);
 
       const payload = {
+        companyId: jobForm.companyId,
         title: jobForm.bilingual ? { en: jobForm.title || "", ar: jobForm.titleAr || "" } : { en: jobForm.title || "", ar: "" },
         description: jobForm.bilingual ? { en: jobForm.description || "", ar: jobForm.descriptionAr || "" } : { en: jobForm.description || "", ar: "" },
-        companyId: jobForm.companyId,
         departmentId: jobForm.departmentId,
-        jobCode: jobForm.jobCode,
         termsAndConditions: jobForm.termsAndConditions
           .filter((term, idx) => term.trim() || (jobForm.bilingual && jobForm.termsAndConditionsAr[idx]?.trim()))
           .map((t, idx) => ({ en: t, ar: jobForm.bilingual ? (jobForm.termsAndConditionsAr[idx] || "") : "" })),
@@ -728,8 +743,7 @@ export default function CreateJob() {
             : [],
           displayOrder: cf.displayOrder,
         })),
-        status: "open" as const,
-        employmentType: "Full-time",
+        employmentType: jobForm.employmentType,
         bilingual: jobForm.bilingual,
       };
 
@@ -776,9 +790,7 @@ export default function CreateJob() {
     return {
       title: jobForm.bilingual ? { en: jobForm.title || "", ar: jobForm.titleAr || "" } : { en: jobForm.title || "", ar: "" },
       description: jobForm.bilingual ? { en: jobForm.description || "", ar: jobForm.descriptionAr || "" } : { en: jobForm.description || "", ar: "" },
-      companyId: jobForm.companyId,
       departmentId: jobForm.departmentId,
-      jobCode: jobForm.jobCode,
       termsAndConditions: jobForm.termsAndConditions
         .filter((term, idx) => term.trim() || (jobForm.bilingual && jobForm.termsAndConditionsAr[idx]?.trim()))
         .map((t, idx) => ({ en: t, ar: jobForm.bilingual ? (jobForm.termsAndConditionsAr[idx] || "") : "" })),
@@ -826,8 +838,7 @@ export default function CreateJob() {
           : [],
         displayOrder: cf.displayOrder,
       })),
-      status: "open" as const,
-      employmentType: "Full-time",
+      employmentType: jobForm.employmentType,
       bilingual: jobForm.bilingual,
     };
   }, [jobForm]);
@@ -1060,6 +1071,23 @@ export default function CreateJob() {
                     onChange={(checked) =>
                       handleInputChange("salaryVisible", checked)
                     }
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                  <Label htmlFor="employmentType">Employment Type</Label>
+                  <Select
+                      options={[
+                        { value: "full-time", label: "Full-time" },
+                        { value: "part-time", label: "Part-time" },
+                        { value: "contract", label: "Contract" },
+                        { value: "internship", label: "Internship" },
+                      ]}
+                    value={jobForm.employmentType}
+                    placeholder="Select employment type"
+                    onChange={(val) => handleInputChange("employmentType", val)}
                   />
                 </div>
               </div>
