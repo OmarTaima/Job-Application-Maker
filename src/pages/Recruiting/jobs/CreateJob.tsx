@@ -187,8 +187,10 @@ export default function CreateJob() {
   
   // Fetch all departments if admin or has multiple companies, otherwise fetch for specific company
   const shouldFetchAllDepartments = isAdmin || hasMultipleCompanies;
+  const departmentsEnabled = !companiesLoading && (shouldFetchAllDepartments ? true : !!jobForm.companyId);
   const { data: allDepartments = [], isLoading: departmentsLoading } = useDepartments(
-    shouldFetchAllDepartments ? undefined : (jobForm.companyId || undefined)
+    shouldFetchAllDepartments ? undefined : (jobForm.companyId || undefined),
+    { enabled: departmentsEnabled }
   );
 
   // Transform companies based on user role
@@ -238,7 +240,7 @@ export default function CreateJob() {
     }
   }, [allDepartments, shouldFetchAllDepartments, jobForm.companyId]);
 
-  const isLoading = companiesLoading || departmentsLoading;
+  const isLoading = companiesLoading;
 
   const departmentSelectDisabled = departmentsLoading || (!jobForm.companyId && shouldFetchAllDepartments);
 

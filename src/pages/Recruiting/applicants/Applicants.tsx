@@ -214,15 +214,18 @@ const Applicants = () => {
 
   // Filter applicants by status (memoized for performance)
   const filteredGroups = useMemo(() => {
-    return groupedApplicants
-      .map((group) => ({
-        ...group,
-        applicants:
-          statusFilter === "all"
-            ? group.applicants.filter((app) => app.status !== "trashed")
-            : group.applicants.filter((app) => app.status === statusFilter),
-      }))
-      .filter((group) => group.applicants.length > 0);
+    const mapped = groupedApplicants.map((group) => ({
+      ...group,
+      applicants:
+        statusFilter === "all"
+          ? group.applicants.filter((app) => app.status !== "trashed")
+          : group.applicants.filter((app) => app.status === statusFilter),
+    }));
+
+    // While applicants are loading, keep all job groups visible (show skeletons)
+    if (applicantsLoading) return mapped;
+
+    return mapped.filter((group) => group.applicants.length > 0);
   }, [groupedApplicants, statusFilter]);
 
   const toggleJobExpand = useCallback((jobId: string) => {
@@ -677,20 +680,52 @@ const Applicants = () => {
                                 </TableRow>
                               </TableHeader>
                               <TableBody>
-                                {group.applicants.map((applicant) => (
-                                  <ApplicantRow
-                                    key={applicant._id}
-                                    applicant={applicant}
-                                    isSelected={selectedApplicants.includes(
-                                      applicant._id
-                                    )}
-                                    onSelect={handleSelectApplicant}
-                                    onNavigate={handleNavigate}
-                                    onPhotoPreview={handlePhotoPreview}
-                                    getStatusColor={getStatusColor}
-                                    formatDate={formatDate}
-                                  />
-                                ))}
+                                {applicantsLoading ? (
+                                  // Render 3 skeleton rows while applicants are loading
+                                  Array.from({ length: 3 }).map((_, i) => (
+                                    <TableRow
+                                      key={`skeleton-${group.jobPositionId}-${i}`}
+                                      className="animate-pulse"
+                                    >
+                                      <TableCell className="px-4 py-3 align-middle">
+                                        <div className="h-4 w-4 rounded bg-gray-200 dark:bg-gray-700" />
+                                      </TableCell>
+                                      <TableCell className="px-4 py-3 align-middle">
+                                        <div className="h-10 w-10 rounded-full bg-gray-200 dark:bg-gray-700" />
+                                      </TableCell>
+                                      <TableCell className="px-4 py-3 align-middle font-medium">
+                                        <div className="h-4 w-32 rounded bg-gray-200 dark:bg-gray-700" />
+                                      </TableCell>
+                                      <TableCell className="px-4 py-3 align-middle">
+                                        <div className="h-4 w-40 rounded bg-gray-200 dark:bg-gray-700" />
+                                      </TableCell>
+                                      <TableCell className="px-4 py-3 align-middle">
+                                        <div className="h-4 w-32 rounded bg-gray-200 dark:bg-gray-700" />
+                                      </TableCell>
+                                      <TableCell className="px-4 py-3 align-middle">
+                                        <div className="h-4 w-20 rounded bg-gray-200 dark:bg-gray-700" />
+                                      </TableCell>
+                                      <TableCell className="px-4 py-3 align-middle text-sm text-gray-600 dark:text-gray-400">
+                                        <div className="h-4 w-24 rounded bg-gray-200 dark:bg-gray-700" />
+                                      </TableCell>
+                                    </TableRow>
+                                  ))
+                                ) : (
+                                  group.applicants.map((applicant) => (
+                                    <ApplicantRow
+                                      key={applicant._id}
+                                      applicant={applicant}
+                                      isSelected={selectedApplicants.includes(
+                                        applicant._id
+                                      )}
+                                      onSelect={handleSelectApplicant}
+                                      onNavigate={handleNavigate}
+                                      onPhotoPreview={handlePhotoPreview}
+                                      getStatusColor={getStatusColor}
+                                      formatDate={formatDate}
+                                    />
+                                  ))
+                                )}
                               </TableBody>
                             </Table>
                           </div>

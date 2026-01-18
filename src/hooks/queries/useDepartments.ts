@@ -16,7 +16,7 @@ export const departmentsKeys = {
 };
 
 // Get all departments
-export function useDepartments(companyId?: string) {
+export function useDepartments(companyId?: string, options?: { enabled?: boolean }) {
   const queryClient = useQueryClient();
 
   return useQuery({
@@ -34,6 +34,7 @@ export function useDepartments(companyId?: string) {
       }
       return departmentsService.getAllDepartments(companyId);
     },
+    enabled: options?.enabled !== undefined ? options.enabled : true,
     staleTime: 5 * 60 * 1000,
   });
 }
