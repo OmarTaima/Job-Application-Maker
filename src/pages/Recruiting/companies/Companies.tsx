@@ -423,19 +423,7 @@ export default function Companies() {
               </div>
             )}
           </div>
-          {/* Debug: show raw JSON for each company when toggled */}
-          {showRaw && (
-            <div className="p-4 bg-gray-50 dark:bg-black/20">
-              {companies.map((c) => (
-                <pre
-                  key={c._id}
-                  className="mb-3 max-w-full overflow-auto rounded bg-white p-3 text-xs text-gray-700 dark:bg-gray-900 dark:text-gray-200"
-                >
-                  {JSON.stringify(c, null, 2)}
-                </pre>
-              ))}
-            </div>
-          )}
+         
         </ComponentCard>
       )}
     </div>

@@ -521,23 +521,7 @@ export default function CreateJob() {
     return jobForm.customFields.some((cf) => cf.fieldId === `rec_${name}` || cf.fieldId === name);
   };
 
-  const handleAddRecommendedField = (rf: any) => {
-    // ensure a stable name exists for identification
-    const name = rf.name || rf.label || `rec_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
-    if (isRecommendedAdded(name)) return;
-    setJobForm((prev) => {
-      const currentMax = prev.customFields.reduce((m, cf) => Math.max(m, cf.displayOrder || 0), 0);
-      const newField: CustomField = {
-        fieldId: `rec_${name}`,
-        label: rf.label || name,
-        inputType: (rf.type as any) || "text",
-        isRequired: !!rf.required,
-        choices: rf.options || [],
-        displayOrder: currentMax + 1,
-      };
-      return { ...prev, customFields: [...prev.customFields, newField] };
-    });
-  };
+  
 
   // Recommended selection panel state
   const [showRecommendedPanel, setShowRecommendedPanel] = useState(false);
@@ -847,63 +831,7 @@ export default function CreateJob() {
     }
   };
 
-  const jobPayload = useMemo(() => {
-    const salaryValue = Number(jobForm.salary);
-    return {
-      title: jobForm.bilingual ? { en: jobForm.title || "", ar: jobForm.titleAr || "" } : { en: jobForm.title || "", ar: "" },
-      description: jobForm.bilingual ? { en: jobForm.description || "", ar: jobForm.descriptionAr || "" } : { en: jobForm.description || "", ar: "" },
-      departmentId: jobForm.departmentId,
-      termsAndConditions: jobForm.termsAndConditions
-        .filter((term, idx) => term.trim() || (jobForm.bilingual && jobForm.termsAndConditionsAr[idx]?.trim()))
-        .map((t, idx) => ({ en: t, ar: jobForm.bilingual ? (jobForm.termsAndConditionsAr[idx] || "") : "" })),
-      salary: isNaN(salaryValue) ? undefined : salaryValue,
-      salaryVisible: jobForm.salaryVisible,
-      openPositions: jobForm.openPositions,
-      registrationStart: jobForm.registrationStart,
-      registrationEnd: jobForm.registrationEnd,
-      jobSpecs: jobForm.jobSpecs
-        .filter((spec) => spec.spec.trim() || (jobForm.bilingual && spec.specAr?.trim()))
-        .map((spec) => ({ 
-          spec: jobForm.bilingual 
-            ? { en: spec.spec || "", ar: spec.specAr || "" }
-            : { en: spec.spec || "", ar: "" }, 
-          weight: spec.weight 
-        })),
-      customFields: jobForm.customFields.map((cf) => ({
-        fieldId: cf.fieldId,
-        label: jobForm.bilingual 
-          ? { en: cf.label || "", ar: cf.labelAr || "" }
-          : { en: cf.label || "", ar: "" },
-        inputType: cf.inputType,
-        isRequired: cf.isRequired,
-        minValue: cf.minValue,
-        maxValue: cf.maxValue,
-        choices: Array.isArray(cf.choices)
-          ? jobForm.bilingual
-            ? cf.choices.map((c, i) => ({ en: c, ar: cf.choicesAr?.[i] || "" }))
-            : cf.choices.map((c) => ({ en: c, ar: "" }))
-          : [],
-        groupFields: Array.isArray(cf.subFields)
-          ? cf.subFields.map((sf) => ({
-              fieldId: sf.fieldId,
-              label: jobForm.bilingual
-                ? { en: sf.label || "", ar: sf.labelAr || "" }
-                : { en: sf.label || "", ar: "" },
-              inputType: sf.inputType,
-              isRequired: sf.isRequired,
-              choices: Array.isArray(sf.choices)
-                ? jobForm.bilingual
-                  ? sf.choices.map((c, i) => ({ en: c, ar: sf.choicesAr?.[i] || "" }))
-                  : sf.choices.map((c) => ({ en: c, ar: "" }))
-                : [],
-            }))
-          : [],
-        displayOrder: cf.displayOrder,
-      })),
-      employmentType: jobForm.employmentType,
-      bilingual: jobForm.bilingual,
-    };
-  }, [jobForm]);
+ 
 
   const totalWeight = jobForm.jobSpecs.reduce(
     (sum, spec) => sum + spec.weight,
@@ -2062,15 +1990,7 @@ export default function CreateJob() {
                 )}
               </div>
 
-              <div className="overflow-hidden rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-900/60">
-                <div className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                  <span>Payload Preview</span>
-                  <span>POST /api/jobs</span>
-                </div>
-                <pre className="max-h-96 overflow-auto text-xs leading-relaxed text-gray-800 dark:text-gray-200">
-                  {JSON.stringify(jobPayload, null, 2)}
-                </pre>
-              </div>
+
             </div>
           </ComponentCard>
         </form>
