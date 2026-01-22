@@ -175,6 +175,8 @@ class ApplicantsService {
    */
   async getAllApplicants(
     companyIds?: string[],
+    assignedOnly?: boolean,
+    jobPositionId?: string
   ): Promise<Applicant[]> {
     try {
       const params: any = {};
@@ -184,6 +186,12 @@ class ApplicantsService {
         } else {
           params.companyIds = companyIds.join(",");
         }
+      }
+      if (assignedOnly) {
+        params.assignedOnly = true;
+      }
+      if (jobPositionId) {
+        params.jobPositionId = jobPositionId;
       }
       const response = await axios.get("/applicants", { params });
       return response.data.data;
