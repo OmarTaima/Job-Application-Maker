@@ -127,29 +127,23 @@ const Applicants = () => {
   const [isProcessing, setIsProcessing] = useState(false);
 
   // Memoize user-derived values
-  const { companyIds, singleCompanyId } = useMemo(() => {
-    if (!user) return { companyIds: undefined, singleCompanyId: undefined };
+  const companyIds = useMemo(() => {
+    if (!user) return undefined;
 
     const isAdmin = user?.roleId?.name?.toLowerCase().includes("admin");
     const userCompanyIds = user?.companies?.map((c) =>
       typeof c.companyId === "string" ? c.companyId : c.companyId._id
     );
 
-    const companyIds =
-      !isAdmin && userCompanyIds?.length ? userCompanyIds : undefined;
+    return !isAdmin && userCompanyIds?.length ? userCompanyIds : undefined;
+  }, [user?._id, user?.roleId?.name, user?.companies]);
 
-    const singleCompanyId =
-      companyIds && companyIds.length === 1 ? companyIds[0] : undefined;
-
-    return { companyIds, singleCompanyId };
-  }, [user?._id, user?.roleId?.name, user?.companies?.length]);
-
-  // Use React Query hooks
+  // Use React Query hooks — request only applicants that are assigned to a job position
   const {
     data: applicants = [],
     isLoading: applicantsLoading,
     error,
-  } = useApplicants(singleCompanyId);
+  } = useApplicants(companyIds, true /* assignedOnly */, undefined /* jobPositionId */);
   const { data: jobPositions = [], isLoading: jobPositionsLoading } =
     useJobPositions(companyIds);
   const updateStatusMutation = useUpdateApplicantStatus();
@@ -197,12 +191,22 @@ const Applicants = () => {
     });
     return titles;
   }, [jobPositions]);
+  // Exclude applicants that don't belong to any job position (no jobPositionId)
+  const validApplicants = useMemo(() => {
+    return applicants.filter((app: Applicant) => {
+      const appJobId =
+        typeof app.jobPositionId === "string"
+          ? app.jobPositionId
+          : (app.jobPositionId as any)?._id;
+      return !!appJobId;
+    });
+  }, [applicants]);
   // Group applicants by job (memoized for performance)
   const groupedApplicants: JobGroup[] = useMemo(() => {
     return Object.keys(jobTitles).map((jobId) => ({
       jobPositionId: jobId,
       jobTitle: jobTitles[jobId],
-      applicants: applicants.filter((app: Applicant) => {
+      applicants: validApplicants.filter((app: Applicant) => {
         const appJobId =
           typeof app.jobPositionId === "string"
             ? app.jobPositionId
@@ -210,7 +214,7 @@ const Applicants = () => {
         return appJobId === jobId;
       }),
     }));
-  }, [applicants, jobTitles]);
+  }, [validApplicants, jobTitles]);
 
   // Filter applicants by status (memoized for performance)
   const filteredGroups = useMemo(() => {

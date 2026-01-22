@@ -17,6 +17,7 @@ import {
   useCompanies,
   useDepartments,
 } from "../../../hooks/queries";
+import { useRecommendedFields } from "../../../hooks/queries/useRecommendedFields";
 
 type JobSpec = {
   spec: string;
@@ -513,6 +514,72 @@ export default function CreateJob() {
     setEditingFieldIndex(jobForm.customFields.length);
   };
 
+  // Recommended fields
+  const { data: recommendedFields = [], isLoading: recommendedLoading } = useRecommendedFields();
+
+  const isRecommendedAdded = (name: string) => {
+    return jobForm.customFields.some((cf) => cf.fieldId === `rec_${name}` || cf.fieldId === name);
+  };
+
+  const handleAddRecommendedField = (rf: any) => {
+    // ensure a stable name exists for identification
+    const name = rf.name || rf.label || `rec_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
+    if (isRecommendedAdded(name)) return;
+    setJobForm((prev) => {
+      const currentMax = prev.customFields.reduce((m, cf) => Math.max(m, cf.displayOrder || 0), 0);
+      const newField: CustomField = {
+        fieldId: `rec_${name}`,
+        label: rf.label || name,
+        inputType: (rf.type as any) || "text",
+        isRequired: !!rf.required,
+        choices: rf.options || [],
+        displayOrder: currentMax + 1,
+      };
+      return { ...prev, customFields: [...prev.customFields, newField] };
+    });
+  };
+
+  // Recommended selection panel state
+  const [showRecommendedPanel, setShowRecommendedPanel] = useState(false);
+  const [selectedRecommended, setSelectedRecommended] = useState<string[]>([]);
+
+  const toggleSelectRecommended = (name: string) => {
+    setSelectedRecommended((prev) =>
+      prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]
+    );
+  };
+
+  const handleAddSelectedRecommended = () => {
+    if (selectedRecommended.length === 0) return;
+    setJobForm((prev) => {
+      const additions: CustomField[] = [];
+      let currentMax = prev.customFields.reduce((m, cf) => Math.max(m, cf.displayOrder || 0), 0);
+      selectedRecommended.forEach((name) => {
+        if (prev.customFields.some((cf) => cf.fieldId === `rec_${name}` || cf.fieldId === name)) return;
+        let rf = recommendedFields.find((r: any) => r.name === name);
+        if (!rf && name.startsWith("__rec_")) {
+          const idx = Number(name.replace("__rec_", ""));
+          rf = recommendedFields[idx];
+          if (rf) rf = { ...rf, name };
+        }
+        if (!rf) return;
+        currentMax += 1;
+        const newField: CustomField = {
+          fieldId: `rec_${rf.name || rf.label || `rec_${Date.now()}`}`,
+          label: rf.label || rf.name || "",
+          inputType: (rf.type as any) || "text",
+          isRequired: !!rf.required,
+          choices: rf.options || [],
+          displayOrder: currentMax,
+        };
+        additions.push(newField);
+      });
+      return { ...prev, customFields: [...prev.customFields, ...additions] };
+    });
+    setSelectedRecommended([]);
+    setShowRecommendedPanel(false);
+  };
+
   const handleRemoveCustomField = (index: number) => {
     setJobForm((prev) => ({
       ...prev,
@@ -693,61 +760,54 @@ export default function CreateJob() {
     try {
       const salaryValue = Number(jobForm.salary);
 
-      const payload = {
-        companyId: jobForm.companyId,
-        title: jobForm.bilingual ? { en: jobForm.title || "", ar: jobForm.titleAr || "" } : { en: jobForm.title || "", ar: "" },
-        description: jobForm.bilingual ? { en: jobForm.description || "", ar: jobForm.descriptionAr || "" } : { en: jobForm.description || "", ar: "" },
-        departmentId: jobForm.departmentId,
-        termsAndConditions: jobForm.termsAndConditions
-          .filter((term, idx) => term.trim() || (jobForm.bilingual && jobForm.termsAndConditionsAr[idx]?.trim()))
-          .map((t, idx) => ({ en: t, ar: jobForm.bilingual ? (jobForm.termsAndConditionsAr[idx] || "") : "" })),
-        salary: isNaN(salaryValue) ? undefined : salaryValue,
-        salaryVisible: jobForm.salaryVisible,
-        openPositions: jobForm.openPositions,
-        registrationStart: jobForm.registrationStart,
-        registrationEnd: jobForm.registrationEnd,
-        jobSpecs: jobForm.jobSpecs
-          .filter((spec) => spec.spec.trim() || (jobForm.bilingual && spec.specAr?.trim()))
-          .map((spec) => ({ 
-            spec: jobForm.bilingual 
-              ? { en: spec.spec || "", ar: spec.specAr || "" }
-              : { en: spec.spec || "", ar: "" }, 
-            weight: spec.weight 
-          })),
-        customFields: jobForm.customFields.map((cf) => ({
-          fieldId: cf.fieldId,
-          label: jobForm.bilingual 
-            ? { en: cf.label || "", ar: cf.labelAr || "" }
-            : { en: cf.label || "", ar: "" },
-          inputType: cf.inputType,
-          isRequired: cf.isRequired,
-          minValue: cf.minValue,
-          maxValue: cf.maxValue,
-          choices: Array.isArray(cf.choices)
-            ? jobForm.bilingual
-              ? cf.choices.map((c, i) => ({ en: c, ar: cf.choicesAr?.[i] || "" }))
-              : cf.choices.map((c) => ({ en: c, ar: "" }))
-            : [],
-          groupFields: Array.isArray(cf.subFields)
-            ? cf.subFields.map((sf) => ({
-                fieldId: sf.fieldId,
-                label: jobForm.bilingual
-                  ? { en: sf.label || "", ar: sf.labelAr || "" }
-                  : { en: sf.label || "", ar: "" },
-                inputType: sf.inputType,
-                isRequired: sf.isRequired,
-                choices: Array.isArray(sf.choices)
-                  ? jobForm.bilingual
-                    ? sf.choices.map((c, i) => ({ en: c, ar: sf.choicesAr?.[i] || "" }))
-                    : sf.choices.map((c) => ({ en: c, ar: "" }))
-                  : [],
-              }))
-            : [],
-          displayOrder: cf.displayOrder,
-        })),
-        employmentType: jobForm.employmentType,
-        bilingual: jobForm.bilingual,
-      };
+      const payload: any = {};
+      if (!isEditMode && shouldShowCompanyField && jobForm.companyId) payload.companyId = jobForm.companyId;
+      payload.title = jobForm.bilingual ? { en: jobForm.title || "", ar: jobForm.titleAr || "" } : { en: jobForm.title || "", ar: "" };
+      payload.description = jobForm.bilingual ? { en: jobForm.description || "", ar: jobForm.descriptionAr || "" } : { en: jobForm.description || "", ar: "" };
+      payload.departmentId = jobForm.departmentId;
+      payload.termsAndConditions = jobForm.termsAndConditions
+        .filter((term, idx) => term.trim() || (jobForm.bilingual && jobForm.termsAndConditionsAr[idx]?.trim()))
+        .map((t, idx) => ({ en: t, ar: jobForm.bilingual ? (jobForm.termsAndConditionsAr[idx] || t) : "" }));
+      payload.salary = isNaN(salaryValue) ? undefined : salaryValue;
+      payload.salaryVisible = jobForm.salaryVisible;
+      payload.openPositions = jobForm.openPositions;
+      payload.registrationStart = jobForm.registrationStart;
+      payload.registrationEnd = jobForm.registrationEnd;
+      payload.jobSpecs = jobForm.jobSpecs
+        .filter((spec) => spec.spec.trim() || (jobForm.bilingual && spec.specAr?.trim()))
+        .map((spec) => ({
+          spec: jobForm.bilingual ? { en: spec.spec || "", ar: spec.specAr || spec.spec || "" } : { en: spec.spec || "", ar: "" },
+          weight: spec.weight,
+        }));
+      payload.customFields = jobForm.customFields.map((cf) => ({
+        fieldId: cf.fieldId,
+        label: jobForm.bilingual ? { en: cf.label || "", ar: cf.labelAr || cf.label || "" } : { en: cf.label || "", ar: "" },
+        inputType: cf.inputType,
+        isRequired: cf.isRequired,
+        minValue: cf.minValue,
+        maxValue: cf.maxValue,
+        choices: Array.isArray(cf.choices)
+          ? jobForm.bilingual
+            ? cf.choices.map((c, i) => ({ en: c, ar: cf.choicesAr?.[i] || c }))
+            : cf.choices.map((c) => ({ en: c, ar: "" }))
+          : [],
+        groupFields: Array.isArray(cf.subFields)
+          ? cf.subFields.map((sf) => ({
+              fieldId: sf.fieldId,
+              label: jobForm.bilingual ? { en: sf.label || "", ar: sf.labelAr || sf.label || "" } : { en: sf.label || "", ar: "" },
+              inputType: sf.inputType,
+              isRequired: sf.isRequired,
+              choices: Array.isArray(sf.choices)
+                ? jobForm.bilingual
+                  ? sf.choices.map((c, i) => ({ en: c, ar: sf.choicesAr?.[i] || c }))
+                  : sf.choices.map((c) => ({ en: c, ar: "" }))
+                : [],
+            }))
+          : [],
+        displayOrder: cf.displayOrder,
+      }));
+      payload.employmentType = jobForm.employmentType;
+      payload.bilingual = jobForm.bilingual;
 
       if (isEditMode && editJobId) {
         // Update existing job
@@ -1411,14 +1471,76 @@ export default function CreateJob() {
             desc="Define custom fields for the job application form"
           >
             <div className="mb-4 flex gap-3">
-              <button
-                type="button"
-                onClick={handleAddCustomField}
-                className="flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white shadow-sm transition-all hover:bg-blue-700"
-              >
-                <PlusIcon className="size-4" />
-                Add Custom Field
-              </button>
+                <button
+                  type="button"
+                  onClick={handleAddCustomField}
+                  className="flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white shadow-sm transition-all hover:bg-blue-700"
+                >
+                  <PlusIcon className="size-4" />
+                  Add Custom Field
+                </button>
+                <div className="ml-2 relative">
+                  <button
+                    type="button"
+                    onClick={() => setShowRecommendedPanel((s) => !s)}
+                    className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                  >
+                    Recommended
+                  </button>
+
+                  {showRecommendedPanel && (
+                    <div className="absolute right-0 mt-2 w-80 rounded-md border bg-white p-3 shadow-lg z-50">
+                      <div className="max-h-64 overflow-auto">
+                        {recommendedLoading ? (
+                          <div className="text-sm text-gray-500">Loading...</div>
+                        ) : (
+                          recommendedFields.map((rf: any, idx: number) => {
+                            const name = rf.name ?? `__rec_${idx}`;
+                            const disabled = isRecommendedAdded(name);
+                            const checked = selectedRecommended.includes(name);
+                            const inputId = `rec_${idx}_${name}`;
+                            return (
+                              <label key={`${name}_${idx}`} htmlFor={inputId} className={`flex items-center justify-between gap-3 py-2 ${disabled ? 'opacity-60' : ''}`}>
+                                <div className="flex items-center gap-3">
+                                  <input
+                                    id={inputId}
+                                    type="checkbox"
+                                    checked={disabled || checked}
+                                    disabled={disabled}
+                                    onChange={() => toggleSelectRecommended(name)}
+                                    className="h-4 w-4 rounded border-gray-300 text-brand-600"
+                                  />
+                                  <div className="text-sm">
+                                    <div className="font-medium">{rf.label || name}</div>
+                                    {rf.description && <div className="text-xs text-gray-500">{rf.description}</div>}
+                                  </div>
+                                </div>
+                                {disabled && <span className="text-xs text-green-600">Added</span>}
+                              </label>
+                            );
+                          })
+                        )}
+                      </div>
+                      <div className="mt-3 flex items-center justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => { setSelectedRecommended([]); setShowRecommendedPanel(false); }}
+                          className="rounded px-3 py-1 text-sm text-gray-600 hover:bg-gray-100"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleAddSelectedRecommended}
+                          disabled={selectedRecommended.length === 0}
+                          className="rounded bg-brand-500 px-3 py-1 text-sm text-white disabled:opacity-50"
+                        >
+                          Add Selected
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
             </div>
 
             <div className="space-y-4">

@@ -122,10 +122,14 @@ class JobPositionsService {
    */
   async getAllJobPositions(companyIds?: string[]): Promise<JobPosition[]> {
     try {
-      const params =
-        companyIds && companyIds.length > 0
-          ? { companyIds: companyIds.join(",") }
-          : {};
+      const params: any = {};
+      if (companyIds && companyIds.length > 0) {
+        if (companyIds.length === 1) {
+          params.companyId = companyIds[0];
+        } else {
+          params.companyIds = companyIds.join(",");
+        }
+      }
       const response = await axios.get("/job-positions", { params });
       return response.data.data;
     } catch (error: any) {
@@ -165,8 +169,9 @@ class JobPositionsService {
         title: data.title,
         description: data.description ?? { en: "", ar: "" },
         departmentId: data.departmentId,
-        companyId: data.companyId,
       };
+
+      // Do not allow changing companyId via update payload — backend rejects companyId for updates.
 
       if (data.jobCode) payload.jobCode = data.jobCode;
       if (data.requirements && data.requirements.length > 0)

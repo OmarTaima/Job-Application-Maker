@@ -1,4 +1,5 @@
 import { useModal } from "../../hooks/useModal";
+import { useAuth } from "../../context/AuthContext";
 import { Modal } from "../ui/modal";
 import Button from "../ui/button/Button";
 import Input from "../form/input/InputField";
@@ -6,6 +7,7 @@ import Label from "../form/Label";
 
 export default function UserAddressCard() {
   const { isOpen, openModal, closeModal } = useModal();
+  const { user } = useAuth();
   const handleSave = () => {
     // Handle save logic here
     console.log("Saving changes...");
@@ -20,13 +22,13 @@ export default function UserAddressCard() {
               Address
             </h4>
 
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-7 2xl:gap-x-32">
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-7 2xl:gap-x-32">
               <div>
                 <p className="mb-2 text-xs leading-normal text-gray-500 dark:text-gray-400">
                   Country
                 </p>
                 <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                  United States.
+                  {(user as any)?.country || "-"}
                 </p>
               </div>
 
@@ -35,7 +37,7 @@ export default function UserAddressCard() {
                   City/State
                 </p>
                 <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                  Phoenix, Arizona, United States.
+                  {(user as any)?.city || (user as any)?.state || (user as any)?.address || "-"}
                 </p>
               </div>
 
@@ -44,7 +46,7 @@ export default function UserAddressCard() {
                   Postal Code
                 </p>
                 <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                  ERT 2489
+                  {(user as any)?.postalCode || "-"}
                 </p>
               </div>
 
@@ -53,7 +55,7 @@ export default function UserAddressCard() {
                   TAX ID
                 </p>
                 <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                  AS4568384
+                  {(user as any)?.taxId || "-"}
                 </p>
               </div>
             </div>

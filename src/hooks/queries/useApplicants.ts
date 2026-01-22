@@ -14,17 +14,21 @@ import type {
 export const applicantsKeys = {
   all: ["applicants"] as const,
   lists: () => [...applicantsKeys.all, "list"] as const,
-  list: (companyId?: string) =>
-    [...applicantsKeys.lists(), { companyId }] as const,
+  list: (companyIds?: string[], assignedOnly?: boolean, jobPositionId?: string) =>
+    [...applicantsKeys.lists(), { companyIds, assignedOnly, jobPositionId }] as const,
   details: () => [...applicantsKeys.all, "detail"] as const,
   detail: (id: string) => [...applicantsKeys.details(), id] as const,
 };
 
 // Get all applicants
-export function useApplicants(companyId?: string) {
+export function useApplicants(
+  companyIds?: string[],
+  assignedOnly?: boolean,
+  jobPositionId?: string
+) {
   return useQuery({
-    queryKey: applicantsKeys.list(companyId),
-    queryFn: () => applicantsService.getAllApplicants(companyId),
+    queryKey: applicantsKeys.list(companyIds, assignedOnly, jobPositionId),
+    queryFn: () => applicantsService.getAllApplicants(companyIds, assignedOnly, jobPositionId),
     staleTime: 2 * 60 * 1000, // 2 minutes
   });
 }

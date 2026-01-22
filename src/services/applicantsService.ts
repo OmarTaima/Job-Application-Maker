@@ -173,9 +173,18 @@ class ApplicantsService {
   /**
    * Get all applicants
    */
-  async getAllApplicants(companyId?: string): Promise<Applicant[]> {
+  async getAllApplicants(
+    companyIds?: string[],
+  ): Promise<Applicant[]> {
     try {
-      const params = companyId ? { companyId } : {};
+      const params: any = {};
+      if (companyIds && companyIds.length > 0) {
+        if (companyIds.length === 1) {
+          params.companyId = companyIds[0];
+        } else {
+          params.companyIds = companyIds.join(",");
+        }
+      }
       const response = await axios.get("/applicants", { params });
       return response.data.data;
     } catch (error: any) {

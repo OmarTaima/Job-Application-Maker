@@ -39,6 +39,13 @@ const ApplicantData = () => {
 
   // State for expanded custom responses
   const [expandedResponses, setExpandedResponses] = useState<Record<string, Set<number>>>({});
+  // State for expanded cover letter textareas
+
+  // Helper to detect Arabic text and apply RTL
+  const isArabic = (text?: any) => {
+    if (!text || typeof text !== 'string') return false;
+    return /[\u0600-\u06FF]/.test(text);
+  };
   
   // State for activity timeline tab
   const [activityTab, setActivityTab] = useState<'all' | 'status' | 'actions' | 'interview'>('all');
@@ -678,7 +685,7 @@ const ApplicantData = () => {
             <div className="grid flex-1 grid-cols-2 gap-6">
               <div>
                 <Label>Full Name</Label>
-                <p className="mt-1 text-gray-900 dark:text-white">
+                <p dir={isArabic(applicant.fullName) ? 'rtl' : undefined} className={`mt-1 text-gray-900 dark:text-white ${isArabic(applicant.fullName) ? 'text-right' : ''}`}>
                   {applicant.fullName}
                 </p>
               </div>
@@ -696,23 +703,23 @@ const ApplicantData = () => {
               </div>
               <div>
                 <Label>Address</Label>
-                <p className="mt-1 text-gray-900 dark:text-white">
+                <p dir={isArabic(applicant.address) ? 'rtl' : undefined} className={`mt-1 text-gray-900 dark:text-white ${isArabic(applicant.address) ? 'text-right' : ''}`}>
                   {applicant.address}
                 </p>
               </div>
               <div>
                 <Label>Job Position</Label>
-                <p className="mt-1 text-gray-900 dark:text-white">{jobTitle.en}</p>
+                <p dir={isArabic(jobTitle.en) ? 'rtl' : undefined} className={`mt-1 text-gray-900 dark:text-white ${isArabic(jobTitle.en) ? 'text-right' : ''}`}>{jobTitle.en}</p>
               </div>
               <div>
                 <Label>Company</Label>
-                <p className="mt-1 text-gray-900 dark:text-white">
+                <p dir={isArabic(companyName) ? 'rtl' : undefined} className={`mt-1 text-gray-900 dark:text-white ${isArabic(companyName) ? 'text-right' : ''}`}>
                   {companyName}
                 </p>
               </div>
               <div>
                 <Label>Department</Label>
-                <p className="mt-1 text-gray-900 dark:text-white">
+                <p dir={isArabic(departmentName) ? 'rtl' : undefined} className={`mt-1 text-gray-900 dark:text-white ${isArabic(departmentName) ? 'text-right' : ''}`}>
                   {departmentName}
                 </p>
               </div>
@@ -791,14 +798,22 @@ const ApplicantData = () => {
                                 // Get a summary for the tag (e.g., first field value or index)
                                 const firstKey = Object.keys(item)[0];
                                 const summary = item[firstKey] || `Item ${idx + 1}`;
-                                
+                                const summaryText = String(summary);
+                                const summaryIsArabic = isArabic(summaryText);
+                                const displaySummary = summaryIsArabic
+                                  ? (summaryText.length > 30 ? '...' + summaryText.slice(-30) : summaryText)
+                                  : (summaryText.length > 30 ? summaryText.substring(0, 30) + '...' : summaryText);
+                                const expandedHasArabic = Object.values(item).some((v) => typeof v === 'string' && isArabic(v));
+
                                 return (
                                   <div key={idx} className="w-full">
                                     <button
                                       onClick={() => toggleExpand(idx)}
-                                      className="inline-flex items-center gap-2 rounded-full bg-brand-100 px-3 py-1.5 text-sm font-medium text-brand-700 transition hover:bg-brand-200 dark:bg-brand-900/30 dark:text-brand-300 dark:hover:bg-brand-900/50"
+                                      className="inline-flex items-center justify-between w-full gap-2 rounded-full bg-brand-100 px-3 py-1.5 text-sm font-medium text-brand-700 transition hover:bg-brand-200 dark:bg-brand-900/30 dark:text-brand-300 dark:hover:bg-brand-900/50"
                                     >
-                                      <span>{String(summary).substring(0, 30)}{String(summary).length > 30 ? '...' : ''}</span>
+                                      <span dir={summaryIsArabic ? 'rtl' : undefined} className={summaryIsArabic ? 'text-right w-full' : ''}>
+                                        {displaySummary}
+                                      </span>
                                       <svg
                                         className={`size-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
                                         fill="none"
@@ -809,17 +824,51 @@ const ApplicantData = () => {
                                       </svg>
                                     </button>
                                     {isExpanded && (
-                                      <div className="mt-2 rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800">
-                                        {Object.entries(item).map(([itemKey, itemValue]) => (
-                                          <div key={itemKey} className="mb-2 last:mb-0">
-                                            <span className="font-medium text-gray-700 dark:text-gray-300">
-                                              {itemKey.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}:
-                                            </span>{' '}
-                                            <span className="text-gray-900 dark:text-white">
-                                              {String(itemValue)}
-                                            </span>
-                                          </div>
-                                        ))}
+                                      <div className={`mt-2 rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800 ${expandedHasArabic ? 'text-right' : ''}`} {...(expandedHasArabic ? { dir: 'rtl' } : {})}>
+                                        {
+                                          (() => {
+                                            const entries = Object.entries(item);
+                                            const arabicEntries = entries.filter(([, v]) => typeof v === 'string' && isArabic(v));
+                                            const englishEntries = entries.filter(([, v]) => !(typeof v === 'string' && isArabic(v)));
+                                            return (
+                                              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                                {/* English / Left column */}
+                                                <div>
+                                                  {englishEntries.map(([itemKey, itemValue]) => {
+                                                    const label = itemKey.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+                                                    const valueStr = typeof itemValue === 'string' ? itemValue : String(itemValue);
+                                                    return (
+                                                      <div key={itemKey} className="mb-3 last:mb-0 flex items-start gap-4">
+                                                        <div className="min-w-[140px] text-sm font-medium text-gray-700 dark:text-gray-300 text-left">
+                                                          {label}
+                                                          <span className="ml-1 text-gray-500">:</span>
+                                                        </div>
+                                                        <div className="text-sm text-gray-900 dark:text-white whitespace-pre-wrap">{valueStr}</div>
+                                                      </div>
+                                                    );
+                                                  })}
+                                                </div>
+
+                                                {/* Arabic / Right column */}
+                                                <div dir="rtl" className="text-right">
+                                                  {arabicEntries.map(([itemKey, itemValue]) => {
+                                                    const label = itemKey.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+                                                    const valueStr = typeof itemValue === 'string' ? itemValue : String(itemValue);
+                                                    return (
+                                                      <div key={itemKey} className="mb-3 last:mb-0 flex flex-row-reverse items-start gap-4">
+                                                        <div className="min-w-[140px] text-sm font-medium text-gray-700 dark:text-gray-300 text-right">
+                                                          <span className="text-gray-500 mr-1">:</span>
+                                                          {label}
+                                                        </div>
+                                                        <div className="text-sm text-gray-900 dark:text-white whitespace-pre-wrap">{valueStr}</div>
+                                                      </div>
+                                                    );
+                                                  })}
+                                                </div>
+                                              </div>
+                                            );
+                                          })()
+                                        }
                                       </div>
                                     )}
                                   </div>
@@ -828,10 +877,40 @@ const ApplicantData = () => {
                             </div>
                           );
                         }
-                        // Simple array of primitives
-                        return value.join(', ');
+                        // Simple array of primitives - detect Arabic elements
+                        const joined = value.join(', ');
+                        if (value.some((v: any) => isArabic(String(v)))) {
+                          return (
+                            <div dir="rtl" className="text-right text-gray-900 dark:text-white">
+                              {joined}
+                            </div>
+                          );
+                        }
+                        return joined;
                       }
-                      // Simple value
+                      // Simple value - handle Arabic direction and multiline text
+                      if (typeof value === 'string') {
+                        const containsNewline = value.includes('\n');
+                        if (isArabic(value)) {
+                          return (
+                            <div dir="rtl" className="text-right text-gray-900 dark:text-white">
+                              {containsNewline ? (
+                                <div className="whitespace-pre-wrap">{value}</div>
+                              ) : (
+                                value
+                              )}
+                            </div>
+                          );
+                        }
+                        if (containsNewline) {
+                          return (
+                            <div className="whitespace-pre-wrap text-gray-900 dark:text-white">
+                              {value}
+                            </div>
+                          );
+                        }
+                        return String(value);
+                      }
                       return String(value);
                     };
 
@@ -1130,10 +1209,10 @@ const ApplicantData = () => {
                         </p>
                       )}
                       {expandedHistory === `message-${index}` &&
-                        message.body && (
+                        (message.content || message.body || (message as any).message) && (
                           <div className="mt-3 border-t border-stroke pt-3 dark:border-strokedark">
                             <p className="text-sm text-gray-700 dark:text-gray-300">
-                              {message.body}
+                              {message.content || message.body || (message as any).message}
                             </p>
                           </div>
                         )}
@@ -1795,6 +1874,24 @@ const ApplicantData = () => {
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
             Interview Settings
           </h2>
+
+          {applicant.interviews && applicant.interviews.length > 0 && (
+            <div>
+              <Label>Select Interview to Manage</Label>
+              <Select
+                placeholder="Choose an interview..."
+                value={selectedInterview?._id}
+                options={applicant.interviews.map((iv: any) => ({
+                  value: iv._id,
+                  label: `${iv.type ? iv.type.charAt(0).toUpperCase() + iv.type.slice(1) : 'Interview'} - ${iv.scheduledAt ? new Date(iv.scheduledAt).toLocaleString() : 'No date'}${iv.status ? ` - ${iv.status}` : ''}`,
+                }))}
+                onChange={(val) => {
+                  const found = applicant.interviews?.find((it: any) => it._id === val) || null;
+                  setSelectedInterview(found);
+                }}
+              />
+            </div>
+          )}
 
           {selectedInterview && (
             <div className="space-y-4">

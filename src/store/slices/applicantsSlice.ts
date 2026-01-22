@@ -154,9 +154,9 @@ const initialState: ApplicantsState = {
 // Async thunks
 export const fetchApplicants = createAsyncThunk(
   "applicants/fetchAll",
-  async (companyId: string | undefined, { rejectWithValue }) => {
+  async (companyIds: string[] | undefined, { rejectWithValue }) => {
     try {
-      return await applicantsService.getAllApplicants(companyId);
+      return await applicantsService.getAllApplicants(companyIds);
     } catch (error: any) {
       return rejectWithValue(error.message || "Failed to fetch applicants");
     }
