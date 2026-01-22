@@ -44,6 +44,18 @@ export interface User {
       name: string;
     }>;
   }>;
+  // Optional profile fields used across the app
+  profilePhoto?: string;
+  avatar?: string;
+  location?: string;
+  address?: string;
+  phone?: string;
+  bio?: string;
+  country?: string;
+  city?: string;
+  state?: string;
+  postalCode?: string;
+  taxId?: string;
 }
 
 export interface AuthResponse {
