@@ -141,6 +141,7 @@ interface ApplicantsState {
   loading: boolean;
   error: string | null;
   isFetched: boolean;
+  lastFetchedCompanyIds?: string[] | undefined;
 }
 
 const initialState: ApplicantsState = {
@@ -149,6 +150,7 @@ const initialState: ApplicantsState = {
   loading: false,
   error: null,
   isFetched: false,
+  lastFetchedCompanyIds: undefined,
 };
 
 // Async thunks
@@ -386,6 +388,10 @@ const applicantsSlice = createSlice({
           state.loading = false;
           state.applicants = action.payload;
           state.isFetched = true;
+          // Store the companyIds used for this fetch (available on meta.arg)
+          // action.meta.arg can be undefined or string[]
+          // @ts-ignore - meta typing for createAsyncThunk arg
+          state.lastFetchedCompanyIds = action.meta?.arg as string[] | undefined;
         }
       )
       .addCase(fetchApplicants.rejected, (state, action) => {

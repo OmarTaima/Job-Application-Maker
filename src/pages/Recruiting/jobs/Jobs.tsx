@@ -160,6 +160,14 @@ export default function Jobs() {
         id: jobId,
         data: { isActive: newIsActive },
       });
+      await Swal.fire({
+        title: "Success!",
+        text: `Job ${newIsActive ? "activated" : "deactivated"} successfully.`,
+        icon: "success",
+        position: "center",
+        timer: 1200,
+        showConfirmButton: false,
+      });
     } catch (err: any) {
       console.error("Error updating job status:", err);
       const errorMsg = getErrorMessage(err);
@@ -189,8 +197,7 @@ export default function Jobs() {
         title: "Deleted!",
         text: "Job has been deleted successfully.",
         icon: "success",
-        toast: true,
-        position: "top-end",
+        position: "center",
         timer: 2000,
         showConfirmButton: false,
         customClass: {

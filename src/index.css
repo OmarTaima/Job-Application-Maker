@@ -1,6 +1,9 @@
 @import url("https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&display=swap")
 layer(base);
 
+/* Cairo font for Arabic text */
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700&display=swap&subset=arabic');
+
 @import "tailwindcss";
 
 @custom-variant dark (&:is(.dark *));
@@ -187,7 +190,14 @@ layer(base);
   }
   body {
     @apply relative font-normal font-outfit z-1 bg-gray-50;
+    /* Ensure default sans font remains for LTR; Arabic/RTL will use Cairo below */
   }
+}
+
+/* Apply Cairo for Arabic text and RTL containers */
+/* Prefer explicit language when available, and fallback to dir="rtl" */
+ :lang(ar), [dir="rtl"] {
+  font-family: 'Cairo', Outfit, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
 }
 
 @utility menu-item {

@@ -809,8 +809,7 @@ export default function CreateJob() {
           ? "Job updated successfully."
           : "Job created successfully.",
         icon: "success",
-        toast: true,
-        position: "top-end",
+        position: "center",
         timer: 2000,
         showConfirmButton: false,
         customClass: {

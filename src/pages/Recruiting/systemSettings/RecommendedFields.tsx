@@ -212,8 +212,7 @@ const RecommendedFields = () => {
           ? "Field updated successfully."
           : "Field created successfully.",
         icon: "success",
-        toast: true,
-        position: "top-end",
+        position: "center",
         timer: 2000,
         showConfirmButton: false,
         customClass: {
@@ -257,8 +256,7 @@ const RecommendedFields = () => {
         title: "Deleted!",
         text: "Field has been deleted successfully.",
         icon: "success",
-        toast: true,
-        position: "top-end",
+        position: "center",
         timer: 2000,
         showConfirmButton: false,
         customClass: {
@@ -301,7 +299,7 @@ const RecommendedFields = () => {
               <button
                 type="button"
                 onClick={() => setShowForm(!showForm)}
-                className="mb-6 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+                className="mb-6 inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-brand-700 dark:bg-brand-500 dark:hover:bg-brand-600"
               >
                 <PlusIcon className="h-4 w-4" />
                 {showForm ? "Cancel" : "Add Recommended Field"}
@@ -642,41 +640,40 @@ const RecommendedFields = () => {
                                 )}
                               </TableCell>
                               <TableCell className="px-4 py-3 align-middle flex items-center gap-3">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    // populate form for editing
-                                    const v = field.validation || {};
-                                    setForm((prev) => ({
-                                      ...prev,
-                                      label: field.label || "",
-                                      type: (field.type as FieldType) || "text",
-                                      required: !!field.required,
-                                      options: field.options || [],
-                                      validation: {
-                                        ...v,
-                                        pattern: v.pattern ?? undefined,
-                                      },
-                                    }));
-                                    setEditFieldId(field.name || field.label);
-                                    setShowForm(true);
-                                  }}
-                                  className="text-gray-600 hover:text-gray-800"
-                                  title="Edit field"
-                                >
-                                  <PencilIcon className="h-5 w-5" />
-                                </button>
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const v = field.validation || {};
+                                        setForm((prev) => ({
+                                          ...prev,
+                                          label: field.label || "",
+                                          type: (field.type as FieldType) || "text",
+                                          required: !!field.required,
+                                          options: field.options || [],
+                                          validation: {
+                                            ...v,
+                                            pattern: v.pattern ?? undefined,
+                                          },
+                                        }));
+                                        setEditFieldId(field.name || field.label);
+                                        setShowForm(true);
+                                      }}
+                                      className="rounded p-1.5 text-brand-600 transition hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-brand-500/10"
+                                      title="Edit field"
+                                    >
+                                      <PencilIcon className="size-4" />
+                                    </button>
 
-                                <button
-                                  onClick={() =>
-                                    handleDelete(field.name || field.label)
-                                  }
-                                  disabled={isDeletingField === (field.name || field.label)}
-                                  className="text-red-500 hover:text-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                                  title={isDeletingField === (field.name || field.label) ? "Deleting..." : "Delete field"}
-                                >
-                                  <TrashBinIcon className="h-5 w-5" />
-                                </button>
+                                    <button
+                                      onClick={() => handleDelete(field.name || field.label)}
+                                      disabled={isDeletingField === (field.name || field.label)}
+                                      className="rounded p-1.5 text-error-600 transition hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-500/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                                      title={isDeletingField === (field.name || field.label) ? "Deleting..." : "Delete field"}
+                                    >
+                                      <TrashBinIcon className="size-4" />
+                                    </button>
+                                  </div>
                               </TableCell>
                             </TableRow>
                           ))

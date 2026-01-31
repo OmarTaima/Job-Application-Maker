@@ -47,7 +47,8 @@ type DepartmentForm = {
 export default function PreviewCompany() {
   const { companyId } = useParams<{ companyId: string }>();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
+  const canEdit = hasPermission("Company Management", "write");
 
   // React Query hooks - data fetching happens automatically
   const {
@@ -186,8 +187,7 @@ export default function PreviewCompany() {
         title: "Success!",
         text: "Company updated successfully.",
         icon: "success",
-        toast: true,
-        position: "top-end",
+        position: "center",
         timer: 2000,
         showConfirmButton: false,
         customClass: {
@@ -229,8 +229,7 @@ export default function PreviewCompany() {
         title: "Success!",
         text: "Department created successfully.",
         icon: "success",
-        toast: true,
-        position: "top-end",
+        position: "center",
         timer: 2000,
         showConfirmButton: false,
         customClass: {
@@ -277,8 +276,7 @@ export default function PreviewCompany() {
         title: "Deleted!",
         text: "Department has been deleted successfully.",
         icon: "success",
-        toast: true,
-        position: "top-end",
+        position: "center",
         timer: 2000,
         showConfirmButton: false,
         customClass: {
@@ -325,6 +323,15 @@ export default function PreviewCompany() {
         } as any);
         setEditingDeptId(null);
         setEditingDept(null);
+        await Swal.fire({
+          title: "Success!",
+          text: "Department updated successfully.",
+          icon: "success",
+          position: "center",
+          timer: 2000,
+          showConfirmButton: false,
+          customClass: { container: "!mt-16" },
+        });
       } catch (err) {
         console.error("Error updating department:", err);
         const errorMsg = getErrorMessage(err);
@@ -391,32 +398,27 @@ export default function PreviewCompany() {
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-6">
-          <ComponentCard
-            title="Company Information"
-            desc="View and edit company details"
-          >
-            <form className="space-y-4" onSubmit={handleCompanySubmit}>
-              <div className="mb-4 flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-900/50">
-                <div>
-                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                    Company ID
-                  </p>
-                  <p className="mt-0.5 font-mono text-xs text-gray-500 dark:text-gray-400">
-                    {companyId}
-                  </p>
-                </div>
+          <div className="relative">
+            {canEdit && (
+              <div className="absolute top-5 right-5 z-10">
                 <button
                   type="button"
                   onClick={() => {
                     setIsEditingCompany(!isEditingCompany);
                     setCompanyError("");
                   }}
-                  className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                  className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-600"
                 >
                   <PencilIcon className="size-4" />
                   {isEditingCompany ? "Cancel" : "Edit"}
                 </button>
               </div>
+            )}
+
+            <ComponentCard title="Company Information" desc="View and edit company details">
+              <form className="space-y-4" onSubmit={handleCompanySubmit}>
+                <div className="mb-4 flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-900/50">
+                </div>
 
               {companyError && (
                 <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
@@ -536,6 +538,7 @@ export default function PreviewCompany() {
               )}
             </form>
           </ComponentCard>
+          </div>
 
           <ComponentCard
             title="Departments"

@@ -348,8 +348,7 @@ const Applicants = () => {
         title: "Success!",
         text: `Status updated for ${selectedApplicants.length} applicant(s).`,
         icon: "success",
-        toast: true,
-        position: "top-end",
+        position: "center",
         timer: 2000,
         showConfirmButton: false,
         customClass: {
@@ -402,8 +401,7 @@ const Applicants = () => {
         title: "Success!",
         text: `${selectedApplicants.length} applicant(s) moved to trash.`,
         icon: "success",
-        toast: true,
-        position: "top-end",
+        position: "center",
         timer: 2000,
         showConfirmButton: false,
         customClass: {

@@ -18,7 +18,7 @@ import Blank from "./pages/Blank";
 import AppLayout from "./layout/AppLayout";
 import { ScrollToTop } from "./components/common/ScrollToTop";
 import Home from "./pages/Dashboard/Home";
-import RecruitingDashboard from "./pages/Recruiting/RecruitingDashboard";
+import RecruitingDashboard from "./pages/Recruiting/companies/createCompany";
 import Companies from "./pages/Recruiting/companies/Companies";
 import PreviewCompany from "./pages/Recruiting/companies/PreviewCompany";
 import Jobs from "./pages/Recruiting/jobs/Jobs";

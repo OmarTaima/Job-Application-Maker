@@ -7,7 +7,6 @@ import ComponentCard from "../../../components/common/ComponentCard";
 import LoadingSpinner from "../../../components/common/LoadingSpinner";
 import Label from "../../../components/form/Label";
 import Input from "../../../components/form/input/InputField";
-import TextArea from "../../../components/form/input/TextArea";
 import {
   Table,
   TableBody,
@@ -34,10 +33,8 @@ export default function PreviewRole() {
   const [isEditing, setIsEditing] = useState(isEditMode);
   const [editForm, setEditForm] = useState({
     name: "",
-    description: "",
     permissions: [] as string[],
-    isSystemRole: false,
-    singleCompany: false,
+    
   });
   const [permissionAccess, setPermissionAccess] = useState<Record<string, string[]>>({});
   const [formError, setFormError] = useState("");
@@ -52,12 +49,9 @@ export default function PreviewRole() {
     if (role && isEditing) {
       setEditForm({
         name: role.name,
-        description: role.description || "",
         permissions: role.permissions?.map((p: any) => 
           typeof p === "string" ? p : p.permission?._id || p.permission
         ) || [],
-        isSystemRole: !!role?.isSystemRole,
-        singleCompany: !!role?.singleCompany,
       });
 
       // Initialize permission access
@@ -145,6 +139,12 @@ export default function PreviewRole() {
   };
 
   const handleSave = async () => {
+    // Basic client-side validation
+    if (!editForm.name || !editForm.name.trim()) {
+      setFormError("Role name is required");
+      return;
+    }
+
     try {
       const permissionsWithAccess = editForm.permissions.map((permId) => ({
         permission: permId,
@@ -153,10 +153,7 @@ export default function PreviewRole() {
 
       const payload = {
         name: editForm.name,
-        description: editForm.description,
         permissions: permissionsWithAccess,
-        isSystemRole: !!editForm.isSystemRole,
-        singleCompany: !!editForm.singleCompany,
       };
 
       console.log("Updating role with payload:", payload);
@@ -170,8 +167,7 @@ export default function PreviewRole() {
         title: "Success!",
         text: "Role updated successfully.",
         icon: "success",
-        toast: true,
-        position: "top-end",
+        position: "center",
         timer: 2000,
         showConfirmButton: false,
         customClass: {
@@ -184,16 +180,15 @@ export default function PreviewRole() {
     } catch (err: any) {
       console.error("Error updating role:", err);
       console.error("Error response:", err.response?.data);
-      
-      // Check for authentication errors
-      if (err.response?.status === 401 || err.response?.data?.message?.includes("not defined")) {
-        setFormError("Authentication error. Please log in again.");
-        // Optionally redirect to login
-        // navigate('/login');
-      } else {
-        const errorMsg = err.response?.data?.message || err.message || "An error occurred";
-        setFormError(errorMsg);
-      }
+      // Show server error to user for debugging
+      const serverMessage = err.response?.data?.message || err.message || "An error occurred";
+      setFormError(serverMessage);
+      await Swal.fire({
+        title: "Error",
+        text: String(serverMessage),
+        icon: "error",
+        confirmButtonText: "OK",
+      });
     }
   };
 
@@ -231,15 +226,12 @@ export default function PreviewRole() {
 
   return (
     <>
-      <PageMeta
-        title={`${role.name} - Role Details`}
-        description={`View details for ${role.name} role`}
-      />
+      
       <PageBreadcrumb pageTitle={role.name} />
 
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex justify-between items-start">
+        <div className="flex justify-between items-center">
           <div className="flex-1">
             {isEditing ? (
               <div className="space-y-4 max-w-2xl">
@@ -254,47 +246,8 @@ export default function PreviewRole() {
                     placeholder="Role Name"
                   />
                 </div>
-                <div>
-                  <Label htmlFor="roleDescription">Description</Label>
-                  <TextArea
-                    value={editForm.description}
-                    onChange={(value) =>
-                      setEditForm((prev) => ({ ...prev, description: value }))
-                    }
-                    placeholder="Role description..."
-                  />
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2">
-                    <input
-                      id="edit-isSystemRole"
-                      type="checkbox"
-                      checked={!!editForm.isSystemRole}
-                      onChange={(e) =>
-                        setEditForm((prev) => ({ ...prev, isSystemRole: e.target.checked }))
-                      }
-                      className="w-4 h-4 text-brand-500"
-                    />
-                    <Label htmlFor="edit-isSystemRole" className="!mb-0">
-                      System Role
-                    </Label>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <input
-                      id="edit-singleCompany"
-                      type="checkbox"
-                      checked={!!editForm.singleCompany}
-                      onChange={(e) =>
-                        setEditForm((prev) => ({ ...prev, singleCompany: e.target.checked }))
-                      }
-                      className="w-4 h-4 text-brand-500"
-                    />
-                    <Label htmlFor="edit-singleCompany" className="!mb-0">
-                      Single Company
-                    </Label>
-                  </div>
-                </div>
+                
+                
                 {formError && (
                   <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
                     <p className="text-sm text-red-600 dark:text-red-400">
@@ -308,9 +261,7 @@ export default function PreviewRole() {
                 <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
                   {role.name}
                 </h1>
-                <p className="mt-2 text-gray-600 dark:text-gray-400">
-                  {role.description}
-                </p>
+                
               </div>
             )}
           </div>
@@ -506,7 +457,6 @@ export default function PreviewRole() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="text-sm text-gray-600 dark:text-gray-400">
-                            {perm.description || "No description"}
                           </div>
                         </td>
                         <td className="px-4 py-3">
@@ -586,7 +536,6 @@ export default function PreviewRole() {
                     </TableCell>
                     <TableCell className="px-4 py-3 align-middle">
                       <span className="text-gray-600 dark:text-gray-400">
-                        {permission.description || "No description"}
                       </span>
                     </TableCell>
                     <TableCell className="px-4 py-3 align-middle">

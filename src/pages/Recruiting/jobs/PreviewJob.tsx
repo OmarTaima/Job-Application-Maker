@@ -119,8 +119,7 @@ export default function PreviewJob() {
         title: "Deleted!",
         text: "Job has been deleted successfully.",
         icon: "success",
-        toast: true,
-        position: "top-end",
+        position: "center",
         timer: 1500,
         showConfirmButton: false,
         customClass: {

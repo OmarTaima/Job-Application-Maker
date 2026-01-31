@@ -17,20 +17,28 @@ const navItems: NavItem[] = [
   {
     icon: <GridIcon />,
     name: "Dashboard",
-    subItems: [{ name: "Home", path: "/", pro: false }],
+    subItems: [
+      { name: "Home", path: "/", pro: false },
+      { name: "Applicants", path: "/applicants", pro: false },
+    ],
   },
   {
     icon: <TaskIcon />,
-    name: "Recruiting",
+    name: "Company Management",
     subItems: [
-      { name: "Applicants", path: "/applicants", pro: false },
       { name: "Create Company", path: "/recruiting", pro: false },
       { name: "Companies", path: "/companies", pro: false },
+    ],
+  },
+  {
+    icon: <GridIcon />,
+    name: "Jobs Management",
+    subItems: [
       { name: "Create Job", path: "/create-job", pro: false },
       { name: "Jobs", path: "/jobs", pro: false },
     ],
   },
-  // {
+];
   //   icon: <CalenderIcon />,
   //   name: "Calendar",
   //   path: "/calendar",
@@ -58,7 +66,7 @@ const navItems: NavItem[] = [
   //     { name: "404 Error", path: "/error-404", pro: false },
   //   ],
   // },
-];
+
 
 const adminItems: NavItem[] = [
   {

@@ -11,7 +11,7 @@ import { ValidationErrorAlert } from "../../../components/common/ValidationError
 import Label from "../../../components/form/Label";
 import Input from "../../../components/form/input/InputField";
 import MultiSelect from "../../../components/form/MultiSelect";
-import { PlusIcon, PencilIcon } from "../../../icons";
+import { PlusIcon, PencilIcon, TrashBinIcon } from "../../../icons";
 import {
   Table,
   TableBody,
@@ -271,8 +271,7 @@ export default function Users() {
           ? "User updated successfully."
           : "User created successfully.",
         icon: "success",
-        toast: true,
-        position: "top-end",
+        position: "center",
         timer: 2000,
         showConfirmButton: false,
         customClass: {
@@ -316,8 +315,7 @@ export default function Users() {
         title: "Deleted!",
         text: "User has been deleted successfully.",
         icon: "success",
-        toast: true,
-        position: "top-end",
+        position: "center",
         timer: 2000,
         showConfirmButton: false,
         customClass: {
@@ -1111,19 +1109,20 @@ export default function Users() {
                             {canWrite && (
                               <button
                                 onClick={() => handleEditUser(user)}
-                                className="px-3 py-1 text-xs bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-200 rounded hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors inline-flex items-center gap-1"
+                                className="rounded p-1.5 text-brand-600 transition hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-brand-500/10"
+                                title="Edit user"
                               >
-                                <PencilIcon className="w-3 h-3" />
-                                Edit
+                                <PencilIcon className="size-4" />
                               </button>
                             )}
                             {canCreate && (
                               <button
                                 onClick={() => handleDeleteUser(user._id)}
                                 disabled={isDeletingUser === user._id}
-                                className="px-3 py-1 text-xs bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 rounded hover:bg-red-200 dark:hover:bg-red-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="rounded p-1.5 text-error-600 transition hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-500/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                                title={isDeletingUser === user._id ? "Deleting..." : "Delete user"}
                               >
-                                {isDeletingUser === user._id ? "Deleting..." : "Delete"}
+                                <TrashBinIcon className="size-4" />
                               </button>
                             )}
                           </div>

@@ -9,8 +9,7 @@ import ComponentCard from "../../../components/common/ComponentCard";
 import LoadingSpinner from "../../../components/common/LoadingSpinner";
 import Label from "../../../components/form/Label";
 import Input from "../../../components/form/input/InputField";
-import TextArea from "../../../components/form/input/TextArea";
-import { PlusIcon } from "../../../icons";
+import { PlusIcon, PencilIcon, TrashBinIcon } from "../../../icons";
 import {
   Table,
   TableBody,
@@ -170,10 +169,8 @@ export default function Permissions() {
 
     const payload = {
       name: roleForm.name,
-      description: roleForm.description,
       permissions: permissionsWithAccess,
-      isSystemRole: !!roleForm.isSystemRole,
-      singleCompany: !!roleForm.singleCompany,
+     
     };
 
     console.log("Role Creation Payload:", JSON.stringify(payload, null, 2));
@@ -186,8 +183,7 @@ export default function Permissions() {
         title: "Success!",
         text: "Role created successfully.",
         icon: "success",
-        toast: true,
-        position: "top-end",
+        position: "center",
         timer: 2000,
         showConfirmButton: false,
         customClass: {
@@ -319,57 +315,8 @@ export default function Permissions() {
                       />
                     </div>
 
-                    <div className="flex items-center gap-4">
-                      <div className="flex items-center gap-2">
-                        <input
-                          id="isSystemRole"
-                          type="checkbox"
-                          checked={!!roleForm.isSystemRole}
-                          onChange={(e) =>
-                            setRoleForm((prev) => ({
-                              ...prev,
-                              isSystemRole: e.target.checked,
-                            }))
-                          }
-                          className="w-4 h-4 text-brand-500"
-                        />
-                        <Label htmlFor="isSystemRole" className="!mb-0">
-                          System Role
-                        </Label>
-                      </div>
 
-                      <div className="flex items-center gap-2">
-                        <input
-                          id="singleCompany"
-                          type="checkbox"
-                          checked={!!roleForm.singleCompany}
-                          onChange={(e) =>
-                            setRoleForm((prev) => ({
-                              ...prev,
-                              singleCompany: e.target.checked,
-                            }))
-                          }
-                          className="w-4 h-4 text-brand-500"
-                        />
-                        <Label htmlFor="singleCompany" className="!mb-0">
-                          Single Company
-                        </Label>
-                      </div>
-                    </div>
-
-                    <div className="md:col-span-2">
-                      <Label htmlFor="roleDescription">Description</Label>
-                      <TextArea
-                        value={roleForm.description}
-                        onChange={(value) =>
-                          setRoleForm((prev) => ({
-                            ...prev,
-                            description: value,
-                          }))
-                        }
-                        placeholder="Describe the role responsibilities..."
-                      />
-                    </div>
+                    {/* Removed Description and System/Company checkboxes per backend constraints */}
                   </div>
 
                   {/* Permissions Selection */}
@@ -621,89 +568,64 @@ export default function Permissions() {
                         </TableCell>
                         <TableCell className="px-4 py-3 align-middle">
                           <div className="flex items-center gap-2">
-                            {canCreate && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  navigate(`/role/${role._id}?edit=true`);
-                                }}
-                                className="inline-flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50 rounded-lg transition-colors"
-                              >
-                                <svg
-                                  className="w-4 h-4"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  viewBox="0 0 24 24"
+                            <div onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-2">
+                              {canCreate && (
+                                <button
+                                  onClick={() => navigate(`/role/${role._id}?edit=true`)}
+                                  className="rounded p-1.5 text-brand-600 transition hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-brand-500/10"
+                                  title="Edit role"
                                 >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                                  />
-                                </svg>
-                                Edit
-                              </button>
-                            )}
-                            {canCreate && (
-                              <button
-                                onClick={async (e) => {
-                                  e.stopPropagation();
-                                  const result = await Swal.fire({
-                                    title: "Delete Role?",
-                                    text: `Are you sure you want to delete the role "${role.name}"?`,
-                                    icon: "warning",
-                                    showCancelButton: true,
-                                    confirmButtonColor: "#3085d6",
-                                    cancelButtonColor: "#d33",
-                                    confirmButtonText: "Yes, delete it!",
-                                  });
+                                  <PencilIcon className="size-4" />
+                                </button>
+                              )}
 
-                                  if (result.isConfirmed) {
-                                    try {
-                                      await deleteRoleMutation.mutateAsync(role._id);
-                                      await Swal.fire({
-                                        title: "Deleted!",
-                                        text: "Role has been deleted successfully.",
-                                        icon: "success",
-                                        toast: true,
-                                        position: "top-end",
-                                        timer: 2000,
-                                        showConfirmButton: false,
-                                        customClass: {
-                                          container: "!mt-16",
-                                        },
-                                      });
-                                    } catch (err: any) {
-                                      console.error("Error deleting role:", err);
-                                      const errorMsg = err.response?.data?.message || err.message || "Failed to delete role";
-                                      await Swal.fire({
-                                        title: "Error!",
-                                        text: errorMsg,
-                                        icon: "error",
-                                        confirmButtonText: "OK",
-                                      });
+                              {canCreate && (
+                                <button
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    const result = await Swal.fire({
+                                      title: "Delete Role?",
+                                      text: `Are you sure you want to delete the role "${role.name}"?`,
+                                      icon: "warning",
+                                      showCancelButton: true,
+                                      confirmButtonColor: "#3085d6",
+                                      cancelButtonColor: "#d33",
+                                      confirmButtonText: "Yes, delete it!",
+                                    });
+
+                                    if (result.isConfirmed) {
+                                      try {
+                                        await deleteRoleMutation.mutateAsync(role._id);
+                                        await Swal.fire({
+                                          title: "Deleted!",
+                                          text: "Role has been deleted successfully.",
+                                          icon: "success",
+                                          position: "center",
+                                          timer: 2000,
+                                          showConfirmButton: false,
+                                          customClass: {
+                                            container: "!mt-16",
+                                          },
+                                        });
+                                      } catch (err: any) {
+                                        console.error("Error deleting role:", err);
+                                        const errorMsg = err.response?.data?.message || err.message || "Failed to delete role";
+                                        await Swal.fire({
+                                          title: "Error!",
+                                          text: errorMsg,
+                                          icon: "error",
+                                          confirmButtonText: "OK",
+                                        });
+                                      }
                                     }
-                                  }
-                                }}
-                                className="inline-flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50 rounded-lg transition-colors"
-                              >
-                                <svg
-                                  className="w-4 h-4"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  viewBox="0 0 24 24"
+                                  }}
+                                  className="rounded p-1.5 text-error-600 transition hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-500/10"
+                                  title="Delete role"
                                 >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                                  />
-                                </svg>
-                                Delete
-                              </button>
-                            )}
+                                  <TrashBinIcon className="size-4" />
+                                </button>
+                              )}
+                            </div>
                           </div>
                         </TableCell>
                       </TableRow>

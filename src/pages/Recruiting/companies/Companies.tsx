@@ -5,7 +5,7 @@ import PageMeta from "../../../components/common/PageMeta";
 import ComponentCard from "../../../components/common/ComponentCard";
 import LoadingSpinner from "../../../components/common/LoadingSpinner";
 import { Link, useNavigate } from "react-router";
-import { PlusIcon } from "../../../icons";
+import { PlusIcon, PencilIcon, TrashBinIcon } from "../../../icons";
 import { useAuth } from "../../../context/AuthContext";
 import {
   Table,
@@ -27,6 +27,7 @@ export default function Companies() {
   // Check permissions
   const canRead = hasPermission("Company Management", "read");
   const canCreate = hasPermission("Company Management", "create");
+  const canEdit = hasPermission("Company Management", "write");
 
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [showRaw, setShowRaw] = useState(false);
@@ -129,8 +130,7 @@ export default function Companies() {
         title: "Deleted!",
         text: "Company has been deleted successfully.",
         icon: "success",
-        toast: true,
-        position: "top-end",
+        position: "center",
         timer: 2000,
         showConfirmButton: false,
         customClass: {
@@ -403,17 +403,31 @@ export default function Companies() {
                               : "-"}
                           </TableCell>
                           <TableCell className="px-5 py-4 text-start">
-                            {canCreate && (
-                              <button
-                                onClick={(e) =>
-                                  handleDeleteCompany(company._id, e)
-                                }
-                                disabled={isDeletingCompany === company._id}
-                                className="px-3 py-1 text-xs bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 rounded hover:bg-red-200 dark:hover:bg-red-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                              >
-                                {isDeletingCompany === company._id ? "Deleting..." : "Delete"}
-                              </button>
-                            )}
+                            <div className="inline-flex items-center gap-2">
+                                <div onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-2">
+                                  {canEdit && (
+                                    <button
+                                      onClick={() => navigate(`/company/${company._id}`)}
+                                      type="button"
+                                      className="rounded p-1.5 text-brand-600 transition hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-brand-500/10"
+                                      title="Edit company"
+                                    >
+                                      <PencilIcon className="size-4" />
+                                    </button>
+                                  )}
+
+                                  {canCreate && (
+                                    <button
+                                      onClick={(e) => handleDeleteCompany(company._id, e)}
+                                      disabled={isDeletingCompany === company._id}
+                                      className="rounded p-1.5 text-error-600 transition hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-500/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                                      title={isDeletingCompany === company._id ? "Deleting..." : "Delete company"}
+                                    >
+                                      <TrashBinIcon className="size-4" />
+                                    </button>
+                                  )}
+                                </div>
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))}

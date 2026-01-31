@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { applicantsService } from "../../services/applicantsService";
+import { useAppSelector } from "../../store/hooks";
 import type {
   CreateApplicantRequest,
   UpdateApplicantRequest,
@@ -26,10 +27,13 @@ export function useApplicants(
   assignedOnly?: boolean,
   jobPositionId?: string
 ) {
+  const reduxApplicants = useAppSelector((s) => s.applicants.applicants);
+
   return useQuery({
     queryKey: applicantsKeys.list(companyIds, assignedOnly, jobPositionId),
     queryFn: () => applicantsService.getAllApplicants(companyIds, assignedOnly, jobPositionId),
     staleTime: 2 * 60 * 1000, // 2 minutes
+    initialData: reduxApplicants && reduxApplicants.length > 0 ? reduxApplicants : undefined,
   });
 }
 
@@ -39,7 +43,9 @@ export function useApplicant(id: string, options?: { initialData?: any }) {
     queryKey: applicantsKeys.detail(id),
     queryFn: () => applicantsService.getApplicantById(id),
     enabled: !!id,
-    staleTime: 1 * 60 * 1000, // 1 minute - fresher data
+    staleTime: 30 * 1000, // 30s - keep relatively fresh
+    // Always refetch on mount to ensure interviews are up-to-date on page load
+    refetchOnMount: 'always',
     initialData: options?.initialData,
   });
 }

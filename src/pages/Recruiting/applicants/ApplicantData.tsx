@@ -32,7 +32,7 @@ const ApplicantData = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const location = useLocation();
-  const {} = useAuth();
+  const { user } = useAuth();
 
   // Get applicant data from location state if available (passed from Applicants page)
   const stateApplicant = location.state?.applicant as Applicant | undefined;
@@ -323,6 +323,23 @@ const ApplicantData = () => {
     }
 
     setIsSubmittingInterview(true);
+    // Close modal immediately when request is sent
+    setInterviewForm({
+      date: '',
+      time: '',
+      description: '',
+      comment: '',
+      location: '',
+      link: '',
+      type: 'phone',
+    });
+    setNotificationChannels({ email: true, sms: false, whatsapp: false });
+    setEmailOption('company');
+    setCustomEmail('');
+    setPhoneOption('company');
+    setCustomPhone('');
+    setShowInterviewModal(false);
+
     try {
       // Combine date and time into scheduledAt
       let scheduledAt: string | undefined;
@@ -340,7 +357,6 @@ const ApplicantData = () => {
         location: interviewForm.location || undefined,
         videoLink: interviewForm.link || undefined,
         notes: interviewForm.comment || undefined,
-        // Don't include status here - will be set in second request
       };
 
       // First: Update applicant status to "interview" if not already
@@ -374,29 +390,13 @@ const ApplicantData = () => {
         });
       }
 
-      // Close modal and reset form after successful API calls
-      setInterviewForm({
-        date: '',
-        time: '',
-        description: '',
-        comment: '',
-        location: '',
-        link: '',
-        type: 'phone',
-      });
-      setNotificationChannels({ email: true, sms: false, whatsapp: false });
-      setEmailOption('company');
-      setCustomEmail('');
-      setPhoneOption('company');
-      setCustomPhone('');
-      setShowInterviewModal(false);
+      // Success: keep modal closed and show confirmation
 
       await Swal.fire({
         title: 'Success!',
         text: 'Interview scheduled successfully.',
         icon: 'success',
-        toast: true,
-        position: 'top-end',
+        position: 'center',
         timer: 2000,
         showConfirmButton: false,
         customClass: {
@@ -407,6 +407,11 @@ const ApplicantData = () => {
       const errorMsg = getErrorMessage(err);
       setInterviewError(errorMsg);
       console.error('Error scheduling interview:', err);
+      await Swal.fire({
+        title: 'Error',
+        text: String(errorMsg),
+        icon: 'error',
+      });
     } finally {
       setIsSubmittingInterview(false);
     }
@@ -447,8 +452,7 @@ const ApplicantData = () => {
         title: 'Success!',
         text: 'Message sent successfully.',
         icon: 'success',
-        toast: true,
-        position: 'top-end',
+        position: 'center',
         timer: 2000,
         showConfirmButton: false,
         customClass: {
@@ -486,8 +490,7 @@ const ApplicantData = () => {
         title: 'Success!',
         text: 'Comment added successfully.',
         icon: 'success',
-        toast: true,
-        position: 'top-end',
+        position: 'center',
         timer: 2000,
         showConfirmButton: false,
         customClass: {
@@ -525,8 +528,7 @@ const ApplicantData = () => {
         title: 'Success!',
         text: 'Status updated successfully.',
         icon: 'success',
-        toast: true,
-        position: 'top-end',
+        position: 'center',
         timer: 2000,
         showConfirmButton: false,
         customClass: {
@@ -809,7 +811,13 @@ const ApplicantData = () => {
                                   <div key={idx} className="w-full">
                                     <button
                                       onClick={() => toggleExpand(idx)}
-                                      className="inline-flex items-center justify-between w-full gap-2 rounded-full bg-brand-100 px-3 py-1.5 text-sm font-medium text-brand-700 transition hover:bg-brand-200 dark:bg-brand-900/30 dark:text-brand-300 dark:hover:bg-brand-900/50"
+                                      className={
+                                        (() => {
+                                          const normalizedKey = key.replace(/\s|_/g, '').toLowerCase();
+                                          const isGrayTag = ['workexperience', 'certifications'].includes(normalizedKey);
+                                          return `inline-flex items-center justify-between w-full gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition ${isGrayTag ? 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800/30 dark:text-gray-300 dark:hover:bg-gray-800/50' : 'bg-brand-100 text-brand-700 hover:bg-brand-200 dark:bg-brand-900/30 dark:text-brand-300 dark:hover:bg-brand-900/50'}`;
+                                        })()
+                                      }
                                     >
                                       <span dir={summaryIsArabic ? 'rtl' : undefined} className={summaryIsArabic ? 'text-right w-full' : ''}>
                                         {displaySummary}
@@ -824,14 +832,14 @@ const ApplicantData = () => {
                                       </svg>
                                     </button>
                                     {isExpanded && (
-                                      <div className={`mt-2 rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800 ${expandedHasArabic ? 'text-right' : ''}`} {...(expandedHasArabic ? { dir: 'rtl' } : {})}>
+                                      <div className={`mt-3 rounded-lg border border-gray-200 bg-gray-50 p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800 ${expandedHasArabic ? 'text-right' : ''}`} {...(expandedHasArabic ? { dir: 'rtl' } : {})}>
                                         {
                                           (() => {
                                             const entries = Object.entries(item);
                                             const arabicEntries = entries.filter(([, v]) => typeof v === 'string' && isArabic(v));
                                             const englishEntries = entries.filter(([, v]) => !(typeof v === 'string' && isArabic(v)));
                                             return (
-                                              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-2">
                                                 {/* English / Left column */}
                                                 <div>
                                                   {englishEntries.map(([itemKey, itemValue]) => {
@@ -984,7 +992,21 @@ const ApplicantData = () => {
           </div>
 
           <div className="flex flex-wrap gap-4">
-            {(() => {
+            {loading ? (
+              <div className="w-full space-y-3">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="cursor-pointer rounded-lg border border-stroke p-4 transition hover:bg-gray-50 dark:border-strokedark dark:hover:bg-gray-800/50"
+                  >
+                    <div className="h-4 w-1/3 rounded bg-gray-200 dark:bg-gray-700 animate-pulse" />
+                    <div className="mt-3 h-3 w-1/2 rounded bg-gray-200 dark:bg-gray-700 animate-pulse" />
+                    <div className="mt-2 h-3 w-2/3 rounded bg-gray-200 dark:bg-gray-700 animate-pulse" />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              (() => {
               // Combine all activities into a single timeline
               const activities: Array<{
                 type: 'status' | 'message' | 'comment' | 'interview';
@@ -1138,14 +1160,60 @@ const ApplicantData = () => {
                       <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
                         {formatDate(history.changedAt)}
                       </p>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
-                        By:{' '}
-                        {typeof history.changedBy === 'string'
-                          ? history.changedBy
-                          : (history.changedBy as any)?.fullName ||
-                            (history.changedBy as any)?.email ||
-                            'Unknown'}
-                      </p>
+                      {(() => {
+                        // Try to show the real user who triggered this change when possible.
+                        let actorName: string | null = null;
+
+                        // If changedBy is a non-system string, use it directly
+                        if (
+                          history.changedBy &&
+                          typeof history.changedBy === 'string' &&
+                          history.changedBy.toLowerCase() !== 'system'
+                        ) {
+                          actorName = history.changedBy;
+                        }
+
+                        // If changedBy is an object, try to read fullName/email
+                        if (!actorName && history.changedBy && typeof history.changedBy === 'object') {
+                          actorName = (history.changedBy as any).fullName || (history.changedBy as any).email || null;
+                        }
+
+                        // If actor is still unknown or labeled 'system', try to infer from nearby activities
+                        if (!actorName) {
+                          const histTime = history.changedAt ? new Date(history.changedAt).getTime() : null;
+                          const withinWindow = (time?: string) => {
+                            if (!histTime || !time) return false;
+                            const t = new Date(time).getTime();
+                            return Math.abs(t - histTime) <= 2 * 60 * 1000; // 2 minutes
+                          };
+
+                          // Search messages
+                          if (!actorName && applicant.messages) {
+                            const match = applicant.messages.find((m: any) => (withinWindow(m.sentAt) || withinWindow((m as any).createdAt)) && (m.sentBy || (m as any).sentBy));
+                            if (match) actorName = typeof match.sentBy === 'string' ? match.sentBy : (match.sentBy?.fullName || match.sentBy?.email || null);
+                          }
+
+                          // Search comments
+                          if (!actorName && applicant.comments) {
+                            const match = applicant.comments.find((c: any) => (withinWindow(c.changedAt) || withinWindow((c as any).commentedAt) || withinWindow((c as any).createdAt)) && (c.changedBy || c.author));
+                            if (match) actorName = typeof match.changedBy === 'string' ? match.changedBy : (match.changedBy?.fullName || match.changedBy?.email || match.author || null);
+                          }
+
+                          // Search interviews
+                          if (!actorName && applicant.interviews) {
+                            const match = applicant.interviews.find((iv: any) => (withinWindow(iv.scheduledAt) || withinWindow(iv.createdAt) || withinWindow((iv as any).issuedAt)) && (iv.issuedBy));
+                            if (match) actorName = typeof match.issuedBy === 'string' ? match.issuedBy : (match.issuedBy?.fullName || match.issuedBy?.email || null);
+                          }
+                        }
+
+                        // If still unknown, show the currently logged in user
+                        const currentUserLabel = (user?.fullName || user?.email) ? (user?.fullName || user?.email) : 'Current User';
+                        return (
+                          <p className="text-sm text-gray-600 dark:text-gray-400">
+                            By: {actorName || (typeof history.changedBy === 'string' && history.changedBy.toLowerCase() !== 'system' ? history.changedBy : (history.changedBy as any)?.fullName || (history.changedBy as any)?.email || currentUserLabel)}
+                          </p>
+                        );
+                      })()}
                       {expandedHistory === `status-${index}` &&
                         history.notes && (
                           <div className="mt-3 border-t border-stroke pt-3 dark:border-strokedark">
@@ -1425,7 +1493,7 @@ const ApplicantData = () => {
                 }
                 return null;
               });
-            })()}
+            })())}
           </div>
         </ComponentCard>
       </div>
@@ -1938,6 +2006,9 @@ const ApplicantData = () => {
                         // Optimistically update local state
                         setSelectedInterview({ ...selectedInterview, status: 'scheduled' });
                         try {
+                          // Close modal immediately when request is sent
+                          setShowInterviewSettingsModal(false);
+                          setSelectedInterview(null);
                           await updateInterviewMutation.mutateAsync({
                             applicantId: applicant._id,
                             interviewId: selectedInterview._id,
@@ -1947,14 +2018,11 @@ const ApplicantData = () => {
                             title: 'Success!',
                             text: 'Interview status updated to scheduled.',
                             icon: 'success',
-                            toast: true,
-                            position: 'top-end',
+                            position: 'center',
                             timer: 2000,
                             showConfirmButton: false,
                             customClass: { container: '!mt-16' },
                           });
-                          setShowInterviewSettingsModal(false);
-                          setSelectedInterview(null);
                         } catch (error) {
                           console.error('Error updating interview:', error);
                           Swal.fire({
@@ -1976,6 +2044,9 @@ const ApplicantData = () => {
                         // Optimistically update local state
                         setSelectedInterview({ ...selectedInterview, status: 'completed' });
                         try {
+                          // Close modal immediately when request is sent
+                          setShowInterviewSettingsModal(false);
+                          setSelectedInterview(null);
                           await updateInterviewMutation.mutateAsync({
                             applicantId: applicant._id,
                             interviewId: selectedInterview._id,
@@ -1985,14 +2056,11 @@ const ApplicantData = () => {
                             title: 'Success!',
                             text: 'Interview marked as completed.',
                             icon: 'success',
-                            toast: true,
-                            position: 'top-end',
+                            position: 'center',
                             timer: 2000,
                             showConfirmButton: false,
                             customClass: { container: '!mt-16' },
                           });
-                          setShowInterviewSettingsModal(false);
-                          setSelectedInterview(null);
                         } catch (error) {
                           console.error('Error updating interview:', error);
                           Swal.fire({
@@ -2014,6 +2082,9 @@ const ApplicantData = () => {
                         // Optimistically update local state
                         setSelectedInterview({ ...selectedInterview, status: 'cancelled' });
                         try {
+                          // Close modal immediately when request is sent
+                          setShowInterviewSettingsModal(false);
+                          setSelectedInterview(null);
                           await updateInterviewMutation.mutateAsync({
                             applicantId: applicant._id,
                             interviewId: selectedInterview._id,
@@ -2023,14 +2094,11 @@ const ApplicantData = () => {
                             title: 'Success!',
                             text: 'Interview cancelled.',
                             icon: 'success',
-                            toast: true,
-                            position: 'top-end',
+                            position: 'center',
                             timer: 2000,
                             showConfirmButton: false,
                             customClass: { container: '!mt-16' },
                           });
-                          setShowInterviewSettingsModal(false);
-                          setSelectedInterview(null);
                         } catch (error) {
                           console.error('Error updating interview:', error);
                           Swal.fire({

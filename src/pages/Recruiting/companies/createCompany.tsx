@@ -1,14 +1,15 @@
 import type { ChangeEvent, FormEvent } from "react";
-import { useMemo, useState } from "react";
+import {useState } from "react";
 import { useNavigate } from "react-router";
-import ComponentCard from "../../components/common/ComponentCard";
-import PageBreadcrumb from "../../components/common/PageBreadCrumb";
-import PageMeta from "../../components/common/PageMeta";
-import Label from "../../components/form/Label";
-import Input from "../../components/form/input/InputField";
-import TextArea from "../../components/form/input/TextArea";
-import { PlusIcon } from "../../icons";
-import { companiesService, ApiError } from "../../services/companiesService";
+import ComponentCard from "../../../components/common/ComponentCard";
+import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
+import PageMeta from "../../../components/common/PageMeta";
+import Label from "../../../components/form/Label";
+import Input from "../../../components/form/input/InputField";
+import TextArea from "../../../components/form/input/TextArea";
+import { PlusIcon } from "../../../icons";
+import Swal from "sweetalert2";
+import { companiesService, ApiError } from "../../../services/companiesService";
 
 type CompanyForm = {
   name: string;
@@ -58,12 +59,17 @@ export default function RecruitingDashboard() {
         website: companyForm.website,
       });
 
-      setSuccessMessage("Company created successfully!");
+      await Swal.fire({
+        title: "Success!",
+        text: "Company created successfully.",
+        icon: "success",
+        position: "center",
+        timer: 1500,
+        showConfirmButton: false,
+        customClass: { container: "!mt-16" },
+      });
 
-      // Redirect to the new company page after a short delay
-      setTimeout(() => {
-        navigate(`/company/${newCompany._id}`);
-      }, 1500);
+      navigate(`/company/${newCompany._id}`);
     } catch (err) {
       const errorMessage =
         err instanceof ApiError ? err.message : "Failed to create company";
@@ -74,7 +80,6 @@ export default function RecruitingDashboard() {
     }
   };
 
-  const companyPayload = useMemo(() => companyForm, [companyForm]);
 
   return (
     <div className="space-y-6">
@@ -178,15 +183,7 @@ export default function RecruitingDashboard() {
             </button>
           </div>
 
-          <div className="overflow-hidden rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-800 dark:border-gray-800 dark:bg-gray-900/60 dark:text-gray-200">
-            <div className="flex items-center justify-between gap-2 pb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-              <span>Payload preview</span>
-              <span>POST /api/companies</span>
-            </div>
-            <pre className="overflow-x-auto text-xs leading-relaxed">
-              {JSON.stringify(companyPayload, null, 2)}
-            </pre>
-          </div>
+        
         </form>
       </ComponentCard>
     </div>

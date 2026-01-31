@@ -255,8 +255,7 @@ export default function EditUser() {
         title: "Success!",
         text: "User updated successfully.",
         icon: "success",
-        toast: true,
-        position: "top-end",
+        position: "center",
         timer: 2000,
         showConfirmButton: false,
         customClass: {
