@@ -18,6 +18,7 @@ import {
   TableRow,
 } from "../../../components/ui/table";
 import { useRoles, usePermissions, useCreateRole, useUsers, useDeleteRole } from "../../../hooks/queries";
+import type { CreateRoleRequest } from "../../../services/rolesService";
 
 type RoleForm = {
   name: string;
@@ -176,7 +177,7 @@ export default function Permissions() {
     console.log("Role Creation Payload:", JSON.stringify(payload, null, 2));
 
     try {
-      await createRoleMutation.mutateAsync(payload);
+      await createRoleMutation.mutateAsync(payload as CreateRoleRequest);
       console.log("Role created successfully");
 
       await Swal.fire({
