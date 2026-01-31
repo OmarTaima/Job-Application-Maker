@@ -573,7 +573,7 @@ export default function Permissions() {
                               {canCreate && (
                                 <button
                                   onClick={() => navigate(`/role/${role._id}?edit=true`)}
-                                  className="rounded p-1.5 text-brand-600 transition hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-brand-500/10"
+                                  className="rounded p-1.5 text-brand-500 transition hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-brand-500/10"
                                   title="Edit role"
                                 >
                                   <PencilIcon className="size-4" />
