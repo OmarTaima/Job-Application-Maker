@@ -417,8 +417,6 @@ export default function PreviewCompany() {
 
             <ComponentCard title="Company Information" desc="View and edit company details">
               <form className="space-y-4" onSubmit={handleCompanySubmit}>
-                <div className="mb-4 flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-900/50">
-                </div>
 
               {companyError && (
                 <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
