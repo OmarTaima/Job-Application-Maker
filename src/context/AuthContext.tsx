@@ -40,8 +40,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (token) {
         try {
           const currentUser = await authService.getCurrentUser();
-          console.log("Loaded user data:", currentUser);
-          console.log("User roleId:", currentUser.roleId);
           setUser(currentUser);
         } catch (err) {
           console.error("Failed to load user:", err);
@@ -60,11 +58,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setError(null);
       setIsLoading(true);
       await authService.login({ email, password });
-      console.log("Login successful, fetching user profile...");
 
       // After successful login, fetch the user profile
       const currentUser = await authService.getCurrentUser();
-      console.log("User profile fetched:", currentUser);
       setUser(currentUser);
     } catch (err) {
       console.error("Login error:", err);

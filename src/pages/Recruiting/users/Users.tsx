@@ -165,7 +165,6 @@ export default function Users() {
     e: ChangeEvent<HTMLInputElement | HTMLSelectElement>
   ) => {
     const { name, value } = e.target;
-    console.log("Input changed:", name, "=", value);
     setUserForm((prev) => ({ ...prev, [name]: value }));
   };
 
@@ -578,23 +577,6 @@ export default function Users() {
                                 const selectedRole = roles.find(
                                   (r) => r._id === userForm.roleId
                                 );
-
-                                // Debug logging
-                                if (
-                                  perm.name === "Analytics Management" &&
-                                  selectedRole
-                                ) {
-                                  console.log("Selected Role:", selectedRole);
-                                  console.log(
-                                    "Role permissions:",
-                                    selectedRole.permissions
-                                  );
-                                  console.log(
-                                    "Checking permission:",
-                                    perm._id,
-                                    perm.name
-                                  );
-                                }
 
                                 // Find role permission with access info (if role has detailed permissions structure)
                                 const rolePermission =
