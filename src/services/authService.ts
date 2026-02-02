@@ -152,6 +152,8 @@ export const authService = {
       body: JSON.stringify(credentials),
     });
 
+   
+
     // Store tokens - handle different response structures
     const accessToken = response.data?.accessToken || response.accessToken;
     const refreshToken = response.data?.refreshToken || response.refreshToken;
@@ -159,7 +161,6 @@ export const authService = {
     if (accessToken && refreshToken) {
       tokenStorage.setTokens(accessToken, refreshToken);
     } else {
-      console.error("No tokens in response:", response);
     }
 
     return response;

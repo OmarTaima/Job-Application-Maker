@@ -684,74 +684,59 @@ const ApplicantData = () => {
             )}
 
             <div className="grid flex-1 grid-cols-2 gap-6">
-              <div>
-                <Label>Full Name</Label>
-                <p dir={isArabic(applicant.fullName) ? 'rtl' : undefined} className={`mt-1 text-gray-900 dark:text-white ${isArabic(applicant.fullName) ? 'text-right' : ''}`}>
+              <div className="flex items-center justify-between">
+                <Label className="mb-0">Full Name</Label>
+                <p dir={isArabic(applicant.fullName) ? 'rtl' : undefined} className={`text-gray-900 dark:text-white ${isArabic(applicant.fullName) ? 'text-right' : ''}`}>
                   {applicant.fullName}
                 </p>
               </div>
-              <div>
-                <Label>Email</Label>
-                <p className="mt-1 text-gray-900 dark:text-white">
-                  {applicant.email}
-                </p>
+
+              <div className="flex items-center justify-between">
+                <Label className="mb-0">Email</Label>
+                <p className="text-gray-900 dark:text-white">{applicant.email}</p>
               </div>
-              <div>
-                <Label>Phone</Label>
-                <p className="mt-1 text-gray-900 dark:text-white">
-                  {applicant.phone}
-                </p>
+
+              <div className="flex items-center justify-between">
+                <Label className="mb-0">Phone</Label>
+                <p className="text-gray-900 dark:text-white">{applicant.phone}</p>
               </div>
-              <div>
-                <Label>Address</Label>
-                <p dir={isArabic(applicant.address) ? 'rtl' : undefined} className={`mt-1 text-gray-900 dark:text-white ${isArabic(applicant.address) ? 'text-right' : ''}`}>
-                  {applicant.address}
-                </p>
+
+              <div className="flex items-center justify-between">
+                <Label className="mb-0">Address</Label>
+                <p dir={isArabic(applicant.address) ? 'rtl' : undefined} className={`text-gray-900 dark:text-white ${isArabic(applicant.address) ? 'text-right' : ''}`}>{applicant.address}</p>
               </div>
-              <div>
-                <Label>Job Position</Label>
-                <p dir={isArabic(jobTitle.en) ? 'rtl' : undefined} className={`mt-1 text-gray-900 dark:text-white ${isArabic(jobTitle.en) ? 'text-right' : ''}`}>{jobTitle.en}</p>
+
+              <div className="flex items-center justify-between">
+                <Label className="mb-0">Job Position</Label>
+                <p dir={isArabic(jobTitle.en) ? 'rtl' : undefined} className={`text-gray-900 dark:text-white ${isArabic(jobTitle.en) ? 'text-right' : ''}`}>{jobTitle.en}</p>
               </div>
-              <div>
-                <Label>Company</Label>
-                <p dir={isArabic(companyName) ? 'rtl' : undefined} className={`mt-1 text-gray-900 dark:text-white ${isArabic(companyName) ? 'text-right' : ''}`}>
-                  {companyName}
-                </p>
+
+              <div className="flex items-center justify-between">
+                <Label className="mb-0">Company</Label>
+                <p dir={isArabic(companyName) ? 'rtl' : undefined} className={`text-gray-900 dark:text-white ${isArabic(companyName) ? 'text-right' : ''}`}>{companyName}</p>
               </div>
-              <div>
-                <Label>Department</Label>
-                <p dir={isArabic(departmentName) ? 'rtl' : undefined} className={`mt-1 text-gray-900 dark:text-white ${isArabic(departmentName) ? 'text-right' : ''}`}>
-                  {departmentName}
-                </p>
+
+              <div className="flex items-center justify-between">
+                <Label className="mb-0">Department</Label>
+                <p dir={isArabic(departmentName) ? 'rtl' : undefined} className={`text-gray-900 dark:text-white ${isArabic(departmentName) ? 'text-right' : ''}`}>{departmentName}</p>
               </div>
-              <div>
-                <Label>Status</Label>
-                <span
-                  className={`mt-1 inline-block rounded-full px-3 py-1 text-xs font-semibold ${getStatusColor(
-                    applicant.status
-                  )}`}
-                >
-                  {applicant.status.charAt(0).toUpperCase() +
-                    applicant.status.slice(1)}
+
+              <div className="flex items-center justify-between">
+                <Label className="mb-0">Status</Label>
+                <span className={`inline-block rounded-full px-3 py-1 text-xs font-semibold ${getStatusColor(applicant.status)}`}>
+                  {applicant.status.charAt(0).toUpperCase() + applicant.status.slice(1)}
                 </span>
               </div>
-              <div>
-                <Label>Submitted At</Label>
-                <p className="mt-1 text-gray-900 dark:text-white">
-                  {formatDate(applicant.submittedAt)}
-                </p>
+
+              <div className="flex items-center justify-between">
+                <Label className="mb-0">Submitted At</Label>
+                <p className="text-gray-900 dark:text-white">{formatDate(applicant.submittedAt)}</p>
               </div>
+
               {applicant.cvFilePath && (
-                <div>
-                  <Label>CV / Resume</Label>
-                  <a
-                    href={applicant.cvFilePath}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-1 inline-block text-primary hover:text-primary/80"
-                  >
-                    Download CV
-                  </a>
+                <div className="flex items-center justify-between">
+                  <Label className="mb-0">CV / Resume</Label>
+                  <a href={applicant.cvFilePath} target="_blank" rel="noopener noreferrer" className="inline-block text-primary hover:text-primary/80">Download CV</a>
                 </div>
               )}
             </div>
@@ -765,7 +750,7 @@ const ApplicantData = () => {
               title="Application Responses"
               desc="Custom field responses"
             >
-              <div className="grid grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 gap-6">
                 {Object.entries(applicant.customResponses).map(
                   ([key, value]) => {
                     // Helper function to toggle expansion for a specific item
@@ -835,43 +820,24 @@ const ApplicantData = () => {
                                         {
                                           (() => {
                                             const entries = Object.entries(item);
-                                            const arabicEntries = entries.filter(([, v]) => typeof v === 'string' && isArabic(v));
-                                            const englishEntries = entries.filter(([, v]) => !(typeof v === 'string' && isArabic(v)));
                                             return (
-                                              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-2">
-                                                {/* English / Left column */}
-                                                <div>
-                                                  {englishEntries.map(([itemKey, itemValue]) => {
-                                                    const label = itemKey.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-                                                    const valueStr = typeof itemValue === 'string' ? itemValue : String(itemValue);
-                                                    return (
-                                                      <div key={itemKey} className="mb-3 last:mb-0 flex items-start gap-4">
-                                                        <div className="min-w-[140px] text-sm font-medium text-gray-700 dark:text-gray-300 text-left">
-                                                          {label}
-                                                          <span className="ml-1 text-gray-500">:</span>
-                                                        </div>
-                                                        <div className="text-sm text-gray-900 dark:text-white whitespace-pre-wrap">{valueStr}</div>
+                                              <div className="grid grid-cols-1 gap-4">
+                                                {entries.map(([itemKey, itemValue]) => {
+                                                  const label = itemKey.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+                                                  const valueStr = typeof itemValue === 'string' ? itemValue : String(itemValue);
+                                                  const valueIsArabic = typeof itemValue === 'string' && isArabic(itemValue);
+                                                  return (
+                                                    <div key={itemKey} dir="ltr" className="mb-3 last:mb-0 flex items-start justify-between gap-4">
+                                                      <div className="min-w-[140px] text-sm font-medium text-gray-700 dark:text-gray-300 text-left">
+                                                        {label}
+                                                        <span className="ml-1 text-gray-500">:</span>
                                                       </div>
-                                                    );
-                                                  })}
-                                                </div>
-
-                                                {/* Arabic / Right column */}
-                                                <div dir="rtl" className="text-right">
-                                                  {arabicEntries.map(([itemKey, itemValue]) => {
-                                                    const label = itemKey.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-                                                    const valueStr = typeof itemValue === 'string' ? itemValue : String(itemValue);
-                                                    return (
-                                                      <div key={itemKey} className="mb-3 last:mb-0 flex flex-row-reverse items-start gap-4">
-                                                        <div className="min-w-[140px] text-sm font-medium text-gray-700 dark:text-gray-300 text-right">
-                                                          <span className="text-gray-500 mr-1">:</span>
-                                                          {label}
-                                                        </div>
-                                                        <div className="text-sm text-gray-900 dark:text-white whitespace-pre-wrap">{valueStr}</div>
+                                                      <div className={`text-sm text-gray-900 dark:text-white whitespace-pre-wrap ${valueIsArabic ? 'text-right' : 'text-right'}`} dir={valueIsArabic ? 'rtl' : undefined}>
+                                                        {valueStr}
                                                       </div>
-                                                    );
-                                                  })}
-                                                </div>
+                                                    </div>
+                                                  );
+                                                })}
                                               </div>
                                             );
                                           })()
@@ -922,13 +888,15 @@ const ApplicantData = () => {
                     };
 
                     return (
-                      <div key={key}>
-                        <Label>
-                          {key
-                            .replace(/_/g, ' ')
-                            .replace(/\b\w/g, (c) => c.toUpperCase())}
-                        </Label>
-                        <div className="mt-1 text-gray-900 dark:text-white">
+                      <div key={key} dir="ltr" className="mb-4 last:mb-0 flex items-start justify-between gap-4">
+                        <div className="min-w-[160px]">
+                          <Label className="mb-0">
+                            {key
+                              .replace(/_/g, ' ')
+                              .replace(/\b\w/g, (c) => c.toUpperCase())}
+                          </Label>
+                        </div>
+                        <div className="flex-1 text-right text-gray-900 dark:text-white">
                           {renderValue()}
                         </div>
                       </div>
@@ -1521,7 +1489,7 @@ const ApplicantData = () => {
         <form
           key={`interview-form-${formResetKey}`}
           onSubmit={handleInterviewSubmit}
-          className="flex flex-col px-2 overflow-y-auto custom-scrollbar"
+          className="flex flex-col px-2"
         >
           <div>
             <h5 className="mb-2 font-semibold text-gray-800 text-xl dark:text-white/90 lg:text-2xl">

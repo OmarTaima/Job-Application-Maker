@@ -317,6 +317,12 @@ export default function Companies() {
                       <TableRow>
                         <TableCell
                           isHeader
+                          className="px-3 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400 w-16"
+                        >
+                          Logo
+                        </TableCell>
+                        <TableCell
+                          isHeader
                           className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
                         >
                           Company Name
@@ -361,6 +367,21 @@ export default function Companies() {
                           onClick={() => handleRowClick(company._id)}
                           className="cursor-pointer transition hover:bg-gray-50 dark:hover:bg-white/[0.02]"
                         >
+                          <TableCell className="px-3 py-4 text-start">
+                            <div className="w-10 h-10 rounded-full overflow-hidden bg-gray-100 flex items-center justify-center">
+                              {company.logoPath ? (
+                                <img
+                                  src={company.logoPath}
+                                  alt={`${company.name} logo`}
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                <span className="text-sm font-semibold text-gray-600">
+                                  {company.name ? company.name.charAt(0).toUpperCase() : "?"}
+                                </span>
+                              )}
+                            </div>
+                          </TableCell>
                           <TableCell className="px-5 py-4 text-start">
                             <div>
                               <span className="block font-medium text-gray-800 text-theme-sm dark:text-white/90">

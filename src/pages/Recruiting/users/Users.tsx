@@ -578,6 +578,8 @@ export default function Users() {
                                   (r) => r._id === userForm.roleId
                                 );
 
+                                // Debug logging
+                              
                                 // Find role permission with access info (if role has detailed permissions structure)
                                 const rolePermission =
                                   selectedRole?.permissions?.find((rp: any) => {

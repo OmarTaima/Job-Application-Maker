@@ -215,6 +215,7 @@ const Applicants = () => {
     const groups: Array<{
       companyId: string;
       companyName: string;
+      companyLogo?: string;
       jobs: Array<{ jobPositionId: string; jobTitle: string; applicants: Applicant[] }>;
     }> = [];
 
@@ -224,7 +225,7 @@ const Applicants = () => {
     // map for quick lookup
     companiesList.forEach((c: any) => {
       const cid = getId(c._id);
-      groups.push({ companyId: cid, companyName: c.name || c.title || "Unnamed Company", jobs: [] });
+      groups.push({ companyId: cid, companyName: c.name || c.title || "Unnamed Company", companyLogo: c.logoPath, jobs: [] });
     });
 
     // For jobs that belong to a company, add them (include jobs even if they have no applicants)
@@ -639,9 +640,16 @@ const Applicants = () => {
                           onClick={() => toggleCompanyExpand(company.companyId)}
                           className="flex w-full items-center justify-between bg-gray-50 px-6 py-4 text-left transition hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700"
                         >
-                          <div>
-                            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{company.companyName}</h3>
-                            <p className="text-sm text-gray-500 dark:text-gray-400">{company.jobs.length} job{company.jobs.length !== 1 ? 's' : ''}</p>
+                          <div className="flex items-center gap-4">
+                            {company.companyLogo ? (
+                              <img src={company.companyLogo} alt={company.companyName} className="h-10 w-10 rounded-md object-cover" />
+                            ) : (
+                              <div className="h-10 w-10 rounded-md bg-gray-100 dark:bg-gray-800" />
+                            )}
+                            <div>
+                              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{company.companyName}</h3>
+                              <p className="text-sm text-gray-500 dark:text-gray-400">{company.jobs.length} job{company.jobs.length !== 1 ? 's' : ''}</p>
+                            </div>
                           </div>
                           <svg
                             className={`h-5 w-5 transition-transform ${expandedCompanies.includes(company.companyId) ? 'rotate-180' : ''}`}

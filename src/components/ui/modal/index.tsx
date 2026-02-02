@@ -53,7 +53,7 @@ export const Modal: React.FC<ModalProps> = ({
 
   const contentClasses = isFullscreen
     ? "w-full h-full"
-    : "relative w-full rounded-3xl bg-white/95 dark:bg-gray-900/95 shadow-2xl";
+    : "relative w-full rounded-3xl bg-white/95 dark:bg-gray-900/95 shadow-2xl flex flex-col";
 
   return (
     <div className="fixed inset-0 flex items-center justify-center overflow-y-auto modal z-99999">
@@ -89,7 +89,7 @@ export const Modal: React.FC<ModalProps> = ({
             </svg>
           </button>
         )}
-        <div>{children}</div>
+        <div className="overflow-y-auto max-h-[85vh] custom-scrollbar p-4">{children}</div>
       </div>
     </div>
   );

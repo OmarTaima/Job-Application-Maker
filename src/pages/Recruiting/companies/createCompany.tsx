@@ -18,6 +18,7 @@ type CompanyForm = {
   phone: string;
   address: string;
   website: string;
+  logoPath?: string;
 };
 
 const defaultCompany: CompanyForm = {
@@ -27,6 +28,7 @@ const defaultCompany: CompanyForm = {
   phone: "",
   address: "",
   website: "",
+  logoPath: "",
 };
 
 export default function RecruitingDashboard() {
@@ -43,6 +45,25 @@ export default function RecruitingDashboard() {
     setCompanyForm((prev) => ({ ...prev, [name]: value }));
   };
 
+  const readFileAsDataUrl = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+  const handleLogoChange = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      setCompanyForm((prev) => ({ ...prev, website: prev.website, logoPath: dataUrl } as any));
+    } catch (err) {
+      console.error("Failed to read logo file", err);
+    }
+  };
+
   const handleCompanySubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -57,6 +78,7 @@ export default function RecruitingDashboard() {
         phone: companyForm.phone,
         address: companyForm.address,
         website: companyForm.website,
+        logoPath: (companyForm as any).logoPath,
       });
 
       await Swal.fire({
@@ -126,6 +148,22 @@ export default function RecruitingDashboard() {
                 onChange={handleCompanyChange}
                 placeholder="https://"
               />
+            </div>
+            <div>
+              <Label htmlFor="logo">Upload logo</Label>
+              <input
+                id="logo"
+                name="logo"
+                type="file"
+                accept="image/*"
+                onChange={handleLogoChange}
+                className="block w-full text-sm text-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-brand-50 file:text-brand-600 file:hover:bg-brand-100 file:hover:text-brand-700 file:transition file:duration-150"
+              />
+              {companyForm.logoPath && (
+                <div className="mt-2">
+                  <img src={companyForm.logoPath} alt="logo" className="h-16 w-auto rounded" />
+                </div>
+              )}
             </div>
             <div>
               <Label htmlFor="contactEmail">Contact email</Label>
