@@ -18,14 +18,11 @@ import {
   useApplicants,
   useJobPositions,
   useUpdateApplicantStatus,
+  useCompanies,
 } from "../../../hooks/queries";
 import type { Applicant } from "../../../store/slices/applicantsSlice";
 
-type JobGroup = {
-  jobPositionId: string;
-  jobTitle: string;
-  applicants: Applicant[];
-};
+// (previous JobGroup type removed — grouping is handled by company/job structure)
 
 // Memoized ApplicantRow component to prevent unnecessary re-renders
 const ApplicantRow = memo(
@@ -120,7 +117,9 @@ const Applicants = () => {
   // Local state
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [expandedJobs, setExpandedJobs] = useState<string[]>([]);
+  const [expandedCompanies, setExpandedCompanies] = useState<string[]>([]);
   const [selectedApplicants, setSelectedApplicants] = useState<string[]>([]);
+  const [selectedCompany, setSelectedCompany] = useState<string>("all");
   const [isDeleting, setIsDeleting] = useState(false);
   const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
   const [bulkAction, setBulkAction] = useState<string>("");
@@ -143,7 +142,7 @@ const Applicants = () => {
     data: applicants = [],
     isLoading: applicantsLoading,
     error,
-  } = useApplicants(companyIds, true /* assignedOnly */, undefined /* jobPositionId */);
+  } = useApplicants(companyIds);
   const { data: jobPositions = [], isLoading: jobPositionsLoading } =
     useJobPositions(companyIds);
   const updateStatusMutation = useUpdateApplicantStatus();
@@ -183,60 +182,92 @@ const Applicants = () => {
     return "An unexpected error occurred";
   };
 
-  // Create job titles map from job positions
-  const jobTitles = useMemo(() => {
-    const titles: Record<string, string> = {};
+  // Fetch all companies for selector and grouping
+  const { data: allCompanies = [], isLoading: allCompaniesLoading } = useCompanies();
+
+  // Build a nested structure: companies -> jobs -> applicants
+  const companyJobApplicantGroups = useMemo(() => {
+    // helper to normalize id
+    const getId = (v: any) => (typeof v === "string" ? v : v?._id);
+
+    // map job id to job info
+    const jobsById: Record<string, any> = {};
     jobPositions.forEach((job) => {
-      titles[job._id] = typeof job.title === "string" ? job.title : job.title?.en || "Untitled";
+      const jid = getId(job._id);
+      const cid = getId(job.companyId) || "unknown";
+      jobsById[jid] = {
+        jobPositionId: jid,
+        jobTitle: typeof job.title === "string" ? job.title : job.title?.en || "Untitled",
+        companyId: cid,
+        applicants: [] as Applicant[],
+      };
     });
-    return titles;
-  }, [jobPositions]);
-  // Exclude applicants that don't belong to any job position (no jobPositionId)
-  const validApplicants = useMemo(() => {
-    return applicants.filter((app: Applicant) => {
-      const appJobId =
-        typeof app.jobPositionId === "string"
-          ? app.jobPositionId
-          : (app.jobPositionId as any)?._id;
-      return !!appJobId;
+
+    // assign applicants to their job entry
+    applicants.forEach((app: Applicant) => {
+      const appJobId = getId(app.jobPositionId);
+      if (!appJobId) return;
+      if (!jobsById[appJobId]) return;
+      jobsById[appJobId].applicants.push(app);
     });
-  }, [applicants]);
-  // Group applicants by job (memoized for performance)
-  const groupedApplicants: JobGroup[] = useMemo(() => {
-    return Object.keys(jobTitles).map((jobId) => ({
-      jobPositionId: jobId,
-      jobTitle: jobTitles[jobId],
-      applicants: validApplicants.filter((app: Applicant) => {
-        const appJobId =
-          typeof app.jobPositionId === "string"
-            ? app.jobPositionId
-            : (app.jobPositionId as any)?._id;
-        return appJobId === jobId;
-      }),
-    }));
-  }, [validApplicants, jobTitles]);
 
-  // Filter applicants by status (memoized for performance)
-  const filteredGroups = useMemo(() => {
-    const mapped = groupedApplicants.map((group) => ({
-      ...group,
-      applicants:
-        statusFilter === "all"
-          ? group.applicants.filter((app) => app.status !== "trashed")
-          : group.applicants.filter((app) => app.status === statusFilter),
-    }));
+    // group jobs under companies
+    const groups: Array<{
+      companyId: string;
+      companyName: string;
+      jobs: Array<{ jobPositionId: string; jobTitle: string; applicants: Applicant[] }>;
+    }> = [];
 
-    // While applicants are loading, keep all job groups visible (show skeletons)
-    if (applicantsLoading) return mapped;
+    // start from all companies list (so we show companies even with no applicants)
+    const companiesList = allCompanies && allCompanies.length ? allCompanies : [];
 
-    return mapped.filter((group) => group.applicants.length > 0);
-  }, [groupedApplicants, statusFilter]);
+    // map for quick lookup
+    companiesList.forEach((c: any) => {
+      const cid = getId(c._id);
+      groups.push({ companyId: cid, companyName: c.name || c.title || "Unnamed Company", jobs: [] });
+    });
+
+    // For jobs that belong to a company, add them (include jobs even if they have no applicants)
+    Object.values(jobsById).forEach((job: any) => {
+      const cid = job.companyId || "unknown";
+      const companyGroup = groups.find((g) => g.companyId === cid);
+      if (companyGroup) {
+        // filter applicants by status
+        const apps = job.applicants.filter((app: Applicant) => {
+          if (statusFilter === "all") return app.status !== "trashed";
+          return app.status === statusFilter;
+        });
+        // only include jobs that have applicants after filtering
+        if (apps.length > 0) {
+          companyGroup.jobs.push({ jobPositionId: job.jobPositionId, jobTitle: job.jobTitle, applicants: apps });
+        }
+      }
+    });
+
+    // Keep companies that have at least one job (even if that job has no applicants)
+    return groups.filter((g) => g.jobs.length > 0);
+  }, [allCompanies, jobPositions, applicants, statusFilter]);
+
+  // Companies visible after applying selectedCompany filter
+  const visibleCompanies = useMemo(() => {
+    return selectedCompany === "all"
+      ? companyJobApplicantGroups
+      : companyJobApplicantGroups.filter((g) => g.companyId === selectedCompany);
+  }, [companyJobApplicantGroups, selectedCompany]);
 
   const toggleJobExpand = useCallback((jobId: string) => {
     setExpandedJobs((prev) =>
       prev.includes(jobId)
         ? prev.filter((id) => id !== jobId)
         : [...prev, jobId]
+    );
+  }, []);
+
+  const toggleCompanyExpand = useCallback((companyId: string) => {
+    setExpandedCompanies((prev) =>
+      prev.includes(companyId)
+        ? prev.filter((id) => id !== companyId)
+        : [...prev, companyId]
     );
   }, []);
 
@@ -582,163 +613,128 @@ const Applicants = () => {
                     </button>
                   </div>
 
-                  {/* Grouped Applicants by Job */}
-                  <div className="space-y-4">
-                    {filteredGroups.map((group) => (
-                      <div
-                        key={group.jobPositionId}
-                        className="rounded-lg border border-stroke dark:border-strokedark"
+                  {/* Companies -> Jobs -> Applicants */}
+                  <div className="mb-4 flex items-center justify-between">
+                    <div />
+                    <div className="flex items-center gap-3">
+                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Company:</label>
+                      <select
+                        value={selectedCompany}
+                        onChange={(e) => setSelectedCompany(e.target.value)}
+                        disabled={allCompaniesLoading}
+                        className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500"
                       >
-                        {/* Job Title Header - Clickable */}
+                        <option value="all">All Companies</option>
+                        {allCompanies && allCompanies.map((c: any) => (
+                          <option key={c._id} value={typeof c._id === 'string' ? c._id : c._id._id}>{c.name || c.title || c._id}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    {visibleCompanies.map((company) => (
+                      <div key={company.companyId} className="rounded-lg border border-stroke dark:border-strokedark">
                         <button
-                          onClick={() => toggleJobExpand(group.jobPositionId)}
+                          onClick={() => toggleCompanyExpand(company.companyId)}
                           className="flex w-full items-center justify-between bg-gray-50 px-6 py-4 text-left transition hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700"
                         >
                           <div>
-                            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                              {group.jobTitle}
-                            </h3>
-                            <p className="text-sm text-gray-500 dark:text-gray-400">
-                              {group.applicants.length} applicant
-                              {group.applicants.length !== 1 ? "s" : ""}
-                            </p>
+                            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{company.companyName}</h3>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">{company.jobs.length} job{company.jobs.length !== 1 ? 's' : ''}</p>
                           </div>
                           <svg
-                            className={`h-5 w-5 transition-transform ${
-                              expandedJobs.includes(group.jobPositionId)
-                                ? "rotate-180"
-                                : ""
-                            }`}
+                            className={`h-5 w-5 transition-transform ${expandedCompanies.includes(company.companyId) ? 'rotate-180' : ''}`}
                             fill="none"
                             stroke="currentColor"
                             viewBox="0 0 24 24"
                           >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M19 9l-7 7-7-7"
-                            />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                           </svg>
                         </button>
 
-                        {/* Applicants Table - Expandable */}
-                        {expandedJobs.includes(group.jobPositionId) && (
-                          <div className="overflow-x-auto">
-                            <Table>
-                              <TableHeader className="bg-gray-50 dark:bg-gray-800">
-                                <TableRow>
-                                  <TableCell
-                                    isHeader
-                                    className="px-4 py-3 align-middle text-left font-semibold w-12"
-                                  >
-                                    <input
-                                      type="checkbox"
-                                      checked={group.applicants.every((app) =>
-                                        selectedApplicants.includes(app._id)
-                                      )}
-                                      onChange={() =>
-                                        handleSelectAll(group.applicants)
-                                      }
-                                      className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500 dark:border-gray-600 dark:bg-gray-700"
-                                    />
-                                  </TableCell>
-                                  <TableCell
-                                    isHeader
-                                    className="px-4 py-3 align-middle text-left font-semibold"
-                                  >
-                                    Photo
-                                  </TableCell>
-                                  <TableCell
-                                    isHeader
-                                    className="px-4 py-3 align-middle text-left font-semibold"
-                                  >
-                                    Name
-                                  </TableCell>
-                                  <TableCell
-                                    isHeader
-                                    className="px-4 py-3 align-middle text-left font-semibold"
-                                  >
-                                    Email
-                                  </TableCell>
-                                  <TableCell
-                                    isHeader
-                                    className="px-4 py-3 align-middle text-left font-semibold"
-                                  >
-                                    Phone
-                                  </TableCell>
-                                  <TableCell
-                                    isHeader
-                                    className="px-4 py-3 align-middle text-left font-semibold"
-                                  >
-                                    Status
-                                  </TableCell>
-                                  <TableCell
-                                    isHeader
-                                    className="px-4 py-3 align-middle text-left font-semibold"
-                                  >
-                                    Submitted
-                                  </TableCell>
-                                </TableRow>
-                              </TableHeader>
-                              <TableBody>
-                                {applicantsLoading ? (
-                                  // Render 3 skeleton rows while applicants are loading
-                                  Array.from({ length: 3 }).map((_, i) => (
-                                    <TableRow
-                                      key={`skeleton-${group.jobPositionId}-${i}`}
-                                      className="animate-pulse"
-                                    >
-                                      <TableCell className="px-4 py-3 align-middle">
-                                        <div className="h-4 w-4 rounded bg-gray-200 dark:bg-gray-700" />
-                                      </TableCell>
-                                      <TableCell className="px-4 py-3 align-middle">
-                                        <div className="h-10 w-10 rounded-full bg-gray-200 dark:bg-gray-700" />
-                                      </TableCell>
-                                      <TableCell className="px-4 py-3 align-middle font-medium">
-                                        <div className="h-4 w-32 rounded bg-gray-200 dark:bg-gray-700" />
-                                      </TableCell>
-                                      <TableCell className="px-4 py-3 align-middle">
-                                        <div className="h-4 w-40 rounded bg-gray-200 dark:bg-gray-700" />
-                                      </TableCell>
-                                      <TableCell className="px-4 py-3 align-middle">
-                                        <div className="h-4 w-32 rounded bg-gray-200 dark:bg-gray-700" />
-                                      </TableCell>
-                                      <TableCell className="px-4 py-3 align-middle">
-                                        <div className="h-4 w-20 rounded bg-gray-200 dark:bg-gray-700" />
-                                      </TableCell>
-                                      <TableCell className="px-4 py-3 align-middle text-sm text-gray-600 dark:text-gray-400">
-                                        <div className="h-4 w-24 rounded bg-gray-200 dark:bg-gray-700" />
-                                      </TableCell>
-                                    </TableRow>
-                                  ))
-                                ) : (
-                                  group.applicants.map((applicant) => (
-                                    <ApplicantRow
-                                      key={applicant._id}
-                                      applicant={applicant}
-                                      isSelected={selectedApplicants.includes(
-                                        applicant._id
-                                      )}
-                                      onSelect={handleSelectApplicant}
-                                      onNavigate={handleNavigate}
-                                      onPhotoPreview={handlePhotoPreview}
-                                      getStatusColor={getStatusColor}
-                                      formatDate={formatDate}
-                                    />
-                                  ))
+                        {expandedCompanies.includes(company.companyId) && (
+                          <div className="space-y-4 p-4">
+                            {company.jobs.map((job) => (
+                              <div key={job.jobPositionId} className="rounded-lg border border-dashed border-stroke dark:border-strokedark">
+                                <button
+                                  onClick={() => toggleJobExpand(job.jobPositionId)}
+                                  className="flex w-full items-center justify-between bg-gray-50 px-6 py-3 text-left transition hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700"
+                                >
+                                  <div>
+                                    <h4 className="text-md font-medium text-gray-900 dark:text-white">{job.jobTitle}</h4>
+                                    <p className="text-sm text-gray-500 dark:text-gray-400">{job.applicants.length} applicant{job.applicants.length !== 1 ? 's' : ''}</p>
+                                  </div>
+                                  <svg className={`h-5 w-5 transition-transform ${expandedJobs.includes(job.jobPositionId) ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                  </svg>
+                                </button>
+
+                                {expandedJobs.includes(job.jobPositionId) && (
+                                  <div className="overflow-x-auto">
+                                    <Table>
+                                      <TableHeader className="bg-gray-50 dark:bg-gray-800">
+                                        <TableRow>
+                                          <TableCell isHeader className="px-4 py-3 align-middle text-left font-semibold w-12">
+                                            <input
+                                              type="checkbox"
+                                              checked={job.applicants.every((app) => selectedApplicants.includes(app._id))}
+                                              onChange={() => handleSelectAll(job.applicants)}
+                                              className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500 dark:border-gray-600 dark:bg-gray-700"
+                                            />
+                                          </TableCell>
+                                          <TableCell isHeader className="px-4 py-3 align-middle text-left font-semibold">Photo</TableCell>
+                                          <TableCell isHeader className="px-4 py-3 align-middle text-left font-semibold">Name</TableCell>
+                                          <TableCell isHeader className="px-4 py-3 align-middle text-left font-semibold">Email</TableCell>
+                                          <TableCell isHeader className="px-4 py-3 align-middle text-left font-semibold">Phone</TableCell>
+                                          <TableCell isHeader className="px-4 py-3 align-middle text-left font-semibold">Status</TableCell>
+                                          <TableCell isHeader className="px-4 py-3 align-middle text-left font-semibold">Submitted</TableCell>
+                                        </TableRow>
+                                      </TableHeader>
+                                      <TableBody>
+                                        {applicantsLoading ? (
+                                          Array.from({ length: 3 }).map((_, i) => (
+                                            <TableRow key={`skeleton-${job.jobPositionId}-${i}`} className="animate-pulse">
+                                              <TableCell className="px-4 py-3 align-middle"><div className="h-4 w-4 rounded bg-gray-200 dark:bg-gray-700" /></TableCell>
+                                              <TableCell className="px-4 py-3 align-middle"><div className="h-10 w-10 rounded-full bg-gray-200 dark:bg-gray-700" /></TableCell>
+                                              <TableCell className="px-4 py-3 align-middle font-medium"><div className="h-4 w-32 rounded bg-gray-200 dark:bg-gray-700" /></TableCell>
+                                              <TableCell className="px-4 py-3 align-middle"><div className="h-4 w-40 rounded bg-gray-200 dark:bg-gray-700" /></TableCell>
+                                              <TableCell className="px-4 py-3 align-middle"><div className="h-4 w-32 rounded bg-gray-200 dark:bg-gray-700" /></TableCell>
+                                              <TableCell className="px-4 py-3 align-middle"><div className="h-4 w-20 rounded bg-gray-200 dark:bg-gray-700" /></TableCell>
+                                              <TableCell className="px-4 py-3 align-middle text-sm text-gray-600 dark:text-gray-400"><div className="h-4 w-24 rounded bg-gray-200 dark:bg-gray-700" /></TableCell>
+                                            </TableRow>
+                                          ))
+                                        ) : (
+                                          job.applicants.map((applicant) => (
+                                            <ApplicantRow
+                                              key={applicant._id}
+                                              applicant={applicant}
+                                              isSelected={selectedApplicants.includes(applicant._id)}
+                                              onSelect={handleSelectApplicant}
+                                              onNavigate={handleNavigate}
+                                              onPhotoPreview={handlePhotoPreview}
+                                              getStatusColor={getStatusColor}
+                                              formatDate={formatDate}
+                                            />
+                                          ))
+                                        )}
+                                      </TableBody>
+                                    </Table>
+                                  </div>
                                 )}
-                              </TableBody>
-                            </Table>
+                              </div>
+                            ))}
                           </div>
                         )}
                       </div>
                     ))}
 
-                    {filteredGroups.length === 0 && (
+                    {visibleCompanies.length === 0 && (
                       <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-6 py-12 text-center dark:border-gray-700 dark:bg-gray-800/30">
                         <p className="text-gray-500 dark:text-gray-400">
-                          No applicants found for the selected status.
+                          {selectedCompany === "all"
+                            ? "No applicants found for the selected status/company."
+                            : "No jobs with applicants for the selected company."}
                         </p>
                       </div>
                     )}

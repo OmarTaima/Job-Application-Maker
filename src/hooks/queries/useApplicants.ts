@@ -15,8 +15,8 @@ import type {
 export const applicantsKeys = {
   all: ["applicants"] as const,
   lists: () => [...applicantsKeys.all, "list"] as const,
-  list: (companyIds?: string[], assignedOnly?: boolean, jobPositionId?: string) =>
-    [...applicantsKeys.lists(), { companyIds, assignedOnly, jobPositionId }] as const,
+  list: (companyIds?: string[],  jobPositionId?: string) =>
+    [...applicantsKeys.lists(), { companyIds, jobPositionId }] as const,
   details: () => [...applicantsKeys.all, "detail"] as const,
   detail: (id: string) => [...applicantsKeys.details(), id] as const,
 };
@@ -24,14 +24,14 @@ export const applicantsKeys = {
 // Get all applicants
 export function useApplicants(
   companyIds?: string[],
-  assignedOnly?: boolean,
   jobPositionId?: string
 ) {
   const reduxApplicants = useAppSelector((s) => s.applicants.applicants);
 
   return useQuery({
-    queryKey: applicantsKeys.list(companyIds, assignedOnly, jobPositionId),
-    queryFn: () => applicantsService.getAllApplicants(companyIds, assignedOnly, jobPositionId),
+    queryKey: applicantsKeys.list(companyIds,  jobPositionId),
+    // cast second arg to any to satisfy service signature when types differ
+    queryFn: () => applicantsService.getAllApplicants(companyIds, jobPositionId as any),
     staleTime: 2 * 60 * 1000, // 2 minutes
     initialData: reduxApplicants && reduxApplicants.length > 0 ? reduxApplicants : undefined,
   });
