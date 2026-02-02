@@ -10,7 +10,6 @@ export default function UserAddressCard() {
   const { user } = useAuth();
   const handleSave = () => {
     // Handle save logic here
-    console.log("Saving changes...");
     closeModal();
   };
   return (

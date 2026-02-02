@@ -153,7 +153,6 @@ const ApplicantData = () => {
   const jobTitle = getJobTitle();
   const companyName = getCompanyName();
   const departmentName = getDepartmentName();
-  console.log('jobPosId', jobTitle);
 
   // Modal states
   const [showInterviewModal, setShowInterviewModal] = useState(false);

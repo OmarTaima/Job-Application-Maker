@@ -116,14 +116,11 @@ export default function Permissions() {
   };
 
   const handlePermissionToggle = (permId: string) => {
-    console.log("Toggling permission:", permId);
 
     setSelectedPermissions((prev) => {
-      console.log("Current selected:", prev);
 
       if (prev.includes(permId)) {
         // Remove permission and its access
-        console.log("Removing permission:", permId);
         const newPerms = prev.filter((id) => id !== permId);
         setPermissionAccess((prevAccess) => {
           const newAccess = { ...prevAccess };
@@ -133,7 +130,6 @@ export default function Permissions() {
         return newPerms;
       } else {
         // Add permission with default access (all available actions)
-        console.log("Adding permission:", permId);
         const permission = permissions.find((p) => p._id === permId);
         const defaultActions = permission?.actions || [
           "read",
@@ -174,11 +170,9 @@ export default function Permissions() {
      
     };
 
-    console.log("Role Creation Payload:", JSON.stringify(payload, null, 2));
 
     try {
       await createRoleMutation.mutateAsync(payload as CreateRoleRequest);
-      console.log("Role created successfully");
 
       await Swal.fire({
         title: "Success!",

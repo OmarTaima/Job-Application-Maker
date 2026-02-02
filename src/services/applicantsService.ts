@@ -175,7 +175,6 @@ class ApplicantsService {
    */
   async getAllApplicants(
     companyIds?: string[],
-    assignedOnly?: boolean,
     jobPositionId?: string
   ): Promise<Applicant[]> {
     try {
@@ -187,9 +186,7 @@ class ApplicantsService {
           params.companyIds = companyIds.join(",");
         }
       }
-      if (assignedOnly) {
-        params.assignedOnly = true;
-      }
+     
       if (jobPositionId) {
         params.jobPositionId = jobPositionId;
       }

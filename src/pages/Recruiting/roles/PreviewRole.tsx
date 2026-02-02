@@ -156,7 +156,6 @@ export default function PreviewRole() {
         permissions: permissionsWithAccess,
       };
 
-      console.log("Updating role with payload:", payload);
 
       await updateRoleMutation.mutateAsync({
         id: id!,

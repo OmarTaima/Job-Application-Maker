@@ -26,13 +26,10 @@ export interface Role {
 
 export interface CreateRoleRequest {
   name: string;
-  description: string;
   permissions: {
     permission: string;
     access: string[];
   }[];
-  isSystemRole?: boolean;
-  singleCompany?: boolean;
 }
 
 export interface UpdateRoleRequest {
