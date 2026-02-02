@@ -42,7 +42,7 @@ export default function Jobs() {
   const { isAdmin, companyIds } = useMemo(() => {
     if (!user) return { isAdmin: false, companyIds: undefined };
 
-    const isAdmin = user?.roleId?.name?.toLowerCase().includes("admin");
+    const isAdmin = user?.roleId?.name?.toLowerCase().includes("super admin");
     const userCompanyIds = user?.companies?.map((c) =>
       typeof c.companyId === "string" ? c.companyId : c.companyId._id
     );
@@ -269,7 +269,7 @@ export default function Jobs() {
     // Navigate to edit job page - TODO: implement edit page
     navigate(`/create-job?id=${job._id}`);
   };
-
+  console.log(jobPositions)
   return (
     <div className="space-y-6">
       <PageMeta

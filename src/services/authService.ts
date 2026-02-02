@@ -152,17 +152,12 @@ export const authService = {
       body: JSON.stringify(credentials),
     });
 
-    console.log("Login response:", response);
-    console.log("Response data:", response.data);
-    console.log("Full response structure:", JSON.stringify(response, null, 2));
-
     // Store tokens - handle different response structures
     const accessToken = response.data?.accessToken || response.accessToken;
     const refreshToken = response.data?.refreshToken || response.refreshToken;
 
     if (accessToken && refreshToken) {
       tokenStorage.setTokens(accessToken, refreshToken);
-      console.log("Tokens stored successfully");
     } else {
       console.error("No tokens in response:", response);
     }
@@ -199,7 +194,6 @@ export const authService = {
       headers: getAuthHeaders(),
     });
 
-    console.log("API response for getCurrentUser:", response.data);
     return response.data;
   },
 
