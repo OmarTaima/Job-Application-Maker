@@ -65,10 +65,19 @@ export class ApiError extends Error {
 
 // Companies API service
 export const companiesService = {
-  // Get all companies
-  async getAllCompanies(): Promise<Company[]> {
+  // Get all companies, optionally filtered by companyIds (server expects either companyId or companyIds query)
+  async getAllCompanies(companyIds?: string[]): Promise<Company[]> {
     try {
-      const response = await axios.get<CompaniesResponse>("/companies");
+      const params: any = {};
+      if (companyIds && companyIds.length > 0) {
+        if (companyIds.length === 1) {
+          params.companyId = companyIds[0];
+        } else {
+          params.companyIds = companyIds.join(",");
+        }
+      }
+
+      const response = await axios.get<CompaniesResponse>("/companies", { params });
       return response.data.data;
     } catch (error: any) {
       throw new ApiError(

@@ -168,10 +168,11 @@ class JobPositionsService {
       const payload: any = {
         title: data.title,
         description: data.description ?? { en: "", ar: "" },
-        departmentId: data.departmentId,
+        departmentId: data.departmentId || "",
       };
 
-      // Do not allow changing companyId via update payload — backend rejects companyId for updates.
+      // Include companyId for create operation
+      if (data.companyId) payload.companyId = data.companyId;
 
       if (data.jobCode) payload.jobCode = data.jobCode;
       if (data.requirements && data.requirements.length > 0)

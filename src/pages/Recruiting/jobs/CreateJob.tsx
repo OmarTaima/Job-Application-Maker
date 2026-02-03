@@ -18,6 +18,7 @@ import {
   useDepartments,
 } from "../../../hooks/queries";
 import { useRecommendedFields } from "../../../hooks/queries/useRecommendedFields";
+import { useCreateJobPosition, useUpdateJobPosition } from "../../../hooks/queries/useJobPositions";
 
 type JobSpec = {
   spec: string;
@@ -146,6 +147,17 @@ export default function CreateJob() {
   const hasMultipleCompanies = userCompaniesCount > 1;
   const shouldShowCompanyField = isAdmin || hasMultipleCompanies;
 
+  // Determine companyIds to pass to company queries (undefined for super admin -> fetch all)
+  const companyIds = useMemo(() => {
+    if (!user) return undefined;
+    const roleName = (user as any)?.roleId?.name || String(user.role || "");
+    const normalized = String(roleName).toLowerCase();
+    const isSuperAdmin = normalized === "super admin" || normalized === "superadmin" || normalized === "super_admin";
+    if (isSuperAdmin) return undefined;
+    const ids = user.companies?.map((c: any) => (typeof c.companyId === "string" ? c.companyId : c.companyId?._id));
+    return ids && ids.length ? ids : undefined;
+  }, [user?.companies, user?.roleId?.name, user?.role]);
+
   const [jobForm, setJobForm] = useState<JobForm>({
     companyId: "",
     departmentId: "",
@@ -184,7 +196,9 @@ export default function CreateJob() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Use React Query hooks for data fetching
-  const { data: allCompanies = [], isLoading: companiesLoading } = useCompanies();
+  const { data: allCompanies = [], isLoading: companiesLoading } = useCompanies(companyIds as any);
+  const createJobMutation = useCreateJobPosition();
+  const updateJobMutation = useUpdateJobPosition();
   
   // Fetch all departments if admin or has multiple companies, otherwise fetch for specific company
   const shouldFetchAllDepartments = isAdmin || hasMultipleCompanies;
@@ -412,16 +426,17 @@ export default function CreateJob() {
     loadJobData();
   }, [editJobId, companies]);
 
-  // Auto-select company for non-admin users
+  // Auto-select company for users with single company
   useEffect(() => {
     if (
       user &&
       !isAdmin &&
+      !hasMultipleCompanies &&
       companies.length > 0 &&
       !companyAutoSet.current &&
       !editJobId
     ) {
-      // Extract the first company ID from user.companies array
+      // Extract the first (and only) company ID from user.companies array
       const firstCompany = (user as any)?.companies?.[0];
       const userCompanyId =
         typeof firstCompany?.companyId === "string"
@@ -433,7 +448,28 @@ export default function CreateJob() {
         companyAutoSet.current = true;
       }
     }
-  }, [user, isAdmin, companies, editJobId]);
+  }, [user, isAdmin, hasMultipleCompanies, companies, editJobId]);
+
+  // Auto-generate job code when company changes (only for new jobs, not edits)
+  useEffect(() => {
+    if (!isEditMode && jobForm.companyId && allCompanies.length > 0) {
+      // Find the selected company
+      const selectedCompany = allCompanies.find((c) => c._id === jobForm.companyId);
+      if (selectedCompany) {
+        // Generate job code: CompanyAbbreviation-Timestamp
+        const companyName = selectedCompany.name || "COMP";
+        const companyAbbr = companyName
+          .split(/\s+/)
+          .map((word) => word.charAt(0).toUpperCase())
+          .join("")
+          .slice(0, 4);
+        const timestamp = Date.now().toString().slice(-6);
+        const autoJobCode = `${companyAbbr}-${timestamp}`;
+        
+        setJobForm((prev) => ({ ...prev, jobCode: autoJobCode }));
+      }
+    }
+  }, [jobForm.companyId, allCompanies, isEditMode]);
 
   const handleInputChange = (field: keyof JobForm, value: any) => {
     setJobForm((prev) => ({ ...prev, [field]: value }));
@@ -742,13 +778,31 @@ export default function CreateJob() {
     setIsSubmitting(true);
 
     try {
+      // Validate required fields
+      if (!jobForm.companyId) {
+        const errorMsg = "Please select a company before submitting.";
+        setFormError(errorMsg);
+        setJobStatus(`Error: ${errorMsg}`);
+        setIsSubmitting(false);
+        await Swal.fire({
+          title: "Validation Error",
+          text: errorMsg,
+          icon: "error",
+          confirmButtonText: "OK",
+        });
+        return;
+      }
+
       const salaryValue = Number(jobForm.salary);
 
       const payload: any = {};
-      if (!isEditMode && shouldShowCompanyField && jobForm.companyId) payload.companyId = jobForm.companyId;
+      // Always include companyId in the payload
+      payload.companyId = jobForm.companyId;
+      if (jobForm.jobCode) payload.jobCode = jobForm.jobCode;
       payload.title = jobForm.bilingual ? { en: jobForm.title || "", ar: jobForm.titleAr || "" } : { en: jobForm.title || "", ar: "" };
       payload.description = jobForm.bilingual ? { en: jobForm.description || "", ar: jobForm.descriptionAr || "" } : { en: jobForm.description || "", ar: "" };
-      payload.departmentId = jobForm.departmentId;
+      // Send departmentId as empty string if not selected
+      payload.departmentId = jobForm.departmentId || "";
       payload.termsAndConditions = jobForm.termsAndConditions
         .filter((term, idx) => term.trim() || (jobForm.bilingual && jobForm.termsAndConditionsAr[idx]?.trim()))
         .map((t, idx) => ({ en: t, ar: jobForm.bilingual ? (jobForm.termsAndConditionsAr[idx] || t) : "" }));
@@ -795,37 +849,38 @@ export default function CreateJob() {
 
       if (isEditMode && editJobId) {
         // Update existing job
-        await jobPositionsService.updateJobPosition(editJobId, payload);
+        await updateJobMutation.mutateAsync({ id: editJobId, data: payload });
         setJobStatus("Job updated successfully");
       } else {
-        // Create new job
-        await jobPositionsService.createJobPosition(payload);
+        // Create new job with optimistic update
+        await createJobMutation.mutateAsync(payload);
         setJobStatus("Job created successfully");
       }
 
-      await Swal.fire({
+      // Show toast notification
+      Swal.fire({
         title: "Success!",
         text: isEditMode
           ? "Job updated successfully."
           : "Job created successfully.",
         icon: "success",
-        position: "center",
-        timer: 2000,
+        position: "top-end",
+        timer: 1500,
         showConfirmButton: false,
+        toast: true,
         customClass: {
           container: "!mt-16",
         },
       });
 
-      setTimeout(() => {
-        setJobStatus("");
-        navigate("/jobs");
-      }, 1500);
+      // Navigate immediately
+      navigate("/jobs");
     } catch (err) {
       const errorMsg = getErrorMessage(err);
       setFormError(errorMsg);
       setJobStatus(`Error: ${errorMsg}`);
       console.error(`Error ${isEditMode ? "updating" : "creating"} job:`, err);
+    } finally {
       setIsSubmitting(false);
     }
   };
@@ -937,7 +992,7 @@ export default function CreateJob() {
                         ? "Select company first"
                         : departments.length === 0
                         ? "No departments available"
-                        : "Select department"
+                        : "Select department "
                     }
                     onChange={(value) => {
                       if (!departmentSelectDisabled) handleInputChange("departmentId", value);
@@ -971,9 +1026,11 @@ export default function CreateJob() {
                     onChange={(e) =>
                       handleInputChange("jobCode", e.target.value)
                     }
-                    placeholder="DEV-FE-001"
-                    required
+                    placeholder="Auto-generated"
                   />
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Auto-generated based on company. You can edit it if needed.
+                  </p>
                 </div>
               </div>
 
@@ -1957,6 +2014,7 @@ export default function CreateJob() {
             </div>
           </ComponentCard>
 
+         
           {/* Submit and Preview */}
           <ComponentCard title="Review & Submit">
             <div className="space-y-4">

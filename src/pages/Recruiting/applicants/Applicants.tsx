@@ -129,12 +129,36 @@ const Applicants = () => {
   const companyIds = useMemo(() => {
     if (!user) return undefined;
 
-    const isAdmin = user?.roleId?.name?.toLowerCase().includes("admin");
+    const roleName = user?.roleId?.name?.toLowerCase();
+    const isSuperAdmin = roleName === "super admin";
     const userCompanyIds = user?.companies?.map((c) =>
       typeof c.companyId === "string" ? c.companyId : c.companyId._id
     );
 
-    return !isAdmin && userCompanyIds?.length ? userCompanyIds : undefined;
+    // Super Admin gets all companies (undefined means no filter)
+    if (isSuperAdmin) return undefined;
+    
+    // Regular users get their assigned companies only
+    return userCompanyIds?.length ? userCompanyIds : undefined;
+  }, [user?._id, user?.roleId?.name, user?.companies]);
+
+  // Check if user should see company filter
+  const shouldShowCompanyFilter = useMemo(() => {
+    if (!user) return false;
+    
+    const roleName = ((user as any)?.roleId?.name || "").toLowerCase();
+    const isSuperAdmin = roleName === "super admin" || roleName === "superadmin" || roleName === "super_admin";
+    const userCompanyIds = user?.companies?.map((c) =>
+      typeof c.companyId === "string" ? c.companyId : c.companyId._id
+    ) || [];
+    
+    // Show filter if Super Admin (can see all companies)
+    if (isSuperAdmin) return true;
+    
+    // Show filter only if user is assigned to multiple companies
+    if (userCompanyIds.length <= 1) return false;
+    
+    return true;
   }, [user?._id, user?.roleId?.name, user?.companies]);
 
   // Use React Query hooks — request only applicants that are assigned to a job position
@@ -182,8 +206,20 @@ const Applicants = () => {
     return "An unexpected error occurred";
   };
 
-  // Fetch all companies for selector and grouping
-  const { data: allCompanies = [], isLoading: allCompaniesLoading } = useCompanies();
+  // Fetch companies for selector and grouping — send companyIds query for non-super-admin users
+  const { data: allCompaniesRaw = [], isLoading: allCompaniesLoading } = useCompanies(companyIds as any);
+
+  // Filter companies on the frontend (in case backend doesn't support filtering)
+  const allCompanies = useMemo(() => {
+    if (!companyIds || companyIds.length === 0) {
+      // Super Admin - show all companies
+      return allCompaniesRaw;
+    }
+    // Regular users - filter to only their assigned companies
+    return allCompaniesRaw.filter((company: any) => 
+      companyIds.includes(company._id)
+    );
+  }, [allCompaniesRaw, companyIds]);
 
   // Build a nested structure: companies -> jobs -> applicants
   const companyJobApplicantGroups = useMemo(() => {
@@ -615,23 +651,25 @@ const Applicants = () => {
                   </div>
 
                   {/* Companies -> Jobs -> Applicants */}
-                  <div className="mb-4 flex items-center justify-between">
-                    <div />
-                    <div className="flex items-center gap-3">
-                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Company:</label>
-                      <select
-                        value={selectedCompany}
-                        onChange={(e) => setSelectedCompany(e.target.value)}
-                        disabled={allCompaniesLoading}
-                        className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500"
-                      >
-                        <option value="all">All Companies</option>
-                        {allCompanies && allCompanies.map((c: any) => (
-                          <option key={c._id} value={typeof c._id === 'string' ? c._id : c._id._id}>{c.name || c.title || c._id}</option>
-                        ))}
-                      </select>
+                  {shouldShowCompanyFilter && (
+                    <div className="mb-4 flex items-center justify-between">
+                      <div />
+                      <div className="flex items-center gap-3">
+                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Company:</label>
+                        <select
+                          value={selectedCompany}
+                          onChange={(e) => setSelectedCompany(e.target.value)}
+                          disabled={allCompaniesLoading}
+                          className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500"
+                        >
+                          <option value="all">All Companies</option>
+                          {allCompanies && allCompanies.map((c: any) => (
+                            <option key={c._id} value={typeof c._id === 'string' ? c._id : c._id._id}>{c.name || c.title || c._id}</option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   <div className="space-y-4">
                     {visibleCompanies.map((company) => (

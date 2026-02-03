@@ -10,16 +10,16 @@ import type { Applicant } from "../../store/slices/applicantsSlice";
 export const companiesKeys = {
   all: ["companies"] as const,
   lists: () => [...companiesKeys.all, "list"] as const,
-  list: () => [...companiesKeys.lists()] as const,
+  list: (companyIds?: string[]) => [...companiesKeys.lists(), { companyIds }] as const,
   details: () => [...companiesKeys.all, "detail"] as const,
   detail: (id: string) => [...companiesKeys.details(), id] as const,
 };
 
-// Get all companies
-export function useCompanies() {
+// Get all companies (optionally filtered by company IDs)
+export function useCompanies(companyIds?: string[]) {
   return useQuery({
-    queryKey: companiesKeys.list(),
-    queryFn: () => companiesService.getAllCompanies(),
+    queryKey: companiesKeys.list(companyIds),
+    queryFn: () => companiesService.getAllCompanies(companyIds),
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 }
