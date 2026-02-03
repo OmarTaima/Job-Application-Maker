@@ -1,7 +1,7 @@
 import type { ChangeEvent, FormEvent } from "react";
 import { useState, useEffect } from "react";
 import Swal from "sweetalert2";
-import { useParams, useNavigate } from "react-router";
+import { useParams, useNavigate, useLocation } from "react-router";
 import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
 import PageMeta from "../../../components/common/PageMeta";
 import ComponentCard from "../../../components/common/ComponentCard";
@@ -45,6 +45,8 @@ type UserForm = {
 export default function EditUser() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  const userFromState = location.state?.user; // Get user data from navigation state
 
   // Fetch data
   const { data: users = [], isLoading: usersLoading } = useUsers();
@@ -73,8 +75,8 @@ export default function EditUser() {
   const [formError, setFormError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
-  // Find the current user
-  const user = users.find((u) => u._id === id);
+  // Find the current user - use state data if available, otherwise find in fetched users
+  const user = userFromState || users.find((u) => u._id === id);
 
   // Populate form when user data loads
   useEffect(() => {

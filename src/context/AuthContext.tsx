@@ -33,20 +33,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Load user on mount if token exists
+  // Disable auto-login on mount - always require manual login
   useEffect(() => {
     const loadUser = async () => {
-      const token = tokenStorage.getAccessToken();
-      if (token) {
-        try {
-          const currentUser = await authService.getCurrentUser();
-          setUser(currentUser);
-        } catch (err) {
-          console.error("Failed to load user:", err);
-          // Token might be invalid, clear it
-          tokenStorage.clearTokens();
-        }
-      }
+      // Clear any existing tokens to force login
+      tokenStorage.clearTokens();
       setIsLoading(false);
     };
 

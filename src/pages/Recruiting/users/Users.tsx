@@ -331,51 +331,10 @@ export default function Users() {
   };
 
   const handleEditUser = (user: any) => {
-    // Extract user data and populate the form
-    const userCompanies: CompanyAssignment[] =
-      user.companies?.map((c: any) => ({
-        companyId:
-          typeof c.companyId === "string" ? c.companyId : c.companyId._id,
-        departments: (c.departments || []).map((dept: any) => 
-          typeof dept === "string" ? dept : dept._id
-        ),
-      })) || [];
-
-    const userPermissions =
-      user.permissions?.map((p: any) => {
-        // Handle different permission structures
-        let permissionId: string;
-        if (typeof p === "string") {
-          permissionId = p;
-        } else if (p.permission) {
-          // If permission is nested (e.g., {permission: {_id, name}, access: []})
-          permissionId = typeof p.permission === "string" ? p.permission : p.permission._id;
-        } else {
-          // If permission is at top level (e.g., {_id, name, access: []})
-          permissionId = p._id;
-        }
-        
-        return {
-          permission: permissionId,
-          access: p.access || [],
-        };
-      }) || [];
-
-    const formData = {
-      email: user.email || "",
-      password: "", // Don't populate password for security
-      fullName: user.fullName || user.name || "",
-      phone: user.phone || "",
-      roleId:
-        typeof user.roleId === "string" ? user.roleId : user.roleId?._id || "",
-      companies: userCompanies,
-      permissions: userPermissions,
-    };
-    
-    setUserForm(formData);
-    setOriginalUser(formData); // Store original state for comparison
-    setEditingUserId(user._id);
-    setShowForm(true);
+    // Navigate to edit user page with state to avoid re-fetching
+    navigate(`/user/${user._id}/edit`, {
+      state: { user }
+    });
   };
 
   const handleCancelEdit = () => {

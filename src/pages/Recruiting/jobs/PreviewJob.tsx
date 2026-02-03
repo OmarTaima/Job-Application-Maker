@@ -94,7 +94,9 @@ export default function PreviewJob() {
   };
 
   const handleEdit = () => {
-    navigate(`/create-job?id=${jobId}`);
+    navigate(`/create-job?id=${jobId}`, {
+      state: { job }
+    });
   };
 
   const handleDelete = async () => {

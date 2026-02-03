@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect, useRef } from "react";
 import Swal from "sweetalert2";
-import { useNavigate, useSearchParams } from "react-router";
+import { useNavigate, useSearchParams, useLocation } from "react-router";
 import ComponentCard from "../../../components/common/ComponentCard";
 import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
 import PageMeta from "../../../components/common/PageMeta";
@@ -125,7 +125,9 @@ const subFieldTypeOptions = [
 export default function CreateJob() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const location = useLocation();
   const editJobId = searchParams.get("id");
+  const jobFromState = location.state?.job; // Get job data from navigation state
   const { user } = useAuth();
   // Handle different admin role formats - roleId can be an object with name property
   const userRole = user?.role ? String(user.role).toLowerCase() : undefined;
@@ -299,7 +301,9 @@ export default function CreateJob() {
       if (editJobId && !jobDataLoaded.current && companies.length > 0) {
         try {
           setIsEditMode(true);
-          const job = await jobPositionsService.getJobPositionById(editJobId);
+          
+          // Use job data from state if available, otherwise fetch from API
+          const job = jobFromState || await jobPositionsService.getJobPositionById(editJobId);
 
           // Normalize company and department IDs
           const companyId =
@@ -424,7 +428,7 @@ export default function CreateJob() {
     };
 
     loadJobData();
-  }, [editJobId, companies]);
+  }, [editJobId, companies, jobFromState]);
 
   // Auto-select company for users with single company
   useEffect(() => {
@@ -796,9 +800,11 @@ export default function CreateJob() {
       const salaryValue = Number(jobForm.salary);
 
       const payload: any = {};
-      // Always include companyId in the payload
-      payload.companyId = jobForm.companyId;
-      if (jobForm.jobCode) payload.jobCode = jobForm.jobCode;
+      // Only include companyId and jobCode when creating (not updating)
+      if (!isEditMode) {
+        payload.companyId = jobForm.companyId;
+        if (jobForm.jobCode) payload.jobCode = jobForm.jobCode;
+      }
       payload.title = jobForm.bilingual ? { en: jobForm.title || "", ar: jobForm.titleAr || "" } : { en: jobForm.title || "", ar: "" };
       payload.description = jobForm.bilingual ? { en: jobForm.description || "", ar: jobForm.descriptionAr || "" } : { en: jobForm.description || "", ar: "" };
       // Send departmentId as empty string if not selected
@@ -1017,22 +1023,25 @@ export default function CreateJob() {
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div>
-                  <Label htmlFor="jobCode">Job Code</Label>
-                  <Input
-                    id="jobCode"
-                    value={jobForm.jobCode}
-                    onChange={(e) =>
-                      handleInputChange("jobCode", e.target.value)
-                    }
-                    placeholder="Auto-generated"
-                  />
-                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    Auto-generated based on company. You can edit it if needed.
-                  </p>
+              {/* Only show Job Code field when creating a new job */}
+              {!isEditMode && (
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div>
+                    <Label htmlFor="jobCode">Job Code</Label>
+                    <Input
+                      id="jobCode"
+                      value={jobForm.jobCode}
+                      onChange={(e) =>
+                        handleInputChange("jobCode", e.target.value)
+                      }
+                      placeholder="Auto-generated"
+                    />
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      Auto-generated based on company. You can edit it if needed.
+                    </p>
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>

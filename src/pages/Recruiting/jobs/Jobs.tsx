@@ -266,8 +266,10 @@ export default function Jobs() {
   }
 
   const handleEditJob = (job: Job) => {
-    // Navigate to edit job page - TODO: implement edit page
-    navigate(`/create-job?id=${job._id}`);
+    // Navigate to edit job page with state to avoid re-fetching
+    navigate(`/create-job?id=${job._id}`, {
+      state: { job }
+    });
   };
   console.log(jobPositions)
   return (
