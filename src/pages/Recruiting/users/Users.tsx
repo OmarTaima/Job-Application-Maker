@@ -358,17 +358,17 @@ export default function Users() {
       ) : (
         <div className="space-y-6">
           {/* Header */}
-          <div className="flex justify-between items-center">
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">
               Users Management
             </h1>
-            <div className="flex gap-3">
+            <div className="flex flex-wrap gap-2 sm:gap-3">
               <Link
                 to="/permissions"
-                className="inline-flex items-center gap-2 px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors"
+                className="inline-flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors"
               >
-                <PlusIcon className="w-5 h-5" />
-                Manage Permissions
+                <PlusIcon className="w-4 h-4 sm:w-5 sm:h-5" />
+                <span className="hidden sm:inline">Manage</span> Permissions
               </Link>
               {canCreate && (
                 <button
@@ -379,10 +379,10 @@ export default function Users() {
                       setShowForm(true);
                     }
                   }}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-lg transition-colors"
+                  className="inline-flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm bg-brand-500 hover:bg-brand-600 text-white rounded-lg transition-colors"
                 >
-                  <PlusIcon className="w-5 h-5" />
-                  {showForm ? "Cancel" : "Create User"}
+                  <PlusIcon className="w-4 h-4 sm:w-5 sm:h-5" />
+                  {showForm ? "Cancel" : <><span className="hidden sm:inline">Create</span> User</>}
                 </button>
               )}
             </div>
@@ -502,8 +502,8 @@ export default function Users() {
                         what the role provides
                       </p>
 
-                      <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
-                        <table className="w-full">
+                      <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-x-auto">
+                        <table className="w-full min-w-[600px]">
                           <thead className="bg-gray-50 dark:bg-gray-800">
                             <tr>
                               <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -966,7 +966,7 @@ export default function Users() {
                 No users found
               </div>
             ) : (
-              <Table>
+              <Table className="min-w-[800px]">
                 <TableHeader>
                   <TableRow>
                     <TableCell

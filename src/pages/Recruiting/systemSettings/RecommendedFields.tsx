@@ -299,9 +299,9 @@ const RecommendedFields = () => {
               <button
                 type="button"
                 onClick={() => setShowForm(!showForm)}
-                className="mb-6 inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-brand-700 dark:bg-brand-500 dark:hover:bg-brand-600"
+                className="mb-6 inline-flex items-center gap-2 rounded-lg bg-brand-600 px-3 sm:px-4 py-1.5 sm:py-2.5 text-xs sm:text-sm font-semibold text-white shadow-sm hover:bg-brand-700 dark:bg-brand-500 dark:hover:bg-brand-600"
               >
-                <PlusIcon className="h-4 w-4" />
+                <PlusIcon className="h-3 w-3 sm:h-4 sm:w-4" />
                 {showForm ? "Cancel" : "Add Recommended Field"}
               </button>
 
@@ -496,7 +496,7 @@ const RecommendedFields = () => {
                         <button
                           type="button"
                           onClick={handleAddChoice}
-                          className="rounded-md bg-brand-500 px-4 py-2 text-white hover:bg-brand-500/90"
+                          className="rounded-md bg-brand-500 px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm text-white hover:bg-brand-500/90"
                         >
                           Add
                         </button>

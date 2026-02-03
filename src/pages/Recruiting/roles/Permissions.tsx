@@ -248,8 +248,8 @@ export default function Permissions() {
       ) : (
         <div className="space-y-6">
           {/* Header */}
-          <div className="flex justify-between items-center">
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">
               Permissions & Roles Management
             </h1>
           </div>
@@ -270,9 +270,9 @@ export default function Permissions() {
               {canCreate && (
                 <button
                   onClick={() => setShowRoleForm(!showRoleForm)}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-lg transition-colors"
+                  className="inline-flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm bg-brand-500 hover:bg-brand-600 text-white rounded-lg transition-colors"
                 >
-                  <PlusIcon className="w-5 h-5" />
+                  <PlusIcon className="w-4 h-4 sm:w-5 sm:h-5" />
                   {showRoleForm ? "Cancel" : "Create Role"}
                 </button>
               )}
@@ -452,17 +452,17 @@ export default function Permissions() {
                   </div>
 
                   {/* Submit Button */}
-                  <div className="flex justify-end gap-3">
+                  <div className="flex flex-col sm:flex-row justify-end gap-3">
                     <button
                       type="button"
                       onClick={() => setShowRoleForm(false)}
-                      className="px-6 py-2.5 border border-gray-300 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                      className="px-4 sm:px-6 py-2 sm:py-2.5 text-sm border border-gray-300 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
-                      className="px-6 py-2.5 bg-brand-500 hover:bg-brand-600 text-white rounded-lg transition-colors"
+                      className="px-4 sm:px-6 py-2 sm:py-2.5 text-sm bg-brand-500 hover:bg-brand-600 text-white rounded-lg transition-colors"
                     >
                       Create Role
                     </button>
@@ -487,15 +487,16 @@ export default function Permissions() {
                   No roles found. Create your first role to get started.
                 </div>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableCell
-                        isHeader
-                        className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
-                      >
-                        Name
-                      </TableCell>
+                <div className="overflow-x-auto rounded-lg border border-stroke dark:border-strokedark">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableCell
+                          isHeader
+                          className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
+                        >
+                          Name
+                        </TableCell>
                       <TableCell
                         isHeader
                         className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
@@ -628,6 +629,7 @@ export default function Permissions() {
                     })}
                   </TableBody>
                 </Table>
+                </div>
               )}
             </ComponentCard>
           </div>
@@ -656,15 +658,16 @@ export default function Permissions() {
                   No permissions found.
                 </div>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableCell
-                        isHeader
-                        className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
-                      >
-                        Name
-                      </TableCell>
+                <div className="overflow-x-auto rounded-lg border border-stroke dark:border-strokedark">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableCell
+                          isHeader
+                          className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
+                        >
+                          Name
+                        </TableCell>
                       <TableCell
                         isHeader
                         className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
@@ -722,6 +725,7 @@ export default function Permissions() {
                     ))}
                   </TableBody>
                 </Table>
+                </div>
               )}
             </ComponentCard>
           </div>

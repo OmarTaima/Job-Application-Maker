@@ -1247,6 +1247,12 @@ export default function CreateJob() {
                               newTerms[index] = e.target.value;
                               setJobForm(prev => ({ ...prev, termsAndConditions: newTerms }));
                             }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                setEditingTermIndex(null);
+                              }
+                            }}
                             placeholder={jobForm.bilingual ? "Term (English)" : "Term"}
                           />
                           {jobForm.bilingual && (
@@ -1258,6 +1264,12 @@ export default function CreateJob() {
                                   newTermsAr[index] = e.target.value;
                                   setJobForm(prev => ({ ...prev, termsAndConditionsAr: newTermsAr }));
                                 }}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    setEditingTermIndex(null);
+                                  }
+                                }}
                                 placeholder="الشرط (العربية)"
                               />
                             </div>
@@ -1267,6 +1279,12 @@ export default function CreateJob() {
                           <button
                             type="button"
                             onClick={() => setEditingTermIndex(null)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                setEditingTermIndex(null);
+                              }
+                            }}
                             className="inline-flex items-center gap-1 rounded px-3 py-1 text-sm font-medium text-success-600 transition hover:bg-success-50 dark:text-success-400 dark:hover:bg-success-500/10"
                           >
                             <CheckCircleIcon className="size-4" />
@@ -1378,6 +1396,12 @@ export default function CreateJob() {
                         <button
                           type="button"
                           onClick={() => setEditingSpecIndex(null)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              setEditingSpecIndex(null);
+                            }
+                          }}
                           className="inline-flex items-center gap-1 rounded px-3 py-1 text-sm font-medium text-success-600 transition hover:bg-success-50 dark:text-success-400 dark:hover:bg-success-500/10"
                         >
                           <CheckCircleIcon className="size-4" />
@@ -1693,42 +1717,21 @@ export default function CreateJob() {
                       field.inputType === "select" ||
                       field.inputType === "tags") && (
                       <div>
-                        <Label>Choices{jobForm.bilingual && " (English)"}</Label>
-                        <div className="flex gap-2">
-                          <Input
-                            value={newChoice}
-                            onChange={(e) => setNewChoice(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                e.preventDefault();
-                                handleAddChoice(fieldIndex);
-                              }
-                            }}
-                            placeholder="Add a choice"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => handleAddChoice(fieldIndex)}
-                            className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600"
-                          >
-                            <PlusIcon className="size-4" />
-                          </button>
-                        </div>
-                        {jobForm.bilingual && (
-                          <div className="mt-2">
-                            <Label>Choices (Arabic)</Label>
+                        <div className={`grid gap-3 ${jobForm.bilingual ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
+                          <div>
+                            <Label>Choices{jobForm.bilingual && " (English)"}</Label>
                             <div className="flex gap-2">
-                              <div dir="rtl" className="flex-1">
+                              <div className="flex-1">
                                 <Input
-                                  value={newChoiceAr}
-                                  onChange={(e) => setNewChoiceAr(e.target.value)}
+                                  value={newChoice}
+                                  onChange={(e) => setNewChoice(e.target.value)}
                                   onKeyDown={(e) => {
                                     if (e.key === "Enter") {
                                       e.preventDefault();
                                       handleAddChoice(fieldIndex);
                                     }
                                   }}
-                                  placeholder="أضف خيارًا"
+                                  placeholder="Add a choice"
                                 />
                               </div>
                               <button
@@ -1740,7 +1743,34 @@ export default function CreateJob() {
                               </button>
                             </div>
                           </div>
-                        )}
+                          {jobForm.bilingual && (
+                            <div>
+                              <Label>Choices (Arabic)</Label>
+                              <div className="flex gap-2">
+                                <div dir="rtl" className="flex-1">
+                                  <Input
+                                    value={newChoiceAr}
+                                    onChange={(e) => setNewChoiceAr(e.target.value)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") {
+                                        e.preventDefault();
+                                        handleAddChoice(fieldIndex);
+                                      }
+                                    }}
+                                    placeholder="أضف خيارًا"
+                                  />
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleAddChoice(fieldIndex)}
+                                  className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600"
+                                >
+                                  <PlusIcon className="size-4" />
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                         <div className="mt-2 space-y-1">
                           {field.choices?.map((choice, choiceIndex) => (
                             <div

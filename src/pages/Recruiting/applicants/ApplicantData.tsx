@@ -160,6 +160,7 @@ const ApplicantData = () => {
   const [showCommentModal, setShowCommentModal] = useState(false);
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [showInterviewSettingsModal, setShowInterviewSettingsModal] = useState(false);
+  const [showPhotoModal, setShowPhotoModal] = useState(false);
   const [selectedInterview, setSelectedInterview] = useState<any>(null);
   const [expandedHistory, setExpandedHistory] = useState<string | null>(null);
   const [formResetKey, setFormResetKey] = useState(0);
@@ -615,32 +616,32 @@ const ApplicantData = () => {
 
       <div className="grid gap-6">
         {/* Back Button and Actions */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <button
             onClick={() => navigate('/applicants')}
-            className="text-sm font-medium text-primary hover:text-primary/80"
+            className="text-sm font-medium text-primary hover:text-primary/80 self-start"
           >
             ← Back to Applicants
           </button>
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-2 sm:gap-3">
             <button
               onClick={() => {
                 setFormResetKey(prev => prev + 1); // Reset DatePickers
                 setShowInterviewModal(true);
               }}
-              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+              className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-blue-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-blue-700"
             >
-              <PlusIcon className="h-4 w-4" />
-              Schedule Interview
+              <PlusIcon className="h-3 w-3 sm:h-4 sm:w-4" />
+              <span className="hidden sm:inline">Schedule</span> Interview
             </button>
             <button
               onClick={() => {
                 setSelectedInterview(applicant.interviews?.[0] || null);
                 setShowInterviewSettingsModal(true);
               }}
-              className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
+              className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-indigo-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-indigo-700"
             >
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="h-3 w-3 sm:h-4 sm:w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
@@ -648,87 +649,94 @@ const ApplicantData = () => {
             </button>
             <button
               onClick={() => setShowMessageModal(true)}
-              className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700"
+              className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-purple-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-purple-700"
             >
-              <PlusIcon className="h-4 w-4" />
-              Send Message
+              <PlusIcon className="h-3 w-3 sm:h-4 sm:w-4" />
+              <span className="hidden sm:inline">Send</span> Message
             </button>
             <button
               onClick={() => setShowCommentModal(true)}
-              className="inline-flex items-center gap-2 rounded-lg bg-gray-600 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-700"
+              className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-gray-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-gray-700"
             >
-              <PlusIcon className="h-4 w-4" />
-              Add Comment
+              <PlusIcon className="h-3 w-3 sm:h-4 sm:w-4" />
+              <span className="hidden sm:inline">Add</span> Comment
             </button>
             <button
               onClick={() => setShowStatusModal(true)}
-              className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700"
+              className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-green-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-green-700"
             >
-              Change Status
+              <span className="hidden sm:inline">Change</span> Status
             </button>
           </div>
         </div>
 
         {/* Personal Information */}
         <ComponentCard title="Personal Information" desc="Applicant details">
-          <div className="flex gap-6">
+          <div className="flex flex-col sm:flex-row gap-4 sm:gap-6">
             {/* Profile Photo */}
             {applicant.profilePhoto && (
               <div className="flex-shrink-0">
-                <img
-                  src={applicant.profilePhoto}
-                  alt={applicant.fullName}
-                  className="h-32 w-32 rounded-full object-cover ring-4 ring-gray-200 dark:ring-gray-700"
-                />
+                <button
+                  type="button"
+                  onClick={() => setShowPhotoModal(true)}
+                  className="rounded-full overflow-hidden focus:outline-none"
+                  aria-label="View profile photo"
+                >
+                  <img
+                    src={applicant.profilePhoto}
+                    alt={applicant.fullName}
+                    className="h-32 w-32 rounded-full object-cover ring-4 ring-gray-200 dark:ring-gray-700 cursor-pointer"
+                  />
+                </button>
               </div>
             )}
 
-            <div className="grid flex-1 grid-cols-2 gap-6">
-              <div className="flex items-center justify-between">
+            <div className="grid flex-1 grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-6">
+              <div className="flex items-center gap-2">
                 <Label className="mb-0">Full Name</Label>
                 <p dir={isArabic(applicant.fullName) ? 'rtl' : undefined} className={`text-gray-900 dark:text-white ${isArabic(applicant.fullName) ? 'text-right' : ''}`}>
                   {applicant.fullName}
                 </p>
               </div>
 
-              <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
                 <Label className="mb-0">Email</Label>
                 <p className="text-gray-900 dark:text-white">{applicant.email}</p>
               </div>
 
-              <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
                 <Label className="mb-0">Phone</Label>
                 <p className="text-gray-900 dark:text-white">{applicant.phone}</p>
               </div>
 
-              <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
                 <Label className="mb-0">Address</Label>
                 <p dir={isArabic(applicant.address) ? 'rtl' : undefined} className={`text-gray-900 dark:text-white ${isArabic(applicant.address) ? 'text-right' : ''}`}>{applicant.address}</p>
               </div>
 
-              <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
                 <Label className="mb-0">Job Position</Label>
                 <p dir={isArabic(jobTitle.en) ? 'rtl' : undefined} className={`text-gray-900 dark:text-white ${isArabic(jobTitle.en) ? 'text-right' : ''}`}>{jobTitle.en}</p>
               </div>
 
-              <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
                 <Label className="mb-0">Company</Label>
                 <p dir={isArabic(companyName) ? 'rtl' : undefined} className={`text-gray-900 dark:text-white ${isArabic(companyName) ? 'text-right' : ''}`}>{companyName}</p>
               </div>
 
-              <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
                 <Label className="mb-0">Department</Label>
                 <p dir={isArabic(departmentName) ? 'rtl' : undefined} className={`text-gray-900 dark:text-white ${isArabic(departmentName) ? 'text-right' : ''}`}>{departmentName}</p>
               </div>
 
-              <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
                 <Label className="mb-0">Status</Label>
                 <span className={`inline-block rounded-full px-3 py-1 text-xs font-semibold ${getStatusColor(applicant.status)}`}>
                   {applicant.status.charAt(0).toUpperCase() + applicant.status.slice(1)}
                 </span>
               </div>
 
-              <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
                 <Label className="mb-0">Submitted At</Label>
                 <p className="text-gray-900 dark:text-white">{formatDate(applicant.submittedAt)}</p>
               </div>
@@ -750,7 +758,7 @@ const ApplicantData = () => {
               title="Application Responses"
               desc="Custom field responses"
             >
-              <div className="grid grid-cols-1 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {Object.entries(applicant.customResponses).map(
                   ([key, value]) => {
                     // Helper function to toggle expansion for a specific item
@@ -827,12 +835,12 @@ const ApplicantData = () => {
                                                   const valueStr = typeof itemValue === 'string' ? itemValue : String(itemValue);
                                                   const valueIsArabic = typeof itemValue === 'string' && isArabic(itemValue);
                                                   return (
-                                                    <div key={itemKey} dir="ltr" className="mb-3 last:mb-0 flex items-start justify-between gap-4">
-                                                      <div className="min-w-[140px] text-sm font-medium text-gray-700 dark:text-gray-300 text-left">
+                                                    <div key={itemKey} dir="ltr" className="mb-3 last:mb-0 flex items-start gap-2 items-center">
+                                                      <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
                                                         {label}
                                                         <span className="ml-1 text-gray-500">:</span>
                                                       </div>
-                                                      <div className={`text-sm text-gray-900 dark:text-white whitespace-pre-wrap ${valueIsArabic ? 'text-right' : 'text-right'}`} dir={valueIsArabic ? 'rtl' : undefined}>
+                                                      <div className={`text-sm text-gray-900 dark:text-white whitespace-pre-wrap ${valueIsArabic ? 'text-right' : ''}`} dir={valueIsArabic ? 'rtl' : undefined}>
                                                         {valueStr}
                                                       </div>
                                                     </div>
@@ -888,15 +896,15 @@ const ApplicantData = () => {
                     };
 
                     return (
-                      <div key={key} dir="ltr" className="mb-4 last:mb-0 flex items-start justify-between gap-4">
-                        <div className="min-w-[160px]">
-                          <Label className="mb-0">
+                      <div key={key} dir="ltr" className="mb-4 last:mb-0 flex items-start gap-2 items-center">
+                        <div>
+                          <Label className="mb-0 mr-2">
                             {key
                               .replace(/_/g, ' ')
                               .replace(/\b\w/g, (c) => c.toUpperCase())}
                           </Label>
                         </div>
-                        <div className="flex-1 text-right text-gray-900 dark:text-white">
+                        <div className="text-sm text-gray-900 dark:text-white">
                           {renderValue()}
                         </div>
                       </div>
@@ -1466,6 +1474,21 @@ const ApplicantData = () => {
       </div>
 
       {/* Interview Modal */}
+      {/* Photo Preview Modal */}
+      <Modal
+        isOpen={showPhotoModal}
+        onClose={() => setShowPhotoModal(false)}
+        className="max-w-3xl p-4"
+        isFullscreen={false}
+      >
+        <div className="flex items-center justify-center">
+          <img
+            src={applicant?.profilePhoto}
+            alt={applicant?.fullName}
+            className="max-h-[75vh] w-full object-contain rounded-lg"
+          />
+        </div>
+      </Modal>
       <Modal
         isOpen={showInterviewModal}
         onClose={() => {

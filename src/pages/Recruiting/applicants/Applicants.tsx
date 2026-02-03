@@ -539,11 +539,11 @@ const Applicants = () => {
 
               {/* Bulk Actions Bar */}
               {selectedApplicants.length > 0 && (
-                <div className="mb-4 flex items-center justify-between rounded-lg bg-brand-50 px-4 py-3 dark:bg-brand-900/20">
+                <div className="mb-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-lg bg-brand-50 px-4 py-3 dark:bg-brand-900/20">
                   <span className="text-sm font-medium text-brand-700 dark:text-brand-300">
                     {selectedApplicants.length} applicant(s) selected
                   </span>
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 w-full sm:w-auto">
                     <div className="flex items-center gap-2">
                       <select
                         value={bulkAction}
@@ -590,7 +590,7 @@ const Applicants = () => {
                   <div className="mb-6 flex flex-wrap gap-2">
                     <button
                       onClick={() => setStatusFilter("all")}
-                      className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                      className={`rounded-lg px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium transition ${
                         statusFilter === "all"
                           ? "bg-brand-500 text-white"
                           : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
@@ -600,7 +600,7 @@ const Applicants = () => {
                     </button>
                     <button
                       onClick={() => setStatusFilter("pending")}
-                      className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                      className={`rounded-lg px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium transition ${
                         statusFilter === "pending"
                           ? "bg-yellow-500 text-white"
                           : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
@@ -610,7 +610,7 @@ const Applicants = () => {
                     </button>
                     <button
                       onClick={() => setStatusFilter("approved")}
-                      className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                      className={`rounded-lg px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium transition ${
                         statusFilter === "approved"
                           ? "bg-green-500 text-white"
                           : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
@@ -620,7 +620,7 @@ const Applicants = () => {
                     </button>
                     <button
                       onClick={() => setStatusFilter("interview")}
-                      className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                      className={`rounded-lg px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium transition ${
                         statusFilter === "interview"
                           ? "bg-blue-500 text-white"
                           : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
@@ -630,7 +630,7 @@ const Applicants = () => {
                     </button>
                     <button
                       onClick={() => setStatusFilter("rejected")}
-                      className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                      className={`rounded-lg px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium transition ${
                         statusFilter === "rejected"
                           ? "bg-red-500 text-white"
                           : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
@@ -640,7 +640,7 @@ const Applicants = () => {
                     </button>
                     <button
                       onClick={() => setStatusFilter("trashed")}
-                      className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                      className={`rounded-lg px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium transition ${
                         statusFilter === "trashed"
                           ? "bg-gray-500 text-white"
                           : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
@@ -652,9 +652,9 @@ const Applicants = () => {
 
                   {/* Companies -> Jobs -> Applicants */}
                   {shouldShowCompanyFilter && (
-                    <div className="mb-4 flex items-center justify-between">
+                    <div className="mb-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                       <div />
-                      <div className="flex items-center gap-3">
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 w-full sm:w-auto">
                         <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Company:</label>
                         <select
                           value={selectedCompany}
