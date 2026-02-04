@@ -39,6 +39,7 @@ const ApplicantData = () => {
 
   // State for expanded custom responses
   const [expandedResponses, setExpandedResponses] = useState<Record<string, Set<number>>>({});
+  const [expandedText, setExpandedText] = useState<Record<string, boolean>>({});
   // State for expanded cover letter textareas
 
   // Helper to detect Arabic text and apply RTL
@@ -616,14 +617,20 @@ const ApplicantData = () => {
 
       <div className="grid gap-6">
         {/* Back Button and Actions */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <button
             onClick={() => navigate('/applicants')}
             className="text-sm font-medium text-primary hover:text-primary/80 self-start"
           >
             ← Back to Applicants
           </button>
-          <div className="flex flex-wrap gap-2 sm:gap-3">
+          <div className="flex flex-wrap gap-2 sm:gap-3 sm:ml-auto">
+            <button
+              onClick={() => setShowStatusModal(true)}
+              className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-green-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-green-700"
+            >
+              <span className="hidden sm:inline">Change</span> Status
+            </button>
             <button
               onClick={() => {
                 setFormResetKey(prev => prev + 1); // Reset DatePickers
@@ -661,104 +668,220 @@ const ApplicantData = () => {
               <PlusIcon className="h-3 w-3 sm:h-4 sm:w-4" />
               <span className="hidden sm:inline">Add</span> Comment
             </button>
-            <button
-              onClick={() => setShowStatusModal(true)}
-              className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-green-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-green-700"
-            >
-              <span className="hidden sm:inline">Change</span> Status
-            </button>
           </div>
         </div>
 
         {/* Personal Information */}
-        <ComponentCard title="Personal Information" desc="Applicant details">
-          <div className="flex flex-col sm:flex-row gap-4 sm:gap-6">
-            {/* Profile Photo */}
-            {applicant.profilePhoto && (
-              <div className="flex-shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setShowPhotoModal(true)}
-                  className="rounded-full overflow-hidden focus:outline-none"
-                  aria-label="View profile photo"
-                >
-                  <img
-                    src={applicant.profilePhoto}
-                    alt={applicant.fullName}
-                    className="h-32 w-32 rounded-full object-cover ring-4 ring-gray-200 dark:ring-gray-700 cursor-pointer"
-                  />
-                </button>
-              </div>
-            )}
+        <div className="relative overflow-hidden rounded-2xl bg-white dark:bg-gray-900 shadow-xl">
+  {/* Decorative background */}
+  <div className="absolute inset-0 bg-gradient-to-br from-brand-500/5 via-purple-500/5 to-blue-500/5 dark:from-brand-500/10 dark:via-purple-500/10 dark:to-blue-500/10"></div>
+  <div className="absolute -top-24 -right-24 w-96 h-96 bg-brand-500/10 dark:bg-brand-500/5 rounded-full blur-3xl"></div>
+  <div className="absolute -bottom-24 -left-24 w-96 h-96 bg-purple-500/10 dark:bg-purple-500/5 rounded-full blur-3xl"></div>
+  
+  <div className="relative p-8">
+    <div className="mb-8 flex flex-col sm:flex-row items-start sm:items-center gap-6 justify-between">
+      <div className="flex items-start gap-4">
+        <div className="flex-shrink-0 p-3 bg-gradient-to-br from-brand-500 to-brand-600 dark:from-brand-600 dark:to-brand-700 rounded-2xl shadow-lg">
+          <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+          </svg>
+        </div>
+        <div className="flex-1">
+          <h3 className="text-2xl font-extrabold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">Personal Information</h3>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Applicant profile and contact details</p>
+        </div>
+      </div>
+      
+      {/* Profile Photo in header */}
+      <div className="flex-shrink-0">
+        {applicant.profilePhoto ? (
+          <button
+            type="button"
+            onClick={() => setShowPhotoModal(true)}
+            className="relative block rounded-xl overflow-hidden shadow-lg hover:shadow-xl transition-shadow focus:outline-none focus:ring-2 focus:ring-brand-500"
+            aria-label="View profile photo"
+          >
+            <img
+              src={applicant.profilePhoto}
+              alt={applicant.fullName}
+              className="h-24 w-24 sm:h-28 sm:w-28 object-cover"
+            />
+          </button>
+        ) : (
+          <div className="flex items-center justify-center h-24 w-24 sm:h-28 sm:w-28 rounded-xl bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900 shadow-lg text-2xl font-bold text-gray-800 dark:text-white">
+            {applicant.fullName ? applicant.fullName.split(' ').map((n: string) => n.charAt(0)).slice(0,2).join('').toUpperCase() : 'NA'}
+          </div>
+        )}
+      </div>
+    </div>
 
-            <div className="grid flex-1 grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-6">
-              <div className="flex items-center gap-2">
-                <Label className="mb-0">Full Name</Label>
-                <p dir={isArabic(applicant.fullName) ? 'rtl' : undefined} className={`text-gray-900 dark:text-white ${isArabic(applicant.fullName) ? 'text-right' : ''}`}>
-                  {applicant.fullName}
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Label className="mb-0">Email</Label>
-                <p className="text-gray-900 dark:text-white">{applicant.email}</p>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Label className="mb-0">Phone</Label>
-                <p className="text-gray-900 dark:text-white">{applicant.phone}</p>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Label className="mb-0">Address</Label>
-                <p dir={isArabic(applicant.address) ? 'rtl' : undefined} className={`text-gray-900 dark:text-white ${isArabic(applicant.address) ? 'text-right' : ''}`}>{applicant.address}</p>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Label className="mb-0">Job Position</Label>
-                <p dir={isArabic(jobTitle.en) ? 'rtl' : undefined} className={`text-gray-900 dark:text-white ${isArabic(jobTitle.en) ? 'text-right' : ''}`}>{jobTitle.en}</p>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Label className="mb-0">Company</Label>
-                <p dir={isArabic(companyName) ? 'rtl' : undefined} className={`text-gray-900 dark:text-white ${isArabic(companyName) ? 'text-right' : ''}`}>{companyName}</p>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Label className="mb-0">Department</Label>
-                <p dir={isArabic(departmentName) ? 'rtl' : undefined} className={`text-gray-900 dark:text-white ${isArabic(departmentName) ? 'text-right' : ''}`}>{departmentName}</p>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Label className="mb-0">Status</Label>
-                <span className={`inline-block rounded-full px-3 py-1 text-xs font-semibold ${getStatusColor(applicant.status)}`}>
-                  {applicant.status.charAt(0).toUpperCase() + applicant.status.slice(1)}
-                </span>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Label className="mb-0">Submitted At</Label>
-                <p className="text-gray-900 dark:text-white">{formatDate(applicant.submittedAt)}</p>
-              </div>
-
-              {applicant.cvFilePath && (
-                <div className="flex items-center justify-between">
-                  <Label className="mb-0">CV / Resume</Label>
-                  <a href={applicant.cvFilePath} target="_blank" rel="noopener noreferrer" className="inline-block text-primary hover:text-primary/80">Download CV</a>
-                </div>
-              )}
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        {/* Full Name */}
+        <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-brand-500 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
+          <div className="flex items-baseline gap-4">
+            <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-brand-100 dark:bg-brand-900/30 rounded-lg group-hover:scale-110 transition-transform">
+              <svg className="w-6 h-6 text-brand-600 dark:text-brand-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+            </div>
+            <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Full Name</Label>
+            <div dir={isArabic(applicant.fullName) ? 'rtl' : undefined} className={`text-base font-bold text-gray-900 dark:text-white ${isArabic(applicant.fullName) ? 'text-right' : ''}`}>
+              {applicant.fullName}
             </div>
           </div>
-        </ComponentCard>
+        </div>
+
+        {/* Email */}
+        <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-blue-500 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
+          <div className="flex items-baseline gap-4">
+            <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-blue-100 dark:bg-blue-900/30 rounded-lg group-hover:scale-110 transition-transform">
+              <svg className="w-6 h-6 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Email</Label>
+            <p className="text-sm text-gray-900 dark:text-white break-words">{applicant.email}</p>
+          </div>
+        </div>
+
+        {/* Phone */}
+        <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-green-500 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
+          <div className="flex items-baseline gap-4">
+            <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-green-100 dark:bg-green-900/30 rounded-lg group-hover:scale-110 transition-transform">
+              <svg className="w-6 h-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+              </svg>
+            </div>
+            <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Phone</Label>
+            <p className="text-sm text-gray-900 dark:text-white">{applicant.phone}</p>
+          </div>
+        </div>
+
+        {/* Job Position */}
+        <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-purple-500 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
+          <div className="flex items-baseline gap-4">
+            <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-purple-100 dark:bg-purple-900/30 rounded-lg group-hover:scale-110 transition-transform">
+              <svg className="w-6 h-6 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Job Position</Label>
+            <p dir={isArabic(jobTitle.en) ? 'rtl' : undefined} className={`text-sm font-semibold text-gray-900 dark:text-white break-words ${isArabic(jobTitle.en) ? 'text-right' : ''}`}>{jobTitle.en}</p>
+          </div>
+        </div>
+
+        {/* Company */}
+        <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-orange-500 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
+          <div className="flex items-baseline gap-4">
+            <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-orange-100 dark:bg-orange-900/30 rounded-lg group-hover:scale-110 transition-transform">
+              <svg className="w-6 h-6 text-orange-600 dark:text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+              </svg>
+            </div>
+            <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Company</Label>
+            <p dir={isArabic(companyName) ? 'rtl' : undefined} className={`text-sm text-gray-900 dark:text-white break-words ${isArabic(companyName) ? 'text-right' : ''}`}>{companyName}</p>
+          </div>
+        </div>
+
+        {/* Department */}
+        <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-pink-500 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
+          <div className="flex items-baseline gap-4">
+            <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-pink-100 dark:bg-pink-900/30 rounded-lg group-hover:scale-110 transition-transform">
+              <svg className="w-6 h-6 text-pink-600 dark:text-pink-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+              </svg>
+            </div>
+            <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Department</Label>
+            <p dir={isArabic(departmentName) ? 'rtl' : undefined} className={`text-sm text-gray-900 dark:text-white break-words ${isArabic(departmentName) ? 'text-right' : ''}`}>{departmentName}</p>
+          </div>
+        </div>
+
+        {/* Address */}
+        <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-teal-500 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-teal-100 dark:bg-teal-900/30 rounded-lg group-hover:scale-110 transition-transform">
+                <svg className="w-6 h-6 text-teal-600 dark:text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              </div>
+              <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Address</Label>
+            </div>
+            <p dir={isArabic(applicant.address) ? 'rtl' : undefined} className={`text-sm text-gray-900 dark:text-white break-words ${isArabic(applicant.address) ? 'text-right' : ''}`}>{applicant.address}</p>
+          </div>
+        </div>
+
+        {/* Status */}
+        <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-yellow-500 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
+          <div className="flex items-baseline gap-4">
+            <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-yellow-100 dark:bg-yellow-900/30 rounded-lg group-hover:scale-110 transition-transform">
+              <svg className="w-6 h-6 text-yellow-600 dark:text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Status</Label>
+            <span className={`inline-block rounded-full px-4 py-2 text-xs font-bold ${getStatusColor(applicant.status)}`}>
+              {applicant.status.charAt(0).toUpperCase() + applicant.status.slice(1)}
+            </span>
+          </div>
+        </div>
+
+        {/* Submitted */}
+        <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-indigo-500 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
+          <div className="flex items-baseline gap-4">
+            <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-indigo-100 dark:bg-indigo-900/30 rounded-lg group-hover:scale-110 transition-transform">
+              <svg className="w-6 h-6 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Submitted</Label>
+            <p className="text-sm text-gray-900 dark:text-white">{formatDate(applicant.submittedAt)}</p>
+          </div>
+        </div>
+
+        {/* Resume */}
+        {applicant.cvFilePath && (
+          <div className="group relative pl-5 pr-5 py-5 bg-gradient-to-br from-brand-500 to-brand-600 dark:from-brand-600 dark:to-brand-700 backdrop-blur-sm rounded-xl border-l-4 border-brand-700 hover:shadow-2xl transition-all duration-200">
+            <div className="flex items-baseline gap-4">
+              <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-white/20 rounded-lg group-hover:scale-110 transition-transform">
+                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              </div>
+              <Label className="text-xs text-white/80 font-bold uppercase">Resume</Label>
+              <a href={applicant.cvFilePath} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-sm font-bold text-white hover:text-white/90 transition-colors">
+                Download CV
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                </svg>
+              </a>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  </div>
+</div>
 
         {/* Custom Responses */}
         {applicant.customResponses &&
           Object.keys(applicant.customResponses).length > 0 && (
-            <ComponentCard
-              title="Application Responses"
-              desc="Custom field responses"
-            >
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="rounded-2xl overflow-hidden bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-900 dark:to-gray-800 border-2 border-blue-200 dark:border-blue-900/50 shadow-lg">
+              <div className="bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-700 dark:to-indigo-700 px-8 py-6">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-white/20 backdrop-blur-sm rounded-xl">
+                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-extrabold text-white">Application Responses</h3>
+                    <p className="text-sm text-blue-100 mt-0.5">Custom field responses and additional information</p>
+                  </div>
+                </div>
+              </div>
+              <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-5">
                 {Object.entries(applicant.customResponses).map(
                   ([key, value]) => {
                     // Helper function to toggle expansion for a specific item
@@ -895,27 +1018,70 @@ const ApplicantData = () => {
                       return String(value);
                     };
 
+                    const valueIsArabicOverall = (() => {
+                      if (Array.isArray(value)) {
+                        // primitives or objects
+                        if (value.length === 0) return false;
+                        return value.some((v: any) => {
+                          if (typeof v === 'string') return isArabic(String(v));
+                          if (typeof v === 'object' && v !== null) {
+                            return Object.values(v).some((x) => typeof x === 'string' && isArabic(x));
+                          }
+                          return false;
+                        });
+                      }
+                      if (typeof value === 'string') return isArabic(value);
+                      if (typeof value === 'object' && value !== null) {
+                        return Object.values(value).some((v) => typeof v === 'string' && isArabic(v));
+                      }
+                      return false;
+                    })();
+
+                    const normalizedKey = key.replace(/\s|_/g, '').toLowerCase();
+                    const isCoverText = typeof value === 'string' && /cover/.test(normalizedKey);
+
                     return (
-                      <div key={key} dir="ltr" className="mb-4 last:mb-0 flex items-start gap-2 items-center">
-                        <div>
-                          <Label className="mb-0 mr-2">
+                      <div key={key} className={`group p-4 bg-white dark:bg-gray-800 rounded-xl hover:shadow-md transition-all duration-200 border-l-4 border-blue-500`}>
+                        <div className="flex items-center gap-4">
+                          <span className={`text-xs font-extrabold text-blue-600 dark:text-blue-400 uppercase tracking-wider whitespace-nowrap`}>
                             {key
                               .replace(/_/g, ' ')
-                              .replace(/\b\w/g, (c) => c.toUpperCase())}
-                          </Label>
+                              .replace(/\b\w/g, (c) => c.toUpperCase())}:
+                          </span>
+
+                          {isCoverText ? (
+                            <button
+                              type="button"
+                              onClick={() => setExpandedText(prev => ({ ...prev, [key]: !prev[key] }))}
+                              className="inline-flex items-center gap-2 px-2 py-1 text-xs font-medium rounded bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-300"
+                            >
+                              {expandedText[key] ? 'Collapse' : 'Expand'}
+                              <svg className={`w-3 h-3 text-blue-600 dark:text-blue-300 transition-transform ${expandedText[key] ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                              </svg>
+                            </button>
+                          ) : (
+                            <div className={`text-sm text-gray-900 dark:text-white leading-relaxed ${valueIsArabicOverall ? 'flex-none max-w-[60%] min-w-0 break-words text-right' : 'flex-1'}`}>
+                              {renderValue()}
+                            </div>
+                          )}
                         </div>
-                        <div className="text-sm text-gray-900 dark:text-white">
-                          {renderValue()}
-                        </div>
+
+                        {isCoverText && expandedText[key] && (
+                          <div className={`mt-3 p-2 rounded bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 whitespace-pre-wrap ${valueIsArabicOverall ? 'text-right' : ''} max-h-40 overflow-auto`} dir={typeof value === 'string' && isArabic(value) ? 'rtl' : undefined}>
+                            {value}
+                          </div>
+                        )}
                       </div>
                     );
                   }
                 )}
               </div>
-            </ComponentCard>
+            </div>
           )}
 
         {/* Status History */}
+        <div>
         <ComponentCard
           title="Activity Timeline"
           desc="Track all activities, status changes, messages, and comments"
@@ -1473,7 +1639,6 @@ const ApplicantData = () => {
         </ComponentCard>
       </div>
 
-      {/* Interview Modal */}
       {/* Photo Preview Modal */}
       <Modal
         isOpen={showPhotoModal}

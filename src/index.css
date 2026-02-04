@@ -8,6 +8,19 @@ layer(base);
 
 @custom-variant dark (&:is(.dark *));
 
+/* Fix for SVG icons not showing in buttons - ensure SVG paths inherit currentColor */
+button svg,
+a svg {
+  fill: currentColor;
+  stroke: currentColor;
+}
+
+button svg path,
+a svg path {
+  fill: inherit;
+  stroke: inherit;
+}
+
 @theme {
   --font-*: initial;
   --font-outfit: Outfit, sans-serif;
