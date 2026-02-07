@@ -1,12 +1,16 @@
 import {
   createContext,
   useContext,
-  useState,
-  useEffect,
   ReactNode,
 } from "react";
-import { authService, User, ApiError } from "../services/authService";
-import { tokenStorage } from "../config/api";
+import { User, ApiError } from "../services/authService";
+import { useAppSelector } from "../store/hooks";
+import {
+  useCurrentUser,
+  useLoginMutation,
+  useRegisterMutation,
+  useLogoutMutation,
+} from "../hooks/queries/useAuth";
 
 type AuthContextType = {
   user: User | null;
@@ -29,55 +33,27 @@ type AuthContextType = {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // Get user from Redux store (synced via React Query hooks)
+  const user = useAppSelector((state) => state.auth.user);
 
-  // On mount, try to restore session from stored tokens.
-  // If tokens exist, attempt to fetch current user; otherwise remain logged out.
-  useEffect(() => {
-    const loadUser = async () => {
-      const token = tokenStorage.getAccessToken();
-      if (!token) {
-        setIsLoading(false);
-        return;
-      }
+  // React Query hooks for auth operations
+  const { isLoading: isLoadingUser } = useCurrentUser();
+  const loginMutation = useLoginMutation();
+  const registerMutation = useRegisterMutation();
+  const logoutMutation = useLogoutMutation();
 
-      try {
-        const currentUser = await authService.getCurrentUser();
-        setUser(currentUser);
-      } catch (err) {
-        // If fetching user fails (expired/invalid token), clear tokens and stay logged out
-        tokenStorage.clearTokens();
-        setUser(null);
-      } finally {
-        setIsLoading(false);
-      }
-    };
+  // Combine loading states
+  const isLoading = isLoadingUser || loginMutation.isPending || registerMutation.isPending;
 
-    loadUser();
-  }, []);
+  // Get error from mutations
+  const error = loginMutation.error instanceof ApiError 
+    ? loginMutation.error.message 
+    : registerMutation.error instanceof ApiError
+    ? registerMutation.error.message
+    : null;
 
   const login = async (email: string, password: string) => {
-    try {
-      setError(null);
-      setIsLoading(true);
-      await authService.login({ email, password });
-
-      // After successful login, fetch the user profile
-      const currentUser = await authService.getCurrentUser();
-      setUser(currentUser);
-    } catch (err) {
-      console.error("Login error:", err);
-      const errorMessage =
-        err instanceof ApiError
-          ? err.message
-          : "An error occurred during login";
-      setError(errorMessage);
-      throw err;
-    } finally {
-      setIsLoading(false);
-    }
+    await loginMutation.mutateAsync({ email, password });
   };
 
   const register = async (userData: {
@@ -87,27 +63,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     lastName?: string;
     name?: string;
   }) => {
-    try {
-      setError(null);
-      setIsLoading(true);
-      const response = await authService.register(userData);
-      setUser(response.data.user);
-    } catch (err) {
-      const errorMessage =
-        err instanceof ApiError
-          ? err.message
-          : "An error occurred during registration";
-      setError(errorMessage);
-      throw err;
-    } finally {
-      setIsLoading(false);
-    }
+    await registerMutation.mutateAsync(userData);
   };
 
   const logout = () => {
-    authService.logout();
-    setUser(null);
-    setError(null);
+    logoutMutation.mutate();
   };
 
   const canAccessCompany = (companyId: string): boolean => {

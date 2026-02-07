@@ -1,9 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import PageMeta from "../../components/common/PageMeta";
 import DatePicker from "../../components/form/date-picker";
 import { useAuth } from "../../context/AuthContext";
-import { useAppDispatch, useAppSelector } from "../../store/hooks";
-import { fetchApplicants } from "../../store/slices/applicantsSlice";
+import { useApplicants } from "../../hooks/queries";
 import type { Applicant } from "../../store/slices/applicantsSlice";
 import {
   PaperPlaneIcon,
@@ -32,46 +31,27 @@ function getApplicantDate(a: Applicant) {
 }
 
 export default function Home() {
-  // local transient state not required; using store loading
   const [range, setRange] = useState<Date[] | null>(null);
   const [openStatus, setOpenStatus] = useState<string | null>(null);
   const { user } = useAuth();
-  const dispatch = useAppDispatch();
-  const applicants = useAppSelector((s) => s.applicants.applicants);
-  const loading = useAppSelector((s) => s.applicants.loading);
-  const isFetched = useAppSelector((s) => s.applicants.isFetched);
-  const lastFetchedCompanyIds = useAppSelector(
-    (s) => s.applicants.lastFetchedCompanyIds
-  );
 
-  useEffect(() => {
-    // determine companyIds based on user role; super admin should fetch all
+  // Determine companyIds based on user role; super admin fetches all
+  const companyIds = useMemo(() => {
     const roleName = user?.roleId?.name?.toLowerCase();
-    let companyIds: string[] | undefined = undefined;
-
-    if (user && roleName !== "super admin") {
-      const userCompanyIds =
-        user.companies?.map((c) =>
-          typeof c.companyId === "string" ? c.companyId : c.companyId._id
-        ) || [];
-      if (userCompanyIds.length > 0) companyIds = userCompanyIds;
+    if (!user || roleName === "super admin") {
+      return undefined; // Fetch all
     }
+    
+    const userCompanyIds =
+      user.companies?.map((c) =>
+        typeof c.companyId === "string" ? c.companyId : c.companyId._id
+      ) || [];
+    
+    return userCompanyIds.length > 0 ? userCompanyIds : undefined;
+  }, [user]);
 
-    // Only fetch if not already fetched for the same companyIds to avoid unnecessary requests
-    const sameCompanyIds = (() => {
-      if (!isFetched) return false;
-      const a = lastFetchedCompanyIds || [];
-      const b = companyIds || [];
-      if (a.length !== b.length) return false;
-      const sortedA = [...a].sort();
-      const sortedB = [...b].sort();
-      return sortedA.every((v, i) => v === sortedB[i]);
-    })();
-
-    if (!isFetched || !sameCompanyIds) {
-      dispatch(fetchApplicants(companyIds));
-    }
-  }, [user, dispatch, isFetched]);
+  // Use React Query hook - handles caching, deduplication, and background refetching
+  const { data: applicants = [], isLoading: loading } = useApplicants(companyIds);
 
   const filtered = useMemo(() => {
     if (!range || range.length === 0) return applicants;

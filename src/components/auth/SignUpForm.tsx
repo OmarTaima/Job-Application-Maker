@@ -18,7 +18,7 @@ export default function SignUpForm() {
     email: "",
     password: "",
   });
-  const [error, setError] = useState<string | null>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -30,7 +30,7 @@ export default function SignUpForm() {
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setError(null);
+    setValidationError(null);
 
     // Validation
     if (
@@ -39,22 +39,22 @@ export default function SignUpForm() {
       !formData.email ||
       !formData.password
     ) {
-      setError("Please fill in all fields");
+      setValidationError("Please fill in all fields");
       return;
     }
 
     if (!formData.email.includes("@")) {
-      setError("Please enter a valid email address");
+      setValidationError("Please enter a valid email address");
       return;
     }
 
     if (formData.password.length < 6) {
-      setError("Password must be at least 6 characters long");
+      setValidationError("Password must be at least 6 characters long");
       return;
     }
 
     if (!isChecked) {
-      setError("Please accept the Terms and Conditions");
+      setValidationError("Please accept the Terms and Conditions");
       return;
     }
 
@@ -69,10 +69,12 @@ export default function SignUpForm() {
       // Redirect to dashboard after successful registration
       navigate("/");
     } catch (err) {
-      // Error is handled in AuthContext, but we can display it here
-      setError(authError || "Failed to sign up. Please try again.");
+      console.error("Registration failed:", err);
+      // Error is handled in AuthContext via React Query
     }
   };
+
+  const displayError = validationError || authError;
 
   return (
     <div className="flex flex-col flex-1 w-full overflow-y-auto lg:w-1/2 no-scrollbar">
@@ -144,9 +146,9 @@ export default function SignUpForm() {
             </div>
 
             {/* Error Message */}
-            {error && (
+            {displayError && (
               <div className="p-4 mb-5 text-sm text-red-700 bg-red-100 border border-red-300 rounded-lg dark:bg-red-900/20 dark:border-red-800 dark:text-red-400">
-                {error}
+                {displayError}
               </div>
             )}
 

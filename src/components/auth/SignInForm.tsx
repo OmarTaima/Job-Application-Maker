@@ -14,20 +14,20 @@ export default function SignInForm() {
   const [isChecked, setIsChecked] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setError(null);
+    setValidationError(null);
 
     // Validation
     if (!email || !password) {
-      setError("Please fill in all fields");
+      setValidationError("Please fill in all fields");
       return;
     }
 
     if (!email.includes("@")) {
-      setError("Please enter a valid email address");
+      setValidationError("Please enter a valid email address");
       return;
     }
 
@@ -37,10 +37,11 @@ export default function SignInForm() {
       navigate("/", { replace: true });
     } catch (err) {
       console.error("Login failed:", err);
-      // Error is handled in AuthContext, but we can display it here
-      setError(authError || "Failed to sign in. Please try again.");
+      // Error is handled in AuthContext via React Query
     }
   };
+
+  const displayError = validationError || authError;
 
   return (
     <div className="flex flex-col flex-1">
@@ -112,9 +113,9 @@ export default function SignInForm() {
             </div>
 
             {/* Error Message */}
-            {error && (
+            {displayError && (
               <div className="p-4 mb-5 text-sm text-red-700 bg-red-100 border border-red-300 rounded-lg dark:bg-red-900/20 dark:border-red-800 dark:text-red-400">
-                {error}
+                {displayError}
               </div>
             )}
 
