@@ -157,6 +157,24 @@ export default function PreviewJob() {
     return String(val);
   };
 
+  const formatInputType = (type: string) => {
+    if (!type) return "";
+    const typeMap: { [key: string]: string } = {
+      text: "Text",
+      textarea: "Textarea",
+      number: "Number",
+      email: "Email",
+      date: "Date",
+      radio: "Radio",
+      dropdown: "Dropdown",
+      checkbox: "Checkbox",
+      url: "URL",
+      tags: "Tags",
+      repeatable_group: "Repeatable Group",
+    };
+    return typeMap[type] || type;
+  };
+
   if (isLoadingJob) {
     return (
       <div className="space-y-6">
@@ -523,7 +541,7 @@ export default function PreviewJob() {
                       )}
                     </h4>
                     <div className="mt-1 flex items-center gap-3 text-sm text-gray-500 dark:text-gray-400">
-                      <span>Type: {field.inputType}</span>
+                      <span>Type: {formatInputType(field.inputType)}</span>
                       <span>•</span>
                       <span>Order: {field.displayOrder}</span>
                       {field.minValue !== undefined && (

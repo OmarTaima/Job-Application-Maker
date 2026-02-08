@@ -57,11 +57,10 @@ type CustomField = {
     | "date"
     | "checkbox"
     | "radio"
-    | "select"
     | "textarea"
     | "url"
     | "tags"
-    | "groupField";
+    | "repeatable_group";
   isRequired: boolean;
   minValue?: number;
   maxValue?: number;
@@ -105,8 +104,8 @@ const inputTypeOptions = [
   { value: "dropdown", label: "Dropdown" },
   { value: "select", label: "Select" },
   { value: "textarea", label: "Textarea" },
-  { value: "Tags", label: "Tags (Multiple Values)" },
-  { value: "groupField", label: "Group Field (Multiple Questions)" },
+  { value: "tags", label: "Tags (Multiple Values)" },
+  { value: "repeatable_group", label: "Group Field (Multiple Questions)" },
 ];
 
 const subFieldTypeOptions = [
@@ -119,7 +118,7 @@ const subFieldTypeOptions = [
   { value: "dropdown", label: "Dropdown" },
   { value: "checkbox", label: "Checkbox" },
   { value: "url", label: "URL" },
-  { value: "Tags", label: "Tags" },
+  { value: "tags", label: "Tags" },
 ];
 
 export default function CreateJob() {
@@ -785,6 +784,25 @@ export default function CreateJob() {
       // Validate required fields
       if (!jobForm.companyId) {
         const errorMsg = "Please select a company before submitting.";
+        setFormError(errorMsg);
+        setJobStatus(`Error: ${errorMsg}`);
+        setIsSubmitting(false);
+        await Swal.fire({
+          title: "Validation Error",
+          text: errorMsg,
+          icon: "error",
+          confirmButtonText: "OK",
+        });
+        return;
+      }
+
+      // Validate repeatable_group fields have labels
+      const emptyGroupFieldLabels = jobForm.customFields
+        .map((field, index) => ({ field, index }))
+        .filter(({ field }) => field.inputType === "repeatable_group" && !field.label.trim());
+      
+      if (emptyGroupFieldLabels.length > 0) {
+        const errorMsg = `Group Field #${emptyGroupFieldLabels[0].index + 1} must have a label.`;
         setFormError(errorMsg);
         setJobStatus(`Error: ${errorMsg}`);
         setIsSubmitting(false);
@@ -1714,7 +1732,6 @@ export default function CreateJob() {
 
                     {(field.inputType === "checkbox" ||
                       field.inputType === "radio" ||
-                      field.inputType === "select" ||
                       field.inputType === "tags") && (
                       <div>
                         <div className={`grid gap-3 ${jobForm.bilingual ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
@@ -1801,7 +1818,7 @@ export default function CreateJob() {
                     )}
 
                     {/* Group Field Sub-Questions */}
-                    {field.inputType === "groupField" && (
+                    {field.inputType === "repeatable_group" && (
                       <div className="border-l-4 border-brand-500 pl-4">
                         <div className="mb-3 flex items-center justify-between">
                           <Label>Sub-Questions</Label>
