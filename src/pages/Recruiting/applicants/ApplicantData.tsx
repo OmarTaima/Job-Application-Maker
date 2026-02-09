@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import Swal from 'sweetalert2';
 import { useParams, useNavigate, useLocation } from 'react-router';
 import ComponentCard from '../../../components/common/ComponentCard';
@@ -60,6 +60,24 @@ const ApplicantData = () => {
   
   // Always use fetched data (which includes optimistic updates from React Query)
   const applicant = fetchedApplicant;
+
+  // Compute full CV download URL (prefix API base URL for relative paths)
+  const cvUrl = useMemo(() => {
+    if (!applicant?.cvFilePath) return null;
+    const path = applicant.cvFilePath;
+    if (path.startsWith('http') || path.startsWith('data:')) return path;
+    const base = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+    return base ? `${base}/${path.replace(/^\//, '')}` : path;
+  }, [applicant?.cvFilePath]);
+
+  const openCv = () => {
+    if (!applicant?.cvFilePath) {
+      Swal.fire('No CV', 'No CV file available for this applicant', 'info');
+      return;
+    }
+    const url = cvUrl ?? applicant.cvFilePath;
+    window.open(url, '_blank', 'noopener');
+  };
   
   const { data: jobPositions = [] } = useJobPositions();
   // Fetch only companies that have applicants (in this case, just the current applicant's company)
@@ -850,12 +868,16 @@ const ApplicantData = () => {
                 </svg>
               </div>
               <Label className="text-xs text-white/80 font-bold uppercase">Resume</Label>
-              <a href={applicant.cvFilePath} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-sm font-bold text-white hover:text-white/90 transition-colors">
+              <button
+                type="button"
+                onClick={openCv}
+                className="inline-flex items-center gap-2 text-sm font-bold text-white hover:text-white/90 transition-colors"
+              >
                 Download CV
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
                 </svg>
-              </a>
+              </button>
             </div>
           </div>
         )}

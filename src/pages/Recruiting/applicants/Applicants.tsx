@@ -490,7 +490,7 @@ const Applicants = () => {
     enablePagination: false,
     enableBatchRowSelection: false,
     enableBottomToolbar: false,
-    enableTopToolbar: false,
+    enableTopToolbar: true,
     enableColumnFilters: false,
     enableFilters: false,
     enableHiding: false,
