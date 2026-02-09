@@ -24,6 +24,26 @@ import {
 } from "../../../hooks/queries";
 import type { FieldType } from "../../../store/slices/recommendedFieldsSlice";
 
+type GroupField = {
+  fieldId: string;
+  label: string;
+  labelAr?: string;
+  inputType:
+    | "text"
+    | "number"
+    | "email"
+    | "date"
+    | "checkbox"
+    | "radio"
+    | "dropdown"
+    | "textarea"
+    | "url"
+    | "tags";
+  isRequired: boolean;
+  choices?: string[];
+  choicesAr?: string[];
+};
+
 type FormField = {
   label: string;
   labelAr: string;
@@ -36,7 +56,21 @@ type FormField = {
     min?: number | null;
     max?: number | null;
   };
+  groupFields?: GroupField[];
 };
+
+const subFieldTypeOptions = [
+  { value: "text", label: "Text" },
+  { value: "textarea", label: "Textarea" },
+  { value: "number", label: "Number" },
+  { value: "email", label: "Email" },
+  { value: "date", label: "Date" },
+  { value: "radio", label: "Radio" },
+  { value: "dropdown", label: "Dropdown" },
+  { value: "checkbox", label: "Checkbox" },
+  { value: "url", label: "URL" },
+  { value: "tags", label: "Tags" },
+];
 
 const RecommendedFields = () => {
   // React Query hooks - data fetching happens automatically
@@ -65,6 +99,8 @@ const RecommendedFields = () => {
   const [editingChoiceIndex, setEditingChoiceIndex] = useState<number | null>(null);
   const [editChoiceValue, setEditChoiceValue] = useState("");
   const [editChoiceValueAr, setEditChoiceValueAr] = useState("");
+  const [newGroupFieldChoice, setNewGroupFieldChoice] = useState<Record<string, string>>({});
+  const [newGroupFieldChoiceAr, setNewGroupFieldChoiceAr] = useState<Record<string, string>>({});
   const [form, setForm] = useState<FormField>({
     label: "",
     labelAr: "",
@@ -73,6 +109,7 @@ const RecommendedFields = () => {
     options: [],
     optionsAr: [],
     validation: {},
+    groupFields: [],
   });
   const [editFieldId, setEditFieldId] = useState<string | null>(null);
   const [formError, setFormError] = useState("");
@@ -184,6 +221,80 @@ const RecommendedFields = () => {
     setEditChoiceValueAr("");
   };
 
+  // GroupField handlers
+  const handleAddGroupField = () => {
+    const newGroupField: GroupField = {
+      fieldId: `groupfield_${Date.now()}`,
+      label: "",
+      inputType: "text",
+      isRequired: false,
+    };
+    setForm((prev) => ({
+      ...prev,
+      groupFields: [...(prev.groupFields || []), newGroupField],
+    }));
+  };
+
+  const handleRemoveGroupField = (groupFieldIndex: number) => {
+    setForm((prev) => ({
+      ...prev,
+      groupFields: prev.groupFields?.filter((_, si) => si !== groupFieldIndex),
+    }));
+  };
+
+  const handleGroupFieldChange = (
+    groupFieldIndex: number,
+    field: keyof GroupField,
+    value: any
+  ) => {
+    setForm((prev) => ({
+      ...prev,
+      groupFields: prev.groupFields?.map((gf, si) =>
+        si === groupFieldIndex ? { ...gf, [field]: value } : gf
+      ),
+    }));
+  };
+
+  const handleAddGroupFieldChoice = (groupFieldIndex: number) => {
+    const key = `${groupFieldIndex}`;
+    const choice = newGroupFieldChoice[key] || "";
+    const choiceAr = newGroupFieldChoiceAr[key] || "";
+    if (choice.trim()) {
+      setForm((prev) => ({
+        ...prev,
+        groupFields: prev.groupFields?.map((gf, si) =>
+          si === groupFieldIndex
+            ? {
+                ...gf,
+                choices: [...(gf.choices || []), choice],
+                choicesAr: [...(gf.choicesAr || []), choiceAr.trim() || choice],
+              }
+            : gf
+        ),
+      }));
+      setNewGroupFieldChoice(prev => ({ ...prev, [key]: "" }));
+      setNewGroupFieldChoiceAr(prev => ({ ...prev, [key]: "" }));
+    }
+  };
+
+  const handleRemoveGroupFieldChoice = (
+    groupFieldIndex: number,
+    choiceIndex: number
+  ) => {
+    setForm((prev) => ({
+      ...prev,
+      groupFields: prev.groupFields?.map((gf, si) =>
+        si === groupFieldIndex
+          ? {
+              ...gf,
+              choices: gf.choices?.filter((_, ci) => ci !== choiceIndex),
+              choicesAr: gf.choicesAr?.filter((_, ci) => ci !== choiceIndex),
+            }
+          : gf
+      ),
+    }));
+  };
+
   // Helper to convert API response objects to strings
   const convertToString = (value: any): string => {
     if (typeof value === 'string') return value;
@@ -273,6 +384,24 @@ const RecommendedFields = () => {
         fieldData.maxValue = form.validation.max;
       }
 
+      // Add groupFields for repeatable_group
+      if (form.type === "repeatable_group" && form.groupFields && form.groupFields.length > 0) {
+        fieldData.groupFields = form.groupFields.map((gf) => ({
+          fieldId: gf.fieldId,
+          label: { en: gf.label, ar: gf.labelAr || gf.label },
+          inputType: gf.inputType,
+          isRequired: gf.isRequired,
+          ...(gf.choices && gf.choices.length > 0
+            ? {
+                choices: gf.choices.map((choice, idx) => ({
+                  en: choice,
+                  ar: gf.choicesAr?.[idx] || choice,
+                })),
+              }
+            : {}),
+        }));
+      }
+
       if (editFieldId) {
         // Update existing field
         const updatePayload: any = {
@@ -289,6 +418,24 @@ const RecommendedFields = () => {
         }
         if (form.validation?.max !== undefined && form.validation.max !== null) {
           updatePayload.maxValue = form.validation.max;
+        }
+
+        // Add groupFields for repeatable_group
+        if (form.type === "repeatable_group" && form.groupFields && form.groupFields.length > 0) {
+          updatePayload.groupFields = form.groupFields.map((gf) => ({
+            fieldId: gf.fieldId,
+            label: { en: gf.label, ar: gf.labelAr || gf.label },
+            inputType: gf.inputType,
+            isRequired: gf.isRequired,
+            ...(gf.choices && gf.choices.length > 0
+              ? {
+                  choices: gf.choices.map((choice, idx) => ({
+                    en: choice,
+                    ar: gf.choicesAr?.[idx] || choice,
+                  })),
+                }
+              : {}),
+          }));
         }
 
         console.debug(
@@ -328,6 +475,7 @@ const RecommendedFields = () => {
         options: [],
         optionsAr: [],
         validation: {},
+        groupFields: [],
       });
       setEditFieldId(null);
       setShowForm(false);
@@ -411,6 +559,7 @@ const RecommendedFields = () => {
                       options: [],
                       optionsAr: [],
                       validation: {},
+                      groupFields: [],
                     });
                     setEditFieldId(null);
                     setNewChoice("");
@@ -700,7 +849,206 @@ const RecommendedFields = () => {
                     </div>
                   )}
 
-                  {/* Note: Group fields with sub-questions are not supported by the API */}
+                  {/* Repeatable Group Sub-Questions */}
+                  {form.type === "repeatable_group" && (
+                    <div className="mt-4 border-l-4 border-brand-500 pl-4">
+                      <div className="mb-3 flex items-center justify-between">
+                        <Label>Sub-Questions</Label>
+                        <button
+                          type="button"
+                          onClick={handleAddGroupField}
+                          className="inline-flex items-center gap-1 rounded-lg bg-brand-100 px-3 py-1.5 text-xs font-semibold text-brand-700 transition hover:bg-brand-200 dark:bg-brand-900/30 dark:text-brand-300"
+                        >
+                          <PlusIcon className="size-3" />
+                          Add Sub-Question
+                        </button>
+                      </div>
+
+                      <div className="space-y-4">
+                        {form.groupFields?.map((groupField, groupFieldIndex) => (
+                          <div
+                            key={groupField.fieldId}
+                            className="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800/50"
+                          >
+                            <div className="mb-3 flex items-center justify-between">
+                              <h5 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                                Sub-Question #{groupFieldIndex + 1}
+                              </h5>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveGroupField(groupFieldIndex)}
+                                className="text-error-600 hover:text-error-700 dark:text-error-400"
+                              >
+                                <TrashBinIcon className="size-4" />
+                              </button>
+                            </div>
+
+                            <div className="space-y-3">
+                              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                <div>
+                                  <Label htmlFor={`groupfield-label-${groupFieldIndex}`}>
+                                    Label (English)
+                                  </Label>
+                                  <Input
+                                    id={`groupfield-label-${groupFieldIndex}`}
+                                    value={groupField.label}
+                                    onChange={(e) =>
+                                      handleGroupFieldChange(
+                                        groupFieldIndex,
+                                        "label",
+                                        e.target.value
+                                      )
+                                    }
+                                    placeholder="Enter question label"
+                                  />
+                                </div>
+                                <div>
+                                  <Label htmlFor={`groupfield-label-ar-${groupFieldIndex}`}>
+                                    Label (Arabic)
+                                  </Label>
+                                  <div dir="rtl">
+                                    <Input
+                                      id={`groupfield-label-ar-${groupFieldIndex}`}
+                                      value={groupField.labelAr || ""}
+                                      onChange={(e) =>
+                                        handleGroupFieldChange(
+                                          groupFieldIndex,
+                                          "labelAr",
+                                          e.target.value
+                                        )
+                                      }
+                                      placeholder="أدخل تسمية السؤال"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                  <Label htmlFor={`groupfield-type-${groupFieldIndex}`}>
+                                    Input Type
+                                  </Label>
+                                  <Select
+                                    options={subFieldTypeOptions}
+                                    value={groupField.inputType}
+                                    placeholder="Select type"
+                                    onChange={(value) =>
+                                      handleGroupFieldChange(
+                                        groupFieldIndex,
+                                        "inputType",
+                                        value
+                                      )
+                                    }
+                                  />
+                                </div>
+
+                                <div className="flex items-end pb-2">
+                                  <Switch
+                                    label="Required"
+                                    checked={groupField.isRequired}
+                                    onChange={(checked) =>
+                                      handleGroupFieldChange(
+                                        groupFieldIndex,
+                                        "isRequired",
+                                        checked
+                                      )
+                                    }
+                                  />
+                                </div>
+                              </div>
+
+                              {/* Group field choices for radio, checkbox, dropdown */}
+                              {(groupField.inputType === "radio" ||
+                                groupField.inputType === "checkbox" ||
+                                groupField.inputType === "dropdown") && (
+                                <div>
+                                  <Label>Choices (English)</Label>
+                                  <div className="flex gap-2">
+                                    <Input
+                                      value={newGroupFieldChoice[`${groupFieldIndex}`] || ""}
+                                      onChange={(e) =>
+                                        setNewGroupFieldChoice(prev => ({ ...prev, [`${groupFieldIndex}`]: e.target.value }))
+                                      }
+                                      onKeyDown={(e) => {
+                                        if (e.key === "Enter") {
+                                          e.preventDefault();
+                                          handleAddGroupFieldChoice(groupFieldIndex);
+                                        }
+                                      }}
+                                      placeholder="Add a choice"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => handleAddGroupFieldChoice(groupFieldIndex)}
+                                      className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600"
+                                    >
+                                      <PlusIcon className="size-4" />
+                                    </button>
+                                  </div>
+                                  <div className="mt-2">
+                                    <Label>Choices (Arabic)</Label>
+                                    <div className="flex gap-2">
+                                      <div dir="rtl" className="flex-1">
+                                        <Input
+                                          value={newGroupFieldChoiceAr[`${groupFieldIndex}`] || ""}
+                                          onChange={(e) =>
+                                            setNewGroupFieldChoiceAr(prev => ({ ...prev, [`${groupFieldIndex}`]: e.target.value }))
+                                          }
+                                          onKeyDown={(e) => {
+                                            if (e.key === "Enter") {
+                                              e.preventDefault();
+                                              handleAddGroupFieldChoice(groupFieldIndex);
+                                            }
+                                          }}
+                                          placeholder="أضف خيارًا"
+                                        />
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleAddGroupFieldChoice(groupFieldIndex)}
+                                        className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600"
+                                      >
+                                        <PlusIcon className="size-4" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                  <div className="mt-2 space-y-1">
+                                    {groupField.choices?.map((choice, choiceIndex) => (
+                                      <div
+                                        key={choiceIndex}
+                                        className="flex items-center justify-between rounded border border-gray-200 bg-white px-3 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800"
+                                      >
+                                        <span className="text-gray-700 dark:text-gray-300">
+                                          EN: {choice}
+                                          {groupField.choicesAr?.[choiceIndex] && (
+                                            <span className="mt-1 block" dir="rtl">
+                                              AR: {groupField.choicesAr[choiceIndex]}
+                                            </span>
+                                          )}
+                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            handleRemoveGroupFieldChoice(
+                                              groupFieldIndex,
+                                              choiceIndex
+                                            )
+                                          }
+                                          className="text-error-600 hover:text-error-700 dark:text-error-400"
+                                        >
+                                          <TrashBinIcon className="size-3" />
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   <div className="mt-6 flex justify-end gap-3">
                     <button
@@ -716,6 +1064,7 @@ const RecommendedFields = () => {
                           options: [],
                           optionsAr: [],
                           validation: {},
+                          groupFields: [],
                         });
                         setNewChoice("");
                         setNewChoiceAr("");
@@ -845,6 +1194,17 @@ const RecommendedFields = () => {
                                         const labelEn = convertToString(field.label);
                                         const labelAr = (typeof field.label === 'object' && field.label !== null && field.label.ar) ? field.label.ar : '';
                                         
+                                        // Extract groupFields if they exist
+                                        const extractedGroupFields = field.groupFields ? field.groupFields.map((gf: any) => ({
+                                          fieldId: gf.fieldId,
+                                          label: convertToString(gf.label),
+                                          labelAr: (typeof gf.label === 'object' && gf.label !== null && gf.label.ar) ? gf.label.ar : '',
+                                          inputType: gf.inputType,
+                                          isRequired: gf.isRequired,
+                                          choices: convertChoicesArray(gf.choices),
+                                          choicesAr: convertChoicesArrayAr(gf.choices),
+                                        })) : [];
+                                        
                                         setForm((prev) => ({
                                           ...prev,
                                           label: labelEn,
@@ -857,6 +1217,7 @@ const RecommendedFields = () => {
                                             min: field.minValue,
                                             max: field.maxValue,
                                           },
+                                          groupFields: extractedGroupFields,
                                         }));
                                         console.log("Editing field with fieldId:", field.fieldId, "Full field:", field);
                                         setEditFieldId(field.fieldId);

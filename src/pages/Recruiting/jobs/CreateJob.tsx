@@ -1455,6 +1455,12 @@ export default function CreateJob() {
                                 Number(e.target.value)
                               )
                             }
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                setEditingSpecIndex(null);
+                              }
+                            }}
                             placeholder="Weight"
                             min="0"
                             max="100"
