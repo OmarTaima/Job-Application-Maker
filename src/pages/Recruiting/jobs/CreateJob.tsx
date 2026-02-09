@@ -183,10 +183,10 @@ export default function CreateJob() {
 
   const [newTerm, setNewTerm] = useState("");
   const [newTermAr, setNewTermAr] = useState("");
-  const [newChoice, setNewChoice] = useState("");
-  const [newChoiceAr, setNewChoiceAr] = useState("");
-  const [newSubFieldChoice, setNewSubFieldChoice] = useState("");
-  const [newSubFieldChoiceAr, setNewSubFieldChoiceAr] = useState("");
+  const [newChoice, setNewChoice] = useState<Record<number, string>>({});
+  const [newChoiceAr, setNewChoiceAr] = useState<Record<number, string>>({});
+  const [newSubFieldChoice, setNewSubFieldChoice] = useState<Record<string, string>>({});
+  const [newSubFieldChoiceAr, setNewSubFieldChoiceAr] = useState<Record<string, string>>({});
   const [editingFieldIndex, setEditingFieldIndex] = useState<number | null>(
     null
   );
@@ -667,48 +667,31 @@ export default function CreateJob() {
   ) => {
     setJobForm((prev) => {
       const updatedFields = [...prev.customFields];
-      const currentField = updatedFields[index];
-      
-      // If changing the label and fieldId is temporary, generate proper fieldId
-      if (field === 'label' && typeof value === 'string' && value.trim()) {
-        const currentFieldId = currentField.fieldId;
-        if (currentFieldId.startsWith('temp_')) {
-          // Generate fieldId from label (snake_case)
-          const newFieldId = value
-            .trim()
-            .toLowerCase()
-            .replace(/[^a-z0-9\s]/g, '')
-            .replace(/\s+/g, '_');
-          updatedFields[index] = { ...currentField, label: value, fieldId: newFieldId };
-        } else {
-          updatedFields[index] = { ...currentField, [field]: value };
-        }
-      } else {
-        updatedFields[index] = { ...currentField, [field]: value };
-      }
-      
+      updatedFields[index] = { ...updatedFields[index], [field]: value };
       return { ...prev, customFields: updatedFields };
     });
   };
 
   const handleAddChoice = (fieldIndex: number) => {
-    if (newChoice.trim()) {
+    const choice = newChoice[fieldIndex] || "";
+    const choiceAr = newChoiceAr[fieldIndex] || "";
+    if (choice.trim()) {
       setJobForm((prev) => ({
         ...prev,
         customFields: prev.customFields.map((cf, i) =>
           i === fieldIndex
             ? { 
                 ...cf, 
-                choices: [...(cf.choices || []), newChoice],
+                choices: [...(cf.choices || []), choice],
                 choicesAr: jobForm.bilingual 
-                  ? [...(cf.choicesAr || []), newChoiceAr.trim() || newChoice]
+                  ? [...(cf.choicesAr || []), choiceAr.trim() || choice]
                   : cf.choicesAr
               }
             : cf
         ),
       }));
-      setNewChoice("");
-      setNewChoiceAr("");
+      setNewChoice(prev => ({ ...prev, [fieldIndex]: "" }));
+      setNewChoiceAr(prev => ({ ...prev, [fieldIndex]: "" }));
     }
   };
 
@@ -784,7 +767,10 @@ export default function CreateJob() {
     fieldIndex: number,
     subFieldIndex: number
   ) => {
-    if (newSubFieldChoice.trim()) {
+    const key = `${fieldIndex}-${subFieldIndex}`;
+    const choice = newSubFieldChoice[key] || "";
+    const choiceAr = newSubFieldChoiceAr[key] || "";
+    if (choice.trim()) {
       setJobForm((prev) => ({
         ...prev,
         customFields: prev.customFields.map((cf, i) =>
@@ -795,9 +781,9 @@ export default function CreateJob() {
                   si === subFieldIndex
                     ? {
                         ...sf,
-                        choices: [...(sf.choices || []), newSubFieldChoice],
+                        choices: [...(sf.choices || []), choice],
                         choicesAr: jobForm.bilingual
-                          ? [...(sf.choicesAr || []), newSubFieldChoiceAr.trim() || newSubFieldChoice]
+                          ? [...(sf.choicesAr || []), choiceAr.trim() || choice]
                           : sf.choicesAr,
                       }
                     : sf
@@ -806,8 +792,8 @@ export default function CreateJob() {
             : cf
         ),
       }));
-      setNewSubFieldChoice("");
-      setNewSubFieldChoiceAr("");
+      setNewSubFieldChoice(prev => ({ ...prev, [key]: "" }));
+      setNewSubFieldChoiceAr(prev => ({ ...prev, [key]: "" }));
     }
   };
 
@@ -1797,8 +1783,7 @@ export default function CreateJob() {
 
                     {(field.inputType === "checkbox" ||
                       field.inputType === "radio" ||
-                      field.inputType === "dropdown" ||
-                      field.inputType === "tags") && (
+                      field.inputType === "dropdown") && (
                       <div>
                         <div className={`grid gap-3 ${jobForm.bilingual ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
                           <div>
@@ -1806,8 +1791,8 @@ export default function CreateJob() {
                             <div className="flex gap-2">
                               <div className="flex-1">
                                 <Input
-                                  value={newChoice}
-                                  onChange={(e) => setNewChoice(e.target.value)}
+                                  value={newChoice[fieldIndex] || ""}
+                                  onChange={(e) => setNewChoice(prev => ({ ...prev, [fieldIndex]: e.target.value }))}
                                   onKeyDown={(e) => {
                                     if (e.key === "Enter") {
                                       e.preventDefault();
@@ -1832,8 +1817,8 @@ export default function CreateJob() {
                               <div className="flex gap-2">
                                 <div dir="rtl" className="flex-1">
                                   <Input
-                                    value={newChoiceAr}
-                                    onChange={(e) => setNewChoiceAr(e.target.value)}
+                                    value={newChoiceAr[fieldIndex] || ""}
+                                    onChange={(e) => setNewChoiceAr(prev => ({ ...prev, [fieldIndex]: e.target.value }))}
                                     onKeyDown={(e) => {
                                       if (e.key === "Enter") {
                                         e.preventDefault();
@@ -2008,18 +1993,17 @@ export default function CreateJob() {
                                   </div>
                                 </div>
 
-                                {/* Sub-field choices for radio, checkbox, dropdown, tags */}
+                                {/* Sub-field choices for radio, checkbox, dropdown */}
                                 {(subField.inputType === "radio" ||
                                   subField.inputType === "checkbox" ||
-                                  subField.inputType === "dropdown" ||
-                                  subField.inputType === "tags") && (
+                                  subField.inputType === "dropdown") && (
                                   <div>
                                     <Label>Choices{jobForm.bilingual && " (English)"}</Label>
                                     <div className="flex gap-2">
                                       <Input
-                                        value={newSubFieldChoice}
+                                        value={newSubFieldChoice[`${fieldIndex}-${subFieldIndex}`] || ""}
                                         onChange={(e) =>
-                                          setNewSubFieldChoice(e.target.value)
+                                          setNewSubFieldChoice(prev => ({ ...prev, [`${fieldIndex}-${subFieldIndex}`]: e.target.value }))
                                         }
                                         onKeyDown={(e) => {
                                           if (e.key === "Enter") {
@@ -2051,9 +2035,9 @@ export default function CreateJob() {
                                         <div className="flex gap-2">
                                           <div dir="rtl" className="flex-1">
                                             <Input
-                                              value={newSubFieldChoiceAr}
+                                              value={newSubFieldChoiceAr[`${fieldIndex}-${subFieldIndex}`] || ""}
                                               onChange={(e) =>
-                                                setNewSubFieldChoiceAr(e.target.value)
+                                                setNewSubFieldChoiceAr(prev => ({ ...prev, [`${fieldIndex}-${subFieldIndex}`]: e.target.value }))
                                               }
                                               onKeyDown={(e) => {
                                                 if (e.key === "Enter") {
