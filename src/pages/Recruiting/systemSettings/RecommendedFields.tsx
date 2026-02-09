@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Swal from "sweetalert2";
 import ComponentCard from "../../../components/common/ComponentCard";
 import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
@@ -8,7 +8,7 @@ import Label from "../../../components/form/Label";
 import Input from "../../../components/form/input/InputField";
 import Switch from "../../../components/form/switch/Switch";
 import Select from "../../../components/form/Select";
-import { PlusIcon, TrashBinIcon, PencilIcon } from "../../../icons";
+import { PlusIcon, TrashBinIcon, PencilIcon, CheckCircleIcon } from "../../../icons";
 import {
   Table,
   TableBody,
@@ -26,16 +26,15 @@ import type { FieldType } from "../../../store/slices/recommendedFieldsSlice";
 
 type FormField = {
   label: string;
+  labelAr: string;
   type: FieldType;
   required: boolean;
   options?: string[];
+  optionsAr?: string[];
   defaultValue?: string;
   validation?: {
     min?: number | null;
     max?: number | null;
-    minLength?: number | null;
-    maxLength?: number | null;
-    pattern?: string;
   };
 };
 
@@ -47,6 +46,14 @@ const RecommendedFields = () => {
     error,
   } = useRecommendedFields();
 
+  // Log fetched fields for debugging
+  useEffect(() => {
+    if (recommendedFields.length > 0) {
+      console.log("Fetched recommended fields:", recommendedFields);
+      console.log("Field IDs:", recommendedFields.map(f => f.fieldId));
+    }
+  }, [recommendedFields]);
+
   // Mutations
   const createFieldMutation = useCreateRecommendedField();
   const updateFieldMutation = useUpdateRecommendedField();
@@ -54,11 +61,17 @@ const RecommendedFields = () => {
 
   const [showForm, setShowForm] = useState(false);
   const [newChoice, setNewChoice] = useState("");
+  const [newChoiceAr, setNewChoiceAr] = useState("");
+  const [editingChoiceIndex, setEditingChoiceIndex] = useState<number | null>(null);
+  const [editChoiceValue, setEditChoiceValue] = useState("");
+  const [editChoiceValueAr, setEditChoiceValueAr] = useState("");
   const [form, setForm] = useState<FormField>({
     label: "",
+    labelAr: "",
     type: "text",
     required: false,
     options: [],
+    optionsAr: [],
     validation: {},
   });
   const [editFieldId, setEditFieldId] = useState<string | null>(null);
@@ -109,7 +122,7 @@ const RecommendedFields = () => {
     { value: "checkbox", label: "Checkbox" },
     { value: "url", label: "URL" },
     { value: "tags", label: "Tags" },
-    { value: "boolean", label: "Boolean" },
+    { value: "repeatable_group", label: "Repeatable Group" },
   ];
 
   const handleInputChange = (
@@ -125,8 +138,10 @@ const RecommendedFields = () => {
       setForm((prev) => ({
         ...prev,
         options: [...(prev.options || []), newChoice.trim()],
+        optionsAr: [...(prev.optionsAr || []), newChoiceAr.trim() || newChoice.trim()],
       }));
       setNewChoice("");
+      setNewChoiceAr("");
     }
   };
 
@@ -134,75 +149,160 @@ const RecommendedFields = () => {
     setForm((prev) => ({
       ...prev,
       options: prev.options?.filter((_, i) => i !== index),
+      optionsAr: prev.optionsAr?.filter((_, i) => i !== index),
     }));
+    // If we're editing this choice, cancel edit
+    if (editingChoiceIndex === index) {
+      setEditingChoiceIndex(null);
+      setEditChoiceValue("");
+      setEditChoiceValueAr("");
+    }
+  };
+
+  const handleEditChoice = (index: number) => {
+    setEditingChoiceIndex(index);
+    setEditChoiceValue(form.options?.[index] || "");
+    setEditChoiceValueAr(form.optionsAr?.[index] || "");
+  };
+
+  const handleUpdateChoice = () => {
+    if (editingChoiceIndex !== null && editChoiceValue.trim()) {
+      setForm((prev) => ({
+        ...prev,
+        options: prev.options?.map((opt, i) => i === editingChoiceIndex ? editChoiceValue : opt),
+        optionsAr: prev.optionsAr?.map((opt, i) => i === editingChoiceIndex ? (editChoiceValueAr.trim() || editChoiceValue) : opt),
+      }));
+      setEditingChoiceIndex(null);
+      setEditChoiceValue("");
+      setEditChoiceValueAr("");
+    }
+  };
+
+  const handleCancelEditChoice = () => {
+    setEditingChoiceIndex(null);
+    setEditChoiceValue("");
+    setEditChoiceValueAr("");
+  };
+
+  // Helper to convert API response objects to strings
+  const convertToString = (value: any): string => {
+    if (typeof value === 'string') return value;
+    if (typeof value === 'object' && value !== null) {
+      // Check if it's a bilingual object {en: string, ar: string}
+      if (value.en) return value.en;
+      // Otherwise it's an indexed object like {0: 'E', 1: 'x', 2: 'e', ...}
+      return Object.keys(value)
+        .filter(key => !isNaN(Number(key)) && key !== '_id')
+        .sort((a, b) => Number(a) - Number(b))
+        .map(key => value[key])
+        .join('');
+    }
+    return '';
+  };
+
+  const convertChoicesArray = (choices: any): string[] => {
+    if (!Array.isArray(choices)) return [];
+    return choices.map((choice: any) => {
+      if (typeof choice === 'object' && choice !== null && choice.en) {
+        return choice.en;
+      }
+      return convertToString(choice);
+    });
+  };
+
+  const convertChoicesArrayAr = (choices: any): string[] => {
+    if (!Array.isArray(choices)) return [];
+    return choices.map((choice: any) => {
+      if (typeof choice === 'object' && choice !== null && choice.ar) {
+        return choice.ar;
+      }
+      return convertToString(choice);
+    });
+  };
+
+  // Map input type value to a human friendly label
+  const getInputTypeLabel = (val: string) => {
+    const opt = inputTypeOptions.find((o) => o.value === val);
+    return opt ? opt.label : val;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     try {
-      const generatedId = `field_${Date.now()}`;
-      const sanitizeLabelToId = (label?: string) => {
-        if (!label) return generatedId;
+      const mapTypeToInputType = (t: FieldType) => t;
+      
+      // Convert label to snake_case for fieldId (e.g., "Military Status" -> "military_status")
+      const generateFieldId = (label: string) => {
         return label
           .trim()
           .toLowerCase()
-          .replace(/[^a-z0-9\s_-]/g, "")
-          .replace(/\s+/g, "_");
+          .replace(/[^a-z0-9\s]/g, '') // Remove special characters
+          .replace(/\s+/g, '_'); // Replace spaces with underscores
       };
 
-      const mapTypeToInputType = (t: FieldType) => t;
+      // Backend Mongoose schema expects bilingual objects
+      const bilingualLabel = {
+        en: form.label,
+        ar: form.labelAr || form.label,
+      };
 
-      const fieldId = sanitizeLabelToId(form.label);
+      const bilingualChoices = form.options?.map((option, index) => ({
+        en: option,
+        ar: form.optionsAr?.[index] || option,
+      }));
 
       const fieldData: any = {
-        fieldId,
-        label: form.label,
+        fieldId: editFieldId || generateFieldId(form.label),
+        label: bilingualLabel,
         inputType: mapTypeToInputType(form.type),
         isRequired: form.required,
+        displayOrder: 0,
       };
 
-      // Add optional fields
-      if (form.options && form.options.length > 0)
-        fieldData.choices = form.options;
+      // Add choices as bilingual array
+      if (bilingualChoices && bilingualChoices.length > 0) {
+        fieldData.choices = bilingualChoices;
+      }
 
-      // Add validation
-      const validation: any = {};
-      if (form.validation?.min !== undefined)
-        validation.min = form.validation.min;
-      if (form.validation?.max !== undefined)
-        validation.max = form.validation.max;
-      if (form.validation?.minLength !== undefined)
-        validation.minLength = form.validation.minLength;
-      if (form.validation?.maxLength !== undefined)
-        validation.maxLength = form.validation.maxLength;
-      if (form.validation?.pattern)
-        validation.pattern = form.validation.pattern;
-      if (Object.keys(validation).length > 0) fieldData.validation = validation;
+      // Add validation fields directly (not nested)
+      if (form.validation?.min !== undefined && form.validation.min !== null) {
+        fieldData.minValue = form.validation.min;
+      }
+      if (form.validation?.max !== undefined && form.validation.max !== null) {
+        fieldData.maxValue = form.validation.max;
+      }
 
       if (editFieldId) {
-        // Update existing field (API expects inputType/isRequired/choices)
+        // Update existing field
         const updatePayload: any = {
-          label: form.label,
+          label: bilingualLabel,
           inputType: mapTypeToInputType(form.type),
           isRequired: form.required,
         };
-        if (form.options && form.options.length > 0)
-          updatePayload.choices = form.options;
-        if (Object.keys(fieldData.validation || {}).length > 0)
-          updatePayload.validation = fieldData.validation;
+        if (bilingualChoices && bilingualChoices.length > 0) {
+          updatePayload.choices = bilingualChoices;
+        }
+        // Add validation fields directly
+        if (form.validation?.min !== undefined && form.validation.min !== null) {
+          updatePayload.minValue = form.validation.min;
+        }
+        if (form.validation?.max !== undefined && form.validation.max !== null) {
+          updatePayload.maxValue = form.validation.max;
+        }
 
         console.debug(
           "Updating recommended field:",
-          editFieldId,
-          updatePayload
+          "editFieldId:", editFieldId,
+          "updatePayload:", updatePayload
         );
         await updateFieldMutation.mutateAsync({
-          name: editFieldId,
+          fieldId: editFieldId,
           data: updatePayload,
         });
       } else {
         console.debug("Creating recommended field payload:", fieldData);
+        console.log("FULL PAYLOAD BEING SENT:", JSON.stringify(fieldData, null, 2));
         await createFieldMutation.mutateAsync(fieldData);
       }
 
@@ -222,9 +322,11 @@ const RecommendedFields = () => {
 
       setForm({
         label: "",
+        labelAr: "",
         type: "text",
         required: false,
         options: [],
+        optionsAr: [],
         validation: {},
       });
       setEditFieldId(null);
@@ -298,7 +400,27 @@ const RecommendedFields = () => {
 
               <button
                 type="button"
-                onClick={() => setShowForm(!showForm)}
+                onClick={() => {
+                  // If opening the form for adding a new field, reset form state
+                  if (!showForm) {
+                    setForm({
+                      label: "",
+                      labelAr: "",
+                      type: "text",
+                      required: false,
+                      options: [],
+                      optionsAr: [],
+                      validation: {},
+                    });
+                    setEditFieldId(null);
+                    setNewChoice("");
+                    setNewChoiceAr("");
+                    setEditingChoiceIndex(null);
+                    setEditChoiceValue("");
+                    setEditChoiceValueAr("");
+                  }
+                  setShowForm(!showForm);
+                }}
                 className="mb-6 inline-flex items-center gap-2 rounded-lg bg-brand-600 px-3 sm:px-4 py-1.5 sm:py-2.5 text-xs sm:text-sm font-semibold text-white shadow-sm hover:bg-brand-700 dark:bg-brand-500 dark:hover:bg-brand-600"
               >
                 <PlusIcon className="h-3 w-3 sm:h-4 sm:w-4" />
@@ -333,7 +455,7 @@ const RecommendedFields = () => {
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <Label htmlFor="label">Label *</Label>
+                      <Label htmlFor="label">Label (English) *</Label>
                       <Input
                         id="label"
                         value={form.label}
@@ -345,6 +467,18 @@ const RecommendedFields = () => {
                     </div>
 
                     <div>
+                      <Label htmlFor="labelAr">Label (Arabic) *</Label>
+                      <Input
+                        id="labelAr"
+                        value={form.labelAr}
+                        onChange={(e) =>
+                          handleInputChange("labelAr", e.target.value)
+                        }
+                        placeholder="e.g., رخصة القيادة"
+                      />
+                    </div>
+
+                    <div className="col-span-2">
                       <Label htmlFor="type">Field Type *</Label>
                       <Select
                         options={inputTypeOptions}
@@ -398,67 +532,7 @@ const RecommendedFields = () => {
                       </>
                     )}
 
-                    {(form.type === "text" || form.type === "textarea") && (
-                      <>
-                        <div>
-                          <Label htmlFor="minLength">Min Length</Label>
-                          <Input
-                            id="minLength"
-                            type="number"
-                            value={form.validation?.minLength || ""}
-                            onChange={(e) =>
-                              setForm((prev) => ({
-                                ...prev,
-                                validation: {
-                                  ...prev.validation,
-                                  minLength: parseInt(e.target.value),
-                                },
-                              }))
-                            }
-                            placeholder="Minimum length"
-                          />
-                        </div>
 
-                        <div>
-                          <Label htmlFor="maxLength">Max Length</Label>
-                          <Input
-                            id="maxLength"
-                            type="number"
-                            value={form.validation?.maxLength || ""}
-                            onChange={(e) =>
-                              setForm((prev) => ({
-                                ...prev,
-                                validation: {
-                                  ...prev.validation,
-                                  maxLength: parseInt(e.target.value),
-                                },
-                              }))
-                            }
-                            placeholder="Maximum length"
-                          />
-                        </div>
-
-                        <div className="col-span-2">
-                          <Label htmlFor="pattern">
-                            Validation Pattern (Regex)
-                          </Label>
-                          <Input
-                            id="pattern"
-                            value={form.validation?.pattern || ""}
-                            onChange={(e) =>
-                              setForm((prev) => ({
-                                ...prev,
-                                validation: {
-                                  ...prev.validation,
-                                  pattern: e.target.value,
-                                },
-                              }))
-                            }
-                            placeholder="e.g., ^https://.*"
-                          />
-                        </div>
-                      </>
-                    )}
 
                     <div className="flex items-center gap-3">
                       <Switch
@@ -478,44 +552,149 @@ const RecommendedFields = () => {
                     form.type === "checkbox" ||
                     form.type === "tags") && (
                     <div className="mt-4">
-                      <Label>Options</Label>
-                      <div className="flex gap-2">
-                        <Input
-                          value={newChoice}
-                          onChange={(e) => setNewChoice(e.target.value)}
-                          onKeyDown={(
-                            e: React.KeyboardEvent<HTMLInputElement>
-                          ) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              handleAddChoice();
-                            }
-                          }}
-                          placeholder="Add an option"
-                        />
-                        <button
-                          type="button"
-                          onClick={handleAddChoice}
-                          className="rounded-md bg-brand-500 px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm text-white hover:bg-brand-500/90"
-                        >
-                          Add
-                        </button>
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {form.options?.map((option, index) => (
-                          <span
-                            key={index}
-                            className="flex items-center gap-2 rounded-md bg-gray-100 px-3 py-1 text-sm dark:bg-gray-800"
-                          >
-                            {option}
+                      <div className="grid gap-3 grid-cols-1 md:grid-cols-2">
+                        <div>
+                          <Label>Choices (English)</Label>
+                          <div className="flex gap-2">
+                            <div className="flex-1">
+                              <Input
+                                value={newChoice}
+                                onChange={(e) => setNewChoice(e.target.value)}
+                                onKeyDown={(
+                                  e: React.KeyboardEvent<HTMLInputElement>
+                                ) => {
+                                  if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    handleAddChoice();
+                                  }
+                                }}
+                                placeholder="Add a choice"
+                              />
+                            </div>
                             <button
                               type="button"
-                              onClick={() => handleRemoveChoice(index)}
-                              className="text-red-500 hover:text-red-700"
+                              onClick={handleAddChoice}
+                              className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600"
                             >
-                              ×
+                              <PlusIcon className="size-4" />
                             </button>
-                          </span>
+                          </div>
+                        </div>
+                        <div>
+                          <Label>Choices (Arabic)</Label>
+                          <div className="flex gap-2">
+                            <div dir="rtl" className="flex-1">
+                              <Input
+                                value={newChoiceAr}
+                                onChange={(e) => setNewChoiceAr(e.target.value)}
+                                onKeyDown={(
+                                  e: React.KeyboardEvent<HTMLInputElement>
+                                ) => {
+                                  if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    handleAddChoice();
+                                  }
+                                }}
+                                placeholder="أضف خيارًا"
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={handleAddChoice}
+                              className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600"
+                            >
+                              <PlusIcon className="size-4" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="mt-2 space-y-1">
+                        {form.options?.map((option, index) => (
+                          <div
+                            key={index}
+                            className="flex items-center justify-between rounded border border-gray-200 bg-white px-3 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800"
+                          >
+                            {editingChoiceIndex === index ? (
+                              <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-2">
+                                <Input
+                                  value={editChoiceValue}
+                                  onChange={(e) => setEditChoiceValue(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") {
+                                      e.preventDefault();
+                                      handleUpdateChoice();
+                                    } else if (e.key === "Escape") {
+                                      handleCancelEditChoice();
+                                    }
+                                  }}
+                                  placeholder="English"
+                                />
+                                <Input
+                                  value={editChoiceValueAr}
+                                  onChange={(e) => setEditChoiceValueAr(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") {
+                                      e.preventDefault();
+                                      handleUpdateChoice();
+                                    } else if (e.key === "Escape") {
+                                      handleCancelEditChoice();
+                                    }
+                                  }}
+                                  placeholder="Arabic"
+                                />
+                              </div>
+                            ) : (
+                              <span className="text-gray-700 dark:text-gray-300">
+                                EN: {option}
+                                {form.optionsAr?.[index] && (
+                                  <span className="mt-1 block" dir="rtl">
+                                    AR: {form.optionsAr[index]}
+                                  </span>
+                                )}
+                              </span>
+                            )}
+                            <div className="flex items-center gap-2">
+                              {editingChoiceIndex === index ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={handleUpdateChoice}
+                                    className="text-brand-600 hover:text-brand-700 dark:text-brand-400"
+                                    title="Save"
+                                  >
+                                    <CheckCircleIcon className="size-4" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={handleCancelEditChoice}
+                                    className="text-gray-600 hover:text-gray-700 dark:text-gray-400"
+                                    title="Cancel"
+                                  >
+                                    ×
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleEditChoice(index)}
+                                    className="text-brand-600 hover:text-brand-700 dark:text-brand-400"
+                                    title="Edit"
+                                  >
+                                    <PencilIcon className="size-3" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveChoice(index)}
+                                    className="text-error-600 hover:text-error-700 dark:text-error-400"
+                                    title="Delete"
+                                  >
+                                    <TrashBinIcon className="size-3" />
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </div>
                         ))}
                       </div>
                     </div>
@@ -529,6 +708,20 @@ const RecommendedFields = () => {
                       onClick={() => {
                         setShowForm(false);
                         setEditFieldId(null);
+                        setForm({
+                          label: "",
+                          labelAr: "",
+                          type: "text",
+                          required: false,
+                          options: [],
+                          optionsAr: [],
+                          validation: {},
+                        });
+                        setNewChoice("");
+                        setNewChoiceAr("");
+                        setEditingChoiceIndex(null);
+                        setEditChoiceValue("");
+                        setEditChoiceValueAr("");
                       }}
                       className="rounded-md border border-stroke px-6 py-2 hover:bg-gray-100 dark:border-strokedark dark:hover:bg-gray-800"
                     >
@@ -613,27 +806,31 @@ const RecommendedFields = () => {
                           </TableRow>
                         ) : (
                           recommendedFields.map((field) => (
-                            <TableRow key={field.name || field.label}>
-                              <TableCell className="px-4 py-3 align-middle">
-                                {field.label}
+                            <TableRow key={field.fieldId}>
+                              <TableCell className="px-4 py-3 align-middle max-w-[260px]">
+                                <div className="overflow-hidden whitespace-nowrap truncate" title={(field.label && typeof field.label === 'object' && field.label.en) ? field.label.en : convertToString(field.label)}>
+                                  {(field.label && typeof field.label === 'object' && field.label.en) ? field.label.en : convertToString(field.label)}
+                                </div>
                               </TableCell>
                               <TableCell className="px-4 py-3 align-middle">
                                 <span className="rounded-md bg-primary/10 px-2 py-1 text-xs text-primary">
-                                  {field.type}
+                                  {getInputTypeLabel(field.inputType)}
                                 </span>
                               </TableCell>
                               <TableCell className="px-4 py-3 align-middle">
-                                {field.required ? (
+                                {field.isRequired ? (
                                   <span className="text-green-500">Yes</span>
                                 ) : (
                                   <span className="text-gray-400">No</span>
                                 )}
                               </TableCell>
-                              <TableCell className="px-4 py-3 align-middle">
-                                {field.options ? (
-                                  <span className="text-sm text-gray-600 dark:text-gray-400">
-                                    {field.options.length} option
-                                    {field.options.length !== 1 ? "s" : ""}
+                              <TableCell className="px-4 py-3 align-middle max-w-[280px]">
+                                {field.choices && field.choices.length > 0 ? (
+                                  <span
+                                    className="text-sm text-gray-600 dark:text-gray-400 overflow-hidden whitespace-nowrap truncate block"
+                                    title={convertChoicesArray(field.choices).join(", ")}
+                                  >
+                                    {convertChoicesArray(field.choices).slice(0, 3).join(", ")}{convertChoicesArray(field.choices).length > 3 ? "..." : ""}
                                   </span>
                                 ) : (
                                   <span className="text-gray-400">-</span>
@@ -644,19 +841,25 @@ const RecommendedFields = () => {
                                     <button
                                       type="button"
                                       onClick={() => {
-                                        const v = field.validation || {};
+                                        // Extract label - could be string or bilingual object
+                                        const labelEn = convertToString(field.label);
+                                        const labelAr = (typeof field.label === 'object' && field.label !== null && field.label.ar) ? field.label.ar : '';
+                                        
                                         setForm((prev) => ({
                                           ...prev,
-                                          label: field.label || "",
-                                          type: (field.type as FieldType) || "text",
-                                          required: !!field.required,
-                                          options: field.options || [],
+                                          label: labelEn,
+                                          labelAr: labelAr,
+                                          type: field.inputType,
+                                          required: field.isRequired,
+                                          options: convertChoicesArray(field.choices),
+                                          optionsAr: convertChoicesArrayAr(field.choices),
                                           validation: {
-                                            ...v,
-                                            pattern: v.pattern ?? undefined,
+                                            min: field.minValue,
+                                            max: field.maxValue,
                                           },
                                         }));
-                                        setEditFieldId(field.name || field.label);
+                                        console.log("Editing field with fieldId:", field.fieldId, "Full field:", field);
+                                        setEditFieldId(field.fieldId);
                                         setShowForm(true);
                                       }}
                                       className="rounded p-1.5 text-brand-600 transition hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-brand-500/10"
@@ -666,10 +869,10 @@ const RecommendedFields = () => {
                                     </button>
 
                                     <button
-                                      onClick={() => handleDelete(field.name || field.label)}
-                                      disabled={isDeletingField === (field.name || field.label)}
+                                      onClick={() => handleDelete(field.fieldId)}
+                                      disabled={isDeletingField === field.fieldId}
                                       className="rounded p-1.5 text-error-600 transition hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-500/10 disabled:opacity-50 disabled:cursor-not-allowed"
-                                      title={isDeletingField === (field.name || field.label) ? "Deleting..." : "Delete field"}
+                                      title={isDeletingField === field.fieldId ? "Deleting..." : "Delete field"}
                                     >
                                       <TrashBinIcon className="size-4" />
                                     </button>

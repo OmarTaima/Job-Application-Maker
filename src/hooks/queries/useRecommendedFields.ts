@@ -42,12 +42,12 @@ export function useUpdateRecommendedField() {
 
   return useMutation({
     mutationFn: ({
-      name,
+      fieldId,
       data,
     }: {
-      name: string;
+      fieldId: string;
       data: UpdateRecommendedFieldRequest;
-    }) => recommendedFieldsService.updateRecommendedField(name, data),
+    }) => recommendedFieldsService.updateRecommendedField(fieldId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: recommendedFieldsKeys.lists(),
@@ -61,8 +61,8 @@ export function useDeleteRecommendedField() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (name: string) =>
-      recommendedFieldsService.deleteRecommendedField(name),
+    mutationFn: (fieldId: string) =>
+      recommendedFieldsService.deleteRecommendedField(fieldId),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: recommendedFieldsKeys.lists(),

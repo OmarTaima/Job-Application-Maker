@@ -25,7 +25,17 @@ export type FieldType =
   | "checkbox"
   | "url"
   | "tags"
-  | "boolean";
+  | "repeatable_group";
+
+export type BilingualString = {
+  en: string;
+  ar: string;
+};
+
+export type BilingualChoice = {
+  en: string;
+  ar: string;
+};
 
 export type FieldValidation = {
   min?: number | null;
@@ -36,34 +46,63 @@ export type FieldValidation = {
 };
 
 export type RecommendedField = {
-  name: string;
-  label: string;
-  type: FieldType;
-  required: boolean;
-  options?: string[];
-  validation?: FieldValidation;
-  description?: string;
+  fieldId: string;
+  label: BilingualString;
+  inputType: FieldType;
+  isRequired: boolean;
+  choices?: BilingualChoice[];
+  minValue?: number;
+  maxValue?: number;
   defaultValue?: string;
   displayOrder?: number;
+  description?: BilingualString;
+  // Support grouped sub-fields (API may return groupFields or subFields)
+  groupFields?: Array<{
+    fieldId?: string;
+    label: BilingualString;
+    inputType: FieldType;
+    isRequired?: boolean;
+    choices?: BilingualChoice[];
+    displayOrder?: number;
+    defaultValue?: string;
+    minValue?: number;
+    maxValue?: number;
+  }>;
+  // Some responses might use `subFields` instead of `groupFields`
+  subFields?: Array<{
+    fieldId?: string;
+    label: BilingualString;
+    inputType: FieldType;
+    isRequired?: boolean;
+    choices?: BilingualChoice[];
+    displayOrder?: number;
+    defaultValue?: string;
+    minValue?: number;
+    maxValue?: number;
+  }>;
 };
 
 export type CreateRecommendedFieldRequest = {
-  name: string;
-  label: string;
-  type: FieldType;
-  required: boolean;
-  options?: string[];
-  validation?: FieldValidation;
-  description?: string;
+  fieldId: string;
+  label: BilingualString;
+  inputType: FieldType;
+  isRequired: boolean;
+  displayOrder?: number;
+  choices?: BilingualChoice[];
+  minValue?: number;
+  maxValue?: number;
+  defaultValue?: string;
 };
 
 export type UpdateRecommendedFieldRequest = {
-  label?: string;
-  type?: FieldType;
-  required?: boolean;
-  options?: string[];
-  validation?: FieldValidation;
-  description?: string;
+  label?: BilingualString;
+  inputType?: FieldType;
+  isRequired?: boolean;
+  choices?: BilingualChoice[];
+  minValue?: number;
+  maxValue?: number;
+  defaultValue?: string;
+  displayOrder?: number;
 };
 
 // Service Class
@@ -109,21 +148,21 @@ class RecommendedFieldsService {
 
   /**
    * Update an existing recommended field
-   * PUT /system-settings/recommended-fields/{fieldName}
+   * PUT /system-settings/recommended-fields/{fieldId}
    */
   async updateRecommendedField(
-    fieldName: string,
+    fieldId: string,
     fieldData: UpdateRecommendedFieldRequest
   ): Promise<RecommendedField> {
     try {
-      const encodedFieldName = encodeURIComponent(fieldName);
+      const encodedFieldId = encodeURIComponent(fieldId);
       const response = await axios.put(
-        `/system-settings/recommended-fields/${encodedFieldName}`,
+        `/system-settings/recommended-fields/${encodedFieldId}`,
         fieldData
       );
       return (
         response.data.data ||
-        ({ name: fieldName, ...fieldData } as RecommendedField)
+        ({ fieldId: fieldId, ...fieldData } as RecommendedField)
       );
     } catch (error: any) {
       throw new ApiError(
@@ -136,13 +175,13 @@ class RecommendedFieldsService {
 
   /**
    * Delete a recommended field
-   * DELETE /system-settings/recommended-fields/{fieldName}
+   * DELETE /system-settings/recommended-fields/{fieldId}
    */
-  async deleteRecommendedField(fieldName: string): Promise<void> {
+  async deleteRecommendedField(fieldId: string): Promise<void> {
     try {
-      const encodedFieldName = encodeURIComponent(fieldName);
+      const encodedFieldId = encodeURIComponent(fieldId);
       await axios.delete(
-        `/system-settings/recommended-fields/${encodedFieldName}`
+        `/system-settings/recommended-fields/${encodedFieldId}`
       );
     } catch (error: any) {
       throw new ApiError(

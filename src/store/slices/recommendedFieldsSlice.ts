@@ -12,7 +12,7 @@ export type FieldType =
   | "checkbox"
   | "url"
   | "tags"
-  | "boolean";
+  | "repeatable_group";
 
 export type FieldValidation = {
   min?: number | null;

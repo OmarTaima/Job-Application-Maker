@@ -40,7 +40,8 @@ type SubField = {
     | "dropdown"
     | "textarea"
     | "url"
-    | "tags";
+    | "tags"
+    | "repeatable_group";
   isRequired: boolean;
   choices?: string[];
   choicesAr?: string[];
@@ -57,6 +58,7 @@ type CustomField = {
     | "date"
     | "checkbox"
     | "radio"
+    | "dropdown"
     | "textarea"
     | "url"
     | "tags"
@@ -102,7 +104,6 @@ const inputTypeOptions = [
   { value: "checkbox", label: "Checkbox" },
   { value: "radio", label: "Radio" },
   { value: "dropdown", label: "Dropdown" },
-  { value: "select", label: "Select" },
   { value: "textarea", label: "Textarea" },
   { value: "tags", label: "Tags (Multiple Values)" },
   { value: "repeatable_group", label: "Group Field (Multiple Questions)" },
@@ -539,8 +540,9 @@ export default function CreateJob() {
   };
 
   const handleAddCustomField = () => {
+    const tempId = `temp_${Date.now()}`;
     const newField: CustomField = {
-      fieldId: `field_${Date.now()}`,
+      fieldId: tempId,
       label: "",
       inputType: "text",
       isRequired: false,
@@ -556,8 +558,44 @@ export default function CreateJob() {
   // Recommended fields
   const { data: recommendedFields = [], isLoading: recommendedLoading } = useRecommendedFields();
 
-  const isRecommendedAdded = (name: string) => {
-    return jobForm.customFields.some((cf) => cf.fieldId === `rec_${name}` || cf.fieldId === name);
+  // Helper to convert API response objects to strings
+  const convertToString = (value: any): string => {
+    if (typeof value === 'string') return value;
+    if (typeof value === 'object' && value !== null) {
+      // Check if it's a bilingual object {en: string, ar: string}
+      if (value.en) return value.en;
+      // Otherwise it's an indexed object
+      return Object.keys(value)
+        .filter(key => !isNaN(Number(key)) && key !== '_id')
+        .sort((a, b) => Number(a) - Number(b))
+        .map(key => value[key])
+        .join('');
+    }
+    return '';
+  };
+
+  const convertChoicesArray = (choices: any): string[] => {
+    if (!Array.isArray(choices)) return [];
+    return choices.map((choice) => {
+      if (typeof choice === 'object' && choice !== null && choice.en) {
+        return choice.en;
+      }
+      return convertToString(choice);
+    });
+  };
+
+  const convertChoicesArrayAr = (choices: any): string[] => {
+    if (!Array.isArray(choices)) return [];
+    return choices.map((choice) => {
+      if (typeof choice === 'object' && choice !== null && choice.ar) {
+        return choice.ar;
+      }
+      return convertToString(choice);
+    });
+  };
+
+  const isRecommendedAdded = (fieldId: string) => {
+    return jobForm.customFields.some((cf) => cf.fieldId === `rec_${fieldId}` || cf.fieldId === fieldId);
   };
 
   
@@ -566,9 +604,9 @@ export default function CreateJob() {
   const [showRecommendedPanel, setShowRecommendedPanel] = useState(false);
   const [selectedRecommended, setSelectedRecommended] = useState<string[]>([]);
 
-  const toggleSelectRecommended = (name: string) => {
+  const toggleSelectRecommended = (fieldId: string) => {
     setSelectedRecommended((prev) =>
-      prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]
+      prev.includes(fieldId) ? prev.filter((n) => n !== fieldId) : [...prev, fieldId]
     );
   };
 
@@ -577,22 +615,31 @@ export default function CreateJob() {
     setJobForm((prev) => {
       const additions: CustomField[] = [];
       let currentMax = prev.customFields.reduce((m, cf) => Math.max(m, cf.displayOrder || 0), 0);
-      selectedRecommended.forEach((name) => {
-        if (prev.customFields.some((cf) => cf.fieldId === `rec_${name}` || cf.fieldId === name)) return;
-        let rf = recommendedFields.find((r: any) => r.name === name);
-        if (!rf && name.startsWith("__rec_")) {
-          const idx = Number(name.replace("__rec_", ""));
-          rf = recommendedFields[idx];
-          if (rf) rf = { ...rf, name };
-        }
+      selectedRecommended.forEach((fieldId) => {
+        if (prev.customFields.some((cf) => cf.fieldId === `rec_${fieldId}` || cf.fieldId === fieldId)) return;
+        const rf = recommendedFields.find((r: any) => r.fieldId === fieldId);
         if (!rf) return;
         currentMax += 1;
         const newField: CustomField = {
-          fieldId: `rec_${rf.name || rf.label || `rec_${Date.now()}`}`,
-          label: rf.label || rf.name || "",
-          inputType: (rf.type as any) || "text",
-          isRequired: !!rf.required,
-          choices: rf.options || [],
+          fieldId: `rec_${rf.fieldId}`,
+          label: convertToString(rf.label) || "",
+          labelAr: (rf.label && typeof rf.label === 'object' && rf.label.ar) ? rf.label.ar : convertToString(rf.label),
+          inputType: rf.inputType as CustomField["inputType"],
+          isRequired: rf.isRequired || false,
+          minValue: rf.minValue,
+          maxValue: rf.maxValue,
+          choices: convertChoicesArray(rf.choices),
+          choicesAr: convertChoicesArrayAr(rf.choices),
+          subFields: (Array.isArray(rf.subFields) || Array.isArray((rf as any).groupFields))
+            ? (rf.subFields || (rf as any).groupFields)?.map((g: any) => ({
+                fieldId: g.fieldId || `sub_${Date.now()}`,
+                label: convertToString(g.label) || "",
+                labelAr: (g.label && typeof g.label === 'object' && g.label.ar) ? g.label.ar : convertToString(g.label),
+                inputType: g.inputType as SubField["inputType"],
+                isRequired: g.isRequired || false,
+                choices: Array.isArray(g.choices) ? g.choices.map((c: any) => (typeof c === 'object' && c.en ? c.en : convertToString(c))) : [],
+              }))
+            : undefined,
           displayOrder: currentMax,
         };
         additions.push(newField);
@@ -618,12 +665,30 @@ export default function CreateJob() {
     field: keyof CustomField,
     value: any
   ) => {
-    setJobForm((prev) => ({
-      ...prev,
-      customFields: prev.customFields.map((cf, i) =>
-        i === index ? { ...cf, [field]: value } : cf
-      ),
-    }));
+    setJobForm((prev) => {
+      const updatedFields = [...prev.customFields];
+      const currentField = updatedFields[index];
+      
+      // If changing the label and fieldId is temporary, generate proper fieldId
+      if (field === 'label' && typeof value === 'string' && value.trim()) {
+        const currentFieldId = currentField.fieldId;
+        if (currentFieldId.startsWith('temp_')) {
+          // Generate fieldId from label (snake_case)
+          const newFieldId = value
+            .trim()
+            .toLowerCase()
+            .replace(/[^a-z0-9\s]/g, '')
+            .replace(/\s+/g, '_');
+          updatedFields[index] = { ...currentField, label: value, fieldId: newFieldId };
+        } else {
+          updatedFields[index] = { ...currentField, [field]: value };
+        }
+      } else {
+        updatedFields[index] = { ...currentField, [field]: value };
+      }
+      
+      return { ...prev, customFields: updatedFields };
+    });
   };
 
   const handleAddChoice = (fieldIndex: number) => {
@@ -1509,7 +1574,7 @@ export default function CreateJob() {
                 <button
                   type="button"
                   onClick={handleAddCustomField}
-                  className="flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white shadow-sm transition-all hover:bg-blue-700"
+                  className="flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white shadow-sm transition-all hover:bg-brand-700"
                 >
                   <PlusIcon className="size-4" />
                   Add Custom Field
@@ -1530,24 +1595,24 @@ export default function CreateJob() {
                           <div className="text-sm text-gray-500">Loading...</div>
                         ) : (
                           recommendedFields.map((rf: any, idx: number) => {
-                            const name = rf.name ?? `__rec_${idx}`;
-                            const disabled = isRecommendedAdded(name);
-                            const checked = selectedRecommended.includes(name);
-                            const inputId = `rec_${idx}_${name}`;
+                            const fieldId = rf.fieldId;
+                            const disabled = isRecommendedAdded(fieldId);
+                            const checked = selectedRecommended.includes(fieldId);
+                            const inputId = `rec_${idx}_${fieldId}`;
                             return (
-                              <label key={`${name}_${idx}`} htmlFor={inputId} className={`flex items-center justify-between gap-3 py-2 ${disabled ? 'opacity-60' : ''}`}>
+                              <label key={`${fieldId}_${idx}`} htmlFor={inputId} className={`flex items-center justify-between gap-3 py-2 ${disabled ? 'opacity-60' : ''}`}>
                                 <div className="flex items-center gap-3">
                                   <input
                                     id={inputId}
                                     type="checkbox"
                                     checked={disabled || checked}
                                     disabled={disabled}
-                                    onChange={() => toggleSelectRecommended(name)}
+                                    onChange={() => toggleSelectRecommended(fieldId)}
                                     className="h-4 w-4 rounded border-gray-300 text-brand-600"
                                   />
                                   <div className="text-sm">
-                                    <div className="font-medium">{rf.label || name}</div>
-                                    {rf.description && <div className="text-xs text-gray-500">{rf.description}</div>}
+                                    <div className="font-medium">{convertToString(rf.label) || fieldId}</div>
+                                    {rf.description && <div className="text-xs text-gray-500">{convertToString(rf.description)}</div>}
                                   </div>
                                 </div>
                                 {disabled && <span className="text-xs text-green-600">Added</span>}
@@ -1732,6 +1797,7 @@ export default function CreateJob() {
 
                     {(field.inputType === "checkbox" ||
                       field.inputType === "radio" ||
+                      field.inputType === "dropdown" ||
                       field.inputType === "tags") && (
                       <div>
                         <div className={`grid gap-3 ${jobForm.bilingual ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
