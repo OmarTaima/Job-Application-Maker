@@ -1,58 +1,14 @@
 import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
-import { recommendedFieldsService } from "../../services/recommendedFieldsService";
+import { 
+  recommendedFieldsService,
+  RecommendedField,
+  CreateRecommendedFieldRequest,
+  UpdateRecommendedFieldRequest,
+  FieldType
+} from "../../services/recommendedFieldsService";
 
-export type FieldType =
-  | "text"
-  | "textarea"
-  | "number"
-  | "email"
-  | "date"
-  | "radio"
-  | "dropdown"
-  | "checkbox"
-  | "url"
-  | "tags"
-  | "repeatable_group";
-
-export type FieldValidation = {
-  min?: number | null;
-  max?: number | null;
-  minLength?: number | null;
-  maxLength?: number | null;
-  pattern?: string | null;
-};
-
-export type RecommendedField = {
-  _id?: string;
-  name: string;
-  label: string;
-  type: FieldType;
-  required: boolean;
-  options?: string[];
-  validation?: FieldValidation;
-  description?: string;
-  defaultValue?: string;
-  displayOrder?: number;
-};
-
-export type CreateRecommendedFieldRequest = {
-  name: string;
-  label: string;
-  type: FieldType;
-  required: boolean;
-  options?: string[];
-  validation?: FieldValidation;
-  description?: string;
-};
-
-export type UpdateRecommendedFieldRequest = {
-  label?: string;
-  type?: FieldType;
-  required?: boolean;
-  options?: string[];
-  validation?: FieldValidation;
-  description?: string;
-};
+// Re-export types for convenience
+export type { RecommendedField, CreateRecommendedFieldRequest, UpdateRecommendedFieldRequest, FieldType };
 
 interface RecommendedFieldsState {
   fields: RecommendedField[];
@@ -98,11 +54,11 @@ export const createRecommendedField = createAsyncThunk(
 export const updateRecommendedField = createAsyncThunk(
   "recommendedFields/update",
   async (
-    { name, data }: { name: string; data: UpdateRecommendedFieldRequest },
+    { fieldId, data }: { fieldId: string; data: UpdateRecommendedFieldRequest },
     { rejectWithValue }
   ) => {
     try {
-      return await recommendedFieldsService.updateRecommendedField(name, data);
+      return await recommendedFieldsService.updateRecommendedField(fieldId, data);
     } catch (error: any) {
       return rejectWithValue(error.message || "Failed to update field");
     }
@@ -111,10 +67,10 @@ export const updateRecommendedField = createAsyncThunk(
 
 export const deleteRecommendedField = createAsyncThunk(
   "recommendedFields/delete",
-  async (name: string, { rejectWithValue }) => {
+  async (fieldId: string, { rejectWithValue }) => {
     try {
-      await recommendedFieldsService.deleteRecommendedField(name);
-      return name;
+      await recommendedFieldsService.deleteRecommendedField(fieldId);
+      return fieldId;
     } catch (error: any) {
       return rejectWithValue(error.message || "Failed to delete field");
     }
@@ -170,12 +126,12 @@ const recommendedFieldsSlice = createSlice({
         updateRecommendedField.fulfilled,
         (state, action: PayloadAction<RecommendedField>) => {
           const index = state.fields.findIndex(
-            (f) => f.name === action.payload.name
+            (f) => f.fieldId === action.payload.fieldId
           );
           if (index !== -1) {
             state.fields[index] = action.payload;
           }
-          if (state.currentField?.name === action.payload.name) {
+          if (state.currentField?.fieldId === action.payload.fieldId) {
             state.currentField = action.payload;
           }
         }
@@ -183,7 +139,7 @@ const recommendedFieldsSlice = createSlice({
       .addCase(
         deleteRecommendedField.fulfilled,
         (state, action: PayloadAction<string>) => {
-          state.fields = state.fields.filter((f) => f.name !== action.payload);
+          state.fields = state.fields.filter((f) => f.fieldId !== action.payload);
         }
       );
   },
