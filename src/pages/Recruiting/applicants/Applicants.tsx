@@ -34,7 +34,7 @@ const Applicants = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [pagination, setPagination] = useState<MRT_PaginationState>({
     pageIndex: 0,
-    pageSize: 15,
+    pageSize: 10,
   });
   const [rowSelection, setRowSelection] = useState<MRT_RowSelectionState>({});
   const [columnFilters, setColumnFilters] = useState<MRT_ColumnFiltersState>([]);
@@ -488,8 +488,9 @@ const Applicants = () => {
     data: paginatedApplicants,
     enableRowSelection: true,
     enablePagination: false,
+    enableBatchRowSelection: false,
     enableBottomToolbar: false,
-    enableTopToolbar: true,
+    enableTopToolbar: false,
     enableColumnFilters: false,
     enableFilters: false,
     enableHiding: false,
@@ -505,6 +506,7 @@ const Applicants = () => {
       columnFilters,
       isLoading: applicantsLoading || jobPositionsLoading,
       showSkeletons: applicantsLoading || jobPositionsLoading,
+      showAlertBanner: false,
     },
     onColumnFiltersChange: setColumnFilters,
     onRowSelectionChange: setRowSelection,
