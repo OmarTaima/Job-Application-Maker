@@ -7,7 +7,7 @@ export interface Department {
   _id: string;
   name: LocalizedString | string;
   companyId: string | { _id: string; name: LocalizedString | string };
-  description?: string;
+  description?: LocalizedString | string;
   createdAt?: string;
   __v?: number;
 }
@@ -15,13 +15,13 @@ export interface Department {
 export interface CreateDepartmentRequest {
   name: LocalizedString | string;
   companyId: string;
-  description?: string;
+  description?: LocalizedString | string;
 }
 
 export interface UpdateDepartmentRequest {
   name?: LocalizedString | string;
   companyId?: string;
-  description?: string;
+  description?: LocalizedString | string;
 }
 
 interface DepartmentsState {
