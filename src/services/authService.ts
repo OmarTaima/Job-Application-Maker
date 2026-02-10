@@ -32,7 +32,7 @@ export interface User {
     }>;
   };
   role?: "admin" | "company_user";
-  assignedCompanyIds?: string[];
+  assignedcompanyId?: string[];
   companies?: Array<{
     _id?: string;
     companyId: {

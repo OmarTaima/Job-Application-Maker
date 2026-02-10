@@ -41,10 +41,10 @@ const initialState: DepartmentsState = {
 // Async thunks
 export const fetchDepartments = createAsyncThunk(
   "departments/fetchAll",
-  async (companyIds: string[] | undefined, { rejectWithValue }) => {
+  async (companyId: string[] | undefined, { rejectWithValue }) => {
     try {
       const companyId =
-        companyIds && companyIds.length > 0 ? companyIds[0] : undefined;
+        companyId && companyId.length > 0 ? companyId[0] : undefined;
       return await departmentsService.getAllDepartments(companyId);
     } catch (error: any) {
       return rejectWithValue(error.message || "Failed to fetch departments");

@@ -62,15 +62,15 @@ export class ApiError extends Error {
 
 // Companies API service
 export const companiesService = {
-  // Get all companies, optionally filtered by companyIds (server expects either companyId or companyIds query)
-  async getAllCompanies(companyIds?: string[]): Promise<Company[]> {
+  // Get all companies, optionally filtered by companyId (server expects either companyId or companyId query)
+  async getAllCompanies(companyId?: string[]): Promise<Company[]> {
     try {
       const params: any = {};
-      if (companyIds && companyIds.length > 0) {
-        if (companyIds.length === 1) {
-          params.companyId = companyIds[0];
+      if (companyId && companyId.length > 0) {
+        if (companyId.length === 1) {
+          params.companyId = companyId[0];
         } else {
-          params.companyIds = companyIds.join(",");
+          params.companyId = companyId.join(",");
         }
       }
 
@@ -157,12 +157,12 @@ export const companiesService = {
   },
 
   // Get multiple companies by IDs
-  async getCompaniesByIds(companyIds: string[]): Promise<Company[]> {
+  async getCompaniesByIds(companyId: string[]): Promise<Company[]> {
     try {
       // Let the server filter by IDs and active flag when possible
-      const companies = await this.getAllCompanies(companyIds);
-      // Fallback: if server ignored companyIds, still filter locally
-      return companies.filter(company => companyIds.includes(company._id));
+      const companies = await this.getAllCompanies(companyId);
+      // Fallback: if server ignored companyId, still filter locally
+      return companies.filter(company => companyId.includes(company._id));
     } catch (error: any) {
       throw new ApiError(
         getErrorMessage(error),

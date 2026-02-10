@@ -10,17 +10,17 @@ import type {
 export const usersKeys = {
   all: ["users"] as const,
   lists: () => [...usersKeys.all, "list"] as const,
-  list: (companyIds?: string[]) =>
-    [...usersKeys.lists(), { companyIds }] as const,
+  list: (companyId?: string[]) =>
+    [...usersKeys.lists(), { companyId }] as const,
   details: () => [...usersKeys.all, "detail"] as const,
   detail: (id: string) => [...usersKeys.details(), id] as const,
 };
 
 // Get all users
-export function useUsers(companyIds?: string[]) {
+export function useUsers(companyId?: string[]) {
   return useQuery({
-    queryKey: usersKeys.list(companyIds),
-    queryFn: () => usersService.getAllUsers(companyIds),
+    queryKey: usersKeys.list(companyId),
+    queryFn: () => usersService.getAllUsers(companyId),
     staleTime: 5 * 60 * 1000,
   });
 }

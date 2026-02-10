@@ -1,5 +1,5 @@
 import type { ChangeEvent, FormEvent } from "react";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router";
 import ComponentCard from "../../../components/common/ComponentCard";
 import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
@@ -7,12 +7,10 @@ import PageMeta from "../../../components/common/PageMeta";
 import Label from "../../../components/form/Label";
 import Input from "../../../components/form/input/InputField";
 import TextArea from "../../../components/form/input/TextArea";
-import Select from "../../../components/form/Select";
 import { PlusIcon } from "../../../icons";
 import Swal from "sweetalert2";
-import { useAppDispatch, useAppSelector } from "../../../store/hooks";
-import { fetchCompanies, createCompany } from "../../../store/slices/companiesSlice";
-import { toPlainString } from "../../../utils/strings";
+import { useAppDispatch } from "../../../store/hooks";
+import { createCompany } from "../../../store/slices/companiesSlice";
 
 type CompanyForm = {
   name: {
@@ -48,63 +46,11 @@ export default function RecruitingDashboard() {
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
   
-  // Redux state
-  const { companies, loading: companiesLoading, isFetched } = useAppSelector(
-    (state) => state.companies
-  );
-  
   // Component state
   const [companyForm, setCompanyForm] = useState<CompanyForm>(defaultCompany);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [selectedCompanyId, setSelectedCompanyId] = useState<string>("");
-
-  // Load companies on mount (only if not already fetched)
-  useEffect(() => {
-    if (!isFetched && !companiesLoading) {
-      dispatch(fetchCompanies());
-    }
-  }, [dispatch, isFetched, companiesLoading]);
-
-  // Handle company selection for duplication
-  const handleCompanySelect = (companyId: string) => {
-    setSelectedCompanyId(companyId);
-    
-    if (!companyId) {
-      // Reset form if no company selected
-      setCompanyForm(defaultCompany);
-      return;
-    }
-    
-    const selectedCompany = companies.find((c) => c._id === companyId);
-    if (selectedCompany) {
-      const srcName = (selectedCompany as any).name;
-      const srcDesc = (selectedCompany as any).description;
-      const srcAddr = (selectedCompany as any).address;
-      
-      // Populate form with selected company data (excluding _id for duplication)
-      setCompanyForm({
-        name: {
-          en: typeof srcName === 'object' ? (srcName.en || '') + ' (Copy)' : toPlainString(srcName) + ' (Copy)',
-          ar: typeof srcName === 'object' ? (srcName.ar || '') + ' (نسخة)' : '',
-        },
-        description: {
-          en: typeof srcDesc === 'object' ? srcDesc.en || '' : toPlainString(srcDesc) || '',
-          ar: typeof srcDesc === 'object' ? srcDesc.ar || '' : '',
-        },
-        contactEmail: selectedCompany.contactEmail || "",
-        phone: selectedCompany.phone || "",
-        address: Array.isArray(srcAddr) ? srcAddr : [{
-          en: typeof srcAddr === 'object' ? srcAddr.en || '' : toPlainString(srcAddr) || '',
-          ar: typeof srcAddr === 'object' ? srcAddr.ar || '' : '',
-          location: typeof srcAddr === 'object' ? srcAddr.location || '' : '',
-        }],
-        website: selectedCompany.website || "",
-        logoPath: selectedCompany.logoPath || "",
-      });
-    }
-  };
 
   const handleCompanyChange = (
     e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
@@ -240,35 +186,6 @@ export default function RecruitingDashboard() {
             {successMessage}
           </div>
         )}
-
-        {/* Company Selection for Duplication */}
-        <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
-          <Label htmlFor="duplicateCompany" className="mb-2">
-            Duplicate from existing company (optional)
-          </Label>
-          <Select
-            options={[
-              { value: "", label: "-- Start from scratch --" },
-              ...companies.map((company) => ({
-                value: company._id,
-                label: toPlainString((company as any).name),
-              })),
-            ]}
-            value={selectedCompanyId}
-            onChange={handleCompanySelect}
-            placeholder="Select a company to duplicate"
-          />
-          {companiesLoading && (
-            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-              Loading companies...
-            </p>
-          )}
-          {selectedCompanyId && (
-            <p className="mt-2 text-sm text-blue-600 dark:text-blue-400">
-              ✓ Company data loaded. You can edit the fields below before saving.
-            </p>
-          )}
-        </div>
 
         <form className="space-y-4" onSubmit={handleCompanySubmit}>
           {/* Company Name (EN/AR) */}

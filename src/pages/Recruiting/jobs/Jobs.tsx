@@ -40,18 +40,18 @@ export default function Jobs() {
   const [searchTerm, setSearchTerm] = useState("");
 
   // Memoize user-derived values
-  const { isAdmin, companyIds } = useMemo(() => {
-    if (!user) return { isAdmin: false, companyIds: undefined };
+  const { isAdmin, companyId } = useMemo(() => {
+    if (!user) return { isAdmin: false, companyId: undefined };
 
     const isAdmin = user?.roleId?.name?.toLowerCase().includes("super admin");
-    const userCompanyIds = user?.companies?.map((c) =>
+    const usercompanyId = user?.companies?.map((c) =>
       typeof c.companyId === "string" ? c.companyId : c.companyId._id
     );
 
-    const companyIds =
-      !isAdmin && userCompanyIds?.length ? userCompanyIds : undefined;
+    const companyId =
+      !isAdmin && usercompanyId?.length ? usercompanyId : undefined;
 
-    return { isAdmin, companyIds };
+    return { isAdmin, companyId };
   }, [user?._id, user?.roleId?.name, user?.companies?.length]);
 
   // Use React Query hooks
@@ -59,7 +59,7 @@ export default function Jobs() {
     data: jobPositions = [],
     isLoading: jobsLoading,
     error,
-  } = useJobPositions(companyIds);
+  } = useJobPositions(companyId);
   const deleteJobMutation = useDeleteJobPosition();
   const updateJobMutation = useUpdateJobPosition();
 
@@ -103,7 +103,7 @@ export default function Jobs() {
   // Enrich job positions with company and department names
   const jobs = useMemo(() => {
     // Extract user's assigned company IDs for filtering
-    const userCompanyIds = user?.companies?.map((c) =>
+    const usercompanyId = user?.companies?.map((c) =>
       typeof c.companyId === "string" ? c.companyId : c.companyId._id
     );
 
@@ -114,7 +114,7 @@ export default function Jobs() {
         if (isAdmin) return true;
 
         // Non-admin users only see jobs from their assigned companies
-        if (!userCompanyIds || userCompanyIds.length === 0) return false;
+        if (!usercompanyId || usercompanyId.length === 0) return false;
 
         // Get the company ID from the position (handle both string and object)
         const positionCompanyId =
@@ -122,7 +122,7 @@ export default function Jobs() {
             ? position.companyId
             : (position.companyId as any)?._id;
 
-        return userCompanyIds.includes(positionCompanyId);
+        return usercompanyId.includes(positionCompanyId);
       })
       .map((position) => {
         // Extract company and department names from populated data

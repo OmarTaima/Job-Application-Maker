@@ -141,7 +141,7 @@ interface ApplicantsState {
   loading: boolean;
   error: string | null;
   isFetched: boolean;
-  lastFetchedCompanyIds?: string[] | undefined;
+  lastFetchedcompanyId?: string[] | undefined;
 }
 
 const initialState: ApplicantsState = {
@@ -150,15 +150,15 @@ const initialState: ApplicantsState = {
   loading: false,
   error: null,
   isFetched: false,
-  lastFetchedCompanyIds: undefined,
+  lastFetchedcompanyId: undefined,
 };
 
 // Async thunks
 export const fetchApplicants = createAsyncThunk(
   "applicants/fetchAll",
-  async (companyIds: string[] | undefined, { rejectWithValue }) => {
+  async (companyId: string[] | undefined, { rejectWithValue }) => {
     try {
-      return await applicantsService.getAllApplicants(companyIds);
+      return await applicantsService.getAllApplicants(companyId);
     } catch (error: any) {
       return rejectWithValue(error.message || "Failed to fetch applicants");
     }
@@ -388,10 +388,10 @@ const applicantsSlice = createSlice({
           state.loading = false;
           state.applicants = action.payload;
           state.isFetched = true;
-          // Store the companyIds used for this fetch (available on meta.arg)
+          // Store the companyId used for this fetch (available on meta.arg)
           // action.meta.arg can be undefined or string[]
           // @ts-ignore - meta typing for createAsyncThunk arg
-          state.lastFetchedCompanyIds = action.meta?.arg as string[] | undefined;
+          state.lastFetchedcompanyId = action.meta?.arg as string[] | undefined;
         }
       )
       .addCase(fetchApplicants.rejected, (state, action) => {

@@ -9,8 +9,8 @@ import type {
 export const jobPositionsKeys = {
   all: ["jobPositions"] as const,
   lists: () => [...jobPositionsKeys.all, "list"] as const,
-  list: (companyIds?: string[]) =>
-    [...jobPositionsKeys.lists(), { companyIds }] as const,
+  list: (companyId?: string[]) =>
+    [...jobPositionsKeys.lists(), { companyId }] as const,
   details: () => [...jobPositionsKeys.all, "detail"] as const,
   detail: (id: string) => [...jobPositionsKeys.details(), id] as const,
   applicants: (id: string) =>
@@ -18,10 +18,16 @@ export const jobPositionsKeys = {
 };
 
 // Get all job positions
-export function useJobPositions(companyIds?: string[], isActive: boolean = true) {
+export function useJobPositions(companyId?: string[], isActive: boolean = true) {
   return useQuery({
-    queryKey: jobPositionsKeys.list(companyIds),
-    queryFn: () => jobPositionsService.getAllJobPositions(companyIds, isActive),
+    queryKey: jobPositionsKeys.list(companyId),
+    queryFn: () => {
+      // Special sentinel to indicate "no companies assigned" -> return empty list
+      if (companyId && companyId.length === 1 && companyId[0] === '__NO_COMPANY__') {
+        return Promise.resolve([] as any);
+      }
+      return jobPositionsService.getAllJobPositions(companyId, isActive);
+    },
     staleTime: 5 * 60 * 1000,
   });
 }

@@ -78,14 +78,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (roleName === "admin" || roleName === "super admin") return true;
 
     // Company users can only access assigned companies
-    const userCompanyIds =
+    const usercompanyId =
       user.companies?.map((c) =>
         typeof c.companyId === "string" ? c.companyId : c.companyId._id
       ) || [];
 
     return (
-      userCompanyIds.includes(companyId) ||
-      user.assignedCompanyIds?.includes(companyId) ||
+      usercompanyId.includes(companyId) ||
+      user.assignedcompanyId?.includes(companyId) ||
       false
     );
   };

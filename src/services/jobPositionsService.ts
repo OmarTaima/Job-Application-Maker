@@ -78,6 +78,9 @@ export type CreateJobPositionRequest = {
   registrationStart: string;
   registrationEnd: string;
   termsAndConditions?: LocalizedString[];
+  // optional legacy/extra fields
+  requirements?: string[];
+  status?: string;
   jobSpecs?: Array<{
     spec: LocalizedString;
     weight: number;
@@ -120,6 +123,11 @@ export type UpdateJobPositionRequest = {
   registrationStart?: string;
   registrationEnd?: string;
   termsAndConditions?: LocalizedString[];
+  // allow updating these optional fields as well
+  companyId?: string;
+  jobCode?: string;
+  requirements?: string[];
+  status?: string;
   jobSpecs?: Array<{
     spec: LocalizedString;
     weight: number;
@@ -167,14 +175,20 @@ class JobPositionsService {
   /**
    * Get all job positions
    */
-  async getAllJobPositions(companyIds?: string[], isActive?: boolean): Promise<JobPosition[]> {
+  async getAllJobPositions(companyId?: string[], isActive?: boolean): Promise<JobPosition[]> {
     try {
       const params: any = {};
-      if (companyIds && companyIds.length > 0) {
-        if (companyIds.length === 1) {
-          params.companyId = companyIds[0];
-        } else {
-          params.companyIds = companyIds.join(",");
+      if (companyId && companyId.length > 0) {
+        // Normalize incoming companyId to an array of ids (guard against a comma-joined string)
+        const ids = Array.isArray(companyId)
+          ? companyId
+          : String(companyId).split(",").map((s) => s.trim()).filter(Boolean);
+
+        if (ids.length === 1) {
+          params.companyId = ids[0];
+        } else if (ids.length > 1) {
+          // Send as companyIds array so the backend receives multiple ids correctly
+          params.companyIds = ids;
         }
       }
       if (isActive !== undefined) {

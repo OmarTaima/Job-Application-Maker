@@ -203,21 +203,21 @@ export default function EditUser() {
       }
 
       // 2. Detect company changes
-      const originalCompanyIds = originalUser.companies.map((c) => c.companyId);
-      const currentCompanyIds = userForm.companies.map((c) => c.companyId);
+      const originalcompanyId = originalUser.companies.map((c) => c.companyId);
+      const currentcompanyId = userForm.companies.map((c) => c.companyId);
 
       // Find added companies
-      const addedCompanyIds = currentCompanyIds.filter(
-        (cid) => !originalCompanyIds.includes(cid)
+      const addedcompanyId = currentcompanyId.filter(
+        (cid) => !originalcompanyId.includes(cid)
       );
 
       // Find removed companies
-      const removedCompanyIds = originalCompanyIds.filter(
-        (cid) => !currentCompanyIds.includes(cid)
+      const removedcompanyId = originalcompanyId.filter(
+        (cid) => !currentcompanyId.includes(cid)
       );
 
       // Add new companies
-      for (const companyId of addedCompanyIds) {
+      for (const companyId of addedcompanyId) {
         await addUserCompanyMutation.mutateAsync({
           userId: id,
           companyId,
@@ -225,7 +225,7 @@ export default function EditUser() {
       }
 
       // Remove companies
-      for (const companyId of removedCompanyIds) {
+      for (const companyId of removedcompanyId) {
         await removeUserCompanyMutation.mutateAsync({
           userId: id,
           companyId,
@@ -234,7 +234,7 @@ export default function EditUser() {
 
       // 3. Update departments for existing companies
       for (const company of userForm.companies) {
-        if (addedCompanyIds.includes(company.companyId)) continue;
+        if (addedcompanyId.includes(company.companyId)) continue;
 
         const originalCompany = originalUser.companies.find(
           (c) => c.companyId === company.companyId

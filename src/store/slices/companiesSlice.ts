@@ -56,7 +56,7 @@ const initialState: CompaniesState = {
 // Async thunks
 export const fetchCompanies = createAsyncThunk(
   "companies/fetchAll",
-  async (_companyIds: string[] | undefined, { rejectWithValue }) => {
+  async (_companyId: string[] | undefined, { rejectWithValue }) => {
     try {
       return await companiesService.getAllCompanies();
     } catch (error: any) {

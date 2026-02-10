@@ -18,7 +18,7 @@ import {
   useDepartments,
 } from "../../../hooks/queries";
 import { useRecommendedFields } from "../../../hooks/queries/useRecommendedFields";
-import { useCreateJobPosition, useUpdateJobPosition } from "../../../hooks/queries/useJobPositions";
+import { useCreateJobPosition, useUpdateJobPosition, useJobPositions } from "../../../hooks/queries/useJobPositions";
 import { toPlainString } from "../../../utils/strings";
 
 type JobSpec = {
@@ -152,8 +152,8 @@ export default function CreateJob() {
   const hasMultipleCompanies = userCompaniesCount > 1;
   const shouldShowCompanyField = isAdmin || hasMultipleCompanies;
 
-  // Determine companyIds to pass to company queries (undefined for super admin -> fetch all)
-  const companyIds = useMemo(() => {
+  // Determine companyId to pass to company queries (undefined for super admin -> fetch all)
+  const companyId = useMemo(() => {
     if (!user) return undefined;
     const roleName = (user as any)?.roleId?.name || String(user.role || "");
     const normalized = String(roleName).toLowerCase();
@@ -162,6 +162,26 @@ export default function CreateJob() {
     const ids = user.companies?.map((c: any) => (typeof c.companyId === "string" ? c.companyId : c.companyId?._id));
     return ids && ids.length ? ids : undefined;
   }, [user?.companies, user?.roleId?.name, user?.role]);
+
+  // Explicitly detect super admin for clarity
+  const isSuperAdmin = useMemo(() => {
+    if (!user) return false;
+    const roleName = (user as any)?.roleId?.name || String(user.role || "");
+    const normalized = String(roleName).toLowerCase();
+    return (
+      normalized === "super admin" ||
+      normalized === "superadmin" ||
+      normalized === "super_admin"
+    );
+  }, [user?.role, user?.roleId?.name]);
+
+  // Prepare companyId specifically for the jobs duplication query.
+  // If user is super admin -> undefined (fetch across all companies).
+  // If user is not super admin but has no assigned companies -> use sentinel to avoid fetching all.
+  const companyIdForJobQuery = useMemo(() => {
+    if (isSuperAdmin) return undefined;
+    return companyId ?? ['__NO_COMPANY__'];
+  }, [isSuperAdmin, companyId]);
 
   const [jobForm, setJobForm] = useState<JobForm>({
     companyId: "",
@@ -200,9 +220,14 @@ export default function CreateJob() {
   const [isEditMode, setIsEditMode] = useState(false);
   const [formError, setFormError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedJobId, setSelectedJobId] = useState<string>("");
 
   // Use React Query hooks for data fetching
-  const { data: allCompanies = [], isLoading: companiesLoading } = useCompanies(companyIds as any);
+  const { data: allCompanies = [], isLoading: companiesLoading } = useCompanies(companyId as any);
+  // Fetch jobs for duplication dropdown. Always fetch only active jobs.
+  // Super Admin: companyId is undefined -> fetches active jobs across all companies
+  // Regular users: companyId contains their assigned company IDs -> fetches active jobs for those companies
+  const { data: allJobs = [], isLoading: jobsLoading } = useJobPositions(companyIdForJobQuery, true);
   const createJobMutation = useCreateJobPosition();
   const updateJobMutation = useUpdateJobPosition();
   
@@ -227,7 +252,7 @@ export default function CreateJob() {
           value:
             typeof c.companyId === "string" ? c.companyId : c.companyId._id,
           label:
-            typeof c.companyId === "string" ? c.companyId : c.companyId.name,
+            typeof c.companyId === "string" ? c.companyId : toPlainString(c.companyId.name),
         })) || []
       );
     }
@@ -298,6 +323,109 @@ export default function CreateJob() {
   };
   const companyAutoSet = useRef(false);
   const jobDataLoaded = useRef(false);
+
+  // Handle job selection for duplication
+  const handleJobSelect = (jobId: string) => {
+    setSelectedJobId(jobId);
+    
+    if (!jobId) {
+      // Reset form if no job selected
+      setJobForm({
+        companyId: jobForm.companyId || "",
+        departmentId: "",
+        jobCode: "",
+        title: "",
+        titleAr: "",
+        description: "",
+        descriptionAr: "",
+        salary: 0,
+        salaryVisible: true,
+        bilingual: false,
+        openPositions: 1,
+        registrationStart: "",
+        registrationEnd: "",
+        termsAndConditions: [],
+        termsAndConditionsAr: [],
+        jobSpecs: [],
+        customFields: [],
+        employmentType: 'full-time',
+        workArrangement: 'on-site',
+      });
+      return;
+    }
+    
+    const selectedJob = allJobs.find((j: any) => j._id === jobId);
+    if (selectedJob) {
+      // Extract company and department IDs
+      const companyId = typeof selectedJob.companyId === 'string' ? selectedJob.companyId : (selectedJob.companyId as any)?._id;
+      const departmentId = typeof selectedJob.departmentId === 'string' ? selectedJob.departmentId : (selectedJob.departmentId as any)?._id;
+      
+      // Populate form with selected job data (with "Copy" suffix)
+      setJobForm({
+        companyId: companyId || "",
+        departmentId: departmentId || "",
+        jobCode: "", // Will be auto-generated
+        title: (typeof selectedJob.title === 'object' ? selectedJob.title.en : selectedJob.title) + ' (Copy)',
+        titleAr: typeof selectedJob.title === 'object' && selectedJob.title.ar ? selectedJob.title.ar + ' (نسخة)' : '',
+        description: typeof selectedJob.description === 'object' ? selectedJob.description.en || '' : (selectedJob.description || ''),
+        descriptionAr: typeof selectedJob.description === 'object' ? selectedJob.description.ar || '' : '',
+        salary: selectedJob.salary || 0,
+        salaryVisible: selectedJob.salaryVisible ?? true,
+        bilingual: selectedJob.bilingual ?? false,
+        openPositions: selectedJob.openPositions || 1,
+        registrationStart: selectedJob.registrationStart ? new Date(selectedJob.registrationStart).toISOString().split("T")[0] : "",
+        registrationEnd: selectedJob.registrationEnd ? new Date(selectedJob.registrationEnd).toISOString().split("T")[0] : "",
+        termsAndConditions: Array.isArray(selectedJob.termsAndConditions)
+          ? selectedJob.termsAndConditions.map((t: any) => typeof t === 'string' ? t : t?.en || '')
+          : [],
+        termsAndConditionsAr: Array.isArray(selectedJob.termsAndConditions)
+          ? selectedJob.termsAndConditions.map((t: any) => typeof t === 'object' ? t?.ar || '' : '')
+          : [],
+        jobSpecs: Array.isArray(selectedJob.jobSpecs)
+          ? selectedJob.jobSpecs.map((s: any) => ({
+              spec: typeof s.spec === 'string' ? s.spec : s.spec?.en || '',
+              specAr: typeof s.spec === 'object' ? s.spec?.ar || '' : '',
+              weight: s.weight || 0,
+            }))
+          : [],
+        customFields: Array.isArray(selectedJob.customFields)
+          ? selectedJob.customFields.map((cf: any) => ({
+              fieldId: `dup_${Date.now()}_${Math.random()}`,
+              label: typeof cf.label === 'string' ? cf.label : cf.label?.en || '',
+              labelAr: typeof cf.label === 'object' ? cf.label?.ar || '' : '',
+              inputType: cf.inputType,
+              isRequired: cf.isRequired,
+              minValue: cf.minValue,
+              maxValue: cf.maxValue,
+              choices: Array.isArray(cf.choices)
+                ? cf.choices.map((c: any) => typeof c === 'string' ? c : c?.en || '')
+                : [],
+              choicesAr: Array.isArray(cf.choices)
+                ? cf.choices.map((c: any) => typeof c === 'object' ? c?.ar || '' : '')
+                : [],
+              subFields: Array.isArray(cf.groupFields || cf.subFields)
+                ? (cf.groupFields || cf.subFields).map((sf: any) => ({
+                    fieldId: `dup_sub_${Date.now()}_${Math.random()}`,
+                    label: typeof sf.label === 'string' ? sf.label : sf.label?.en || '',
+                    labelAr: typeof sf.label === 'object' ? sf.label?.ar || '' : '',
+                    inputType: sf.inputType,
+                    isRequired: sf.isRequired,
+                    choices: Array.isArray(sf.choices)
+                      ? sf.choices.map((c: any) => typeof c === 'string' ? c : c?.en || '')
+                      : [],
+                    choicesAr: Array.isArray(sf.choices)
+                      ? sf.choices.map((c: any) => typeof c === 'object' ? c?.ar || '' : '')
+                      : [],
+                  }))
+                : [],
+              displayOrder: cf.displayOrder || 0,
+            }))
+          : [],
+        employmentType: selectedJob.employmentType || 'full-time',
+        workArrangement: selectedJob.workArrangement || 'on-site',
+      });
+    }
+  };
 
   // Load existing job data when in edit mode
   useEffect(() => {
@@ -1130,6 +1258,38 @@ export default function CreateJob() {
               </div>
             </div>
           )}
+
+          {/* Job Duplication */}
+          {!isEditMode && (
+            <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+              <Label htmlFor="duplicateJob" className="mb-2">
+                Duplicate from existing job (optional)
+              </Label>
+              <Select
+                options={[
+                  { value: "", label: "-- Start from scratch --" },
+                  ...allJobs.map((job: any) => ({
+                    value: job._id,
+                    label: `${toPlainString(job.title)} - ${toPlainString((job as any).companyId?.name || '')}`,
+                  })),
+                ]}
+                value={selectedJobId}
+                onChange={handleJobSelect}
+                placeholder="Select a job to duplicate"
+              />
+              {jobsLoading && (
+                <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                  Loading jobs...
+                </p>
+              )}
+              {selectedJobId && (
+                <p className="mt-2 text-sm text-blue-600 dark:text-blue-400">
+                  ✓ Job data loaded. You can edit the fields below before saving.
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Company & Department Selection */}
           <ComponentCard
             title={isEditMode ? "Department" : "Company & Department"}

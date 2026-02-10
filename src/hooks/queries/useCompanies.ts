@@ -10,16 +10,16 @@ import type { Applicant } from "../../store/slices/applicantsSlice";
 export const companiesKeys = {
   all: ["companies"] as const,
   lists: () => [...companiesKeys.all, "list"] as const,
-  list: (companyIds?: string[]) => [...companiesKeys.lists(), { companyIds }] as const,
+  list: (companyId?: string[]) => [...companiesKeys.lists(), { companyId }] as const,
   details: () => [...companiesKeys.all, "detail"] as const,
   detail: (id: string) => [...companiesKeys.details(), id] as const,
 };
 
 // Get all companies (optionally filtered by company IDs)
-export function useCompanies(companyIds?: string[]) {
+export function useCompanies(companyId?: string[]) {
   return useQuery({
-    queryKey: companiesKeys.list(companyIds),
-    queryFn: () => companiesService.getAllCompanies(companyIds),
+    queryKey: companiesKeys.list(companyId),
+    queryFn: () => companiesService.getAllCompanies(companyId),
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 }
@@ -165,7 +165,7 @@ export function useCompaniesWithApplicants(applicants: Applicant[] | undefined) 
       }
       
       // Extract unique company IDs from applicants
-      const companyIds = Array.from(
+      const companyId = Array.from(
         new Set(
           applicants.map((applicant) => {
             if (typeof applicant.companyId === "string") {
@@ -176,12 +176,12 @@ export function useCompaniesWithApplicants(applicants: Applicant[] | undefined) 
         )
       ) as string[];
 
-      if (companyIds.length === 0) {
+      if (companyId.length === 0) {
         return [];
       }
 
       // Fetch only companies with applicants
-      return companiesService.getCompaniesByIds(companyIds);
+      return companiesService.getCompaniesByIds(companyId);
     },
     enabled: !!applicants && applicants.length > 0,
     staleTime: 5 * 60 * 1000, // 5 minutes

@@ -114,7 +114,7 @@ const ApplicantData = () => {
       typeof applicant.jobPositionId === 'string'
         ? applicant.jobPositionId
         : (applicant.jobPositionId as any)?._id;
-    const found = jobPositions.find((j) => j._id === jobPosId);
+    const found = jobPositions.find((j: any) => j._id === jobPosId);
     return { en: found?.title?.en || '' };
   };
 

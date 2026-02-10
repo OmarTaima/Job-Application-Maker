@@ -89,11 +89,11 @@ export class ApiError extends Error {
 // Users API service
 export const usersService = {
   // Get all users
-  async getAllUsers(companyIds?: string[]): Promise<User[]> {
+  async getAllUsers(companyId?: string[]): Promise<User[]> {
     try {
       const params =
-        companyIds && companyIds.length > 0
-          ? { companyIds: companyIds.join(",") }
+        companyId && companyId.length > 0
+          ? { companyId: companyId.join(",") }
           : {};
       const response = await axios.get<UsersResponse>("/users", { params });
       return response.data.data;

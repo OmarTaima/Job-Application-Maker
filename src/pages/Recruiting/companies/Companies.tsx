@@ -35,17 +35,17 @@ export default function Companies() {
 
   // Memoize user-derived values
   const { isAdmin } = useMemo(() => {
-    if (!user) return { isAdmin: false, companyIds: undefined };
+    if (!user) return { isAdmin: false, companyId: undefined };
 
     const isAdmin = user?.roleId?.name?.toLowerCase().includes("admin");
-    const userCompanyIds = user?.companies?.map((c) =>
+    const usercompanyId = user?.companies?.map((c) =>
       typeof c.companyId === "string" ? c.companyId : c.companyId._id
     );
 
-    const companyIdsFiltered =
-      !isAdmin && userCompanyIds?.length ? userCompanyIds : undefined;
+    const companyIdFiltered =
+      !isAdmin && usercompanyId?.length ? usercompanyId : undefined;
 
-    return { isAdmin, companyIds: companyIdsFiltered };
+    return { isAdmin, companyId: companyIdFiltered };
   }, [user?._id, user?.roleId?.name, user?.companies?.length]);
 
   // Use React Query hooks for data fetching
@@ -149,13 +149,13 @@ export default function Companies() {
 
   const filteredCompanies = companies.filter((company) => {
     // Filter by user's assigned companies first
-    const userCompanyIds = user?.companies?.map((c) =>
+    const usercompanyId = user?.companies?.map((c) =>
       typeof c.companyId === "string" ? c.companyId : c.companyId._id
     );
 
     // If not admin and has assigned companies, only show those
-    if (!isAdmin && userCompanyIds && userCompanyIds.length > 0) {
-      if (!userCompanyIds.includes(company._id)) {
+    if (!isAdmin && usercompanyId && usercompanyId.length > 0) {
+      if (!usercompanyId.includes(company._id)) {
         return false;
       }
     }

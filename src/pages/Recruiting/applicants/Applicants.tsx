@@ -46,12 +46,12 @@ const Applicants = () => {
   }, [rowSelection]);
 
   // Memoize user-derived values
-  const companyIds = useMemo(() => {
+  const companyId = useMemo(() => {
     if (!user) return undefined;
 
     const roleName = user?.roleId?.name?.toLowerCase();
     const isSuperAdmin = roleName === "super admin";
-    const userCompanyIds = user?.companies?.map((c) =>
+    const usercompanyId = user?.companies?.map((c) =>
       typeof c.companyId === "string" ? c.companyId : c.companyId._id
     );
 
@@ -59,7 +59,7 @@ const Applicants = () => {
     if (isSuperAdmin) return undefined;
     
     // Regular users get their assigned companies only
-    return userCompanyIds?.length ? userCompanyIds : undefined;
+    return usercompanyId?.length ? usercompanyId : undefined;
   }, [user?._id, user?.roleId?.name, user?.companies]);
 
   // Use React Query hooks
@@ -67,11 +67,11 @@ const Applicants = () => {
     data: applicants = [],
     isLoading: applicantsLoading,
     error,
-  } = useApplicants(companyIds);
+  } = useApplicants(companyId);
   const { data: jobPositions = [], isLoading: jobPositionsLoading } =
-    useJobPositions(companyIds);
+    useJobPositions(companyId);
   const updateStatusMutation = useUpdateApplicantStatus();
-  const { data: allCompaniesRaw = [] } = useCompanies(companyIds as any);
+  const { data: allCompaniesRaw = [] } = useCompanies(companyId as any);
 
   const [bulkStatusError, setBulkStatusError] = useState("");
   const [bulkDeleteError, setBulkDeleteError] = useState("");
@@ -108,18 +108,18 @@ const Applicants = () => {
 
   // Filter companies on the frontend
   const allCompanies = useMemo(() => {
-    if (!companyIds || companyIds.length === 0) {
+    if (!companyId || companyId.length === 0) {
       return allCompaniesRaw;
     }
     return allCompaniesRaw.filter((company: any) => 
-      companyIds.includes(company._id)
+      companyId.includes(company._id)
     );
-  }, [allCompaniesRaw, companyIds]);
+  }, [allCompaniesRaw, companyId]);
 
   // Create job lookup map
   const jobPositionMap = useMemo(() => {
     const map: Record<string, any> = {};
-    jobPositions.forEach((job) => {
+    jobPositions.forEach((job: any) => {
       const getId = (v: any) => (typeof v === "string" ? v : v?._id);
       map[getId(job._id)] = job;
     });
@@ -149,7 +149,7 @@ const Applicants = () => {
 
     // WORKAROUND: Filter by user's companies first (backend should do this but doesn't)
     // Only apply if user has specific company restrictions
-    if (companyIds && companyIds.length > 0) {
+    if (companyId && companyId.length > 0) {
       filtered = filtered.filter((app: Applicant) => {
         // Skip applicants with no job position (they'll be filtered out later)
         if (!app.jobPositionId) return false;
@@ -160,7 +160,7 @@ const Applicants = () => {
         
         if (jobPosition?.companyId) {
           const jobCompanyId = getId(jobPosition.companyId);
-          return companyIds.includes(jobCompanyId);
+          return companyId.includes(jobCompanyId);
         }
         return false;
       });
@@ -203,7 +203,7 @@ const Applicants = () => {
     }
 
     return filtered;
-  }, [applicants, columnFilters, jobPositionMap, companyIds]);
+  }, [applicants, columnFilters, jobPositionMap, companyId]);
 
   // Apply pagination
   const paginatedApplicants = useMemo(() => {

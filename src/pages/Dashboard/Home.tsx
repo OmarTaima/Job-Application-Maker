@@ -35,23 +35,23 @@ export default function Home() {
   const [openStatus, setOpenStatus] = useState<string | null>(null);
   const { user } = useAuth();
 
-  // Determine companyIds based on user role; super admin fetches all
-  const companyIds = useMemo(() => {
+  // Determine companyId based on user role; super admin fetches all
+  const companyId = useMemo(() => {
     const roleName = user?.roleId?.name?.toLowerCase();
     if (!user || roleName === "super admin") {
       return undefined; // Fetch all
     }
     
-    const userCompanyIds =
+    const usercompanyId =
       user.companies?.map((c) =>
         typeof c.companyId === "string" ? c.companyId : c.companyId._id
       ) || [];
     
-    return userCompanyIds.length > 0 ? userCompanyIds : undefined;
+    return usercompanyId.length > 0 ? usercompanyId : undefined;
   }, [user]);
 
   // Use React Query hook - handles caching, deduplication, and background refetching
-  const { data: applicants = [], isLoading: loading } = useApplicants(companyIds);
+  const { data: applicants = [], isLoading: loading } = useApplicants(companyId);
 
   const filtered = useMemo(() => {
     if (!range || range.length === 0) return applicants;

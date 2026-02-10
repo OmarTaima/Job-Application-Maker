@@ -200,17 +200,17 @@ export default function Users() {
         }
         
         // 2. Detect company changes
-        const originalCompanyIds = originalUser.companies.map(c => c.companyId);
-        const currentCompanyIds = userForm.companies.map(c => c.companyId);
+        const originalcompanyId = originalUser.companies.map(c => c.companyId);
+        const currentcompanyId = userForm.companies.map(c => c.companyId);
         
         // Find added companies
-        const addedCompanyIds = currentCompanyIds.filter(id => !originalCompanyIds.includes(id));
+        const addedcompanyId = currentcompanyId.filter(id => !originalcompanyId.includes(id));
         
         // Find removed companies
-        const removedCompanyIds = originalCompanyIds.filter(id => !currentCompanyIds.includes(id));
+        const removedcompanyId = originalcompanyId.filter(id => !currentcompanyId.includes(id));
         
         // POST /users/:userId/companies - add new companies
-        for (const companyId of addedCompanyIds) {
+        for (const companyId of addedcompanyId) {
           await addUserCompanyMutation.mutateAsync({
             userId: editingUserId,
             companyId,
@@ -218,7 +218,7 @@ export default function Users() {
         }
         
         // DELETE /users/:userId/companies/:companyId - remove companies
-        for (const companyId of removedCompanyIds) {
+        for (const companyId of removedcompanyId) {
           await removeUserCompanyMutation.mutateAsync({
             userId: editingUserId,
             companyId,
@@ -228,7 +228,7 @@ export default function Users() {
         // 3. PUT /users/:userId/companies/:companyId/departments - update departments for existing companies
         for (const company of userForm.companies) {
           // Skip newly added companies (already handled above)
-          if (addedCompanyIds.includes(company.companyId)) continue;
+          if (addedcompanyId.includes(company.companyId)) continue;
           
           // Check if departments changed
           const originalCompany = originalUser.companies.find(c => c.companyId === company.companyId);

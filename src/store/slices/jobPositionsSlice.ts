@@ -22,9 +22,9 @@ const initialState: JobPositionsState = {
 // Async thunks
 export const fetchJobPositions = createAsyncThunk(
   "jobPositions/fetchAll",
-  async (companyIds: string[] | undefined, { rejectWithValue }) => {
+  async (companyId: string[] | undefined, { rejectWithValue }) => {
     try {
-      return await jobPositionsService.getAllJobPositions(companyIds);
+      return await jobPositionsService.getAllJobPositions(companyId);
     } catch (error: any) {
       return rejectWithValue(error.message || "Failed to fetch job positions");
     }
