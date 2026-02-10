@@ -219,6 +219,8 @@ const Applicants = () => {
         return { bg: "#D1FAE5", color: "#065F46" };
       case "interview":
         return { bg: "#DBEAFE", color: "#1E40AF" };
+        case "interviewed":
+        return { bg: "#DBEAFE", color: "#065F46" };
       case "rejected":
         return { bg: "#FEE2E2", color: "#991B1B" };
       case "trashed":
@@ -677,6 +679,12 @@ const Applicants = () => {
               </div>
             )}
 
+            {error && (
+              <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg">
+                {String(error)}
+              </div>
+            )}
+
             {/* Bulk Actions Bar */}
             {selectedApplicantIds.length > 0 && (
               <div className="mb-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-lg bg-brand-50 px-4 py-3 dark:bg-brand-900/20">
@@ -716,12 +724,6 @@ const Applicants = () => {
               </div>
             )}
 
-            {error && (
-              <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg">
-                {String(error)}
-              </div>
-            )}
-
             {/* Material React Table */}
             <ThemeProvider theme={muiTheme}>
               <MaterialReactTable table={table} />
@@ -730,13 +732,39 @@ const Applicants = () => {
             {/* Custom Pagination Controls */}
             {filteredApplicants.length > 0 && (
               <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-4 px-2">
-                <div className="text-sm text-gray-700 dark:text-gray-300">
-                  Showing {pagination.pageIndex * pagination.pageSize + 1} to{" "}
-                  {Math.min(
-                    (pagination.pageIndex + 1) * pagination.pageSize,
-                    filteredApplicants.length
-                  )}{" "}
-                  of {filteredApplicants.length} applicants
+                <div className="flex items-center gap-4 flex-wrap">
+                  <div className="text-sm text-gray-700 dark:text-gray-300">
+                    Showing {pagination.pageIndex * pagination.pageSize + 1} to{" "}
+                    {Math.min(
+                      (pagination.pageIndex + 1) * pagination.pageSize,
+                      filteredApplicants.length
+                    )}{" "}
+                    of {filteredApplicants.length} applicants
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label htmlFor="pageSize" className="text-sm text-gray-700 dark:text-gray-300">
+                      Show:
+                    </label>
+                    <select
+                      id="pageSize"
+                      value={pagination.pageSize}
+                      onChange={(e) => {
+                        const newSize = Number(e.target.value);
+                        setPagination({
+                          pageIndex: 0,
+                          pageSize: newSize,
+                        });
+                      }}
+                      className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-1.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+                    >
+                      <option value={10}>10</option>
+                      <option value={25}>25</option>
+                      <option value={50}>50</option>
+                      <option value={100}>100</option>
+                      <option value={250}>250</option>
+                      <option value={500}>500</option>
+                    </select>
+                  </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <button

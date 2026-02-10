@@ -249,9 +249,20 @@ const RecommendedFields = () => {
   ) => {
     setForm((prev) => ({
       ...prev,
-      groupFields: prev.groupFields?.map((gf, si) =>
-        si === groupFieldIndex ? { ...gf, [field]: value } : gf
-      ),
+      groupFields: prev.groupFields?.map((gf, si) => {
+        if (si === groupFieldIndex) {
+          const updated = { ...gf, [field]: value };
+          // Auto-generate fieldId from label when label changes (only for new temp fields)
+          if (field === 'label' && gf.fieldId?.startsWith('groupfield_')) {
+            const newLabel = String(value).trim();
+            if (newLabel) {
+              updated.fieldId = newLabel.toLowerCase().replace(/[^a-z0-9\\s]/g, '').replace(/\\s+/g, '_');
+            }
+          }
+          return updated;
+        }
+        return gf;
+      }),
     }));
   };
 
@@ -340,22 +351,34 @@ const RecommendedFields = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    // Validation
+    if (!form.label || !form.label.trim()) {
+      setFormError("Label (English) is required");
+      return;
+    }
+
     try {
       const mapTypeToInputType = (t: FieldType) => t;
       
       // Convert label to snake_case for fieldId (e.g., "Military Status" -> "military_status")
       const generateFieldId = (label: string) => {
-        return label
+        const generated = label
           .trim()
           .toLowerCase()
           .replace(/[^a-z0-9\s]/g, '') // Remove special characters
           .replace(/\s+/g, '_'); // Replace spaces with underscores
+        
+        // Ensure we have a valid fieldId
+        if (!generated) {
+          throw new Error("Could not generate a valid field ID from the label");
+        }
+        return generated;
       };
 
       // Backend Mongoose schema expects bilingual objects
       const bilingualLabel = {
-        en: form.label,
-        ar: form.labelAr || form.label,
+        en: form.label.trim(),
+        ar: form.labelAr?.trim() || form.label.trim(),
       };
 
       const bilingualChoices = form.options?.map((option, index) => ({
@@ -363,8 +386,21 @@ const RecommendedFields = () => {
         ar: form.optionsAr?.[index] || option,
       }));
 
+      const generatedFieldId = editFieldId || generateFieldId(form.label);
+      
+      console.log("Field creation check:", {
+        editFieldId,
+        formLabel: form.label,
+        generatedFieldId,
+        isEmpty: !generatedFieldId || generatedFieldId.trim() === ''
+      });
+      
+      if (!generatedFieldId || generatedFieldId.trim() === '') {
+        throw new Error("Failed to generate a valid fieldId. Please check the label.");
+      }
+      
       const fieldData: any = {
-        fieldId: editFieldId || generateFieldId(form.label),
+        fieldId: generatedFieldId,
         label: bilingualLabel,
         inputType: mapTypeToInputType(form.type),
         isRequired: form.required,
@@ -386,25 +422,32 @@ const RecommendedFields = () => {
 
       // Add groupFields for repeatable_group
       if (form.type === "repeatable_group" && form.groupFields && form.groupFields.length > 0) {
-        fieldData.groupFields = form.groupFields.map((gf) => ({
-          fieldId: gf.fieldId,
-          label: { en: gf.label, ar: gf.labelAr || gf.label },
-          inputType: gf.inputType,
-          isRequired: gf.isRequired,
-          ...(gf.choices && gf.choices.length > 0
-            ? {
-                choices: gf.choices.map((choice, idx) => ({
-                  en: choice,
-                  ar: gf.choicesAr?.[idx] || choice,
-                })),
-              }
-            : {}),
-        }));
+        fieldData.groupFields = form.groupFields.map((gf, idx) => {
+          // Generate fieldId from label if missing or invalid
+          const fieldId = gf.fieldId && gf.fieldId !== '' && !gf.fieldId.startsWith('groupfield_') 
+            ? gf.fieldId 
+            : gf.label.trim().toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, '_') || `groupfield_${idx}`;
+          return {
+            fieldId: fieldId,
+            label: { en: gf.label, ar: gf.labelAr || gf.label },
+            inputType: gf.inputType,
+            isRequired: gf.isRequired,
+            ...(gf.choices && gf.choices.length > 0
+              ? {
+                  choices: gf.choices.map((choice, idx) => ({
+                    en: choice,
+                    ar: gf.choicesAr?.[idx] || choice,
+                  })),
+                }
+              : {}),
+          };
+        });
       }
 
       if (editFieldId) {
         // Update existing field
         const updatePayload: any = {
+          fieldId: editFieldId,  // Include fieldId in the payload
           label: bilingualLabel,
           inputType: mapTypeToInputType(form.type),
           isRequired: form.required,
@@ -422,20 +465,26 @@ const RecommendedFields = () => {
 
         // Add groupFields for repeatable_group
         if (form.type === "repeatable_group" && form.groupFields && form.groupFields.length > 0) {
-          updatePayload.groupFields = form.groupFields.map((gf) => ({
-            fieldId: gf.fieldId,
-            label: { en: gf.label, ar: gf.labelAr || gf.label },
-            inputType: gf.inputType,
-            isRequired: gf.isRequired,
-            ...(gf.choices && gf.choices.length > 0
-              ? {
-                  choices: gf.choices.map((choice, idx) => ({
-                    en: choice,
-                    ar: gf.choicesAr?.[idx] || choice,
-                  })),
-                }
-              : {}),
-          }));
+          updatePayload.groupFields = form.groupFields.map((gf, idx) => {
+            // Generate fieldId from label if missing or invalid
+            const fieldId = gf.fieldId && gf.fieldId !== '' && !gf.fieldId.startsWith('groupfield_') 
+              ? gf.fieldId 
+              : gf.label.trim().toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, '_') || `groupfield_${idx}`;
+            return {
+              fieldId: fieldId,
+              label: { en: gf.label, ar: gf.labelAr || gf.label },
+              inputType: gf.inputType,
+              isRequired: gf.isRequired,
+              ...(gf.choices && gf.choices.length > 0
+                ? {
+                    choices: gf.choices.map((choice, idx) => ({
+                      en: choice,
+                      ar: gf.choicesAr?.[idx] || choice,
+                    })),
+                  }
+                : {}),
+            };
+          });
         }
 
         console.debug(
@@ -568,6 +617,7 @@ const RecommendedFields = () => {
                     setEditChoiceValue("");
                     setEditChoiceValueAr("");
                   }
+                  setFormError("");
                   setShowForm(!showForm);
                 }}
                 className="mb-6 inline-flex items-center gap-2 rounded-lg bg-brand-600 px-3 sm:px-4 py-1.5 sm:py-2.5 text-xs sm:text-sm font-semibold text-white shadow-sm hover:bg-brand-700 dark:bg-brand-500 dark:hover:bg-brand-600"
@@ -1195,16 +1245,21 @@ const RecommendedFields = () => {
                                         const labelAr = (typeof field.label === 'object' && field.label !== null && field.label.ar) ? field.label.ar : '';
                                         
                                         // Extract groupFields if they exist
-                                        const extractedGroupFields = field.groupFields ? field.groupFields.map((gf: any) => ({
-                                          fieldId: gf.fieldId,
-                                          label: convertToString(gf.label),
-                                          labelAr: (typeof gf.label === 'object' && gf.label !== null && gf.label.ar) ? gf.label.ar : '',
-                                          inputType: gf.inputType,
-                                          isRequired: gf.isRequired,
-                                          choices: convertChoicesArray(gf.choices),
-                                          choicesAr: convertChoicesArrayAr(gf.choices),
-                                        })) : [];
-                                        
+                        const extractedGroupFields = field.groupFields ? field.groupFields.map((gf: any, idx: number) => {
+                          const labelEn = convertToString(gf.label);
+                          const labelAr = (typeof gf.label === 'object' && gf.label !== null && gf.label.ar) ? gf.label.ar : '';
+                          // Generate fieldId from label if missing
+                          const fieldId = gf.fieldId || labelEn.trim().toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, '_') || `groupfield_${idx}`;
+                          return {
+                            fieldId: fieldId,
+                            label: labelEn,
+                            labelAr: labelAr,
+                            inputType: gf.inputType,
+                            isRequired: gf.isRequired,
+                            choices: convertChoicesArray(gf.choices),
+                            choicesAr: convertChoicesArrayAr(gf.choices),
+                          };
+                        }) : [];
                                         setForm((prev) => ({
                                           ...prev,
                                           label: labelEn,
@@ -1220,6 +1275,7 @@ const RecommendedFields = () => {
                                           groupFields: extractedGroupFields,
                                         }));
                                         console.log("Editing field with fieldId:", field.fieldId, "Full field:", field);
+                                        setFormError("");
                                         setEditFieldId(field.fieldId);
                                         setShowForm(true);
                                       }}

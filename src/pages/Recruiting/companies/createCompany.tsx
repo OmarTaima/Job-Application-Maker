@@ -1,5 +1,5 @@
 import type { ChangeEvent, FormEvent } from "react";
-import {useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import ComponentCard from "../../../components/common/ComponentCard";
 import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
@@ -7,9 +7,11 @@ import PageMeta from "../../../components/common/PageMeta";
 import Label from "../../../components/form/Label";
 import Input from "../../../components/form/input/InputField";
 import TextArea from "../../../components/form/input/TextArea";
+import Select from "../../../components/form/Select";
 import { PlusIcon } from "../../../icons";
 import Swal from "sweetalert2";
-import { companiesService, ApiError } from "../../../services/companiesService";
+import { useAppDispatch, useAppSelector } from "../../../store/hooks";
+import { fetchCompanies, createCompany } from "../../../store/slices/companiesSlice";
 
 type CompanyForm = {
   name: string;
@@ -33,10 +35,51 @@ const defaultCompany: CompanyForm = {
 
 export default function RecruitingDashboard() {
   const navigate = useNavigate();
+  const dispatch = useAppDispatch();
+  
+  // Redux state
+  const { companies, loading: companiesLoading, isFetched } = useAppSelector(
+    (state) => state.companies
+  );
+  
+  // Component state
   const [companyForm, setCompanyForm] = useState<CompanyForm>(defaultCompany);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string>("");
+
+  // Load companies on mount (only if not already fetched)
+  useEffect(() => {
+    if (!isFetched && !companiesLoading) {
+      dispatch(fetchCompanies());
+    }
+  }, [dispatch, isFetched, companiesLoading]);
+
+  // Handle company selection for duplication
+  const handleCompanySelect = (companyId: string) => {
+    setSelectedCompanyId(companyId);
+    
+    if (!companyId) {
+      // Reset form if no company selected
+      setCompanyForm(defaultCompany);
+      return;
+    }
+    
+    const selectedCompany = companies.find((c) => c._id === companyId);
+    if (selectedCompany) {
+      // Populate form with selected company data (excluding _id for duplication)
+      setCompanyForm({
+        name: `${selectedCompany.name} (Copy)`,
+        description: selectedCompany.description || "",
+        contactEmail: selectedCompany.contactEmail || "",
+        phone: selectedCompany.phone || "",
+        address: selectedCompany.address || "",
+        website: selectedCompany.website || "",
+        logoPath: selectedCompany.logoPath || "",
+      });
+    }
+  };
 
   const handleCompanyChange = (
     e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
@@ -58,7 +101,7 @@ export default function RecruitingDashboard() {
     if (!file) return;
     try {
       const dataUrl = await readFileAsDataUrl(file);
-      setCompanyForm((prev) => ({ ...prev, website: prev.website, logoPath: dataUrl } as any));
+      setCompanyForm((prev) => ({ ...prev, logoPath: dataUrl }));
     } catch (err) {
       console.error("Failed to read logo file", err);
     }
@@ -71,30 +114,39 @@ export default function RecruitingDashboard() {
     setSuccessMessage(null);
 
     try {
-      const newCompany = await companiesService.createCompany({
-        name: companyForm.name,
-        description: companyForm.description,
-        contactEmail: companyForm.contactEmail,
-        phone: companyForm.phone,
-        address: companyForm.address,
-        website: companyForm.website,
-        logoPath: (companyForm as any).logoPath,
-      });
+      const resultAction = await dispatch(
+        createCompany({
+          name: companyForm.name,
+          description: companyForm.description,
+          contactEmail: companyForm.contactEmail,
+          phone: companyForm.phone,
+          address: companyForm.address,
+          website: companyForm.website,
+          logoPath: companyForm.logoPath,
+        })
+      );
 
-      await Swal.fire({
-        title: "Success!",
-        text: "Company created successfully.",
-        icon: "success",
-        position: "center",
-        timer: 1500,
-        showConfirmButton: false,
-        customClass: { container: "!mt-16" },
-      });
+      if (createCompany.fulfilled.match(resultAction)) {
+        const newCompany = resultAction.payload;
+        
+        await Swal.fire({
+          title: "Success!",
+          text: "Company created successfully.",
+          icon: "success",
+          position: "center",
+          timer: 1500,
+          showConfirmButton: false,
+          customClass: { container: "!mt-16" },
+        });
 
-      navigate(`/company/${newCompany._id}`);
-    } catch (err) {
-      const errorMessage =
-        err instanceof ApiError ? err.message : "Failed to create company";
+        navigate(`/company/${newCompany._id}`);
+      } else {
+        // Handle rejected action
+        const errorMessage = resultAction.payload as string || "Failed to create company";
+        setError(errorMessage);
+      }
+    } catch (err: any) {
+      const errorMessage = err?.message || "Failed to create company";
       setError(errorMessage);
       console.error("Error creating company:", err);
     } finally {
@@ -126,6 +178,35 @@ export default function RecruitingDashboard() {
             {successMessage}
           </div>
         )}
+
+        {/* Company Selection for Duplication */}
+        <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+          <Label htmlFor="duplicateCompany" className="mb-2">
+            Duplicate from existing company (optional)
+          </Label>
+          <Select
+            options={[
+              { value: "", label: "-- Start from scratch --" },
+              ...companies.map((company) => ({
+                value: company._id,
+                label: company.name,
+              })),
+            ]}
+            value={selectedCompanyId}
+            onChange={handleCompanySelect}
+            placeholder="Select a company to duplicate"
+          />
+          {companiesLoading && (
+            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+              Loading companies...
+            </p>
+          )}
+          {selectedCompanyId && (
+            <p className="mt-2 text-sm text-blue-600 dark:text-blue-400">
+              ✓ Company data loaded. You can edit the fields below before saving.
+            </p>
+          )}
+        </div>
 
         <form className="space-y-4" onSubmit={handleCompanySubmit}>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
