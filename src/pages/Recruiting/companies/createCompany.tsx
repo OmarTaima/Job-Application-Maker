@@ -346,7 +346,14 @@ export default function RecruitingDashboard() {
                     <span className="text-xs text-gray-500 mt-1 block text-right">العربية</span>
                   </div>
                 </div>
-                
+                <div className="mt-3">
+                  <Input
+                    placeholder="Location / Coordinates (optional)"
+                    value={addr.location}
+                    onChange={(e) => handleAddressChange(index, 'location', e.target.value)}
+                  />
+                  <span className="text-xs text-gray-500 mt-1 block">Location coordinates or map link</span>
+                </div>
               </div>
             ))}
           </div>
