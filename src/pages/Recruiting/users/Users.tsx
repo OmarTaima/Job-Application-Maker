@@ -32,6 +32,7 @@ import {
   useCompanies,
   useDepartments,
 } from "../../../hooks/queries";
+import { toPlainString } from "../../../utils/strings";
 
 type CompanyAssignment = {
   companyId: string;
@@ -488,7 +489,7 @@ export default function Users() {
                         <option value="">Select Role</option>
                         {roles.map((role) => (
                           <option key={role._id} value={role._id}>
-                            {role.name}
+                            {toPlainString((role as any).name)}
                           </option>
                         ))}
                       </select>
@@ -884,7 +885,7 @@ export default function Users() {
                                           c.companyId === company._id
                                       )}
                                     >
-                                      {company.name}
+                                      {toPlainString((company as any).name)}
                                     </option>
                                   ))}
                                 </select>

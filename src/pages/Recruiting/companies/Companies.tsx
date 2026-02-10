@@ -19,6 +19,7 @@ import {
   useDepartments,
   useDeleteCompany,
 } from "../../../hooks/queries";
+import { toPlainString } from "../../../utils/strings";
 
 export default function Companies() {
   const navigate = useNavigate();
@@ -159,22 +160,29 @@ export default function Companies() {
       }
     }
 
-    // Then filter by search term
+    // Then filter by search term (defensive: ensure we call toLowerCase on strings)
     const term = searchTerm.toLowerCase();
-    const contact =
+    const contactRaw =
       company.contactEmail ||
       (company as any).email ||
       (company as any).contact ||
       company.phone ||
       "";
-    const address =
-      company.address ||
-      (company as any).location ||
-      (company as any).city ||
-      "";
+    
+    // Handle address - could be array of localized objects or legacy string
+    let addressRaw: any = "";
+    if (company.address) {
+      addressRaw = company.address;
+    } else {
+      addressRaw = (company as any).location || (company as any).city || "";
+    }
+
+    const nameStr = toPlainString((company as any).name);
+    const contact = toPlainString(contactRaw);
+    const address = toPlainString(addressRaw);
 
     return (
-      (company.name && company.name.toLowerCase().includes(term)) ||
+      (nameStr && nameStr.toLowerCase().includes(term)) ||
       (contact && contact.toLowerCase().includes(term)) ||
       (address && address.toLowerCase().includes(term))
     );
@@ -372,12 +380,14 @@ export default function Companies() {
                               {company.logoPath ? (
                                 <img
                                   src={company.logoPath}
-                                  alt={`${company.name} logo`}
+                                  alt={`${toPlainString((company as any).name)} logo`}
                                   className="w-full h-full object-cover"
                                 />
                               ) : (
                                 <span className="text-sm font-semibold text-gray-600">
-                                  {company.name ? company.name.charAt(0).toUpperCase() : "?"}
+                                  {toPlainString((company as any).name)
+                                    ? toPlainString((company as any).name).charAt(0).toUpperCase()
+                                    : "?"}
                                 </span>
                               )}
                             </div>
@@ -385,25 +395,29 @@ export default function Companies() {
                           <TableCell className="px-5 py-4 text-start">
                             <div>
                               <span className="block font-medium text-gray-800 text-theme-sm dark:text-white/90">
-                                {company.name}
+                                {toPlainString((company as any).name)}
                               </span>
                             </div>
                           </TableCell>
                           <TableCell className="px-5 py-4 text-start">
                             <span className="text-sm text-gray-600 dark:text-gray-400">
-                              {company.address ||
-                                (company as any).location ||
-                                (company as any).city ||
-                                "-"}
+                              {(() => {
+                                const addr = company.address ||
+                                  (company as any).location ||
+                                  (company as any).city;
+                                return addr ? toPlainString(addr) : "-";
+                              })()}
                             </span>
                           </TableCell>
                           <TableCell className="px-5 py-4 text-start">
                             <span className="text-sm text-gray-800 dark:text-gray-200">
-                              {company.contactEmail ||
-                                (company as any).email ||
-                                (company as any).contact ||
-                                company.phone ||
-                                "-"}
+                              {toPlainString(
+                                company.contactEmail ||
+                                  (company as any).email ||
+                                  (company as any).contact ||
+                                  company.phone ||
+                                  "-"
+                              )}
                             </span>
                           </TableCell>
                           <TableCell className="px-5 py-4 text-start">

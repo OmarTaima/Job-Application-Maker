@@ -15,6 +15,7 @@ import {
   TableRow,
 } from "../../../components/ui/table";
 import { useRoles, usePermissions, useUsers, useUpdateRole } from "../../../hooks/queries";
+import { toPlainString } from "../../../utils/strings";
 
 export default function PreviewRole() {
   const { id } = useParams<{ id: string }>();
@@ -48,7 +49,7 @@ export default function PreviewRole() {
   useEffect(() => {
     if (role && isEditing) {
       setEditForm({
-        name: role.name,
+        name: toPlainString((role as any).name),
         permissions: role.permissions?.map((p: any) => 
           typeof p === "string" ? p : p.permission?._id || p.permission
         ) || [],
@@ -226,7 +227,7 @@ export default function PreviewRole() {
   return (
     <>
       
-      <PageBreadcrumb pageTitle={role.name} />
+      <PageBreadcrumb pageTitle={toPlainString((role as any).name)} />
 
       <div className="space-y-6">
         {/* Header */}
@@ -258,7 +259,7 @@ export default function PreviewRole() {
             ) : (
               <div>
                 <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-                  {role.name}
+                  {toPlainString((role as any).name)}
                 </h1>
                 
               </div>
@@ -531,7 +532,7 @@ export default function PreviewRole() {
                     className="hover:bg-gray-50 dark:hover:bg-gray-800"
                   >
                     <TableCell className="px-4 py-3 align-middle">
-                      <span className="font-medium">{permission.name}</span>
+                      <span className="font-medium">{toPlainString((permission as any).name)}</span>
                     </TableCell>
                     <TableCell className="px-4 py-3 align-middle">
                       <span className="text-gray-600 dark:text-gray-400">

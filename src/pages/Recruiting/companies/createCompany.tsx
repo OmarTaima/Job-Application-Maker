@@ -12,23 +12,34 @@ import { PlusIcon } from "../../../icons";
 import Swal from "sweetalert2";
 import { useAppDispatch, useAppSelector } from "../../../store/hooks";
 import { fetchCompanies, createCompany } from "../../../store/slices/companiesSlice";
+import { toPlainString } from "../../../utils/strings";
 
 type CompanyForm = {
-  name: string;
-  description: string;
+  name: {
+    en: string;
+    ar: string;
+  };
+  description: {
+    en: string;
+    ar: string;
+  };
   contactEmail: string;
   phone: string;
-  address: string;
+  address: Array<{
+    en: string;
+    ar: string;
+    location: string;
+  }>;
   website: string;
   logoPath?: string;
 };
 
 const defaultCompany: CompanyForm = {
-  name: "",
-  description: "",
+  name: { en: "", ar: "" },
+  description: { en: "", ar: "" },
   contactEmail: "",
   phone: "",
-  address: "",
+  address: [{ en: "", ar: "", location: "" }],
   website: "",
   logoPath: "",
 };
@@ -68,13 +79,27 @@ export default function RecruitingDashboard() {
     
     const selectedCompany = companies.find((c) => c._id === companyId);
     if (selectedCompany) {
+      const srcName = (selectedCompany as any).name;
+      const srcDesc = (selectedCompany as any).description;
+      const srcAddr = (selectedCompany as any).address;
+      
       // Populate form with selected company data (excluding _id for duplication)
       setCompanyForm({
-        name: `${selectedCompany.name} (Copy)`,
-        description: selectedCompany.description || "",
+        name: {
+          en: typeof srcName === 'object' ? (srcName.en || '') + ' (Copy)' : toPlainString(srcName) + ' (Copy)',
+          ar: typeof srcName === 'object' ? (srcName.ar || '') + ' (نسخة)' : '',
+        },
+        description: {
+          en: typeof srcDesc === 'object' ? srcDesc.en || '' : toPlainString(srcDesc) || '',
+          ar: typeof srcDesc === 'object' ? srcDesc.ar || '' : '',
+        },
         contactEmail: selectedCompany.contactEmail || "",
         phone: selectedCompany.phone || "",
-        address: selectedCompany.address || "",
+        address: Array.isArray(srcAddr) ? srcAddr : [{
+          en: typeof srcAddr === 'object' ? srcAddr.en || '' : toPlainString(srcAddr) || '',
+          ar: typeof srcAddr === 'object' ? srcAddr.ar || '' : '',
+          location: typeof srcAddr === 'object' ? srcAddr.location || '' : '',
+        }],
         website: selectedCompany.website || "",
         logoPath: selectedCompany.logoPath || "",
       });
@@ -86,6 +111,43 @@ export default function RecruitingDashboard() {
   ) => {
     const { name, value } = e.target;
     setCompanyForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleLocalizedChange = (
+    field: 'name' | 'description',
+    lang: 'en' | 'ar',
+    value: string
+  ) => {
+    setCompanyForm((prev) => ({
+      ...prev,
+      [field]: { ...prev[field], [lang]: value },
+    }));
+  };
+
+  const handleAddressChange = (
+    index: number,
+    field: 'en' | 'ar' | 'location',
+    value: string
+  ) => {
+    setCompanyForm((prev) => {
+      const newAddress = [...prev.address];
+      newAddress[index] = { ...newAddress[index], [field]: value };
+      return { ...prev, address: newAddress };
+    });
+  };
+
+  const handleAddAddress = () => {
+    setCompanyForm((prev) => ({
+      ...prev,
+      address: [...prev.address, { en: '', ar: '', location: '' }],
+    }));
+  };
+
+  const handleRemoveAddress = (index: number) => {
+    setCompanyForm((prev) => ({
+      ...prev,
+      address: prev.address.filter((_, i) => i !== index),
+    }));
   };
 
   const readFileAsDataUrl = (file: File) =>
@@ -120,7 +182,7 @@ export default function RecruitingDashboard() {
           description: companyForm.description,
           contactEmail: companyForm.contactEmail,
           phone: companyForm.phone,
-          address: companyForm.address,
+          address: companyForm.address.map(a => ({ en: a.en, ar: a.ar, location: a.location })),
           website: companyForm.website,
           logoPath: companyForm.logoPath,
         })
@@ -189,7 +251,7 @@ export default function RecruitingDashboard() {
               { value: "", label: "-- Start from scratch --" },
               ...companies.map((company) => ({
                 value: company._id,
-                label: company.name,
+                label: toPlainString((company as any).name),
               })),
             ]}
             value={selectedCompanyId}
@@ -209,17 +271,39 @@ export default function RecruitingDashboard() {
         </div>
 
         <form className="space-y-4" onSubmit={handleCompanySubmit}>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div>
-              <Label htmlFor="name">Company name</Label>
-              <Input
-                id="name"
-                name="name"
-                value={companyForm.name}
-                onChange={handleCompanyChange}
-                placeholder="Company name"
-              />
+          {/* Company Name (EN/AR) */}
+          <div className="space-y-3">
+            <Label htmlFor="name-en" required>
+              Company Name
+            </Label>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Input
+                  id="name-en"
+                  name="name-en"
+                  value={companyForm.name.en}
+                  onChange={(e) => handleLocalizedChange('name', 'en', e.target.value)}
+                  placeholder="Company name (English)"
+                  required
+                />
+                <span className="text-xs text-gray-500 mt-1 block">English</span>
+              </div>
+              <div>
+                <Input
+                  id="name-ar"
+                  name="name-ar"
+                  value={companyForm.name.ar}
+                  onChange={(e) => handleLocalizedChange('name', 'ar', e.target.value)}
+                  placeholder="اسم الشركة (عربي)"
+                  required
+                  className="text-right"
+                />
+                <span className="text-xs text-gray-500 mt-1 block text-right">العربية</span>
+              </div>
             </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
               <Label htmlFor="website">Website</Label>
               <Input
@@ -247,7 +331,9 @@ export default function RecruitingDashboard() {
               )}
             </div>
             <div>
-              <Label htmlFor="contactEmail">Contact email</Label>
+              <Label htmlFor="contactEmail" required>
+                Contact Email
+              </Label>
               <Input
                 id="contactEmail"
                 name="contactEmail"
@@ -255,6 +341,7 @@ export default function RecruitingDashboard() {
                 value={companyForm.contactEmail}
                 onChange={handleCompanyChange}
                 placeholder="contact@company.com"
+                required
               />
             </div>
             <div>
@@ -268,27 +355,83 @@ export default function RecruitingDashboard() {
               />
             </div>
           </div>
-          <div>
-            <Label htmlFor="description">Description</Label>
-            <TextArea
-              placeholder="What does this company do?"
-              rows={3}
-              value={companyForm.description}
-              onChange={(value) =>
-                setCompanyForm((prev) => ({ ...prev, description: value }))
-              }
-            />
+
+          {/* Description (EN/AR) */}
+          <div className="space-y-3">
+            <Label htmlFor="description-en">Description</Label>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <TextArea
+                  placeholder="What does this company do? (English)"
+                  rows={3}
+                  value={companyForm.description.en}
+                  onChange={(value) => handleLocalizedChange('description', 'en', value)}
+                />
+                <span className="text-xs text-gray-500 mt-1 block">English</span>
+              </div>
+              <div>
+                <TextArea
+                  placeholder="ماذا تفعل هذه الشركة؟ (عربي)"
+                  rows={3}
+                  value={companyForm.description.ar}
+                  onChange={(value) => handleLocalizedChange('description', 'ar', value)}
+                  className="text-right"
+                />
+                <span className="text-xs text-gray-500 mt-1 block text-right">العربية</span>
+              </div>
+            </div>
           </div>
-          <div>
-            <Label htmlFor="address">Address</Label>
-            <TextArea
-              placeholder="Street, city, state"
-              rows={2}
-              value={companyForm.address}
-              onChange={(value) =>
-                setCompanyForm((prev) => ({ ...prev, address: value }))
-              }
-            />
+
+          {/* Address Array */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <Label>Addresses</Label>
+              <button
+                type="button"
+                onClick={handleAddAddress}
+                className="text-sm text-brand-600 hover:text-brand-700 dark:text-brand-400 font-medium"
+              >
+                + Add Address
+              </button>
+            </div>
+            {companyForm.address.map((addr, index) => (
+              <div key={index} className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Address {index + 1}
+                  </span>
+                  {companyForm.address.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveAddress(index)}
+                      className="text-sm text-red-600 hover:text-red-700 dark:text-red-400"
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <Input
+                      placeholder="Address (English)"
+                      value={addr.en}
+                      onChange={(e) => handleAddressChange(index, 'en', e.target.value)}
+                    />
+                    <span className="text-xs text-gray-500 mt-1 block">English</span>
+                  </div>
+                  <div>
+                    <Input
+                      placeholder="العنوان (عربي)"
+                      value={addr.ar}
+                      onChange={(e) => handleAddressChange(index, 'ar', e.target.value)}
+                      className="text-right"
+                    />
+                    <span className="text-xs text-gray-500 mt-1 block text-right">العربية</span>
+                  </div>
+                </div>
+                
+              </div>
+            ))}
           </div>
 
           <div className="flex flex-wrap items-center gap-3">

@@ -16,22 +16,22 @@ export type LocalizedString = { en: string; ar: string };
 
 export type JobPosition = {
   _id: string;
+  companyId: string;
+  departmentId: string;
+  jobCode: string;
   title: LocalizedString;
   description?: LocalizedString;
-  departmentId: string;
-  companyId: string;
-  jobCode?: string;
-  requirements?: string[];
-  termsAndConditions?: LocalizedString[];
-  salary?: number;
-  salaryVisible?: boolean;
   bilingual?: boolean;
   isActive?: boolean;
-  employmentType?: 'full-time' | 'part-time' | 'contract' | 'internship';
-  status: "open" | "closed" | "archived";
+  employmentType: 'full-time' | 'part-time' | 'contract' | 'internship';
+  workArrangement: 'on-site' | 'remote' | 'hybrid';
+  salary?: number;
+  salaryVisible?: boolean;
   openPositions?: number;
   registrationStart?: string;
   registrationEnd?: string;
+  status: "open" | "closed" | "archived";
+  termsAndConditions?: LocalizedString[];
   jobSpecs?: Array<{
     spec: LocalizedString;
     weight: number;
@@ -41,6 +41,7 @@ export type JobPosition = {
     label: LocalizedString;
     inputType: string;
     isRequired: boolean;
+    defaultValue?: string;
     minValue?: number;
     maxValue?: number;
     choices?: Array<LocalizedString>;
@@ -51,6 +52,9 @@ export type JobPosition = {
       isRequired: boolean;
       choices?: Array<LocalizedString>;
       displayOrder?: number;
+      defaultValue?: string;
+      minValue?: number;
+      maxValue?: number;
     }>;
     displayOrder: number;
   }>;
@@ -59,22 +63,21 @@ export type JobPosition = {
 };
 
 export type CreateJobPositionRequest = {
+  companyId: string;
+  departmentId: string;
+  jobCode: string;
   title: LocalizedString;
   description?: LocalizedString;
-  departmentId: string;
-  companyId?: string;
-  jobCode?: string;
-  requirements?: string[];
-  termsAndConditions?: LocalizedString[];
-  salary?: number;
-  salaryVisible?: boolean;
   bilingual?: boolean;
   isActive?: boolean;
-  employmentType?: 'full-time' | 'part-time' | 'contract' | 'internship';
-  status?: "open" | "closed" | "archived";
+  employmentType: 'full-time' | 'part-time' | 'contract' | 'internship';
+  workArrangement: 'on-site' | 'remote' | 'hybrid';
+  salary?: number;
+  salaryVisible?: boolean;
   openPositions?: number;
-  registrationStart?: string;
-  registrationEnd?: string;
+  registrationStart: string;
+  registrationEnd: string;
+  termsAndConditions?: LocalizedString[];
   jobSpecs?: Array<{
     spec: LocalizedString;
     weight: number;
@@ -84,6 +87,7 @@ export type CreateJobPositionRequest = {
     label: LocalizedString;
     inputType: string;
     isRequired: boolean;
+    defaultValue?: string;
     minValue?: number;
     maxValue?: number;
     choices?: Array<LocalizedString>;
@@ -94,12 +98,55 @@ export type CreateJobPositionRequest = {
       isRequired: boolean;
       choices?: Array<LocalizedString>;
       displayOrder?: number;
+      defaultValue?: string;
+      minValue?: number;
+      maxValue?: number;
     }>;
     displayOrder: number;
   }>;
 };
 
-export type UpdateJobPositionRequest = Partial<CreateJobPositionRequest>;
+export type UpdateJobPositionRequest = {
+  departmentId?: string;
+  title?: LocalizedString;
+  description?: LocalizedString;
+  bilingual?: boolean;
+  employmentType?: 'full-time' | 'part-time' | 'contract' | 'internship';
+  workArrangement?: 'on-site' | 'remote' | 'hybrid';
+  isActive?: boolean;
+  salary?: number;
+  salaryVisible?: boolean;
+  openPositions?: number;
+  registrationStart?: string;
+  registrationEnd?: string;
+  termsAndConditions?: LocalizedString[];
+  jobSpecs?: Array<{
+    spec: LocalizedString;
+    weight: number;
+  }>;
+  customFields?: Array<{
+    fieldId: string;
+    label: LocalizedString;
+    inputType: string;
+    isRequired: boolean;
+    defaultValue?: string;
+    minValue?: number;
+    maxValue?: number;
+    choices?: Array<LocalizedString>;
+    groupFields?: Array<{
+      fieldId: string;
+      label: LocalizedString;
+      inputType: string;
+      isRequired: boolean;
+      choices?: Array<LocalizedString>;
+      displayOrder?: number;
+      defaultValue?: string;
+      minValue?: number;
+      maxValue?: number;
+    }>;
+    displayOrder: number;
+  }>;
+};
 
 export type Applicant = {
   _id: string;
@@ -120,7 +167,7 @@ class JobPositionsService {
   /**
    * Get all job positions
    */
-  async getAllJobPositions(companyIds?: string[]): Promise<JobPosition[]> {
+  async getAllJobPositions(companyIds?: string[], isActive?: boolean): Promise<JobPosition[]> {
     try {
       const params: any = {};
       if (companyIds && companyIds.length > 0) {
@@ -129,6 +176,9 @@ class JobPositionsService {
         } else {
           params.companyIds = companyIds.join(",");
         }
+      }
+      if (isActive !== undefined) {
+        params.isActive = isActive;
       }
       const response = await axios.get("/job-positions", { params });
       return response.data.data;
@@ -185,6 +235,7 @@ class JobPositionsService {
       if (data.bilingual !== undefined) payload.bilingual = data.bilingual;
       if (data.isActive !== undefined) payload.isActive = data.isActive;
       if (data.employmentType) payload.employmentType = data.employmentType;
+      if (data.workArrangement) payload.workArrangement = data.workArrangement;
       if (data.status) payload.status = data.status;
       if (data.openPositions) payload.openPositions = data.openPositions;
       if (data.registrationStart)
@@ -231,6 +282,7 @@ class JobPositionsService {
       if (data.bilingual !== undefined) payload.bilingual = data.bilingual;
       if (data.isActive !== undefined) payload.isActive = data.isActive;
       if (data.employmentType) payload.employmentType = data.employmentType;
+      if (data.workArrangement) payload.workArrangement = data.workArrangement;
       if (data.status) payload.status = data.status;
       if (data.openPositions) payload.openPositions = data.openPositions;
       if (data.registrationStart)

@@ -3,41 +3,38 @@ import { companiesService } from "../../services/companiesService";
 
 export interface Company {
   _id: string;
-  name: string;
-  address?: string;
+  name: string | { en: string; ar: string };
+  address?: string | Array<{ en: string; ar: string; location: string }>;
   industry?: string;
   contactEmail?: string;
   phone?: string;
   website?: string;
   logoPath?: string;
   isActive?: boolean;
-  description?: string;
+  description?: string | { en: string; ar: string };
   createdAt?: string;
   __v?: number;
 }
 
 export interface CreateCompanyRequest {
-  name: string;
-  address?: string;
-  industry?: string;
-  contactEmail?: string;
+  name: { en: string; ar: string };
+  description?: { en: string; ar: string };
+  contactEmail: string;
   phone?: string;
+  address?: Array<{ en: string; ar: string; location: string }>;
   website?: string;
   logoPath?: string;
-  isActive?: boolean;
-  description?: string;
 }
 
 export interface UpdateCompanyRequest {
-  name?: string;
-  address?: string;
-  industry?: string;
+  name?: { en: string; ar: string };
+  description?: { en: string; ar: string };
   contactEmail?: string;
   phone?: string;
+  address?: Array<{ en: string; ar: string; location: string }>;
   website?: string;
   logoPath?: string;
   isActive?: boolean;
-  description?: string;
 }
 
 interface CompaniesState {

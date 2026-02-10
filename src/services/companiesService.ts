@@ -4,41 +4,38 @@ import { getErrorMessage } from "../utils/errorHandler";
 // Types
 export interface Company {
   _id: string;
-  name: string;
-  address?: string;
+  name: string | { en: string; ar: string };
+  address?: string | Array<{ en: string; ar: string; location: string }>;
   industry?: string;
   contactEmail?: string;
   phone?: string;
   website?: string;
   logoPath?: string;
   isActive?: boolean;
-  description?: string;
+  description?: string | { en: string; ar: string };
   createdAt?: string;
   __v?: number;
 }
 
 export interface CreateCompanyRequest {
-  name: string;
-  address?: string;
-  industry?: string;
-  contactEmail?: string;
+  name: { en: string; ar: string };
+  description?: { en: string; ar: string };
+  contactEmail: string;
   phone?: string;
+  address?: Array<{ en: string; ar: string; location: string }>;
   website?: string;
   logoPath?: string;
-  isActive?: boolean;
-  description?: string;
 }
 
 export interface UpdateCompanyRequest {
-  name?: string;
-  address?: string;
-  industry?: string;
+  name?: { en: string; ar: string };
+  description?: { en: string; ar: string };
   contactEmail?: string;
   phone?: string;
+  address?: Array<{ en: string; ar: string; location: string }>;
   website?: string;
   logoPath?: string;
   isActive?: boolean;
-  description?: string;
 }
 
 export interface CompaniesResponse {
@@ -77,6 +74,9 @@ export const companiesService = {
         }
       }
 
+      // Always request only active companies (use string to ensure server-side parsing)
+      params.isActive = "true";
+
       const response = await axios.get<CompaniesResponse>("/companies", { params });
       return response.data.data;
     } catch (error: any) {
@@ -91,8 +91,10 @@ export const companiesService = {
   // Get company by ID
   async getCompanyById(companyId: string): Promise<Company> {
     try {
+      // Request the company only if it's active (use string to ensure server-side parsing)
       const response = await axios.get<CompanyResponse>(
-        `/companies/${companyId}`
+        `/companies/${companyId}`,
+        { params: { isActive: "true" } }
       );
       return response.data.data;
     } catch (error: any) {
@@ -157,9 +159,10 @@ export const companiesService = {
   // Get multiple companies by IDs
   async getCompaniesByIds(companyIds: string[]): Promise<Company[]> {
     try {
-      // Fetch companies individually and filter
-      const allCompanies = await this.getAllCompanies();
-      return allCompanies.filter(company => companyIds.includes(company._id));
+      // Let the server filter by IDs and active flag when possible
+      const companies = await this.getAllCompanies(companyIds);
+      // Fallback: if server ignored companyIds, still filter locally
+      return companies.filter(company => companyIds.includes(company._id));
     } catch (error: any) {
       throw new ApiError(
         getErrorMessage(error),

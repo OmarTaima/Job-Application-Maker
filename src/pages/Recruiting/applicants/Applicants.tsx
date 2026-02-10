@@ -22,6 +22,7 @@ import {
   useCompanies,
 } from "../../../hooks/queries";
 import type { Applicant } from "../../../store/slices/applicantsSlice";
+import { toPlainString } from "../../../utils/strings";
 
 const Applicants = () => {
   const navigate = useNavigate();
@@ -400,7 +401,7 @@ const Applicants = () => {
           if (jobPosition?.companyId) {
             const companyId = getId(jobPosition.companyId);
             const company = companyMap[companyId];
-            return company?.name || company?.title || "N/A";
+            return toPlainString(company?.name) || company?.title || "N/A";
           }
           
           return "N/A";
@@ -569,7 +570,7 @@ const Applicants = () => {
             <option value="all">All Companies</option>
             {allCompanies.map((c: any) => (
               <option key={c._id} value={typeof c._id === 'string' ? c._id : c._id._id}>
-                {c.name || c.title || c._id}
+                {toPlainString(c.name) || c.title || c._id}
               </option>
             ))}
           </select>

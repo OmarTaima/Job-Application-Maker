@@ -19,6 +19,7 @@ import {
 } from "../../../components/ui/table";
 import { useRoles, usePermissions, useCreateRole, useUsers, useDeleteRole } from "../../../hooks/queries";
 import type { CreateRoleRequest } from "../../../services/rolesService";
+import { toPlainString } from "../../../utils/strings";
 
 type RoleForm = {
   name: string;
@@ -539,7 +540,7 @@ export default function Permissions() {
                           className="hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer"
                         >
                           <TableCell className="px-4 py-3 align-middle">
-                            <span className="font-medium">{role.name}</span>
+                            <span className="font-medium">{toPlainString((role as any).name)}</span>
                           </TableCell>
                           <TableCell className="px-4 py-3 align-middle">
                             {role.description}
@@ -581,7 +582,7 @@ export default function Permissions() {
                                     e.stopPropagation();
                                     const result = await Swal.fire({
                                       title: "Delete Role?",
-                                      text: `Are you sure you want to delete the role "${role.name}"?`,
+                                      text: `Are you sure you want to delete the role "${toPlainString((role as any).name)}"?`,
                                       icon: "warning",
                                       showCancelButton: true,
                                       confirmButtonColor: "#3085d6",
@@ -695,7 +696,7 @@ export default function Permissions() {
                         className="hover:bg-gray-50 dark:hover:bg-gray-800"
                       >
                         <TableCell className="px-4 py-3 align-middle">
-                          <span className="font-medium">{permission.name}</span>
+                          <span className="font-medium">{toPlainString((permission as any).name)}</span>
                         </TableCell>
                         <TableCell className="px-4 py-3 align-middle">
                           {permission.description || "No description"}

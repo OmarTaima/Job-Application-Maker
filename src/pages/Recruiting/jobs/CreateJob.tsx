@@ -19,6 +19,7 @@ import {
 } from "../../../hooks/queries";
 import { useRecommendedFields } from "../../../hooks/queries/useRecommendedFields";
 import { useCreateJobPosition, useUpdateJobPosition } from "../../../hooks/queries/useJobPositions";
+import { toPlainString } from "../../../utils/strings";
 
 type JobSpec = {
   spec: string;
@@ -73,6 +74,7 @@ type CustomField = {
 };
 
 type EmploymentType = 'full-time' | 'part-time' | 'contract' | 'internship';
+type WorkArrangement = 'on-site' | 'remote' | 'hybrid';
 
 type JobForm = {
   companyId: string;
@@ -92,7 +94,8 @@ type JobForm = {
   termsAndConditionsAr: string[];
   jobSpecs: JobSpec[];
   customFields: CustomField[];
-  employmentType?: EmploymentType;
+  employmentType: EmploymentType;
+  workArrangement: WorkArrangement;
 };
 
 const inputTypeOptions = [
@@ -179,6 +182,7 @@ export default function CreateJob() {
     jobSpecs: [],
     customFields: [],
     employmentType: 'full-time',
+    workArrangement: 'on-site',
   });
 
   const [newTerm, setNewTerm] = useState("");
@@ -215,7 +219,7 @@ export default function CreateJob() {
     if (isAdmin) {
       return allCompanies.map((company) => ({
         value: company._id,
-        label: company.name,
+        label: toPlainString((company as any).name),
       }));
     } else {
       return (
@@ -246,13 +250,13 @@ export default function CreateJob() {
         })
         .map((dept) => ({
           value: dept._id,
-          label: dept.name,
+          label: toPlainString((dept as any).name),
         }));
     } else {
       // Single-company non-admin: show departments for their company
       return allDepartments.map((dept) => ({
         value: dept._id,
-        label: dept.name,
+        label: toPlainString((dept as any).name),
       }));
     }
   }, [allDepartments, shouldFetchAllDepartments, jobForm.companyId]);
@@ -415,6 +419,7 @@ export default function CreateJob() {
                 }))
               : [],
             employmentType: normalizeEmploymentType(job.employmentType) || 'full-time',
+            workArrangement: (job as any).workArrangement || 'on-site',
           });
 
           jobDataLoaded.current = true;
@@ -461,7 +466,7 @@ export default function CreateJob() {
       const selectedCompany = allCompanies.find((c) => c._id === jobForm.companyId);
       if (selectedCompany) {
         // Generate job code: CompanyAbbreviation-Timestamp
-        const companyName = selectedCompany.name || "COMP";
+        const companyName = toPlainString((selectedCompany as any).name) || "COMP";
         const companyAbbr = companyName
           .split(/\s+/)
           .map((word) => word.charAt(0).toUpperCase())
@@ -847,6 +852,106 @@ export default function CreateJob() {
         return;
       }
 
+      if (!jobForm.departmentId) {
+        const errorMsg = "Please select a department before submitting.";
+        setFormError(errorMsg);
+        setJobStatus(`Error: ${errorMsg}`);
+        setIsSubmitting(false);
+        await Swal.fire({
+          title: "Validation Error",
+          text: errorMsg,
+          icon: "error",
+          confirmButtonText: "OK",
+        });
+        return;
+      }
+
+      if (!isEditMode && !jobForm.jobCode?.trim()) {
+        const errorMsg = "Job code is required.";
+        setFormError(errorMsg);
+        setJobStatus(`Error: ${errorMsg}`);
+        setIsSubmitting(false);
+        await Swal.fire({
+          title: "Validation Error",
+          text: errorMsg,
+          icon: "error",
+          confirmButtonText: "OK",
+        });
+        return;
+      }
+
+      if (!jobForm.title?.trim() || (jobForm.bilingual && !jobForm.titleAr?.trim())) {
+        const errorMsg = jobForm.bilingual 
+          ? "Job title (both English and Arabic) is required."
+          : "Job title is required.";
+        setFormError(errorMsg);
+        setJobStatus(`Error: ${errorMsg}`);
+        setIsSubmitting(false);
+        await Swal.fire({
+          title: "Validation Error",
+          text: errorMsg,
+          icon: "error",
+          confirmButtonText: "OK",
+        });
+        return;
+      }
+
+      if (!jobForm.employmentType) {
+        const errorMsg = "Employment type is required.";
+        setFormError(errorMsg);
+        setJobStatus(`Error: ${errorMsg}`);
+        setIsSubmitting(false);
+        await Swal.fire({
+          title: "Validation Error",
+          text: errorMsg,
+          icon: "error",
+          confirmButtonText: "OK",
+        });
+        return;
+      }
+
+      if (!jobForm.workArrangement) {
+        const errorMsg = "Work arrangement is required.";
+        setFormError(errorMsg);
+        setJobStatus(`Error: ${errorMsg}`);
+        setIsSubmitting(false);
+        await Swal.fire({
+          title: "Validation Error",
+          text: errorMsg,
+          icon: "error",
+          confirmButtonText: "OK",
+        });
+        return;
+      }
+
+      if (!jobForm.registrationStart) {
+        const errorMsg = "Registration start date is required.";
+        setFormError(errorMsg);
+        setJobStatus(`Error: ${errorMsg}`);
+        setIsSubmitting(false);
+        await Swal.fire({
+          title: "Validation Error",
+          text: errorMsg,
+          icon: "error",
+          confirmButtonText: "OK",
+        });
+        return;
+      }
+
+      if (!jobForm.registrationEnd) {
+        const errorMsg = "Registration end date is required.";
+        setFormError(errorMsg);
+        setJobStatus(`Error: ${errorMsg}`);
+        setIsSubmitting(false);
+        await Swal.fire({
+          title: "Validation Error",
+          text: errorMsg,
+          icon: "error",
+          confirmButtonText: "OK",
+        });
+        return;
+      }
+
       // Validate repeatable_group fields have labels
       const emptyGroupFieldLabels = jobForm.customFields
         .map((field, index) => ({ field, index }))
@@ -920,6 +1025,7 @@ export default function CreateJob() {
         displayOrder: cf.displayOrder,
       }));
       payload.employmentType = jobForm.employmentType;
+      payload.workArrangement = jobForm.workArrangement;
       payload.bilingual = jobForm.bilingual;
 
       if (isEditMode && editJobId) {
@@ -1033,7 +1139,7 @@ export default function CreateJob() {
               {/* Only show company field if not in edit mode AND (user is admin OR has multiple companies) */}
               {!isEditMode && shouldShowCompanyField && (
                 <div>
-                  <Label htmlFor="companyId">Company</Label>
+                  <Label htmlFor="companyId" required>Company</Label>
                   {companies.length > 0 ? (
                     <Select
                       options={companies}
@@ -1043,6 +1149,7 @@ export default function CreateJob() {
                         handleInputChange("companyId", value);
                         handleInputChange("departmentId", ""); // Reset department when company changes
                       }}
+                      required
                     />
                   ) : (
                     <Input
@@ -1055,7 +1162,7 @@ export default function CreateJob() {
                 </div>
               )}
               <div>
-                <Label htmlFor="departmentId">Department</Label>
+                <Label htmlFor="departmentId" required>Department</Label>
                 <div className={departmentSelectDisabled ? "opacity-50 pointer-events-none" : ""}>
                   <Select
                     options={departments}
@@ -1072,7 +1179,9 @@ export default function CreateJob() {
                     onChange={(value) => {
                       if (!departmentSelectDisabled) handleInputChange("departmentId", value);
                     }}
+                    required
                   />
+                  
                 </div>
               </div>
             </div>
@@ -1096,7 +1205,7 @@ export default function CreateJob() {
               {!isEditMode && (
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div>
-                    <Label htmlFor="jobCode">Job Code</Label>
+                    <Label htmlFor="jobCode" required>Job Code</Label>
                     <Input
                       id="jobCode"
                       value={jobForm.jobCode}
@@ -1104,6 +1213,7 @@ export default function CreateJob() {
                         handleInputChange("jobCode", e.target.value)
                       }
                       placeholder="Auto-generated"
+                      required
                     />
                     <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                       Auto-generated based on company. You can edit it if needed.
@@ -1114,23 +1224,25 @@ export default function CreateJob() {
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
-                  <Label htmlFor="title">Job Title{jobForm.bilingual && " (English)"}</Label>
+                  <Label htmlFor="title" required>Job Title{jobForm.bilingual && " (English)"}</Label>
                   <Input
                     id="title"
                     value={jobForm.title}
                     onChange={(e) => handleInputChange("title", e.target.value)}
                     placeholder="Senior Frontend Developer"
+                    required
                   />
                 </div>
                 {jobForm.bilingual && (
                   <div>
-                    <Label htmlFor="titleAr">Job Title (Arabic)</Label>
+                    <Label htmlFor="titleAr" required>Job Title (Arabic)</Label>
                     <div dir="rtl">
                       <Input
                         id="titleAr"
                         value={jobForm.titleAr}
                         onChange={(e) => handleInputChange("titleAr", e.target.value)}
                         placeholder="مطور واجهة أمامية أول"
+                        required
                       />
                     </div>
                   </div>
@@ -1201,7 +1313,7 @@ export default function CreateJob() {
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
-                  <Label htmlFor="employmentType">Employment Type</Label>
+                  <Label htmlFor="employmentType" required>Employment Type</Label>
                   <Select
                       options={[
                         { value: "full-time", label: "Full-time" },
@@ -1212,13 +1324,28 @@ export default function CreateJob() {
                     value={jobForm.employmentType}
                     placeholder="Select employment type"
                     onChange={(val) => handleInputChange("employmentType", val)}
+                    required
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="workArrangement" required>Work Arrangement</Label>
+                  <Select
+                    options={[
+                      { value: "on-site", label: "On-site" },
+                      { value: "remote", label: "Remote" },
+                      { value: "hybrid", label: "Hybrid" },
+                    ]}
+                    value={jobForm.workArrangement}
+                    placeholder="Select work arrangement"
+                    onChange={(val) => handleInputChange("workArrangement", val)}
+                    required
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
-                  <Label htmlFor="registrationStart">Registration Start</Label>
+                  <Label htmlFor="registrationStart" required>Registration Start</Label>
                   <Input
                     id="registrationStart"
                     type="date"
@@ -1236,7 +1363,7 @@ export default function CreateJob() {
                   />
                 </div>
                 <div>
-                  <Label htmlFor="registrationEnd">Registration End</Label>
+                  <Label htmlFor="registrationEnd" required>Registration End</Label>
                   <Input
                     id="registrationEnd"
                     type="date"

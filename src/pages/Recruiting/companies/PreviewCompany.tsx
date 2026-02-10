@@ -26,10 +26,22 @@ import {
   useUpdateDepartment,
   useDeleteDepartment,
 } from "../../../hooks/queries";
+import { toPlainString } from "../../../utils/strings";
 
 type CompanyForm = {
-  name: string;
-  address?: string;
+  name: {
+    en: string;
+    ar: string;
+  };
+  description: {
+    en: string;
+    ar: string;
+  };
+  address: Array<{
+    en: string;
+    ar: string;
+    location: string;
+  }>;
   contactEmail?: string;
   phone?: string;
   website?: string;
@@ -38,9 +50,15 @@ type CompanyForm = {
 };
 
 type DepartmentForm = {
-  name: string;
-  description?: string;
   companyId: string;
+  name: {
+    en: string;
+    ar: string;
+  };
+  description: {
+    en: string;
+    ar: string;
+  };
   managerId?: string;
 };
 
@@ -65,18 +83,19 @@ export default function PreviewCompany() {
   const deleteDepartmentMutation = useDeleteDepartment();
 
   const [companyForm, setCompanyForm] = useState<CompanyForm>({
-    name: company?.name || "",
-    address: company?.address || "",
-    contactEmail: company?.contactEmail || "",
-    phone: company?.phone || "",
-    website: company?.website || "",
-    logoPath: company?.logoPath || "",
-    isActive: company?.isActive ?? true,
+    name: { en: "", ar: "" },
+    description: { en: "", ar: "" },
+    address: [{ en: "", ar: "", location: "" }],
+    contactEmail: "",
+    phone: "",
+    website: "",
+    logoPath: "",
+    isActive: true,
   });
   const [departmentForm, setDepartmentForm] = useState<DepartmentForm>({
     companyId: companyId || "",
-    name: "",
-    description: "",
+    name: { en: "", ar: "" },
+    description: { en: "", ar: "" },
     managerId: "",
   });
 
@@ -136,9 +155,26 @@ export default function PreviewCompany() {
   // Update form when company data loads
   useEffect(() => {
     if (company) {
+      const srcName = (company as any).name;
+      const srcDesc = (company as any).description;
+      const srcAddr = (company as any).address;
+      
       setCompanyForm({
-        name: company.name || "",
-        address: company.address || "",
+        name: {
+          en: typeof srcName === 'object' ? srcName.en || '' : toPlainString(srcName) || '',
+          ar: typeof srcName === 'object' ? srcName.ar || '' : '',
+        },
+        description: {
+          en: typeof srcDesc === 'object' ? srcDesc.en || '' : toPlainString(srcDesc) || '',
+          ar: typeof srcDesc === 'object' ? srcDesc.ar || '' : '',
+        },
+        address: Array.isArray(srcAddr) && srcAddr.length > 0
+          ? srcAddr
+          : [{
+              en: typeof srcAddr === 'object' && !Array.isArray(srcAddr) ? srcAddr.en || '' : toPlainString(srcAddr) || '',
+              ar: typeof srcAddr === 'object' && !Array.isArray(srcAddr) ? srcAddr.ar || '' : '',
+              location: typeof srcAddr === 'object' && !Array.isArray(srcAddr) ? srcAddr.location || '' : '',
+            }],
         contactEmail: company.contactEmail || "",
         phone: company.phone || "",
         website: company.website || "",
@@ -153,6 +189,43 @@ export default function PreviewCompany() {
   ) => {
     const { name, value } = e.target;
     setCompanyForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleLocalizedChange = (
+    field: 'name' | 'description',
+    lang: 'en' | 'ar',
+    value: string
+  ) => {
+    setCompanyForm((prev) => ({
+      ...prev,
+      [field]: { ...prev[field], [lang]: value },
+    }));
+  };
+
+  const handleAddressChange = (
+    index: number,
+    field: 'en' | 'ar' | 'location',
+    value: string
+  ) => {
+    setCompanyForm((prev) => {
+      const newAddress = [...prev.address];
+      newAddress[index] = { ...newAddress[index], [field]: value };
+      return { ...prev, address: newAddress };
+    });
+  };
+
+  const handleAddAddress = () => {
+    setCompanyForm((prev) => ({
+      ...prev,
+      address: [...prev.address, { en: '', ar: '', location: '' }],
+    }));
+  };
+
+  const handleRemoveAddress = (index: number) => {
+    setCompanyForm((prev) => ({
+      ...prev,
+      address: prev.address.filter((_, i) => i !== index),
+    }));
   };
 
   const readFileAsDataUrl = (file: File) =>
@@ -175,10 +248,14 @@ export default function PreviewCompany() {
   };
 
   const handleDepartmentChange = (
-    field: keyof DepartmentForm,
+    field: 'name' | 'description',
+    lang: 'en' | 'ar',
     value: string
   ) => {
-    setDepartmentForm((prev) => ({ ...prev, [field]: value }));
+    setDepartmentForm((prev) => ({
+      ...prev,
+      [field]: { ...prev[field], [lang]: value },
+    }));
   };
 
   const handleCompanySubmit = async (e: FormEvent<HTMLFormElement>) => {
@@ -186,8 +263,8 @@ export default function PreviewCompany() {
     setCompanyError("");
 
     // Validation
-    if (!companyForm.name?.trim()) {
-      setCompanyError("Company name is required");
+    if (!companyForm.name?.en?.trim() || !companyForm.name?.ar?.trim()) {
+      setCompanyError("Company name (both English and Arabic) is required");
       return;
     }
     // Ensure contact email is provided (backend requires it)
@@ -197,9 +274,16 @@ export default function PreviewCompany() {
     }
 
     try {
+      const payload = {
+        ...companyForm,
+        address: Array.isArray(companyForm.address)
+          ? companyForm.address.map((a) => ({ en: a.en, ar: a.ar, location: a.location }))
+          : companyForm.address,
+      };
+
       await updateCompanyMutation.mutateAsync({
         id: companyId!,
-        data: companyForm,
+        data: payload,
       });
 
       await Swal.fire({
@@ -229,8 +313,8 @@ export default function PreviewCompany() {
     setDepartmentError("");
 
     // Validation
-    if (!departmentForm.name?.trim()) {
-      setDepartmentError("Department name is required");
+    if (!departmentForm.name?.en?.trim() || !departmentForm.name?.ar?.trim()) {
+      setDepartmentError("Department name (both English and Arabic) is required");
       return;
     }
 
@@ -259,8 +343,8 @@ export default function PreviewCompany() {
       setDepartmentStatus("Department created successfully");
       setDepartmentForm({
         companyId: companyId || "",
-        name: "",
-        description: "",
+        name: { en: "", ar: "" },
+        description: { en: "", ar: "" },
         managerId: "",
       });
       setTimeout(() => setDepartmentStatus(""), 2500);
@@ -313,7 +397,20 @@ export default function PreviewCompany() {
 
   const handleEditDepartment = (dept: Department) => {
     setEditingDeptId(dept._id);
-    setEditingDept({ ...dept });
+    
+    // Ensure bilingual format for editing
+    const deptName = dept.name as any;
+    const deptDesc = dept.description as any;
+    
+    setEditingDept({
+      ...dept,
+      name: typeof deptName === 'object' 
+        ? deptName 
+        : { en: toPlainString(deptName) || '', ar: '' },
+      description: typeof deptDesc === 'object'
+        ? deptDesc
+        : { en: toPlainString(deptDesc) || '', ar: '' },
+    });
   };
 
   const handleSaveDepartment = async () => {
@@ -321,8 +418,9 @@ export default function PreviewCompany() {
       setDepartmentError("");
 
       // Validation
-      if (!editingDept.name?.trim()) {
-        setDepartmentError("Department name is required");
+      const deptName = editingDept.name as any;
+      if (!deptName?.en?.trim() || !deptName?.ar?.trim()) {
+        setDepartmentError("Department name (both English and Arabic) is required");
         return;
       }
 
@@ -375,7 +473,7 @@ export default function PreviewCompany() {
   ) : (
     <div className="space-y-6">
       <PageMeta
-        title={`${companyForm.name || "Company"} | Company Preview`}
+        title={`${toPlainString(companyForm.name) || "Company"} | Company Preview`}
         description="View and edit company details and departments."
       />
 
@@ -403,7 +501,7 @@ export default function PreviewCompany() {
         </button>
       </div>
 
-      <PageBreadcrumb pageTitle={companyForm.name || "Company"} />
+      <PageBreadcrumb pageTitle={toPlainString(companyForm.name) || "Company"} />
 
       {error && (
         <div className="p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg">
@@ -446,20 +544,44 @@ export default function PreviewCompany() {
               )}
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div>
-                  <Label htmlFor="name">Company name</Label>
-                  <Input
-                    id="name"
-                    name="name"
-                    value={companyForm.name}
-                    onChange={handleCompanyChange}
-                    placeholder="Company name"
-                    disabled={!isEditingCompany}
-                  />
+                {/* Company Name (EN/AR) */}
+                <div className="md:col-span-2 space-y-3">
+                  <Label htmlFor="name-en" required>
+                    Company Name
+                  </Label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Input
+                        id="name-en"
+                        name="name-en"
+                        value={companyForm.name.en}
+                        onChange={(e) => handleLocalizedChange('name', 'en', e.target.value)}
+                        placeholder="Company name (English)"
+                        disabled={!isEditingCompany}
+                        required
+                      />
+                      <span className="text-xs text-gray-500 mt-1 block">English</span>
+                    </div>
+                    <div>
+                      <Input
+                        id="name-ar"
+                        name="name-ar"
+                        value={companyForm.name.ar}
+                        onChange={(e) => handleLocalizedChange('name', 'ar', e.target.value)}
+                        placeholder="اسم الشركة (عربي)"
+                        disabled={!isEditingCompany}
+                        required
+                        className="text-right"
+                      />
+                      <span className="text-xs text-gray-500 mt-1 block text-right">العربية</span>
+                    </div>
+                  </div>
                 </div>
 
                 <div>
-                  <Label htmlFor="contactEmail">Contact email</Label>
+                  <Label htmlFor="contactEmail" required>
+                    Contact Email
+                  </Label>
                   <Input
                     id="contactEmail"
                     name="contactEmail"
@@ -468,6 +590,7 @@ export default function PreviewCompany() {
                     onChange={handleCompanyChange}
                     placeholder="contact@company.com"
                     disabled={!isEditingCompany}
+                    required
                   />
                 </div>
                 <div>
@@ -520,17 +643,89 @@ export default function PreviewCompany() {
                   )}
                 </div>
               </div>
-              <div>
-                <Label htmlFor="address">Address</Label>
-                <TextArea
-                  placeholder="Street, city, state"
-                  rows={2}
-                  value={companyForm.address}
-                  onChange={(value) =>
-                    setCompanyForm((prev) => ({ ...prev, address: value }))
-                  }
-                  disabled={!isEditingCompany}
-                />
+
+              {/* Description (EN/AR) */}
+              <div className="space-y-3">
+                <Label htmlFor="description-en">Description</Label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <TextArea
+                      placeholder="What does this company do? (English)"
+                      rows={3}
+                      value={companyForm.description.en}
+                      onChange={(value) => handleLocalizedChange('description', 'en', value)}
+                      disabled={!isEditingCompany}
+                    />
+                    <span className="text-xs text-gray-500 mt-1 block">English</span>
+                  </div>
+                  <div>
+                    <TextArea
+                      placeholder="ماذا تفعل هذه الشركة؟ (عربي)"
+                      rows={3}
+                      value={companyForm.description.ar}
+                      onChange={(value) => handleLocalizedChange('description', 'ar', value)}
+                      disabled={!isEditingCompany}
+                      className="text-right"
+                    />
+                    <span className="text-xs text-gray-500 mt-1 block text-right">العربية</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Address Array */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label>Addresses</Label>
+                  {isEditingCompany && (
+                    <button
+                      type="button"
+                      onClick={handleAddAddress}
+                      className="text-sm text-brand-600 hover:text-brand-700 dark:text-brand-400 font-medium"
+                    >
+                      + Add Address
+                    </button>
+                  )}
+                </div>
+                {companyForm.address.map((addr, index) => (
+                  <div key={index} className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Address {index + 1}
+                      </span>
+                      {isEditingCompany && companyForm.address.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveAddress(index)}
+                          className="text-sm text-red-600 hover:text-red-700 dark:text-red-400"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <Input
+                          placeholder="Address (English)"
+                          value={addr.en}
+                          onChange={(e) => handleAddressChange(index, 'en', e.target.value)}
+                          disabled={!isEditingCompany}
+                        />
+                        <span className="text-xs text-gray-500 mt-1 block">English</span>
+                      </div>
+                      <div>
+                        <Input
+                          placeholder="العنوان (عربي)"
+                          value={addr.ar}
+                          onChange={(e) => handleAddressChange(index, 'ar', e.target.value)}
+                          disabled={!isEditingCompany}
+                          className="text-right"
+                        />
+                        <span className="text-xs text-gray-500 mt-1 block text-right">العربية</span>
+                      </div>
+                    </div>
+                    
+                  </div>
+                ))}
               </div>
 
               {isEditingCompany && (
@@ -591,32 +786,72 @@ export default function PreviewCompany() {
               )}
 
               <form className="space-y-4" onSubmit={handleDepartmentSubmit}>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <div>
-                    <Label htmlFor="departmentName">Department name</Label>
-                    <Input
-                      id="departmentName"
-                      name="name"
-                      value={departmentForm.name}
-                      onChange={(e) =>
-                        handleDepartmentChange("name", e.target.value)
-                      }
-                      placeholder="Engineering"
-                    />
+                {/* Department Name (EN/AR) */}
+                <div className="space-y-3">
+                  <Label htmlFor="departmentName-en" required>
+                    Department Name
+                  </Label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Input
+                        id="departmentName-en"
+                        name="name-en"
+                        value={departmentForm.name.en}
+                        onChange={(e) =>
+                          handleDepartmentChange("name", "en", e.target.value)
+                        }
+                        placeholder="Department name (English)"
+                        required
+                      />
+                      <span className="text-xs text-gray-500 mt-1 block">English</span>
+                    </div>
+                    <div>
+                      <Input
+                        id="departmentName-ar"
+                        name="name-ar"
+                        value={departmentForm.name.ar}
+                        onChange={(e) =>
+                          handleDepartmentChange("name", "ar", e.target.value)
+                        }
+                        placeholder="اسم القسم (عربي)"
+                        required
+                        className="text-right"
+                      />
+                      <span className="text-xs text-gray-500 mt-1 block text-right">العربية</span>
+                    </div>
                   </div>
-                  {/* location field removed to match backend schema */}
                 </div>
-                <div>
-                  <Label htmlFor="departmentDescription">Description</Label>
-                  <Input
-                    id="departmentDescription"
-                    name="description"
-                    value={departmentForm.description}
-                    onChange={(e) =>
-                      handleDepartmentChange("description", e.target.value)
-                    }
-                    placeholder="What this team does"
-                  />
+
+                {/* Description (EN/AR) */}
+                <div className="space-y-3">
+                  <Label htmlFor="departmentDescription-en">Description</Label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Input
+                        id="departmentDescription-en"
+                        name="description-en"
+                        value={departmentForm.description.en}
+                        onChange={(e) =>
+                          handleDepartmentChange("description", "en", e.target.value)
+                        }
+                        placeholder="What this team does (English)"
+                      />
+                      <span className="text-xs text-gray-500 mt-1 block">English</span>
+                    </div>
+                    <div>
+                      <Input
+                        id="departmentDescription-ar"
+                        name="description-ar"
+                        value={departmentForm.description.ar}
+                        onChange={(e) =>
+                          handleDepartmentChange("description", "ar", e.target.value)
+                        }
+                        placeholder="ماذا يفعل هذا الفريق (عربي)"
+                        className="text-right"
+                      />
+                      <span className="text-xs text-gray-500 mt-1 block text-right">العربية</span>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3">
@@ -662,46 +897,97 @@ export default function PreviewCompany() {
                           {isEditing ? (
                             <>
                               <div className="space-y-3">
-                                <div>
-                                  <Label htmlFor={`edit-name-${dept._id}`}>
-                                    Department name
+                                {/* Department Name (EN/AR) */}
+                                <div className="space-y-2">
+                                  <Label htmlFor={`edit-name-en-${dept._id}`} required>
+                                    Department Name
                                   </Label>
-                                  <Input
-                                    id={`edit-name-${dept._id}`}
-                                    value={currentDept.name}
-                                    onChange={(e) =>
-                                      setEditingDept(
-                                        editingDept
-                                          ? {
-                                              ...editingDept,
-                                              name: e.target.value,
-                                            }
-                                          : null
-                                      )
-                                    }
-                                    placeholder="Department name"
-                                  />
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <div>
+                                      <Input
+                                        id={`edit-name-en-${dept._id}`}
+                                        value={(currentDept.name as any)?.en || ''}
+                                        onChange={(e) =>
+                                          setEditingDept(
+                                            editingDept
+                                              ? {
+                                                  ...editingDept,
+                                                  name: { ...(editingDept.name as any), en: e.target.value },
+                                                }
+                                              : null
+                                          )
+                                        }
+                                        placeholder="Department name (English)"
+                                        required
+                                      />
+                                      <span className="text-xs text-gray-500 mt-1 block">English</span>
+                                    </div>
+                                    <div>
+                                      <Input
+                                        id={`edit-name-ar-${dept._id}`}
+                                        value={(currentDept.name as any)?.ar || ''}
+                                        onChange={(e) =>
+                                          setEditingDept(
+                                            editingDept
+                                              ? {
+                                                  ...editingDept,
+                                                  name: { ...(editingDept.name as any), ar: e.target.value },
+                                                }
+                                              : null
+                                          )
+                                        }
+                                        placeholder="اسم القسم (عربي)"
+                                        required
+                                        className="text-right"
+                                      />
+                                      <span className="text-xs text-gray-500 mt-1 block text-right">العربية</span>
+                                    </div>
+                                  </div>
                                 </div>
-                                {/* location removed to match backend schema */}
-                                <div>
-                                  <Label htmlFor={`edit-desc-${dept._id}`}>
+                                {/* Description (EN/AR) */}
+                                <div className="space-y-2">
+                                  <Label htmlFor={`edit-desc-en-${dept._id}`}>
                                     Description
                                   </Label>
-                                  <Input
-                                    id={`edit-desc-${dept._id}`}
-                                    value={currentDept.description}
-                                    onChange={(e) =>
-                                      setEditingDept(
-                                        editingDept
-                                          ? {
-                                              ...editingDept,
-                                              description: e.target.value,
-                                            }
-                                          : null
-                                      )
-                                    }
-                                    placeholder="Description"
-                                  />
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <div>
+                                      <Input
+                                        id={`edit-desc-en-${dept._id}`}
+                                        value={(currentDept.description as any)?.en || ''}
+                                        onChange={(e) =>
+                                          setEditingDept(
+                                            editingDept
+                                              ? {
+                                                  ...editingDept,
+                                                  description: { ...(editingDept.description as any), en: e.target.value },
+                                                }
+                                              : null
+                                          )
+                                        }
+                                        placeholder="Description (English)"
+                                      />
+                                      <span className="text-xs text-gray-500 mt-1 block">English</span>
+                                    </div>
+                                    <div>
+                                      <Input
+                                        id={`edit-desc-ar-${dept._id}`}
+                                        value={(currentDept.description as any)?.ar || ''}
+                                        onChange={(e) =>
+                                          setEditingDept(
+                                            editingDept
+                                              ? {
+                                                  ...editingDept,
+                                                  description: { ...(editingDept.description as any), ar: e.target.value },
+                                                }
+                                              : null
+                                          )
+                                        }
+                                        placeholder="الوصف (عربي)"
+                                        className="text-right"
+                                      />
+                                      <span className="text-xs text-gray-500 mt-1 block text-right">العربية</span>
+                                    </div>
+                                  </div>
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <div className="flex items-center gap-3">
@@ -745,7 +1031,7 @@ export default function PreviewCompany() {
                               <div className="flex items-center justify-between gap-2">
                                 <div className="flex items-center gap-3">
                                   <span className="text-sm font-semibold text-gray-800 dark:text-white/90">
-                                    {dept.name}
+                                    {toPlainString((dept as any).name)}
                                   </span>
                                   {dept.isActive === false ? (
                                     <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200">
@@ -782,12 +1068,10 @@ export default function PreviewCompany() {
                                 </div>
                               </div>
                               <p className="text-sm text-gray-600 dark:text-gray-400">
-                                {dept.description || "No description provided"}
+                                {toPlainString((dept as any).description) || "No description provided"}
                               </p>
                               <div className="flex items-center justify-between">
-                                <p className="font-mono text-xs uppercase tracking-wide text-gray-400">
-                                  ID: {dept._id.slice(-8)}
-                                </p>
+                                
                               </div>
                             </>
                           )}

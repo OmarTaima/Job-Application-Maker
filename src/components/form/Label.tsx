@@ -6,9 +6,10 @@ interface LabelProps {
   htmlFor?: string;
   children: ReactNode;
   className?: string;
+  required?: boolean;
 }
 
-const Label: FC<LabelProps> = ({ htmlFor, children, className }) => {
+const Label: FC<LabelProps> = ({ htmlFor, children, className, required }) => {
   return (
     <label
       htmlFor={htmlFor}
@@ -20,6 +21,7 @@ const Label: FC<LabelProps> = ({ htmlFor, children, className }) => {
       )}
     >
       {children}
+      {required && <span className="text-red-500 ml-1">*</span>}
     </label>
   );
 };

@@ -4,8 +4,14 @@ import { getErrorMessage } from "../utils/errorHandler";
 // Types
 export interface Department {
   _id: string;
-  name: string;
-  description?: string;
+  name: {
+    en: string;
+    ar: string;
+  };
+  description?: {
+    en: string;
+    ar: string;
+  };
   companyId: string | { _id: string; name: string };
   managerId?: string | { _id: string; fullName: string };
   isActive?: boolean;
@@ -14,15 +20,27 @@ export interface Department {
 }
 
 export interface CreateDepartmentRequest {
-  name: string;
-  description?: string;
   companyId: string;
+  name: {
+    en: string;
+    ar: string;
+  };
+  description?: {
+    en: string;
+    ar: string;
+  };
   managerId?: string;
 }
 
 export interface UpdateDepartmentRequest {
-  name?: string;
-  description?: string;
+  name: {
+    en: string;
+    ar: string;
+  };
+  description?: {
+    en: string;
+    ar: string;
+  };
   managerId?: string;
   isActive?: boolean;
 }

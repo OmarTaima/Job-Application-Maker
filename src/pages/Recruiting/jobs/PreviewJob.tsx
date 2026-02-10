@@ -12,6 +12,7 @@ import {
   useDeleteJobPosition,
   useJobPosition,
 } from "../../../hooks/queries";
+import { toPlainString } from "../../../utils/strings";
 
 export default function PreviewJob() {
   const { jobId } = useParams<{ jobId: string }>();
@@ -224,8 +225,8 @@ export default function PreviewJob() {
   return (
     <div className="space-y-6">
       <PageMeta
-        title={`${job.title} | Job Preview`}
-        description={`View details for ${job.title}`}
+        title={`${typeof job.title === "string" ? job.title : job.title?.en || "Job"} | Job Preview`}
+        description={`View details for ${typeof job.title === "string" ? job.title : job.title?.en || "this job"}`}
       />
 
       {deleteError && (
@@ -331,7 +332,7 @@ export default function PreviewJob() {
               Company
             </label>
             <p className="mt-1 text-base text-gray-900 dark:text-white">
-              {company?.name || "Unknown Company"}
+              {toPlainString((company as any)?.name) || "Unknown Company"}
             </p>
           </div>
           <div>
@@ -339,7 +340,7 @@ export default function PreviewJob() {
               Department
             </label>
             <p className="mt-1 text-base text-gray-900 dark:text-white">
-              {department?.name || "Unknown Department"}
+              {toPlainString((department as any)?.name) || "Unknown Department"}
             </p>
           </div>
           <div>

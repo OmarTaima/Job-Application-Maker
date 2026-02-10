@@ -27,6 +27,7 @@ import type {
   Applicant,
   UpdateStatusRequest,
 } from '../../../store/slices/applicantsSlice';
+import { toPlainString } from '../../../utils/strings';
 
 const ApplicantData = () => {
   const { id } = useParams<{ id: string }>();
@@ -123,7 +124,7 @@ const ApplicantData = () => {
     if (typeof applicant.jobPositionId === 'object') {
       const jobPos = applicant.jobPositionId as any;
       if (typeof jobPos.companyId === 'object' && jobPos.companyId?.name) {
-        return jobPos.companyId.name;
+        return toPlainString(jobPos.companyId.name);
       }
       // Try to look up using the ID from jobPosition
       const compId =
@@ -131,20 +132,21 @@ const ApplicantData = () => {
           ? jobPos.companyId
           : jobPos.companyId?._id;
       const found = companies.find((c) => c._id === compId);
-      if (found) return found.name;
+      if (found) return toPlainString((found as any).name);
     }
     // Fallback to direct companyId if exists
     if (
       typeof applicant.companyId === 'object' &&
       (applicant.companyId as any)?.name
     ) {
-      return (applicant.companyId as any).name;
+      return toPlainString((applicant.companyId as any).name);
     }
     const compId =
       typeof applicant.companyId === 'string'
         ? applicant.companyId
         : (applicant.companyId as any)?._id;
-    return companies.find((c) => c._id === compId)?.name || '';
+    const foundCompany = companies.find((c) => c._id === compId);
+    return foundCompany ? toPlainString((foundCompany as any).name) : '';
   };
 
   const getDepartmentName = () => {
@@ -156,7 +158,7 @@ const ApplicantData = () => {
         typeof jobPos.departmentId === 'object' &&
         jobPos.departmentId?.name
       ) {
-        return jobPos.departmentId.name;
+        return toPlainString(jobPos.departmentId.name);
       }
     }
     // Fallback to direct departmentId if exists
@@ -164,8 +166,48 @@ const ApplicantData = () => {
       typeof applicant.departmentId === 'object' &&
       (applicant.departmentId as any)?.name
     ) {
-      return (applicant.departmentId as any).name;
+      return toPlainString((applicant.departmentId as any).name);
     }
+    return '';
+  };
+
+  const getCompanyAddress = () => {
+    if (!applicant) return '';
+    // Check populated jobPosition.companyId
+    if (typeof applicant.jobPositionId === 'object') {
+      const jobPos = applicant.jobPositionId as any;
+      if (typeof jobPos.companyId === 'object' && jobPos.companyId?.address) {
+        const addr = Array.isArray(jobPos.companyId.address)
+          ? jobPos.companyId.address[0]
+          : jobPos.companyId.address;
+        if (!addr) return '';
+        return toPlainString(addr.en ? addr.en : addr) || addr.location || '';
+      }
+      const compId = typeof jobPos.companyId === 'string' ? jobPos.companyId : jobPos.companyId?._id;
+      const found = companies.find((c) => c._id === compId);
+      if (found && found.address && Array.isArray(found.address) && found.address.length > 0) {
+        const a = found.address[0];
+        return toPlainString(a.en ? a.en : a) || a.location || '';
+      }
+    }
+
+    // Fallback to applicant.companyId if populated
+    if (typeof applicant.companyId === 'object' && (applicant.companyId as any).address) {
+      const addr = Array.isArray((applicant.companyId as any).address)
+        ? (applicant.companyId as any).address[0]
+        : (applicant.companyId as any).address;
+      if (!addr) return '';
+      return toPlainString(addr.en ? addr.en : addr) || addr.location || '';
+    }
+
+    // Lookup by companyId
+    const compId = typeof applicant.companyId === 'string' ? applicant.companyId : (applicant.companyId as any)?._id;
+    const foundCompany = companies.find((c) => c._id === compId);
+    if (foundCompany && foundCompany.address && Array.isArray(foundCompany.address) && foundCompany.address.length > 0) {
+      const a = foundCompany.address[0];
+      return toPlainString(a.en ? a.en : a) || a.location || '';
+    }
+
     return '';
   };
 
@@ -321,11 +363,7 @@ const ApplicantData = () => {
     e.preventDefault();
     if (!id || !applicant) return;
 
-    // Validate required comment field
-    if (!interviewForm.comment || !interviewForm.comment.trim()) {
-      setInterviewError('Comment is required when scheduling an interview');
-      return;
-    }
+   
 
     // Validate notification options
     if (emailOption === 'custom' && !customEmail.trim()) {
@@ -1507,7 +1545,7 @@ const ApplicantData = () => {
                           if (author && typeof author === 'object') {
                             return (
                               author.fullName ||
-                              author.name ||
+                              (typeof author.name === 'object' ? toPlainString(author.name) : author.name) ||
                               author.email ||
                               author.username ||
                               'User'
@@ -1618,6 +1656,8 @@ const ApplicantData = () => {
                           ? interview.issuedBy
                           : (interview.issuedBy as any)?.fullName ||
                             (interview.issuedBy as any)?.email ||
+                            user?.fullName ||
+                            user?.email ||
                             'System'}
                       </p>
                       {(interview as any).scheduledAt && (
@@ -1631,24 +1671,68 @@ const ApplicantData = () => {
                         </p>
                       )}
                       {expandedHistory === `interview-${index}` && (
-                        <div className="mt-3 border-t border-stroke pt-3 dark:border-strokedark">
-                          {interview.description && (
-                            <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                              {interview.description}
-                            </p>
-                          )}
-                          {interview.comment && (
-                            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                              {interview.comment}
-                            </p>
+                        <div className="mt-3 space-y-2 border-t border-stroke pt-3 dark:border-strokedark">
+                          {(interview as any).scheduledAt && (
+                            <div className="flex items-start gap-2">
+                              <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 min-w-[80px]">Scheduled:</span>
+                              <span className="text-sm text-gray-700 dark:text-gray-300">
+                                {new Date((interview as any).scheduledAt).toLocaleString('en-US', {
+                                  weekday: 'short',
+                                  year: 'numeric',
+                                  month: 'short',
+                                  day: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </span>
+                            </div>
                           )}
                           {interview.type && (
-                            <p className="mt-1 text-xs text-gray-500 dark:text-gray-500">
-                              Type: {interview.type}
-                            </p>
+                            <div className="flex items-start gap-2">
+                              <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 min-w-[80px]">Type:</span>
+                              <span className="text-sm text-gray-700 dark:text-gray-300 capitalize">{interview.type}</span>
+                            </div>
                           )}
-                          
-                         
+                          {(interview as any).location && (
+                            <div className="flex items-start gap-2">
+                              <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 min-w-[80px]">Location:</span>
+                              <span className="text-sm text-gray-700 dark:text-gray-300">{(interview as any).location}</span>
+                            </div>
+                          )}
+                          {(interview as any).videoLink && (
+                            <div className="flex items-start gap-2">
+                              <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 min-w-[80px]">Video Link:</span>
+                              <a href={(interview as any).videoLink} target="_blank" rel="noopener noreferrer" className="text-sm text-brand-600 hover:underline dark:text-brand-400">
+                                {(interview as any).videoLink}
+                              </a>
+                            </div>
+                          )}
+                          {interview.description && (
+                            <div className="flex items-start gap-2">
+                              <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 min-w-[80px]">Description:</span>
+                              <span className="text-sm text-gray-700 dark:text-gray-300">{interview.description}</span>
+                            </div>
+                          )}
+                          {((interview as any).notes || interview.comment) && (
+                            <div className="flex items-start gap-2">
+                              <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 min-w-[80px]">Notes:</span>
+                              <span className="text-sm text-gray-700 dark:text-gray-300">{(interview as any).notes || interview.comment}</span>
+                            </div>
+                          )}
+                          {(interview as any).createdAt && (
+                            <div className="flex items-start gap-2">
+                              <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 min-w-[80px]">Created:</span>
+                              <span className="text-sm text-gray-700 dark:text-gray-300">
+                                {new Date((interview as any).createdAt).toLocaleString('en-US', {
+                                  year: 'numeric',
+                                  month: 'short',
+                                  day: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </span>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1806,6 +1890,21 @@ const ApplicantData = () => {
                   }
                   placeholder="Office address or meeting room"
                 />
+                {(() => {
+                  const companyAddr = getCompanyAddress();
+                  return (
+                    <div className="mt-2">
+                      <button
+                        type="button"
+                        onClick={() => companyAddr && setInterviewForm({ ...interviewForm, location: companyAddr })}
+                        disabled={!companyAddr}
+                        className={`text-sm ${companyAddr ? 'text-brand-600 hover:underline' : 'text-gray-400'}`}
+                      >
+                        {companyAddr ? 'Use company address' : 'Company address not available'}
+                      </button>
+                    </div>
+                  );
+                })()}
               </div>
 
               <div>
@@ -1837,13 +1936,13 @@ const ApplicantData = () => {
               </div>
 
               <div>
-                <Label htmlFor="interview-comment">Comment *</Label>
+                <Label htmlFor="interview-comment">Comment</Label>
                 <TextArea
                   value={interviewForm.comment}
                   onChange={(value) =>
                     setInterviewForm({ ...interviewForm, comment: value })
                   }
-                  placeholder="Add notes about this interview (required)"
+                  placeholder="Add notes about this interview"
                   rows={2}
                 />
               </div>

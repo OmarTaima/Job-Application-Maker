@@ -11,6 +11,7 @@ import {
   useCompanies,
   useDepartments,
 } from "../../../hooks/queries";
+import { toPlainString } from "../../../utils/strings";
 
 export default function PreviewUser() {
   const { id } = useParams<{ id: string }>();
@@ -31,10 +32,10 @@ export default function PreviewUser() {
   const roleName = useMemo(() => {
     if (!user) return "-";
     if (typeof user.roleId === "object" && user.roleId) {
-      return user.roleId.name;
+      return toPlainString((user.roleId as any).name);
     }
     const role = roles.find((r) => r._id === user.roleId);
-    return role?.name || "-";
+    return role ? toPlainString((role as any).name) : "-";
   }, [user, roles]);
 
   // Get user's companies with departments
@@ -49,17 +50,17 @@ export default function PreviewUser() {
             : userCompany.companyId?._id;
         const companyName =
           typeof userCompany.companyId === "object" && userCompany.companyId
-            ? userCompany.companyId.name
-            : companies.find((c) => c._id === companyId)?.name || "Unknown";
+            ? toPlainString(userCompany.companyId.name)
+            : toPlainString(companies.find((c) => c._id === companyId)?.name) || "Unknown";
 
         const userDepartments =
           userCompany.departments?.map((dept: any) => {
             // Handle both string IDs and populated department objects
             if (typeof dept === "string") {
               const deptObj = departments.find((d) => d._id === dept);
-              return deptObj?.name || dept;
+              return deptObj ? toPlainString((deptObj as any).name) : dept;
             } else if (dept && typeof dept === "object") {
-              return dept.name || dept._id || "Unknown";
+              return toPlainString(dept.name) || dept._id || "Unknown";
             }
             return "Unknown";
           }) || [];

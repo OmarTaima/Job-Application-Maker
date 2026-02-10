@@ -9,6 +9,7 @@ import { useState, useMemo } from "react";
 import { useApplicants, useCompaniesWithApplicants } from "../hooks/queries";
 import type { Applicant } from "../store/slices/applicantsSlice";
 import type { Company } from "../services/companiesService";
+import { toPlainString } from "../utils/strings";
 
 /**
  * Example 1: Applicants List with Company Filter
@@ -51,7 +52,7 @@ export const ApplicantsWithCompanyFilter = () => {
         <option value="all">All Companies ({companies.length})</option>
         {companies.map((company: Company) => (
           <option key={company._id} value={company._id}>
-            {company.name}
+            {toPlainString((company as any).name)}
           </option>
         ))}
       </select>
@@ -110,7 +111,7 @@ export const ApplicantsByCompany = () => {
       <h2>Applicants Grouped by Company</h2>
       {applicantsByCompany.map(({ company, applicants }) => (
         <div key={company._id}>
-          <h3>{company.name}</h3>
+          <h3>{toPlainString((company as any).name)}</h3>
           <p>{applicants.length} applicant(s)</p>
           <ul>
             {applicants.map((applicant) => (
@@ -144,7 +145,7 @@ export const CompanyApplicantStats = () => {
       });
       
       return {
-        companyName: company.name,
+        companyName: toPlainString((company as any).name),
         totalApplicants: companyApplicants.length,
         pending: companyApplicants.filter((a: Applicant) => a.status === "applied").length,
         interviewed: companyApplicants.filter((a: Applicant) => a.status === "interviewed").length,

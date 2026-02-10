@@ -18,10 +18,10 @@ export const jobPositionsKeys = {
 };
 
 // Get all job positions
-export function useJobPositions(companyIds?: string[]) {
+export function useJobPositions(companyIds?: string[], isActive: boolean = true) {
   return useQuery({
     queryKey: jobPositionsKeys.list(companyIds),
-    queryFn: () => jobPositionsService.getAllJobPositions(companyIds),
+    queryFn: () => jobPositionsService.getAllJobPositions(companyIds, isActive),
     staleTime: 5 * 60 * 1000,
   });
 }
@@ -52,7 +52,7 @@ export function useCreateJobPosition() {
 
   return useMutation({
     mutationFn: (data: CreateJobPositionRequest) =>
-      jobPositionsService.createJobPosition(data),
+      jobPositionsService.createJobPosition({ ...data, isActive: true }),
     onMutate: async (newJobPosition) => {
       await queryClient.cancelQueries({ queryKey: jobPositionsKeys.lists() });
       const previousJobPositions = queryClient.getQueriesData({ queryKey: jobPositionsKeys.lists() });

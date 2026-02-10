@@ -21,6 +21,7 @@ import {
   useUpdateJobPosition,
 } from "../../../hooks/queries";
 import type { JobPosition } from "../../../store/slices/jobPositionsSlice";
+import { toPlainString } from "../../../utils/strings";
 
 type Job = JobPosition & {
   companyName?: string;
@@ -126,11 +127,11 @@ export default function Jobs() {
       .map((position) => {
         // Extract company and department names from populated data
         const companyName = typeof position.companyId === "object" && position.companyId
-          ? (position.companyId as any).name || "Unknown Company"
+          ? toPlainString((position.companyId as any).name) || "Unknown Company"
           : "Unknown Company";
 
         const departmentName = typeof position.departmentId === "object" && position.departmentId
-          ? (position.departmentId as any).name || "Unknown Department"
+          ? toPlainString((position.departmentId as any).name) || "Unknown Department"
           : "Unknown Department";
 
         return {
@@ -144,11 +145,13 @@ export default function Jobs() {
   const filteredJobs = jobs.filter(
     (job) => {
       const title = typeof job.title === "string" ? job.title : job.title?.en || "";
+      const companyName = toPlainString(job.companyName);
+      const departmentName = toPlainString(job.departmentName);
       return (
         title.toLowerCase().includes(searchTerm.toLowerCase()) ||
         job.jobCode?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        job.companyName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        job.departmentName?.toLowerCase().includes(searchTerm.toLowerCase())
+        companyName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        departmentName.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
   );
