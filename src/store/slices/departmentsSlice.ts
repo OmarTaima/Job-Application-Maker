@@ -1,23 +1,25 @@
 import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
 import { departmentsService } from "../../services/departmentsService";
 
+export type LocalizedString = { en: string; ar: string };
+
 export interface Department {
   _id: string;
-  name: string;
-  companyId: string | { _id: string; name: string };
+  name: LocalizedString | string;
+  companyId: string | { _id: string; name: LocalizedString | string };
   description?: string;
   createdAt?: string;
   __v?: number;
 }
 
 export interface CreateDepartmentRequest {
-  name: string;
+  name: LocalizedString | string;
   companyId: string;
   description?: string;
 }
 
 export interface UpdateDepartmentRequest {
-  name?: string;
+  name?: LocalizedString | string;
   companyId?: string;
   description?: string;
 }
