@@ -1,28 +1,15 @@
 import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
 import { departmentsService } from "../../services/departmentsService";
+import type {
+  Department as ServiceDepartment,
+  CreateDepartmentRequest as ServiceCreateDepartmentRequest,
+  UpdateDepartmentRequest as ServiceUpdateDepartmentRequest,
+} from "../../services/departmentsService";
 
-export type LocalizedString = { en: string; ar: string };
-
-export interface Department {
-  _id: string;
-  name: LocalizedString | string;
-  companyId: string | { _id: string; name: LocalizedString | string };
-  description?: LocalizedString | string;
-  createdAt?: string;
-  __v?: number;
-}
-
-export interface CreateDepartmentRequest {
-  name: LocalizedString | string;
-  companyId: string;
-  description?: LocalizedString | string;
-}
-
-export interface UpdateDepartmentRequest {
-  name?: LocalizedString | string;
-  companyId?: string;
-  description?: LocalizedString | string;
-}
+// Reuse service types to avoid duplication and mismatches
+export type Department = ServiceDepartment;
+export type CreateDepartmentRequest = ServiceCreateDepartmentRequest;
+export type UpdateDepartmentRequest = ServiceUpdateDepartmentRequest;
 
 interface DepartmentsState {
   departments: Department[];
@@ -43,10 +30,10 @@ const initialState: DepartmentsState = {
 // Async thunks
 export const fetchDepartments = createAsyncThunk(
   "departments/fetchAll",
-  async (companyId: string[] | undefined, { rejectWithValue }) => {
+  async (companyIds: string[] | undefined, { rejectWithValue }) => {
     try {
       const companyId =
-        companyId && companyId.length > 0 ? companyId[0] : undefined;
+        companyIds && companyIds.length > 0 ? companyIds[0] : undefined;
       return await departmentsService.getAllDepartments(companyId);
     } catch (error: any) {
       return rejectWithValue(error.message || "Failed to fetch departments");

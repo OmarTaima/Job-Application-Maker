@@ -109,7 +109,7 @@ export default function Jobs() {
 
     // Filter and enrich job positions
     return jobPositions
-      .filter((position) => {
+      .filter((position: any) => {
         // Admin users see all jobs
         if (isAdmin) return true;
 
@@ -124,7 +124,7 @@ export default function Jobs() {
 
         return usercompanyId.includes(positionCompanyId);
       })
-      .map((position) => {
+      .map((position: any) => {
         // Extract company and department names from populated data
         const companyName = typeof position.companyId === "object" && position.companyId
           ? toPlainString((position.companyId as any).name) || "Unknown Company"
@@ -143,7 +143,7 @@ export default function Jobs() {
   }, [jobPositions, user, isAdmin]);
 
   const filteredJobs = jobs.filter(
-    (job) => {
+    (job: any) => {
       const title = typeof job.title === "string" ? job.title : job.title?.en || "";
       const companyName = toPlainString(job.companyName);
       const departmentName = toPlainString(job.departmentName);
@@ -433,7 +433,7 @@ export default function Jobs() {
                   </TableHeader>
 
                   <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
-                    {filteredJobs.map((job) => (
+                    {filteredJobs.map((job: any) => (
                       <TableRow
                         key={job._id}
                         onClick={() => navigate(`/job/${job._id}`, { state: { job } })}
