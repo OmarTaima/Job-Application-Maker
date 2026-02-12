@@ -1161,6 +1161,13 @@ export default function CreateJob() {
         await updateJobMutation.mutateAsync({ id: editJobId, data: payload });
         setJobStatus("Job updated successfully");
       } else {
+        // Ensure backend receives creator info
+        try {
+          const createdBy = (user as any)?._id ?? (user as any)?.id ?? undefined;
+          if (createdBy) payload.createdBy = createdBy;
+        } catch (e) {
+          // ignore
+        }
         // Create new job with optimistic update
         await createJobMutation.mutateAsync(payload);
         setJobStatus("Job created successfully");

@@ -110,7 +110,7 @@ export default function PreviewUser() {
     );
   }
 
-  const userName = user.fullName || user.name || "Unnamed User";
+  const userName = toPlainString(user.fullName || user.name || "Unnamed User");
 
   return (
     <div className="space-y-6">
@@ -172,11 +172,11 @@ export default function PreviewUser() {
             <span
               className={`inline-block px-3 py-1 text-sm rounded ${
                 user.isActive !== false
-                  ? "bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200"
-                  : "bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200"
+                    ? "bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200"
+                    : "bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200"
               }`}
             >
-              {user.isActive !== false ? "Active" : "Inactive"}
+                {user.isActive !== false ? "Active" : "Inactive"}
             </span>
           </div>
           <div>

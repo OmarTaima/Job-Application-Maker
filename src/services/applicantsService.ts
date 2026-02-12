@@ -190,8 +190,47 @@ class ApplicantsService {
       if (jobPositionId) {
         params.jobPositionId = jobPositionId;
       }
-      const response = await axios.get("/applicants", { params });
-      return response.data.data;
+      
+      // Fetch all pages by making multiple requests
+      let allApplicants: Applicant[] = [];
+      let currentPage = 1;
+      let totalPages = 1;
+      
+      do {
+        const response = await axios.get("/applicants", { 
+          params: { ...params, page: currentPage, PageCount: 100 } 
+        });
+        const payload = response.data;
+        
+        // Extract applicants from current page
+        let pageData: Applicant[] = [];
+        if (Array.isArray(payload)) {
+          pageData = payload;
+        } else if (payload && Array.isArray(payload.data)) {
+          pageData = payload.data;
+        } else if (payload && payload.data && Array.isArray(payload.data.data)) {
+          pageData = payload.data.data;
+        } else if (payload && payload.data && Array.isArray(payload.data.docs)) {
+          pageData = payload.data.docs;
+        }
+        
+        allApplicants = [...allApplicants, ...pageData];
+        
+        // Determine if there are more pages
+        if (payload && payload.TotalCount && payload.PageCount) {
+          totalPages = Math.ceil(payload.TotalCount / payload.PageCount);
+        } else if (payload && payload.page && typeof payload.page === 'string') {
+          // Parse "1 of 3" format
+          const match = payload.page.match(/\d+\s+of\s+(\d+)/);
+          if (match) {
+            totalPages = parseInt(match[1], 10);
+          }
+        }
+        
+        currentPage++;
+      } while (currentPage <= totalPages);
+      
+      return allApplicants;
     } catch (error: any) {
       throw new ApiError(
         getErrorMessage(error),
@@ -207,7 +246,20 @@ class ApplicantsService {
   async getApplicantById(applicantId: string): Promise<Applicant> {
     try {
       const response = await axios.get(`/applicants/${applicantId}`);
-      return response.data.data;
+      // Normalize response shapes: { data: Applicant }, { applicant: Applicant }, or nested wrappers
+      let maybe: any = response.data?.data ?? (response.data as any)?.applicant ?? response.data ?? null;
+
+      if (!maybe || (typeof maybe === 'object' && !('_id' in maybe))) {
+        const nested = Object.values(response.data || {}).find((v: any) => v && typeof v === 'object' && v._id);
+        if (nested) maybe = nested;
+      }
+
+      if (!maybe) {
+        console.warn('applicantsService.getApplicantById: unexpected response shape', response.data);
+        throw new ApiError(getErrorMessage(response as any), response.status ?? undefined, response as any);
+      }
+
+      return maybe as Applicant;
     } catch (error: any) {
       throw new ApiError(
         getErrorMessage(error),

@@ -1,5 +1,6 @@
 import { useModal } from "../../hooks/useModal";
 import { useAuth } from "../../context/AuthContext";
+import { toPlainString } from "../../utils/strings";
 import { Modal } from "../ui/modal";
 import Button from "../ui/button/Button";
 import Input from "../form/input/InputField";
@@ -26,7 +27,10 @@ export default function UserInfoCard() {
                 First Name
               </p>
               <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                {user?.fullName?.split(' ')?.[0] || (user?.name ? user.name.split(' ')[0] : '')}
+                {(() => {
+                  const full = toPlainString(user?.fullName || user?.name || "");
+                  return full.split(" ")?.[0] || "";
+                })()}
               </p>
             </div>
 
@@ -35,7 +39,10 @@ export default function UserInfoCard() {
                 Last Name
               </p>
               <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                {user?.fullName?.split(' ')?.slice(1).join(' ') || ''}
+                {(() => {
+                  const full = toPlainString(user?.fullName || user?.name || "");
+                  return full.split(" ").slice(1).join(" ") || "";
+                })()}
               </p>
             </div>
 
@@ -61,8 +68,8 @@ export default function UserInfoCard() {
               <p className="mb-2 text-xs leading-normal text-gray-500 dark:text-gray-400">
                 Bio
               </p>
-              <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                {(user as any).bio || user?.roleId?.name || '-'}
+                <p className="text-sm font-medium text-gray-800 dark:text-white/90">
+                {(user as any).bio || toPlainString(user?.roleId?.name) || '-'}
               </p>
             </div>
           </div>

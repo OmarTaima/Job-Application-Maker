@@ -19,6 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from "../../../components/ui/table";
+import { companiesService } from "../../../services/companiesService";
 import {
   useUsers,
   useCreateUser,
@@ -211,9 +212,25 @@ export default function Users() {
         
         // POST /users/:userId/companies - add new companies
         for (const companyId of addedcompanyId) {
+          if (!companyId) {
+            setFormError("Invalid company selected");
+            continue;
+          }
+          try {
+            await companiesService.getCompanyById(companyId);
+          } catch (err: any) {
+            setFormError("Selected company does not exist");
+            continue;
+          }
+          // Debug: log payload before sending to server
+          // eslint-disable-next-line no-console
+          const addedCompany = userForm.companies.find((c) => c.companyId === companyId);
+          const departmentsForAdd = addedCompany?.departments || [];
+          console.debug("addUserCompany payload", { userId: editingUserId, companyId, departments: departmentsForAdd });
           await addUserCompanyMutation.mutateAsync({
             userId: editingUserId,
             companyId,
+            departments: departmentsForAdd,
           });
         }
         
@@ -246,14 +263,21 @@ export default function Users() {
         }
       } else {
         // Create new user
+        // Validate required fields per backend schema
+        if (!userForm.fullName || !userForm.email || !userForm.password || !userForm.roleId) {
+          setFormError("Please fill required fields: full name, email, password and role");
+          setIsCreating(false);
+          return;
+        }
+
         const payload = {
           fullName: userForm.fullName,
           email: userForm.email,
           password: userForm.password,
           roleId: userForm.roleId,
-          companies: userForm.companies.map(c => ({
+          companies: userForm.companies.map((c) => ({
             companyId: c.companyId,
-            departments: c.departments,
+            departments: c.departments || [],
           })),
           ...(userForm.phone && { phone: userForm.phone }),
           ...(userForm.permissions.length > 0 && {
@@ -1016,7 +1040,7 @@ export default function Users() {
                         : typeof user.roleId === "string" 
                         ? user.roleId 
                         : "-";
-                    const userName = user.fullName || user.name || "-";
+                    const userName = toPlainString(user.fullName || user.name || "-");
 
                     return (
                       <TableRow

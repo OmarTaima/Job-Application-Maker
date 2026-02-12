@@ -11,8 +11,8 @@ export default function LoadingSpinner({
 }: LoadingSpinnerProps) {
   const sizeClasses = {
     sm: "h-8 w-8 border-2",
-    md: "h-12 w-12 border-3",
-    lg: "h-16 w-16 border-4",
+    md: "h-12 w-12 border-4",
+    lg: "h-16 w-16 border-8",
   };
 
   const spinner = (
@@ -21,7 +21,7 @@ export default function LoadingSpinner({
         className={`${sizeClasses[size]} animate-spin rounded-full border-brand-500 border-t-transparent`}
       ></div>
       {message && (
-        <p className="text-sm font-medium text-gray-600 dark:text-gray-400">
+        <p className="text-sm font-medium text-brand-500 dark:text-brand-400">
           {message}
         </p>
       )}

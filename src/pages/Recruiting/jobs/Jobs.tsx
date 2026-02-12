@@ -159,9 +159,19 @@ export default function Jobs() {
   const handleToggleActive = async (jobId: string, currentIsActive: boolean) => {
     try {
       const newIsActive = !currentIsActive;
+      
+      // Find the job to get required fields
+      const job = jobPositions.find((j: any) => j._id === jobId);
+      if (!job) {
+        throw new Error("Job not found");
+      }
+      
       await updateJobMutation.mutateAsync({
         id: jobId,
-        data: { isActive: newIsActive },
+        data: { 
+          isActive: newIsActive,
+          workArrangement: job.workArrangement // Include required field
+        },
       });
       await Swal.fire({
         title: "Success!",
@@ -481,15 +491,15 @@ export default function Jobs() {
                             {canWrite ? (
                               <Switch
                                 label=""
-                                checked={job.isActive === true}
+                                checked={(job as any).isActive === true}
                                 onChange={() =>
-                                  handleToggleActive(job._id, job.isActive || false)
+                                  handleToggleActive(job._id, (job as any).isActive || false)
                                 }
                                 disabled={isUpdatingJob === job._id}
                               />
                             ) : (
                               <span className="text-sm text-gray-500 dark:text-gray-400">
-                                {job.isActive ? "Active" : "Inactive"}
+                                {(job as any).isActive ? "Active" : "Inactive"}
                               </span>
                             )}
                           </div>

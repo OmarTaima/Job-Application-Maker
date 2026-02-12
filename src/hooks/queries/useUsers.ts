@@ -51,7 +51,7 @@ export function useCreateUser() {
           ...newUser,
           _id: `temp-${Date.now()}`,
           createdAt: new Date().toISOString(),
-          isActive: true,
+          deleted: false,
         };
         return [...old, tempUser];
       });
@@ -229,10 +229,12 @@ export function useAddUserCompany() {
     mutationFn: ({
       userId,
       companyId,
+      departments,
     }: {
       userId: string;
       companyId: string;
-    }) => usersService.addCompanyAccess(userId, { companyId }),
+      departments?: string[];
+    }) => usersService.addCompanyAccess(userId, { companyId, departments: departments ?? [] }),
     onSettled: () => {
       // No refetch
     },

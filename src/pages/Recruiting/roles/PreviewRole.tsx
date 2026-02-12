@@ -607,7 +607,7 @@ export default function PreviewRole() {
                   >
                     <TableCell className="px-4 py-3 align-middle">
                       <span className="font-medium">
-                        {user.fullName || user.name || "N/A"}
+                        {toPlainString(user.fullName || user.name || "N/A")}
                       </span>
                     </TableCell>
                     <TableCell className="px-4 py-3 align-middle">
@@ -628,8 +628,8 @@ export default function PreviewRole() {
                       </span>
                     </TableCell>
                     <TableCell className="px-4 py-3 align-middle">
-                      {user.createdAt
-                        ? new Date(user.createdAt).toLocaleDateString()
+                      {(user as any).createdAt
+                        ? new Date((user as any).createdAt).toLocaleDateString()
                         : "N/A"}
                     </TableCell>
                   </TableRow>

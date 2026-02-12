@@ -62,14 +62,18 @@ export function useCreateRole() {
       }
     },
     onSuccess: (newRole) => {
-      // Replace temp role with actual role from server
+      // Replace temp role with actual role from server (be defensive about response shape)
+      if (!newRole || !(newRole as any)._id) {
+        // If server didn't return a usable role object, invalidate list so it refetches
+        queryClient.invalidateQueries({ queryKey: rolesKeys.list() });
+        return;
+      }
+
       queryClient.setQueryData(rolesKeys.list(), (old: any) => {
         if (!old) return [newRole];
-        return old.map((role: any) => 
-          role._id.startsWith('temp-') ? newRole : role
-        ).filter((role: any, index: number, self: any[]) => 
-          self.findIndex((r: any) => r._id === role._id) === index
-        );
+        return old
+          .map((role: any) => (role._id && String(role._id).startsWith("temp-") ? newRole : role))
+          .filter((role: any, index: number, self: any[]) => self.findIndex((r: any) => r._id === role._id) === index);
       });
     },
     onSettled: () => {

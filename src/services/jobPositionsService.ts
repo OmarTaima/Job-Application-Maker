@@ -78,6 +78,8 @@ export type CreateJobPositionRequest = {
   registrationStart: string;
   registrationEnd: string;
   termsAndConditions?: LocalizedString[];
+  // who created the job (backend requires this)
+  createdBy?: string;
   // optional legacy/extra fields
   requirements?: string[];
   status?: string;
@@ -175,7 +177,7 @@ class JobPositionsService {
   /**
    * Get all job positions
    */
-  async getAllJobPositions(companyId?: string[], isActive?: boolean): Promise<JobPosition[]> {
+  async getAllJobPositions(companyId?: string[], deleted: boolean = false): Promise<JobPosition[]> {
     try {
       const params: any = {};
       if (companyId && companyId.length > 0) {
@@ -191,9 +193,9 @@ class JobPositionsService {
           params.companyIds = ids;
         }
       }
-      if (isActive !== undefined) {
-        params.isActive = isActive;
-      }
+      // Default to requesting non-deleted job positions unless caller asks otherwise
+      // `deleted` boolean maps directly to the query param expected by the API
+      params.deleted = deleted ? "true" : "false";
       const response = await axios.get("/job-positions", { params });
       return response.data.data;
     } catch (error: any) {
@@ -250,6 +252,7 @@ class JobPositionsService {
       if (data.isActive !== undefined) payload.isActive = data.isActive;
       if (data.employmentType) payload.employmentType = data.employmentType;
       if (data.workArrangement) payload.workArrangement = data.workArrangement;
+      if ((data as any).createdBy) payload.createdBy = (data as any).createdBy;
       if (data.status) payload.status = data.status;
       if (data.openPositions) payload.openPositions = data.openPositions;
       if (data.registrationStart)
@@ -261,7 +264,20 @@ class JobPositionsService {
         payload.customFields = data.customFields;
 
       const response = await axios.post("/job-positions", payload);
-      return response.data.data;
+      // Normalize possible response shapes: { data: Job }, { job: Job }, or nested wrappers
+      let maybe: any = response.data?.data ?? (response.data as any)?.job ?? response.data ?? null;
+
+      if (!maybe || (typeof maybe === 'object' && !('_id' in maybe))) {
+        const nested = Object.values(response.data || {}).find((v: any) => v && typeof v === 'object' && v._id);
+        if (nested) maybe = nested;
+      }
+
+      if (!maybe) {
+        console.warn('jobPositionsService.createJobPosition: unexpected response shape', response.data);
+        throw new ApiError(getErrorMessage(response as any), response.status ?? undefined, response as any);
+      }
+
+      return maybe as any;
     } catch (error: any) {
       throw new ApiError(
         getErrorMessage(error),

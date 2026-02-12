@@ -94,7 +94,8 @@ export const rolesService = {
    */
   async getAllRoles(): Promise<Role[]> {
     try {
-      const response = await axios.get<RolesResponse>("/roles");
+      // Request only non-deleted roles by default
+      const response = await axios.get<RolesResponse>("/roles", { params: { deleted: "false" } });
       return response.data.data;
     } catch (error: any) {
       throw new ApiError(
@@ -111,7 +112,21 @@ export const rolesService = {
   async createRole(roleData: CreateRoleRequest): Promise<Role> {
     try {
       const response = await axios.post<CreateRoleResponse>("/roles", roleData);
-      return response.data.data;
+      // Normalize response shapes: some backends return { data: Role } or { role: Role } or { message, role: Role }
+      let maybe: any = response.data?.data ?? (response.data as any)?.role ?? response.data ?? null;
+
+      if (!maybe || (typeof maybe === 'object' && !('_id' in maybe))) {
+        // Try to find a nested object with _id
+        const nested = Object.values(response.data || {}).find((v: any) => v && typeof v === 'object' && v._id);
+        if (nested) maybe = nested;
+      }
+
+      if (!maybe) {
+        console.warn('rolesService.createRole: unexpected response shape', response.data);
+        throw new ApiError(getErrorMessage(response as any), response.status ?? undefined, response as any);
+      }
+
+      return maybe as Role;
     } catch (error: any) {
       throw new ApiError(
         getErrorMessage(error),

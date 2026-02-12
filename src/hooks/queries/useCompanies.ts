@@ -32,8 +32,20 @@ export function useCompany(id: string, options?: { enabled?: boolean }) {
     queryKey: companiesKeys.detail(id),
     queryFn: async () => {
       const list = queryClient.getQueryData(companiesKeys.list()) as any[] | undefined;
-      const found = list?.find((c: any) => c._id === id);
-      if (found) return found;
+
+      if (list && list.length > 0) {
+        for (const c of list) {
+          // handle possible wrapper shapes
+          if (!c) continue;
+          if (c._id === id) return c;
+          if (c.company && c.company._id === id) return c.company;
+          if (c.data && c.data._id === id) return c.data;
+          // sometimes nested under other keys
+          const nested = Object.values(c).find((v: any) => v && typeof v === 'object' && v._id === id);
+          if (nested) return nested as any;
+        }
+      }
+
       return companiesService.getCompanyById(id);
     },
     enabled: options?.enabled !== undefined ? options.enabled : !!id,
@@ -157,33 +169,29 @@ export function useDeleteCompany() {
 
 // Get companies that have applicants
 export function useCompaniesWithApplicants(applicants: Applicant[] | undefined) {
-  return useQuery({
-    queryKey: [...companiesKeys.lists(), "withApplicants", applicants?.length || 0],
-    queryFn: async () => {
-      if (!applicants || applicants.length === 0) {
-        return [];
-      }
-      
-      // Extract unique company IDs from applicants
-      const companyId = Array.from(
+  // Compute unique company IDs from applicants so we can key the query per-company
+  const companyIds = applicants && applicants.length > 0
+    ? Array.from(
         new Set(
-          applicants.map((applicant) => {
-            if (typeof applicant.companyId === "string") {
-              return applicant.companyId;
-            }
-            return (applicant.companyId as any)?._id;
-          }).filter(Boolean)
+          applicants
+            .map((applicant) => {
+              if (typeof applicant.companyId === "string") return applicant.companyId;
+              return (applicant.companyId as any)?._id;
+            })
+            .filter(Boolean)
         )
-      ) as string[];
+      ) as string[]
+    : [];
 
-      if (companyId.length === 0) {
-        return [];
-      }
+  const keySuffix = companyIds.length > 0 ? companyIds.join(",") : "none";
 
-      // Fetch only companies with applicants
-      return companiesService.getCompaniesByIds(companyId);
+  return useQuery({
+    queryKey: [...companiesKeys.lists(), "withApplicants", keySuffix],
+    queryFn: async () => {
+      if (companyIds.length === 0) return [];
+      return companiesService.getCompaniesByIds(companyIds);
     },
-    enabled: !!applicants && applicants.length > 0,
+    enabled: companyIds.length > 0,
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 }

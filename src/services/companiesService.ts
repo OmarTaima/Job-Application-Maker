@@ -74,8 +74,8 @@ export const companiesService = {
         }
       }
 
-      // Always request only active companies (use string to ensure server-side parsing)
-      params.isActive = "true";
+      // Always request only non-deleted companies (use string to ensure server-side parsing)
+      params.deleted = "false";
 
       const response = await axios.get<CompaniesResponse>("/companies", { params });
       return response.data.data;
@@ -91,12 +91,39 @@ export const companiesService = {
   // Get company by ID
   async getCompanyById(companyId: string): Promise<Company> {
     try {
-      // Request the company only if it's active (use string to ensure server-side parsing)
+      // Request the company only if it's not deleted (use string to ensure server-side parsing)
       const response = await axios.get<CompanyResponse>(
         `/companies/${companyId}`,
-        { params: { isActive: "true" } }
+        { params: { deleted: "false" } }
       );
-      return response.data.data;
+      // Normalize possible response shapes:
+      // - { data: Company }
+      // - { company: Company }
+      // - { data: { data: Company } }
+      // - directly the Company object
+      let maybe: any = response.data?.data ?? (response.data as any)?.company ?? response.data ?? null;
+
+      if (maybe && maybe.data && typeof maybe.data === 'object' && maybe.data._id) {
+        maybe = maybe.data;
+      }
+
+      if (maybe && maybe.company && typeof maybe.company === 'object') {
+        maybe = maybe.company;
+      }
+
+      if (!maybe) {
+        // As a last resort, try to find a nested object with _id
+        const nested = Object.values(response.data || {}).find((v: any) => v && typeof v === 'object' && v._id);
+        if (nested) maybe = nested;
+      }
+
+      if (!maybe) {
+        console.warn("companiesService.getCompanyById: unexpected response shape", response.data);
+        // Throw to let callers handle the error uniformly
+        throw new ApiError(getErrorMessage(response as any), response.status ?? undefined, response as any);
+      }
+
+      return maybe as Company;
     } catch (error: any) {
       throw new ApiError(
         getErrorMessage(error),
@@ -109,11 +136,29 @@ export const companiesService = {
   // Create company
   async createCompany(companyData: CreateCompanyRequest): Promise<Company> {
     try {
-      const response = await axios.post<CompanyResponse>(
-        "/companies",
-        companyData
-      );
-      return response.data.data;
+      const response = await axios.post<CompanyResponse>("/companies", companyData);
+
+      // Backend may return the created resource in different shapes:
+      // { data: Company }, { company: Company }, or directly the Company
+      // response.data can come in different shapes; cast to any when checking non-standard fields
+      let created: any = response.data?.data ?? (response.data as any)?.company ?? response.data ?? null;
+
+      if (!created) {
+        console.warn("companiesService.createCompany: unexpected response shape", response.data);
+        return response.data as any;
+      }
+
+      // If response was { message: "..", company: { ... } }, our created will be that inner company.
+      // Ensure we return the actual Company object (not a wrapper) to callers.
+      if (created.company && typeof created.company === "object") {
+        created = created.company;
+      }
+
+      if (!created._id) {
+        console.warn("companiesService.createCompany: created company missing _id", created);
+      }
+
+      return created as Company;
     } catch (error: any) {
       throw new ApiError(
         getErrorMessage(error),

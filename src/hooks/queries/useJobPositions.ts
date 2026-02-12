@@ -18,7 +18,7 @@ export const jobPositionsKeys = {
 };
 
 // Get all job positions
-export function useJobPositions(companyId?: string[], isActive: boolean = true) {
+export function useJobPositions(companyId?: string[], deleted: boolean = false) {
   return useQuery({
     queryKey: jobPositionsKeys.list(companyId),
     queryFn: () => {
@@ -26,7 +26,7 @@ export function useJobPositions(companyId?: string[], isActive: boolean = true) 
       if (companyId && companyId.length === 1 && companyId[0] === '__NO_COMPANY__') {
         return Promise.resolve([] as any);
       }
-      return jobPositionsService.getAllJobPositions(companyId, isActive);
+      return jobPositionsService.getAllJobPositions(companyId, deleted);
     },
     staleTime: 5 * 60 * 1000,
   });
@@ -58,7 +58,7 @@ export function useCreateJobPosition() {
 
   return useMutation({
     mutationFn: (data: CreateJobPositionRequest) =>
-      jobPositionsService.createJobPosition({ ...data, isActive: true }),
+      jobPositionsService.createJobPosition(data),
     onMutate: async (newJobPosition) => {
       await queryClient.cancelQueries({ queryKey: jobPositionsKeys.lists() });
       const previousJobPositions = queryClient.getQueriesData({ queryKey: jobPositionsKeys.lists() });
@@ -84,13 +84,16 @@ export function useCreateJobPosition() {
       }
     },
     onSuccess: (newJobPosition) => {
+      if (!newJobPosition || !(newJobPosition as any)._id) {
+        queryClient.invalidateQueries({ queryKey: jobPositionsKeys.lists() });
+        return;
+      }
+
       queryClient.setQueriesData({ queryKey: jobPositionsKeys.lists() }, (old: any) => {
         if (!old) return [newJobPosition];
-        return old.map((job: any) => 
-          job._id.startsWith('temp-') ? newJobPosition : job
-        ).filter((job: any, index: number, self: any[]) => 
-          self.findIndex((j: any) => j._id === job._id) === index
-        );
+        return old
+          .map((job: any) => (job._id && String(job._id).startsWith('temp-') ? newJobPosition : job))
+          .filter((job: any, index: number, self: any[]) => self.findIndex((j: any) => j._id === job._id) === index);
       });
     },
     onSettled: () => {

@@ -90,7 +90,7 @@ export default function PreviewCompany() {
     phone: "",
     website: "",
     logoPath: "",
-    isActive: true,
+    isActive: false,
   });
   const [departmentForm, setDepartmentForm] = useState<DepartmentForm>({
     companyId: companyId || "",
@@ -155,10 +155,12 @@ export default function PreviewCompany() {
   // Update form when company data loads
   useEffect(() => {
     if (company) {
-      const srcName = (company as any).name;
-      const srcDesc = (company as any).description;
-      const srcAddr = (company as any).address;
-      
+      // Normalize possible wrapper shapes like { company: {...} } or { data: {...} }
+      const c: any = (company as any).company ?? (company as any).data ?? company;
+      const srcName = c?.name;
+      const srcDesc = c?.description;
+      const srcAddr = c?.address;
+
       setCompanyForm({
         name: {
           en: typeof srcName === 'object' ? srcName.en || '' : toPlainString(srcName) || '',
@@ -175,11 +177,11 @@ export default function PreviewCompany() {
               ar: typeof srcAddr === 'object' && !Array.isArray(srcAddr) ? srcAddr.ar || '' : '',
               location: typeof srcAddr === 'object' && !Array.isArray(srcAddr) ? srcAddr.location || '' : '',
             }],
-        contactEmail: company.contactEmail || "",
-        phone: company.phone || "",
-        website: company.website || "",
-        logoPath: company.logoPath || "",
-        isActive: company.isActive ?? true,
+        contactEmail: c?.contactEmail || "",
+        phone: c?.phone || "",
+        website: c?.website || "",
+        logoPath: c?.logoPath || "",
+        isActive: c?.isActive ?? true,
       });
     }
   }, [company]);
@@ -758,7 +760,7 @@ export default function PreviewCompany() {
                       }
                       className="w-4 h-4 text-brand-500"
                     />
-                    <Label htmlFor="isActive" className="!mb-0">
+                    <Label htmlFor="deleted" className="!mb-0">
                       Active
                     </Label>
                   </div>

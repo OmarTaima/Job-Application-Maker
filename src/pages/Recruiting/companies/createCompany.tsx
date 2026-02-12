@@ -1,6 +1,7 @@
 import type { ChangeEvent, FormEvent } from "react";
 import { useState } from "react";
 import { useNavigate } from "react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import ComponentCard from "../../../components/common/ComponentCard";
 import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
 import PageMeta from "../../../components/common/PageMeta";
@@ -11,6 +12,7 @@ import { PlusIcon } from "../../../icons";
 import Swal from "sweetalert2";
 import { useAppDispatch } from "../../../store/hooks";
 import { createCompany } from "../../../store/slices/companiesSlice";
+import { companiesKeys } from "../../../hooks/queries/useCompanies";
 
 type CompanyForm = {
   name: {
@@ -45,6 +47,7 @@ const defaultCompany: CompanyForm = {
 export default function RecruitingDashboard() {
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
+  const queryClient = useQueryClient();
   
   // Component state
   const [companyForm, setCompanyForm] = useState<CompanyForm>(defaultCompany);
@@ -135,8 +138,8 @@ export default function RecruitingDashboard() {
       );
 
       if (createCompany.fulfilled.match(resultAction)) {
-        const newCompany = resultAction.payload;
-        
+        const newCompany = resultAction.payload as any;
+
         await Swal.fire({
           title: "Success!",
           text: "Company created successfully.",
@@ -147,7 +150,28 @@ export default function RecruitingDashboard() {
           customClass: { container: "!mt-16" },
         });
 
-        navigate(`/company/${newCompany._id}`);
+        // Defensive: some backends may return unexpected payload shapes.
+        const newId = newCompany?._id ?? newCompany?.data?._id ?? null;
+        if (newId) {
+          // Prime React Query cache so the company detail page has data immediately
+          try {
+            queryClient.setQueryData(companiesKeys.detail(newId), newCompany);
+          } catch (e) {
+            // ignore cache errors
+          }
+          navigate(`/company/${newId}`);
+        } else {
+          // Sanitize large fields (e.g. logo data URL) before showing or logging
+          const sanitized: any = { ...(newCompany || {}) };
+          if (sanitized.logoPath) delete sanitized.logoPath;
+          // Log full sanitized payload for debugging
+          console.error("Create company payload missing _id:", sanitized);
+
+          // Show a short preview in the UI and direct developer to console for full data
+          const preview = JSON.stringify(sanitized, null, 2);
+          const short = preview.length > 1000 ? preview.slice(0, 1000) + "..." : preview;
+          setError("Company created but server response did not include an ID. Server response preview: " + short);
+        }
       } else {
         // Handle rejected action
         const errorMessage = resultAction.payload as string || "Failed to create company";

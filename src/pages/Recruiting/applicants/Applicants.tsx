@@ -147,7 +147,6 @@ const Applicants = () => {
   const filteredApplicants = useMemo(() => {
     let filtered = applicants;
 
-    // WORKAROUND: Filter by user's companies first (backend should do this but doesn't)
     // Only apply if user has specific company restrictions
     if (companyId && companyId.length > 0) {
       filtered = filtered.filter((app: Applicant) => {
@@ -164,9 +163,6 @@ const Applicants = () => {
         }
         return false;
       });
-    } else {
-      // For super admin (no company restrictions), still filter out applicants with null jobPositionId
-      filtered = filtered.filter((app: Applicant) => app.jobPositionId != null);
     }
 
     // Always filter out trashed unless explicitly selected
@@ -475,11 +471,103 @@ const Applicants = () => {
         palette: {
           mode: isDarkMode ? 'dark' : 'light',
           primary: {
-            main: '#3C50E0',
+            main: '#e42e2b',
           },
           background: {
-            default: isDarkMode ? '#1C2434' : '#FFFFFF',
+            default: isDarkMode ? '#24303F' : '#FFFFFF',
             paper: isDarkMode ? '#24303F' : '#FFFFFF',
+          },
+          text: {
+            primary: isDarkMode ? '#E4E7EC' : '#101828',
+            secondary: isDarkMode ? '#98A2B3' : '#667085',
+          },
+          divider: isDarkMode ? '#344054' : '#E4E7EC',
+        },
+        components: {
+          MuiPaper: {
+            styleOverrides: {
+              root: {
+                backgroundColor: isDarkMode ? '#24303F' : '#FFFFFF',
+                backgroundImage: 'none',
+              },
+            },
+          },
+          MuiTable: {
+            styleOverrides: {
+              root: {
+                backgroundColor: isDarkMode ? '#24303F' : '#FFFFFF',
+              },
+            },
+          },
+          MuiTableContainer: {
+            styleOverrides: {
+              root: {
+                backgroundColor: isDarkMode ? '#24303F' : '#FFFFFF',
+              },
+            },
+          },
+          MuiTableBody: {
+            styleOverrides: {
+              root: {
+                backgroundColor: isDarkMode ? '#24303F' : '#FFFFFF',
+              },
+            },
+          },
+          MuiTableHead: {
+            styleOverrides: {
+              root: {
+                backgroundColor: isDarkMode ? '#1C2434' : '#F9FAFB',
+              },
+            },
+          },
+          MuiTableCell: {
+            styleOverrides: {
+              root: {
+                borderColor: isDarkMode ? '#344054' : '#E4E7EC',
+                backgroundColor: isDarkMode ? '#24303F' : '#FFFFFF',
+                color: isDarkMode ? '#E4E7EC' : '#101828',
+              },
+              head: {
+                backgroundColor: isDarkMode ? '#1C2434' : '#F9FAFB',
+                color: isDarkMode ? '#E4E7EC' : '#344054',
+                fontWeight: 600,
+              },
+            },
+          },
+          MuiTableRow: {
+            styleOverrides: {
+              root: {
+                backgroundColor: isDarkMode ? '#24303F' : '#FFFFFF',
+                '&:hover': {
+                  backgroundColor: isDarkMode ? '#344054' : '#F9FAFB',
+                },
+              },
+            },
+          },
+          MuiIconButton: {
+            styleOverrides: {
+              root: {
+                color: isDarkMode ? '#98A2B3' : '#667085',
+              },
+            },
+          },
+          MuiCheckbox: {
+            styleOverrides: {
+              root: {
+                color: isDarkMode ? '#667085' : '#98A2B3',
+                '&.Mui-checked': {
+                  color: '#e42e2b',
+                },
+              },
+            },
+          },
+          MuiToolbar: {
+            styleOverrides: {
+              root: {
+                backgroundColor: isDarkMode ? '#24303F' : '#FFFFFF',
+                color: isDarkMode ? '#E4E7EC' : '#101828',
+              },
+            },
           },
         },
       }),
@@ -504,6 +592,54 @@ const Applicants = () => {
     manualPagination: true,
     manualFiltering: true,
     rowCount: filteredApplicants.length,
+    muiTablePaperProps: {
+      sx: {
+        backgroundColor: isDarkMode ? '#24303F' : '#FFFFFF',
+        backgroundImage: 'none',
+      },
+    },
+    muiTableProps: {
+      sx: {
+        backgroundColor: isDarkMode ? '#24303F' : '#FFFFFF',
+      },
+    },
+    muiTableBodyProps: {
+      sx: {
+        backgroundColor: isDarkMode ? '#24303F' : '#FFFFFF',
+      },
+    },
+    muiTableHeadProps: {
+      sx: {
+        backgroundColor: isDarkMode ? '#1C2434' : '#F9FAFB',
+      },
+    },
+    muiTableBodyCellProps: {
+      sx: {
+        backgroundColor: isDarkMode ? '#24303F' : '#FFFFFF',
+        color: isDarkMode ? '#E4E7EC' : '#101828',
+        borderColor: isDarkMode ? '#344054' : '#E4E7EC',
+      },
+    },
+    muiTableHeadCellProps: {
+      sx: {
+        backgroundColor: isDarkMode ? '#1C2434' : '#F9FAFB',
+        color: isDarkMode ? '#E4E7EC' : '#344054',
+        borderColor: isDarkMode ? '#344054' : '#E4E7EC',
+        fontWeight: 600,
+      },
+    },
+    muiTopToolbarProps: {
+      sx: {
+        backgroundColor: isDarkMode ? '#1C2434' : '#FFFFFF',
+        color: isDarkMode ? '#E4E7EC' : '#101828',
+      },
+    },
+    muiBottomToolbarProps: {
+      sx: {
+        backgroundColor: isDarkMode ? '#24303F' : '#FFFFFF',
+        color: isDarkMode ? '#E4E7EC' : '#101828',
+      },
+    },
     state: {
       rowSelection,
       columnFilters,
@@ -527,7 +663,9 @@ const Applicants = () => {
           });
 
       return (
-        <div className="flex items-center gap-3 p-2">
+        <div style={{
+          backgroundColor: isDarkMode ? '#1C2434' : '#FFFFFF',
+        }} className="flex items-center gap-3 p-2">
           <select
             value={(columnFilters.find(f => f.id === 'status')?.value as string) || 'all'}
             onChange={(e) => {
@@ -614,23 +752,12 @@ const Applicants = () => {
       },
       sx: {
         cursor: 'pointer',
+        backgroundColor: isDarkMode ? '#24303F' : '#FFFFFF',
         '&:hover': {
-          backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.02)',
+          backgroundColor: isDarkMode ? '#344054' : '#F9FAFB',
         },
       },
     }),
-    muiTablePaperProps: {
-      elevation: 0,
-      sx: {
-        borderRadius: '0.5rem',
-        border: isDarkMode ? '1px solid #313D4A' : '1px solid #E2E8F0',
-      },
-    },
-    muiTableProps: {
-      sx: {
-        tableLayout: 'fixed',
-      },
-    },
   });
 
   return (
@@ -703,6 +830,7 @@ const Applicants = () => {
                       <option value="pending">Pending</option>
                       <option value="approved">Approved</option>
                       <option value="interview">Interview</option>
+                      <option value="interviewed">Interviewed</option>
                       <option value="rejected">Rejected</option>
                     </select>
                     <button

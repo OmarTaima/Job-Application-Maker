@@ -21,7 +21,10 @@ import {
   usePermissions,
   useCompanies,
   useDepartments,
+  usersKeys,
 } from "../../../hooks/queries";
+import { useQueryClient } from "@tanstack/react-query";
+import { companiesService } from "../../../services/companiesService";
 import { toPlainString } from "../../../utils/strings";
 
 type CompanyAssignment = {
@@ -61,6 +64,7 @@ export default function EditUser() {
   const updateUserCompaniesMutation = useUpdateUserCompanies();
   const addUserCompanyMutation = useAddUserCompany();
   const removeUserCompanyMutation = useRemoveUserCompany();
+  const queryClient = useQueryClient();
 
   const [userForm, setUserForm] = useState<UserForm>({
     email: "",
@@ -70,7 +74,7 @@ export default function EditUser() {
     roleId: "",
     companies: [],
     permissions: [],
-    isActive: true,
+    isActive: false,
   });
   const [originalUser, setOriginalUser] = useState<UserForm | null>(null);
   const [formError, setFormError] = useState("");
@@ -112,7 +116,7 @@ export default function EditUser() {
       const formData = {
         email: user.email || "",
         password: "",
-        fullName: user.fullName || user.name || "",
+        fullName: toPlainString(user.fullName || user.name || ""),
         phone: user.phone || "",
         roleId:
           typeof user.roleId === "string" ? user.roleId : user.roleId?._id || "",
@@ -177,15 +181,35 @@ export default function EditUser() {
 
     setIsSaving(true);
     try {
+      // Optimistically update cache so edits appear instantly in UI
+      if (id) {
+        const optimisticUser = {
+          ...(queryClient.getQueryData(usersKeys.detail(id)) as any),
+          email: userForm.email,
+          fullName: userForm.fullName,
+          phone: userForm.phone,
+          roleId: userForm.roleId,
+          permissions: userForm.permissions,
+          companies: userForm.companies,
+          isActive: userForm.isActive,
+        };
+
+        queryClient.setQueriesData({ queryKey: usersKeys.lists() }, (old: any) => {
+          if (!old) return old;
+          return old.map((u: any) => (u._id === id ? { ...u, ...optimisticUser } : u));
+        });
+
+        queryClient.setQueryData(usersKeys.detail(id), optimisticUser);
+      }
       // 1. Check if basic info, permissions, or role changed
       const permissionsChanged =
         JSON.stringify(userForm.permissions) !==
         JSON.stringify(originalUser.permissions);
       const roleChanged = userForm.roleId !== originalUser.roleId;
       const basicInfoChanged =
-        userForm.fullName !== originalUser.fullName ||
-        userForm.phone !== originalUser.phone ||
-        userForm.isActive !== originalUser.isActive;
+      userForm.fullName !== originalUser.fullName ||
+      userForm.phone !== originalUser.phone ||
+      userForm.isActive !== originalUser.isActive;
 
       if (permissionsChanged || roleChanged || basicInfoChanged) {
         await updateUserMutation.mutateAsync({
@@ -218,11 +242,27 @@ export default function EditUser() {
 
       // Add new companies
       for (const companyId of addedcompanyId) {
+          if (!companyId) {
+            setFormError("Invalid company selected");
+            continue;
+          }
+          try {
+            await companiesService.getCompanyById(companyId);
+          } catch (err: any) {
+            setFormError("Selected company does not exist");
+            continue;
+          }
+          // Debug: log payload before sending to server
+          // eslint-disable-next-line no-console
+        const addedCompany = userForm.companies.find((c) => c.companyId === companyId);
+        const departmentsForAdd = addedCompany?.departments || [];
+        console.debug("addUserCompany payload", { userId: id, companyId, departments: departmentsForAdd });
         await addUserCompanyMutation.mutateAsync({
           userId: id,
           companyId,
+          departments: departmentsForAdd,
         });
-      }
+        }
 
       // Remove companies
       for (const companyId of removedcompanyId) {
@@ -312,7 +352,7 @@ export default function EditUser() {
     );
   }
 
-  const userName = user.fullName || user.name || "Unnamed User";
+  const userName = toPlainString(user.fullName || user.name || "Unnamed User");
 
   return (
     <div className="space-y-6">
@@ -507,10 +547,16 @@ export default function EditUser() {
                           const userPerm = userForm.permissions.find(
                             (p) => p.permission === perm._id
                           );
-                          const isSelected = !!userPerm || isFromRole;
-                          const access = isFromRole
+                          // If user has an explicit override, respect its access array.
+                          // An explicit override with empty `access` means the permission is disabled.
+                          const isSelected = userPerm
+                            ? Array.isArray(userPerm.access) && userPerm.access.length > 0
+                            : isFromRole;
+                          const access = userPerm
+                            ? userPerm.access || []
+                            : isFromRole
                             ? roleAccess
-                            : userPerm?.access || [];
+                            : [];
 
                           return (
                             <tr
@@ -529,8 +575,18 @@ export default function EditUser() {
                                     type="checkbox"
                                     checked={isSelected}
                                     onChange={(e) => {
-                                      if (e.target.checked) {
-                                        if (!userPerm) {
+                                      const checked = e.target.checked;
+                                      if (checked) {
+                                        // If there's an existing user override, update it to include a default access
+                                        if (userPerm) {
+                                          setUserForm((prev) => ({
+                                            ...prev,
+                                            permissions: prev.permissions.map((p) =>
+                                              p.permission === perm._id ? { ...p, access: ["read"] } : p
+                                            ),
+                                          }));
+                                        } else {
+                                          // Otherwise add a new user-specific permission (overrides role)
                                           setUserForm((prev) => ({
                                             ...prev,
                                             permissions: [
@@ -543,7 +599,7 @@ export default function EditUser() {
                                           }));
                                         }
                                       } else {
-                                        // If unchecking a role permission, add it with empty access to override
+                                        // Unchecking: if permission comes from role and no override exists, add an empty override
                                         if (isFromRole && !userPerm) {
                                           setUserForm((prev) => ({
                                             ...prev,
@@ -556,6 +612,7 @@ export default function EditUser() {
                                             ],
                                           }));
                                         } else {
+                                          // Otherwise remove any user-specific permission entry
                                           setUserForm((prev) => ({
                                             ...prev,
                                             permissions: prev.permissions.filter(
@@ -588,15 +645,21 @@ export default function EditUser() {
                                   disabled={!isSelected}
                                   checked={access.includes("read")}
                                   onChange={(e) => {
-                                    // If modifying a role permission, add it to user permissions
+                                    const checked = e.target.checked;
                                     if (isFromRole && !userPerm) {
+                                      const baseAccess = Array.isArray(roleAccess)
+                                        ? roleAccess
+                                        : [];
+                                      const newAccess = checked
+                                        ? Array.from(new Set([...baseAccess, "read"]))
+                                        : baseAccess.filter((a) => a !== "read");
                                       setUserForm((prev) => ({
                                         ...prev,
                                         permissions: [
                                           ...prev.permissions,
                                           {
                                             permission: perm._id,
-                                            access: e.target.checked ? ["read"] : [],
+                                            access: newAccess,
                                           },
                                         ],
                                       }));
@@ -607,8 +670,8 @@ export default function EditUser() {
                                           p.permission === perm._id
                                             ? {
                                                 ...p,
-                                                access: e.target.checked
-                                                  ? [...p.access, "read"]
+                                                access: checked
+                                                  ? Array.from(new Set([...p.access, "read"]))
                                                   : p.access.filter((a) => a !== "read"),
                                               }
                                             : p
@@ -625,14 +688,21 @@ export default function EditUser() {
                                   disabled={!isSelected}
                                   checked={access.includes("write")}
                                   onChange={(e) => {
+                                    const checked = e.target.checked;
                                     if (isFromRole && !userPerm) {
+                                      const baseAccess = Array.isArray(roleAccess)
+                                        ? roleAccess
+                                        : [];
+                                      const newAccess = checked
+                                        ? Array.from(new Set([...baseAccess, "write"]))
+                                        : baseAccess.filter((a) => a !== "write");
                                       setUserForm((prev) => ({
                                         ...prev,
                                         permissions: [
                                           ...prev.permissions,
                                           {
                                             permission: perm._id,
-                                            access: e.target.checked ? ["write"] : [],
+                                            access: newAccess,
                                           },
                                         ],
                                       }));
@@ -643,8 +713,8 @@ export default function EditUser() {
                                           p.permission === perm._id
                                             ? {
                                                 ...p,
-                                                access: e.target.checked
-                                                  ? [...p.access, "write"]
+                                                access: checked
+                                                  ? Array.from(new Set([...p.access, "write"]))
                                                   : p.access.filter((a) => a !== "write"),
                                               }
                                             : p
@@ -661,14 +731,21 @@ export default function EditUser() {
                                   disabled={!isSelected}
                                   checked={access.includes("create")}
                                   onChange={(e) => {
+                                    const checked = e.target.checked;
                                     if (isFromRole && !userPerm) {
+                                      const baseAccess = Array.isArray(roleAccess)
+                                        ? roleAccess
+                                        : [];
+                                      const newAccess = checked
+                                        ? Array.from(new Set([...baseAccess, "create"]))
+                                        : baseAccess.filter((a) => a !== "create");
                                       setUserForm((prev) => ({
                                         ...prev,
                                         permissions: [
                                           ...prev.permissions,
                                           {
                                             permission: perm._id,
-                                            access: e.target.checked ? ["create"] : [],
+                                            access: newAccess,
                                           },
                                         ],
                                       }));
@@ -679,8 +756,8 @@ export default function EditUser() {
                                           p.permission === perm._id
                                             ? {
                                                 ...p,
-                                                access: e.target.checked
-                                                  ? [...p.access, "create"]
+                                                access: checked
+                                                  ? Array.from(new Set([...p.access, "create"]))
                                                   : p.access.filter((a) => a !== "create"),
                                               }
                                             : p
@@ -814,7 +891,7 @@ export default function EditUser() {
                             label=""
                             options={companyDepartments.map((dept) => ({
                               value: dept._id,
-                              text: dept.name,
+                              text: toPlainString((dept as any).name),
                             }))}
                             value={companyAssignment.departments}
                             onChange={(values) => {

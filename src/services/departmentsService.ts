@@ -30,6 +30,8 @@ export interface CreateDepartmentRequest {
     ar: string;
   };
   managerId?: string;
+  // legacy callers may still send `deleted`; accept it and map to `isActive`
+  deleted?: boolean;
 }
 
 export interface UpdateDepartmentRequest {
@@ -43,6 +45,8 @@ export interface UpdateDepartmentRequest {
   };
   managerId?: string;
   isActive?: boolean;
+  // accept legacy `deleted` flag and map it when sending to server
+  deleted?: boolean;
 }
 
 export interface DepartmentsResponse {
@@ -72,7 +76,9 @@ export const departmentsService = {
   // Get all departments (optionally filtered by companyId)
   async getAllDepartments(companyId?: string): Promise<Department[]> {
     try {
-      const params = companyId ? { companyId } : {};
+      const params: any = companyId ? { companyId } : {};
+      // Request only non-deleted departments by default
+      params.deleted = "false";
       const response = await axios.get<DepartmentsResponse>("/departments", {
         params,
       });
@@ -107,11 +113,41 @@ export const departmentsService = {
     departmentData: CreateDepartmentRequest
   ): Promise<Department> {
     try {
+      // Allow callers to pass `deleted` (legacy); map to `isActive` before sending
+      const payloadToSend: any = { ...departmentData };
+      if (typeof (payloadToSend as any).deleted === 'boolean') {
+        payloadToSend.isActive = !(payloadToSend as any).deleted;
+        delete payloadToSend.deleted;
+      }
+
       const response = await axios.post<DepartmentResponse>(
         "/departments",
-        departmentData
+        payloadToSend
       );
-      return response.data.data;
+      // Normalize possible response shapes:
+      // { message: 'Success', department: { ... } }
+      // { data: { ... } } or { data: { data: { ... } } }
+      const payload: any = response.data;
+      let created: any = null;
+      if (payload) {
+        if (payload.department) created = payload.department;
+        else if (payload.data && payload.data.department) created = payload.data.department;
+        else if (payload.data && payload.data.data) created = payload.data.data;
+        else if (payload.data) created = payload.data;
+        else created = payload;
+      }
+
+      if (!created) {
+        console.warn("departmentsService.createDepartment: unexpected response shape", response.data);
+        throw new ApiError("Invalid response from server", response.status, (response.data as any)?.details);
+      }
+
+      // Normalize possible legacy `deleted` flag in response to `isActive`
+      if (typeof (created as any).deleted === 'boolean') {
+        (created as any).isActive = !(created as any).deleted;
+      }
+
+      return created as Department;
     } catch (error: any) {
       throw new ApiError(
         getErrorMessage(error),
@@ -127,11 +163,37 @@ export const departmentsService = {
     departmentData: UpdateDepartmentRequest
   ): Promise<Department> {
     try {
+      // Map legacy `deleted` to `isActive` before sending
+      const payloadToSend: any = { ...(departmentData as any) };
+      if (typeof payloadToSend.deleted === 'boolean') {
+        payloadToSend.isActive = !payloadToSend.deleted;
+        delete payloadToSend.deleted;
+      }
+
       const response = await axios.put<DepartmentResponse>(
         `/departments/${departmentId}`,
-        departmentData
+        payloadToSend
       );
-      return response.data.data;
+      const payload: any = response.data;
+      // Normalize similar to create
+      let updated: any = null;
+      if (payload) {
+        if (payload.department) updated = payload.department;
+        else if (payload.data && payload.data.department) updated = payload.data.department;
+        else if (payload.data && payload.data.data) updated = payload.data.data;
+        else if (payload.data) updated = payload.data;
+        else updated = payload;
+      }
+      if (!updated) {
+        console.warn("departmentsService.updateDepartment: unexpected response shape", response.data);
+        throw new ApiError("Invalid response from server", response.status, (response.data as any)?.details);
+      }
+
+      // Normalize possible legacy `deleted` flag in response to `isActive`
+      if (typeof (updated as any).deleted === 'boolean') {
+        (updated as any).isActive = !(updated as any).deleted;
+      }
+      return updated as Department;
     } catch (error: any) {
       throw new ApiError(
         getErrorMessage(error),

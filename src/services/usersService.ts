@@ -52,6 +52,7 @@ export interface AddCompanyAccessRequest {
   companyId: string;
   role?: string;
   accessLevel?: string;
+  departments?: string[];
 }
 
 export interface UpdateDepartmentsRequest {
@@ -91,10 +92,12 @@ export const usersService = {
   // Get all users
   async getAllUsers(companyId?: string[]): Promise<User[]> {
     try {
-      const params =
+      const params: any =
         companyId && companyId.length > 0
           ? { companyId: companyId.join(",") }
           : {};
+      // Request only non-deleted users by default
+      params.deleted = "false";
       const response = await axios.get<UsersResponse>("/users", { params });
       return response.data.data;
     } catch (error: any) {

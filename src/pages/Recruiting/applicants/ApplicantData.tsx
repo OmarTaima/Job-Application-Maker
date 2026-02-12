@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import Swal from 'sweetalert2';
 import { useParams, useNavigate, useLocation } from 'react-router';
 import ComponentCard from '../../../components/common/ComponentCard';
@@ -17,6 +17,7 @@ import {
   useApplicant,
   useJobPositions,
   useCompaniesWithApplicants,
+  useCompany,
   useUpdateApplicantStatus,
   useScheduleInterview,
   useUpdateInterviewStatus,
@@ -59,8 +60,40 @@ const ApplicantData = () => {
     initialData: stateApplicant,
   });
   
-  // Always use fetched data (which includes optimistic updates from React Query)
-  const applicant = fetchedApplicant;
+  // Prefer the fetched data, but fall back to navigation state if the fetch returns undefined
+  const applicant = fetchedApplicant ?? stateApplicant;
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <LoadingSpinner />
+      </div>
+    );
+  }
+
+  if (!applicant) {
+    return (
+      <div className="space-y-6">
+        <PageMeta
+          title="Applicant Not Found | Job Application Maker"
+          description="The requested applicant could not be found"
+        />
+        <PageBreadcrumb pageTitle="Applicant Not Found" />
+        <ComponentCard title="Applicant Not Found">
+          <div className="text-center py-12">
+            <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">Applicant Not Found</h3>
+            <p className="text-gray-600 dark:text-gray-400 mb-4">The applicant you're looking for doesn't exist or has been deleted.</p>
+            <button
+              onClick={() => navigate(-1)}
+              className="px-4 py-2 bg-brand-500 text-white rounded-lg hover:bg-brand-600 transition-colors"
+            >
+              Back
+            </button>
+          </div>
+        </ComponentCard>
+      </div>
+    );
+  }
 
   // Compute full CV download URL (prefix API base URL for relative paths)
   const cvUrl = useMemo(() => {
@@ -85,6 +118,24 @@ const ApplicantData = () => {
   const { data: companies = [] } = useCompaniesWithApplicants(
     applicant ? [applicant] : undefined
   );
+
+  // Derive a single companyId to fetch the canonical company record when needed
+  const resolvedCompanyId = useMemo(() => {
+    if (!applicant) return '';
+    if (typeof applicant.jobPositionId === 'object') {
+      const jobPos = applicant.jobPositionId as any;
+      if (typeof jobPos.companyId === 'string') return jobPos.companyId;
+      if (typeof jobPos.companyId === 'object' && jobPos.companyId?._id) return jobPos.companyId._id;
+    }
+    if (typeof applicant.companyId === 'string') return applicant.companyId;
+    if (typeof applicant.companyId === 'object' && (applicant.companyId as any)?._id) return (applicant.companyId as any)._id;
+    return '';
+  }, [applicant]);
+
+  // Fetch canonical company from server when we have its id (fallback if not present in `companies` list)
+  const { data: fetchedCompany } = useCompany(resolvedCompanyId || '', { enabled: !!resolvedCompanyId });
+
+  
 
   // Mutations
   const updateStatusMutation = useUpdateApplicantStatus();
@@ -173,43 +224,146 @@ const ApplicantData = () => {
 
   const getCompanyAddress = () => {
     if (!applicant) return '';
-    // Check populated jobPosition.companyId
+
+    // Resolve company object (prefer populated jobPosition -> company, then applicant.companyId, then lookup from companies list)
+    let company: any = null;
+    // Prefer freshly fetched canonical company when available
+    if ((fetchedCompany as any) && (fetchedCompany as any)?._id) {
+      company = fetchedCompany as any;
+    }
     if (typeof applicant.jobPositionId === 'object') {
       const jobPos = applicant.jobPositionId as any;
-      if (typeof jobPos.companyId === 'object' && jobPos.companyId?.address) {
-        const addr = Array.isArray(jobPos.companyId.address)
-          ? jobPos.companyId.address[0]
-          : jobPos.companyId.address;
-        if (!addr) return '';
-        return toPlainString(addr.en ? addr.en : addr) || addr.location || '';
-      }
-      const compId = typeof jobPos.companyId === 'string' ? jobPos.companyId : jobPos.companyId?._id;
-      const found = companies.find((c) => c._id === compId);
-      if (found && found.address && Array.isArray(found.address) && found.address.length > 0) {
-        const a = found.address[0];
-        return toPlainString(a.en ? a.en : a) || a.location || '';
+      if (typeof jobPos.companyId === 'object' && jobPos.companyId?._id) company = jobPos.companyId;
+      else {
+        const compId = typeof jobPos.companyId === 'string' ? jobPos.companyId : jobPos.companyId?._id;
+        if (compId) company = companies.find((c) => c._id === compId) || null;
       }
     }
 
-    // Fallback to applicant.companyId if populated
-    if (typeof applicant.companyId === 'object' && (applicant.companyId as any).address) {
-      const addr = Array.isArray((applicant.companyId as any).address)
-        ? (applicant.companyId as any).address[0]
-        : (applicant.companyId as any).address;
-      if (!addr) return '';
-      return toPlainString(addr.en ? addr.en : addr) || addr.location || '';
+    if (!company) {
+      if (typeof applicant.companyId === 'object' && (applicant.companyId as any)?._id) company = applicant.companyId;
+      else {
+        const compId = typeof applicant.companyId === 'string' ? applicant.companyId : (applicant.companyId as any)?._id;
+        if (compId) company = companies.find((c) => c._id === compId) || null;
+      }
     }
 
-    // Lookup by companyId
-    const compId = typeof applicant.companyId === 'string' ? applicant.companyId : (applicant.companyId as any)?._id;
-    const foundCompany = companies.find((c) => c._id === compId);
-    if (foundCompany && foundCompany.address && Array.isArray(foundCompany.address) && foundCompany.address.length > 0) {
-      const a = foundCompany.address[0];
-      return toPlainString(a.en ? a.en : a) || a.location || '';
+    if (!company) return '';
+
+    // Try common address fields
+    const addrCandidates: any = company.address ?? company.addresses ?? company.location ?? company.locations ?? company.officeAddress ?? null;
+    let addr: any = null;
+
+    if (addrCandidates) {
+      addr = Array.isArray(addrCandidates) ? addrCandidates[0] : addrCandidates;
     }
 
-    return '';
+    // If still nothing, search for any key containing address/location
+    if (!addr) {
+      for (const key of Object.keys(company)) {
+        if (/address|location/i.test(key)) {
+          const v = (company as any)[key];
+          if (!v) continue;
+          addr = Array.isArray(v) ? v[0] : v;
+          break;
+        }
+      }
+    }
+
+    const resolved = addr
+      ? (typeof addr === 'string' ? addr : toPlainString(addr.en ? addr.en : addr) || addr.location || '')
+      : '';
+
+    console.debug('ApplicantData.getCompanyAddress', { companyId: company._id, resolved });
+    return resolved || '';
   };
+
+  // Try to fill interviewForm.location using the best available company object
+  const fillCompanyAddress = (): boolean => {
+    try {
+      const comp = (fetchedCompany as any && (fetchedCompany as any)?._id) ? (fetchedCompany as any) : companyObj;
+      if (!comp) {
+        console.debug('fillCompanyAddress: no company available', { fetchedCompany, companyObj });
+        return false;
+      }
+
+      console.debug('fillCompanyAddress: company found', { companyId: comp._id, comp });
+
+      const addrCandidates: any = comp.address ?? comp.addresses ?? comp.location ?? comp.locations ?? comp.officeAddress ?? null;
+      let addr: any = null;
+      if (addrCandidates) {
+        addr = Array.isArray(addrCandidates) ? addrCandidates[0] : addrCandidates;
+        console.debug('fillCompanyAddress: address candidate', { addrCandidates, addr });
+      }
+
+      // fallback: search any key containing address/location
+      if (!addr) {
+        for (const key of Object.keys(comp)) {
+          if (/address|location/i.test(key)) {
+            const v = (comp as any)[key];
+            if (!v) continue;
+            addr = Array.isArray(v) ? v[0] : v;
+            console.debug('fillCompanyAddress: found via fallback', { key, addr });
+            break;
+          }
+        }
+      }
+
+      let resolved = '';
+      if (addr) {
+        if (typeof addr === 'string') {
+          resolved = addr;
+        } else if (addr.en && typeof addr.en === 'string') {
+          resolved = addr.en;
+        } else if (addr.ar && typeof addr.ar === 'string') {
+          resolved = addr.ar;
+        } else if (addr.location && typeof addr.location === 'string') {
+          resolved = addr.location;
+        } else {
+          resolved = toPlainString(addr) || '';
+        }
+      }
+
+      console.debug('fillCompanyAddress: resolved', { companyId: comp._id, resolved });
+      if (resolved && resolved.trim()) {
+        setInterviewForm((prev) => ({ ...prev, location: resolved }));
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.error('fillCompanyAddress error', e);
+      return false;
+    }
+  };
+
+  // Resolve the single company object for this applicant (prefer populated jobPosition -> company, then applicant.companyId, then lookup from companies list)
+  const companyObj = (() => {
+    if (!applicant) return null as any;
+    // If we fetched the canonical company from server, prefer it
+    if ((fetchedCompany as any) && (fetchedCompany as any)?._id) return fetchedCompany as any;
+    // If jobPositionId is populated with company info
+    if (typeof applicant.jobPositionId === 'object') {
+      const jobPos = applicant.jobPositionId as any;
+      if (typeof jobPos.companyId === 'object' && jobPos.companyId?._id) return jobPos.companyId;
+      const compId = typeof jobPos.companyId === 'string' ? jobPos.companyId : jobPos.companyId?._id;
+      if (compId) {
+        const found = companies.find((c) => c._id === compId);
+        if (found) return found as any;
+      }
+    }
+
+    // Fallback to direct applicant.companyId
+    if (typeof applicant.companyId === 'object' && (applicant.companyId as any)?._id) {
+      return applicant.companyId as any;
+    }
+    const compId = typeof applicant.companyId === 'string' ? applicant.companyId : (applicant.companyId as any)?._id;
+    if (compId) {
+      const found = companies.find((c) => c._id === compId);
+      if (found) return found as any;
+    }
+
+    return null as any;
+  })();
 
   const jobTitle = getJobTitle();
   const companyName = getCompanyName();
@@ -236,6 +390,18 @@ const ApplicantData = () => {
     link: '',
     type: 'phone' as 'phone' | 'video' | 'in-person',
   });
+  // If the canonical company arrives after opening the modal, prefill the location field
+  useEffect(() => {
+    if (!showInterviewModal) return;
+    if (interviewForm.location && interviewForm.location.trim() !== '') return;
+    try {
+      const addr = getCompanyAddress();
+      if (addr) setInterviewForm((prev) => ({ ...prev, location: addr }));
+    } catch (e) {
+      // ignore resolution errors
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchedCompany, showInterviewModal]);
   const [notificationChannels, setNotificationChannels] = useState({
     email: true,
     sms: false,
@@ -414,6 +580,20 @@ const ApplicantData = () => {
         location: interviewForm.location || undefined,
         videoLink: interviewForm.link || undefined,
         notes: interviewForm.comment || undefined,
+        // Include the applicant's company id if resolved so backend can associate notifications/settings
+        companyId: companyObj?._id,
+        // Include notifications preferences
+        notifications: {
+          channels: {
+            email: notificationChannels.email,
+            sms: notificationChannels.sms,
+            whatsapp: notificationChannels.whatsapp,
+          },
+          emailOption: emailOption || undefined,
+          customEmail: emailOption === 'custom' ? customEmail || undefined : undefined,
+          phoneOption: phoneOption || undefined,
+          customPhone: phoneOption === 'custom' ? customPhone || undefined : undefined,
+        },
       };
 
       // First: Update applicant status to "interview" if not already
@@ -690,6 +870,8 @@ const ApplicantData = () => {
             <button
               onClick={() => {
                 setFormResetKey(prev => prev + 1); // Reset DatePickers
+                // Prefill location with company address when opening the modal
+                fillCompanyAddress();
                 setShowInterviewModal(true);
               }}
               className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-blue-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-blue-700"
@@ -1890,21 +2072,15 @@ const ApplicantData = () => {
                   }
                   placeholder="Office address or meeting room"
                 />
-                {(() => {
-                  const companyAddr = getCompanyAddress();
-                  return (
-                    <div className="mt-2">
-                      <button
-                        type="button"
-                        onClick={() => companyAddr && setInterviewForm({ ...interviewForm, location: companyAddr })}
-                        disabled={!companyAddr}
-                        className={`text-sm ${companyAddr ? 'text-brand-600 hover:underline' : 'text-gray-400'}`}
-                      >
-                        {companyAddr ? 'Use company address' : 'Company address not available'}
-                      </button>
-                    </div>
-                  );
-                })()}
+                <div className="mt-2">
+                  <button
+                    type="button"
+                    onClick={() => fillCompanyAddress()}
+                    className="text-sm text-brand-600 hover:underline"
+                  >
+                    Use company address
+                  </button>
+                </div>
               </div>
 
               <div>
