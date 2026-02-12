@@ -1245,7 +1245,7 @@ export default function CreateJob() {
   return (
     <div className="space-y-6">
       <PageMeta
-        title={`${isEditMode ? "Edit" : "Create"} Job | TailAdmin React`}
+        title={`${isEditMode ? "Edit" : "Create"} Job | Saber Group - Hiring Management System`}
         description={`${
           isEditMode ? "Edit an existing" : "Create a new"
         } job posting for your company`}

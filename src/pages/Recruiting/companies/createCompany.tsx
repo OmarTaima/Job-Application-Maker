@@ -190,7 +190,7 @@ export default function RecruitingDashboard() {
   return (
     <div className="space-y-6">
       <PageMeta
-        title="Create Company | TailAdmin React"
+        title="Create Company | Saber Group - Hiring Management System"
         description="Create a new company for recruiting."
       />
       <PageBreadcrumb pageTitle="Create Company" />

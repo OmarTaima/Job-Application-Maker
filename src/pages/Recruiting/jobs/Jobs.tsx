@@ -249,7 +249,7 @@ export default function Jobs() {
     return (
       <div className="space-y-6">
         <PageMeta
-          title="Jobs | TailAdmin React"
+          title="Jobs | Saber Group - Hiring Management System"
           description="View and manage all job positions in the system."
         />
         <PageBreadcrumb pageTitle="Jobs" />
@@ -288,7 +288,7 @@ export default function Jobs() {
   return (
     <div className="space-y-6">
       <PageMeta
-        title="Jobs | TailAdmin React"
+        title="Jobs | Saber Group - Hiring Management System"
         description="View and manage all job postings across companies."
       />
       <PageBreadcrumb pageTitle="Jobs" />

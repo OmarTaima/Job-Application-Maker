@@ -134,7 +134,7 @@ export default function Users() {
     return (
       <div className="space-y-6">
         <PageMeta
-          title="Users | TailAdmin React"
+          title="Users | Saber Group - Hiring Management System"
           description="Manage users in the system"
         />
         <PageBreadcrumb pageTitle="Users" />

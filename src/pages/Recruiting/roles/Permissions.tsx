@@ -207,7 +207,7 @@ export default function Permissions() {
     return (
       <div className="space-y-6">
         <PageMeta
-          title="Permissions & Roles | TailAdmin React"
+          title="Permissions & Roles | Saber Group - Hiring Management System"
           description="Manage roles and permissions"
         />
         <PageBreadcrumb pageTitle="Permissions & Roles" />

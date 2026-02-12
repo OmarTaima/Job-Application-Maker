@@ -197,7 +197,7 @@ export default function Companies() {
     return (
       <div className="space-y-6">
         <PageMeta
-          title="Companies | TailAdmin React"
+          title="Companies | Saber Group - Hiring Management System"
           description="View and manage all recruiting companies in the system."
         />
         <PageBreadcrumb pageTitle="Companies" />
@@ -229,7 +229,7 @@ export default function Companies() {
   return (
     <div className="space-y-6">
       <PageMeta
-        title="Companies | TailAdmin React"
+        title="Companies | Saber Group - Hiring Management System"
         description="View and manage all recruiting companies in the system."
       />
       <PageBreadcrumb pageTitle="Companies" />
