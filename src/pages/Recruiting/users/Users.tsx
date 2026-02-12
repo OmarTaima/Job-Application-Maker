@@ -924,7 +924,7 @@ export default function Users() {
                                   label=""
                                   options={companyDepartments.map((dept) => ({
                                     value: dept._id,
-                                    text: dept.name,
+                                    text: toPlainString(dept.name),
                                   }))}
                                   value={companyAssignment.departments}
                                   onChange={(values) => {
