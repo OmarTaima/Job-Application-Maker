@@ -211,6 +211,7 @@ export default function CreateJob() {
   const [newChoiceAr, setNewChoiceAr] = useState<Record<number, string>>({});
   const [newSubFieldChoice, setNewSubFieldChoice] = useState<Record<string, string>>({});
   const [newSubFieldChoiceAr, setNewSubFieldChoiceAr] = useState<Record<string, string>>({});
+  const [collapsedFields, setCollapsedFields] = useState<Set<number>>(new Set());
   const [editingFieldIndex, setEditingFieldIndex] = useState<number | null>(
     null
   );
@@ -424,6 +425,11 @@ export default function CreateJob() {
         employmentType: selectedJob.employmentType || 'full-time',
         workArrangement: selectedJob.workArrangement || 'on-site',
       });
+      
+      // Collapse all custom fields by default when duplicating
+      if (selectedJob.customFields && selectedJob.customFields.length > 0) {
+        setCollapsedFields(new Set(Array.from({ length: selectedJob.customFields.length }, (_, i) => i)));
+      }
     }
   };
 
@@ -549,6 +555,11 @@ export default function CreateJob() {
             employmentType: normalizeEmploymentType(job.employmentType) || 'full-time',
             workArrangement: (job as any).workArrangement || 'on-site',
           });
+
+          // Collapse all custom fields by default when editing
+          if (job.customFields && job.customFields.length > 0) {
+            setCollapsedFields(new Set(Array.from({ length: job.customFields.length }, (_, i) => i)));
+          }
 
           jobDataLoaded.current = true;
         } catch (err) {
@@ -685,6 +696,8 @@ export default function CreateJob() {
       ...prev,
       customFields: [...prev.customFields, newField],
     }));
+    // New fields start collapsed by default
+    setCollapsedFields(prev => new Set(prev).add(jobForm.customFields.length));
     setEditingFieldIndex(jobForm.customFields.length);
   };
 
@@ -743,8 +756,21 @@ export default function CreateJob() {
     );
   };
 
+  const toggleFieldCollapse = (index: number) => {
+    setCollapsedFields((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) {
+        next.delete(index);
+      } else {
+        next.add(index);
+      }
+      return next;
+    });
+  };
+
   const handleAddSelectedRecommended = () => {
     if (selectedRecommended.length === 0) return;
+    const currentFieldCount = jobForm.customFields.length;
     setJobForm((prev) => {
       const additions: CustomField[] = [];
       let currentMax = prev.customFields.reduce((m, cf) => Math.max(m, cf.displayOrder || 0), 0);
@@ -778,6 +804,14 @@ export default function CreateJob() {
         additions.push(newField);
       });
       return { ...prev, customFields: [...prev.customFields, ...additions] };
+    });
+    // Set newly added recommended fields to collapsed by default
+    setCollapsedFields(prev => {
+      const next = new Set(prev);
+      for (let i = 0; i < selectedRecommended.length; i++) {
+        next.add(currentFieldCount + i);
+      }
+      return next;
     });
     setSelectedRecommended([]);
     setShowRecommendedPanel(false);
@@ -1930,66 +1964,92 @@ export default function CreateJob() {
             </div>
 
             <div className="space-y-4">
-              {jobForm.customFields.map((field, fieldIndex) => (
-                <div
-                  key={field.fieldId}
-                  className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-900/50"
-                >
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-                        Field #{fieldIndex + 1}
-                      </h4>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveCustomField(fieldIndex)}
-                        className="rounded p-1 text-error-600 transition hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-500/10"
-                      >
-                        <TrashBinIcon className="size-4" />
-                      </button>
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                     
-                      <div>
-                        <Label htmlFor={`field-label-${fieldIndex}`}>
-                          Label{jobForm.bilingual && " (English)"}
-                        </Label>
-                        <Input
-                          id={`field-label-${fieldIndex}`}
-                          value={field.label}
-                          onChange={(e) =>
-                            handleCustomFieldChange(
-                              fieldIndex,
-                              "label",
-                              e.target.value
-                            )
-                          }
-                          placeholder="Years of Experience"
-                        />
-                      </div>
-                      {jobForm.bilingual && (
-                        <div>
-                          <Label htmlFor={`field-label-ar-${fieldIndex}`}>
-                            Label (Arabic)
-                          </Label>
-                          <div dir="rtl">
-                            <Input
-                              id={`field-label-ar-${fieldIndex}`}
-                              value={field.labelAr || ""}
-                              onChange={(e) =>
-                                handleCustomFieldChange(
-                                  fieldIndex,
-                                  "labelAr",
-                                  e.target.value
-                                )
-                              }
-                              placeholder="سنوات الخبرة"
-                            />
-                          </div>
+              {jobForm.customFields.map((field, fieldIndex) => {
+                const isCollapsed = collapsedFields.has(fieldIndex);
+                return (
+                  <div
+                    key={field.fieldId}
+                    className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-900/50"
+                  >
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={() => toggleFieldCollapse(fieldIndex)}
+                            className="rounded p-1 text-gray-600 transition hover:bg-gray-200 dark:text-gray-400 dark:hover:bg-gray-700"
+                            title={isCollapsed ? "Expand" : "Collapse"}
+                          >
+                            <svg
+                              className={`size-4 transition-transform ${isCollapsed ? '' : 'rotate-90'}`}
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M9 5l7 7-7 7"
+                              />
+                            </svg>
+                          </button>
+                          <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                            Field #{fieldIndex + 1}{field.label && `: ${field.label}`}
+                          </h4>
                         </div>
-                      )}
-                    </div>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveCustomField(fieldIndex)}
+                          className="rounded p-1 text-error-600 transition hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-500/10"
+                        >
+                          <TrashBinIcon className="size-4" />
+                        </button>
+                      </div>
+
+                      {!isCollapsed && (
+                        <>
+                          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                           
+                            <div>
+                              <Label htmlFor={`field-label-${fieldIndex}`}>
+                                Label{jobForm.bilingual && " (English)"}
+                              </Label>
+                              <Input
+                                id={`field-label-${fieldIndex}`}
+                                value={field.label}
+                                onChange={(e) =>
+                                  handleCustomFieldChange(
+                                    fieldIndex,
+                                    "label",
+                                    e.target.value
+                                  )
+                                }
+                                placeholder="Years of Experience"
+                              />
+                            </div>
+                            {jobForm.bilingual && (
+                              <div>
+                                <Label htmlFor={`field-label-ar-${fieldIndex}`}>
+                                  Label (Arabic)
+                                </Label>
+                                <div dir="rtl">
+                                  <Input
+                                    id={`field-label-ar-${fieldIndex}`}
+                                    value={field.labelAr || ""}
+                                    onChange={(e) =>
+                                      handleCustomFieldChange(
+                                        fieldIndex,
+                                        "labelAr",
+                                        e.target.value
+                                      )
+                                    }
+                                    placeholder="سنوات الخبرة"
+                                  />
+                                </div>
+                              </div>
+                            )}
+                          </div>
 
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                       <div>
@@ -2403,20 +2463,15 @@ export default function CreateJob() {
                               </div>
                             </div>
                           ))}
-
-                          {(!field.subFields ||
-                            field.subFields.length === 0) && (
-                            <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-8 text-center text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-800/30 dark:text-gray-400">
-                              No sub-questions added yet. Click "Add
-                              Sub-Question" to add questions to this group.
-                            </div>
-                          )}
                         </div>
                       </div>
                     )}
+                        </>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </ComponentCard>
 
