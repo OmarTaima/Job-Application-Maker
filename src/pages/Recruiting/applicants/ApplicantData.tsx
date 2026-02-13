@@ -1304,7 +1304,7 @@ const ApplicantData = () => {
                                                         {/* Label */}
                                                         <div
                                                           className={`
-                                                            text-xs font-semibold uppercase tracking-wide
+                                                            text-xs font-semibold mt-1 uppercase tracking-wide
                                                             text-gray-500 dark:text-gray-400
                                                             ${rowIsArabic ? "text-right" : "text-left"}
                                                           `}
