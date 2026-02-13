@@ -1,4 +1,4 @@
-import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
+import { createSlice, createAsyncThunk} from "@reduxjs/toolkit";
 import { usersService } from "../../services/usersService";
 import type { UsersResponse } from "../../services/usersService";
 
