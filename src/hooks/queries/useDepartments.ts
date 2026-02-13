@@ -74,7 +74,7 @@ export function useCreateDepartment() {
       await queryClient.cancelQueries({ queryKey: departmentsKeys.lists() });
       const previousDepartments = queryClient.getQueriesData({ queryKey: departmentsKeys.lists() });
 
-      queryClient.setQueriesData({ queryKey: departmentsKeys.lists() }, (old: any) => {
+      queryClient.setQueriesData<any>({ queryKey: departmentsKeys.lists() }, (old: any) => {
         if (!old) return old;
         const tempDepartment = {
           ...newDepartment,
@@ -94,24 +94,18 @@ export function useCreateDepartment() {
       }
     },
     onSuccess: (newDepartment) => {
-      queryClient.setQueriesData({ queryKey: departmentsKeys.lists() }, (old: any) => {
-        if (!old) return { data: [newDepartment] };
-        if (Array.isArray(old)) {
-          if (Array.isArray(old)) {
-            const updated = old.map((dept: any) => dept._id.startsWith('temp-') ? newDepartment : dept).filter((dept: any, index: number, self: any[]) => self.findIndex((d: any) => d._id === dept._id) === index);
-            return updated;
-          }
-          if (old && old.data && Array.isArray(old.data)) {
-            const updated = old.data.map((dept: any) => dept._id.startsWith('temp-') ? newDepartment : dept).filter((dept: any, index: number, self: any[]) => self.findIndex((d: any) => d._id === dept._id) === index);
-            return { ...old, data: updated };
-          }
-          return old;
+      queryClient.setQueriesData<any>({ queryKey: departmentsKeys.lists() }, (old: any) => {
+        const anyOld = old as any;
+        if (!anyOld) return { data: [newDepartment] };
+        if (Array.isArray(anyOld)) {
+          const updated = anyOld.map((dept: any) => dept._id.startsWith('temp-') ? newDepartment : dept).filter((dept: any, index: number, self: any[]) => self.findIndex((d: any) => d._id === dept._id) === index);
+          return updated;
         }
-        if (old.data && Array.isArray(old.data)) {
-          const updated = old.data.map((dept: any) => dept._id.startsWith('temp-') ? newDepartment : dept).filter((dept: any, index: number, self: any[]) => self.findIndex((d: any) => d._id === dept._id) === index);
-          return { ...old, data: updated };
+        if (anyOld && anyOld.data && Array.isArray(anyOld.data)) {
+          const updated = anyOld.data.map((dept: any) => dept._id.startsWith('temp-') ? newDepartment : dept).filter((dept: any, index: number, self: any[]) => self.findIndex((d: any) => d._id === dept._id) === index);
+          return { ...anyOld, data: updated };
         }
-        return old;
+        return anyOld;
       });
     },
     onSettled: () => {
@@ -134,16 +128,15 @@ export function useUpdateDepartment() {
       const previousLists = queryClient.getQueriesData({ queryKey: departmentsKeys.lists() });
       const previousDetail = queryClient.getQueryData(departmentsKeys.detail(id));
 
-      queryClient.setQueriesData({ queryKey: departmentsKeys.lists() }, (old: any) => {
-        if (!old) return old;
-        if (Array.isArray(old)) return old.map((dept: any) => dept._id === id ? { ...dept, ...data } : dept);
-        if (old && old.data && Array.isArray(old.data)) return { ...old, data: old.data.map((dept: any) => dept._id === id ? { ...dept, ...data } : dept) };
-        return old;
-        if (old.data && Array.isArray(old.data)) return { ...old, data: old.data.map((dept: any) => dept._id === id ? { ...dept, ...data } : dept) };
-        return old;
+      queryClient.setQueriesData<any>({ queryKey: departmentsKeys.lists() }, (old: any) => {
+        const anyOld = old as any;
+        if (!anyOld) return anyOld;
+        if (Array.isArray(anyOld)) return anyOld.map((dept: any) => dept._id === id ? { ...dept, ...data } : dept);
+        if (anyOld && anyOld.data && Array.isArray(anyOld.data)) return { ...anyOld, data: anyOld.data.map((dept: any) => dept._id === id ? { ...dept, ...data } : dept) };
+        return anyOld;
       });
 
-      queryClient.setQueryData(departmentsKeys.detail(id), (old: any) => {
+      queryClient.setQueryData<any>(departmentsKeys.detail(id), (old: any) => {
         if (!old) return old;
         return { ...old, ...data };
       });
@@ -153,11 +146,11 @@ export function useUpdateDepartment() {
     onError: (_err, _variables, context) => {
       if (context?.previousLists) {
         context.previousLists.forEach(([queryKey, data]) => {
-          queryClient.setQueryData(queryKey, data);
+          queryClient.setQueryData<any>(queryKey, data);
         });
       }
       if (context?.previousDetail) {
-        queryClient.setQueryData(departmentsKeys.detail(_variables.id), context.previousDetail);
+        queryClient.setQueryData<any>(departmentsKeys.detail(_variables.id), context.previousDetail);
       }
     },
     onSettled: () => {
@@ -176,11 +169,12 @@ export function useDeleteDepartment() {
       await queryClient.cancelQueries({ queryKey: departmentsKeys.lists() });
       const previousDepartments = queryClient.getQueriesData({ queryKey: departmentsKeys.lists() });
 
-      queryClient.setQueriesData({ queryKey: departmentsKeys.lists() }, (old: any) => {
-        if (!old) return old;
-        if (Array.isArray(old)) return old.filter((dept: any) => dept._id !== id);
-        if (old.data && Array.isArray(old.data)) return { ...old, data: old.data.filter((dept: any) => dept._id !== id) };
-        return old;
+      queryClient.setQueriesData<any>({ queryKey: departmentsKeys.lists() }, (old: any) => {
+        const anyOld = old as any;
+        if (!anyOld) return anyOld;
+        if (Array.isArray(anyOld)) return anyOld.filter((dept: any) => dept._id !== id);
+        if (anyOld.data && Array.isArray(anyOld.data)) return { ...anyOld, data: anyOld.data.filter((dept: any) => dept._id !== id) };
+        return anyOld;
       });
 
       return { previousDepartments };

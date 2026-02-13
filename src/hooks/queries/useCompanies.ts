@@ -72,44 +72,39 @@ export function useCreateCompany() {
       await queryClient.cancelQueries({ queryKey: companiesKeys.lists() });
       const previousCompanies = queryClient.getQueryData(companiesKeys.list());
 
-      queryClient.setQueryData(companiesKeys.list(), (old: any) => {
-        if (!old) return old;
+      queryClient.setQueryData<any>(companiesKeys.list(), (old: any) => {
+        const anyOld = old as any;
+        if (!anyOld) return anyOld;
         const tempCompany = {
           ...newCompany,
           _id: `temp-${Date.now()}`,
           createdAt: new Date().toISOString(),
         };
-        if (Array.isArray(old)) return [...old, tempCompany];
-        if (old.data && Array.isArray(old.data)) return { ...old, data: [...old.data, tempCompany] };
-        return old;
+        if (Array.isArray(anyOld)) return [...anyOld, tempCompany];
+        if (anyOld.data && Array.isArray(anyOld.data)) return { ...anyOld, data: [...anyOld.data, tempCompany] };
+        return anyOld;
       });
 
       return { previousCompanies };
     },
     onError: (_err, _variables, context) => {
       if (context?.previousCompanies) {
-        queryClient.setQueryData(companiesKeys.list(), context.previousCompanies);
+        queryClient.setQueryData<any>(companiesKeys.list(), context.previousCompanies);
       }
     },
     onSuccess: (newCompany) => {
-      queryClient.setQueryData(companiesKeys.list(), (old: any) => {
-        if (!old) return { data: [newCompany] };
-        if (Array.isArray(old)) {
-          if (Array.isArray(old)) {
-            const updated = old.map((company: any) => company._id.startsWith('temp-') ? newCompany : company).filter((company: any, index: number, self: any[]) => self.findIndex((c: any) => c._id === company._id) === index);
-            return updated;
-          }
-          if (old && old.data && Array.isArray(old.data)) {
-            const updated = old.data.map((company: any) => company._id.startsWith('temp-') ? newCompany : company).filter((company: any, index: number, self: any[]) => self.findIndex((c: any) => c._id === company._id) === index);
-            return { ...old, data: updated };
-          }
-          return old;
+      queryClient.setQueryData<any>(companiesKeys.list(), (old: any) => {
+        const anyOld = old as any;
+        if (!anyOld) return { data: [newCompany] };
+        if (Array.isArray(anyOld)) {
+          const updated = anyOld.map((company: any) => company._id.startsWith('temp-') ? newCompany : company).filter((company: any, index: number, self: any[]) => self.findIndex((c: any) => c._id === company._id) === index);
+          return updated;
         }
-        if (old.data && Array.isArray(old.data)) {
-          const updated = old.data.map((company: any) => company._id.startsWith('temp-') ? newCompany : company).filter((company: any, index: number, self: any[]) => self.findIndex((c: any) => c._id === company._id) === index);
-          return { ...old, data: updated };
+        if (anyOld && anyOld.data && Array.isArray(anyOld.data)) {
+          const updated = anyOld.data.map((company: any) => company._id.startsWith('temp-') ? newCompany : company).filter((company: any, index: number, self: any[]) => self.findIndex((c: any) => c._id === company._id) === index);
+          return { ...anyOld, data: updated };
         }
-        return old;
+        return anyOld;
       });
     },
     onSettled: () => {
@@ -132,7 +127,7 @@ export function useUpdateCompany() {
       const previousList = queryClient.getQueryData(companiesKeys.list());
       const previousDetail = queryClient.getQueryData(companiesKeys.detail(id));
 
-      queryClient.setQueryData(companiesKeys.list(), (old: any) => {
+      queryClient.setQueryData<any>(companiesKeys.list(), (old: any) => {
         if (!old) return old;
         if (Array.isArray(old)) return old.map((company: any) => company._id === id ? { ...company, ...data } : company);
         if (old && old.data && Array.isArray(old.data)) return { ...old, data: old.data.map((company: any) => company._id === id ? { ...company, ...data } : company) };
@@ -172,18 +167,19 @@ export function useDeleteCompany() {
       await queryClient.cancelQueries({ queryKey: companiesKeys.lists() });
       const previousCompanies = queryClient.getQueryData(companiesKeys.list());
 
-      queryClient.setQueryData(companiesKeys.list(), (old: any) => {
-        if (!old) return old;
-        if (Array.isArray(old)) return old.filter((company: any) => company._id !== id);
-        if (old.data && Array.isArray(old.data)) return { ...old, data: old.data.filter((company: any) => company._id !== id) };
-        return old;
+      queryClient.setQueryData<any>(companiesKeys.list(), (old: any) => {
+        const anyOld = old as any;
+        if (!anyOld) return anyOld;
+        if (Array.isArray(anyOld)) return anyOld.filter((company: any) => company._id !== id);
+        if (anyOld.data && Array.isArray(anyOld.data)) return { ...anyOld, data: anyOld.data.filter((company: any) => company._id !== id) };
+        return anyOld;
       });
 
       return { previousCompanies };
     },
     onError: (_err, _variables, context) => {
       if (context?.previousCompanies) {
-        queryClient.setQueryData(companiesKeys.list(), context.previousCompanies);
+        queryClient.setQueryData<any>(companiesKeys.list(), context.previousCompanies);
       }
     },
     onSettled: () => {

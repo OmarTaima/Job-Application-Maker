@@ -4,8 +4,6 @@ import type {
   CreateUserRequest,
   UpdateUserRequest,
   UpdateDepartmentsRequest,
-  User,
-  UsersResponse,
 } from "../../services/usersService";
 
 // Query keys
@@ -22,13 +20,13 @@ export const usersKeys = {
 export function useUsers(params: any = {}) {
   // Ensure page is a number
   const pageParam = typeof params.page === "string" ? parseInt(params.page, 10) : params.page;
-  return useQuery<User[] | UsersResponse>({
+  return useQuery({
     queryKey: [...usersKeys.list(params.companyId), { page: pageParam }],
     queryFn: () => usersService.getAllUsers({ ...params, page: pageParam }),
     staleTime: 5 * 60 * 1000,
     // Keep previous page data while fetching next page to avoid empty loading states
     keepPreviousData: true,
-  });
+  } as any);
 }
 
 // Get user by ID
@@ -51,7 +49,7 @@ export function useCreateUser() {
       await queryClient.cancelQueries({ queryKey: usersKeys.lists() });
       const previousUsers = queryClient.getQueriesData({ queryKey: usersKeys.lists() });
 
-      queryClient.setQueriesData({ queryKey: usersKeys.lists() }, (old: any) => {
+      queryClient.setQueriesData<any>({ queryKey: usersKeys.lists() }, (old: any) => {
         if (!old) return old;
         const tempUser = {
           ...newUser,
@@ -77,7 +75,7 @@ export function useCreateUser() {
       }
     },
     onSuccess: (newUser) => {
-      queryClient.setQueriesData({ queryKey: usersKeys.lists() }, (old: any) => {
+      queryClient.setQueriesData<any>({ queryKey: usersKeys.lists() }, (old: any) => {
         let arr: any[] = [];
         if (Array.isArray(old)) arr = old;
         else if (old && Array.isArray(old.data)) arr = old.data;
@@ -112,7 +110,7 @@ export function useUpdateUser() {
       const previousLists = queryClient.getQueriesData({ queryKey: usersKeys.lists() });
       const previousDetail = queryClient.getQueryData(usersKeys.detail(id));
 
-      queryClient.setQueriesData({ queryKey: usersKeys.lists() }, (old: any) => {
+      queryClient.setQueriesData<any>({ queryKey: usersKeys.lists() }, (old: any) => {
         let arr: any[] = [];
         if (Array.isArray(old)) arr = old;
         else if (old && Array.isArray(old.data)) arr = old.data;
@@ -124,7 +122,7 @@ export function useUpdateUser() {
         if (Array.isArray(old)) return updated;
         else return { ...old, data: updated };
       });
-      queryClient.setQueryData(usersKeys.detail(id), (old: any) => {
+      queryClient.setQueryData<any>(usersKeys.detail(id), (old: any) => {
         if (!old) return old;
         return { ...old, ...data };
       });
@@ -157,7 +155,7 @@ export function useDeleteUser() {
       await queryClient.cancelQueries({ queryKey: usersKeys.lists() });
       const previousUsers = queryClient.getQueriesData({ queryKey: usersKeys.lists() });
 
-      queryClient.setQueriesData({ queryKey: usersKeys.lists() }, (old: any) => {
+      queryClient.setQueriesData<any>({ queryKey: usersKeys.lists() }, (old: any) => {
         let arr: any[] = [];
         if (Array.isArray(old)) arr = old;
         else if (old && Array.isArray(old.data)) arr = old.data;
@@ -204,7 +202,7 @@ export function useUpdateUserCompanies() {
       const previousLists = queryClient.getQueriesData({ queryKey: usersKeys.lists() });
       const previousDetail = queryClient.getQueryData(usersKeys.detail(userId));
 
-      queryClient.setQueriesData({ queryKey: usersKeys.lists() }, (old: any) => {
+      queryClient.setQueriesData<any>({ queryKey: usersKeys.lists() }, (old: any) => {
         if (!old) return old;
         // handle both array and paginated envelope shapes
         if (Array.isArray(old)) {
@@ -240,7 +238,7 @@ export function useUpdateUserCompanies() {
         return old;
       });
 
-      queryClient.setQueryData(usersKeys.detail(userId), (old: any) => {
+      queryClient.setQueryData<any>(usersKeys.detail(userId), (old: any) => {
         if (!old) return old;
         const updatedCompanies = old.companies?.map((c: any) => {
           const cId = typeof c.companyId === 'string' ? c.companyId : c.companyId._id;
