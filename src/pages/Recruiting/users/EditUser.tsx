@@ -23,6 +23,7 @@ import {
   useDepartments,
   usersKeys,
 } from "../../../hooks/queries";
+import type { User } from "../../../services/usersService";
 import { useQueryClient } from "@tanstack/react-query";
 import { companiesService } from "../../../services/companiesService";
 import { toPlainString } from "../../../utils/strings";
@@ -53,7 +54,8 @@ export default function EditUser() {
   const userFromState = location.state?.user; // Get user data from navigation state
 
   // Fetch data
-  const { data: users = [], isLoading: usersLoading } = useUsers();
+  const { data: usersData, isLoading: usersLoading } = useUsers();
+  const users: User[] = Array.isArray(usersData) ? usersData : ((usersData as any)?.data ?? []) as User[];
   const { data: roles = [] } = useRoles();
   const { data: permissions = [] } = usePermissions();
   const { data: companies = [] } = useCompanies();
@@ -82,8 +84,8 @@ export default function EditUser() {
 
   // Find the current user - use state data if available, otherwise find in fetched users
   // Cast to any[] so TypeScript doesn't infer 'never' for an empty default
-  const userArray = Array.isArray(users) ? (users as any[]) : ([] as any[]);
-  const user = userFromState || userArray.find((u: any) => u._id === id);
+  const userArray = users as User[];
+  const user = (userFromState as any) || userArray.find((u: User) => u._id === id);
 
   // Populate form when user data loads
   useEffect(() => {

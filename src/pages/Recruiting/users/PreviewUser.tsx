@@ -11,6 +11,7 @@ import {
   useCompanies,
   useDepartments,
 } from "../../../hooks/queries";
+import type { User } from "../../../services/usersService";
 import { toPlainString } from "../../../utils/strings";
 
 export default function PreviewUser() {
@@ -18,15 +19,15 @@ export default function PreviewUser() {
   const navigate = useNavigate();
 
   // Fetch data
-  const { data: usersResponse = {}, isLoading: usersLoading } = useUsers();
-  const users = Array.isArray(usersResponse) ? usersResponse : (usersResponse.data || []);
+  const { data: usersResponse, isLoading: usersLoading } = useUsers();
+  const users: User[] = Array.isArray(usersResponse) ? usersResponse : ((usersResponse as any)?.data ?? []) as User[];
   const { data: roles = [] } = useRoles();
   const { data: companies = [] } = useCompanies();
   const { data: departments = [] } = useDepartments();
 
   // Find the current user
   const user = useMemo(() => {
-    return users.find((u) => u._id === id);
+    return users.find((u: User) => u._id === id);
   }, [users, id]);
 
   // Get role name
@@ -189,7 +190,7 @@ export default function PreviewUser() {
       {userCompanies.length > 0 && (
         <ComponentCard title="Company Assignments">
           <div className="space-y-4">
-            {userCompanies.map((company, idx) => (
+            {userCompanies.map((company: any, idx: number) => (
               <div
                 key={idx}
                 className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg"
@@ -231,7 +232,7 @@ export default function PreviewUser() {
       {user.permissions && user.permissions.length > 0 && (
         <ComponentCard title="Permissions">
           <div className="space-y-3">
-            {user.permissions.map((perm, idx) => {
+            {user.permissions.map((perm: any, idx: number) => {
               const permissionName = typeof perm.permission === 'string'
                 ? perm.permission
                 : (perm.permission && (perm.permission as { name?: string }).name) || 'Unknown Permission';
@@ -246,7 +247,7 @@ export default function PreviewUser() {
                   </h4>
                   {perm.access && perm.access.length > 0 && (
                     <div className="flex flex-wrap gap-2 mt-2">
-                      {perm.access.map((access, accessIdx) => (
+                      {perm.access.map((access: string, accessIdx: number) => (
                         <span
                           key={accessIdx}
                           className="px-2 py-0.5 text-xs bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-200 rounded"

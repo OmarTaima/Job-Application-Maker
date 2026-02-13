@@ -19,7 +19,7 @@ export const jobPositionsKeys = {
 
 // Get all job positions
 export function useJobPositions(companyId?: string[], deleted: boolean = false) {
-  return useQuery({
+  return useQuery<import("../../services/jobPositionsService").JobPosition[]>({
     queryKey: jobPositionsKeys.list(companyId),
     queryFn: () => {
       // Special sentinel to indicate "no companies assigned" -> return empty list
@@ -36,7 +36,7 @@ export function useJobPositions(companyId?: string[], deleted: boolean = false) 
 
 // Get job position by ID
 export function useJobPosition(id: string, options?: { enabled?: boolean }) {
-  return useQuery({
+  return useQuery<import("../../services/jobPositionsService").JobPosition>({
     queryKey: jobPositionsKeys.detail(id),
     queryFn: () => jobPositionsService.getJobPositionById(id),
     enabled: options?.enabled !== undefined ? options.enabled : !!id,
@@ -46,7 +46,7 @@ export function useJobPosition(id: string, options?: { enabled?: boolean }) {
 
 // Get applicants for job position
 export function useJobPositionApplicants(id: string) {
-  return useQuery({
+  return useQuery<import("../../services/jobPositionsService").Applicant[]>({
     queryKey: jobPositionsKeys.applicants(id),
     queryFn: () => jobPositionsService.getApplicantsForPosition(id),
     enabled: !!id,

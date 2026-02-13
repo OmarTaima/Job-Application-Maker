@@ -18,6 +18,7 @@ import {
   TableRow,
 } from "../../../components/ui/table";
 import { useRoles, usePermissions, useCreateRole, useUsers, useDeleteRole } from "../../../hooks/queries";
+import type { User } from "../../../services/usersService";
 import type { CreateRoleRequest } from "../../../services/rolesService";
 import { toPlainString } from "../../../utils/strings";
 
@@ -49,7 +50,8 @@ export default function Permissions() {
   const { data: roles = [], isLoading: rolesLoading, error } = useRoles();
   const { data: permissions = [], isLoading: permissionsLoading } =
     usePermissions();
-  const { data: users = [], isLoading: usersLoading } = useUsers();
+  const { data: usersData, isLoading: usersLoading } = useUsers();
+  const users: User[] = Array.isArray(usersData) ? usersData : ((usersData as any)?.data ?? []) as User[];
 
   // Mutations
   const createRoleMutation = useCreateRole();
@@ -58,8 +60,8 @@ export default function Permissions() {
   // Calculate user counts per role
   const roleUserCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    users.forEach((user) => {
-      const userRoleId = typeof user.roleId === "string" ? user.roleId : user.roleId?._id;
+    users.forEach((user: User) => {
+      const userRoleId = typeof user.roleId === "string" ? user.roleId : (user.roleId as any)?._id;
       if (userRoleId) {
         counts[userRoleId] = (counts[userRoleId] || 0) + 1;
       }

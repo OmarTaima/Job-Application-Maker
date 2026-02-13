@@ -3,6 +3,8 @@ import { rolesService } from "../../services/rolesService";
 import type {
   CreateRoleRequest,
   UpdateRoleRequest,
+  Role,
+  Permission,
 } from "../../services/rolesService";
 
 // Query keys
@@ -15,7 +17,7 @@ export const rolesKeys = {
 
 // Get all roles
 export function useRoles() {
-  return useQuery({
+  return useQuery<Role[]>({
     queryKey: rolesKeys.list(),
     queryFn: () => rolesService.getAllRoles(),
     staleTime: 10 * 60 * 1000, // 10 minutes - roles don't change often
@@ -24,7 +26,7 @@ export function useRoles() {
 
 // Get all permissions
 export function usePermissions() {
-  return useQuery({
+  return useQuery<Permission[]>({
     queryKey: rolesKeys.permissions(),
     queryFn: () => rolesService.getAllPermissions(),
     staleTime: 10 * 60 * 1000, // 10 minutes

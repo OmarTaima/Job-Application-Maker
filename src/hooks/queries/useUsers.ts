@@ -4,6 +4,8 @@ import type {
   CreateUserRequest,
   UpdateUserRequest,
   UpdateDepartmentsRequest,
+  User,
+  UsersResponse,
 } from "../../services/usersService";
 
 // Query keys
@@ -20,7 +22,7 @@ export const usersKeys = {
 export function useUsers(params: any = {}) {
   // Ensure page is a number
   const pageParam = typeof params.page === "string" ? parseInt(params.page, 10) : params.page;
-  return useQuery({
+  return useQuery<User[] | UsersResponse>({
     queryKey: [...usersKeys.list(params.companyId), { page: pageParam }],
     queryFn: () => usersService.getAllUsers({ ...params, page: pageParam }),
     staleTime: 5 * 60 * 1000,

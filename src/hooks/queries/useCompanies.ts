@@ -3,6 +3,7 @@ import { companiesService } from "../../services/companiesService";
 import type {
   CreateCompanyRequest,
   UpdateCompanyRequest,
+  Company,
 } from "../../services/companiesService";
 import type { Applicant } from "../../store/slices/applicantsSlice";
 
@@ -17,7 +18,7 @@ export const companiesKeys = {
 
 // Get all companies (optionally filtered by company IDs)
 export function useCompanies(companyId?: string[]) {
-  return useQuery({
+  return useQuery<Company[]>({
     queryKey: companiesKeys.list(companyId),
     queryFn: async () => {
       // If caller passed a single companyId, prefer the single-company endpoint
@@ -35,7 +36,7 @@ export function useCompanies(companyId?: string[]) {
 export function useCompany(id: string, options?: { enabled?: boolean }) {
   const queryClient = useQueryClient();
 
-  return useQuery({
+  return useQuery<Company>({
     queryKey: companiesKeys.detail(id),
     queryFn: async () => {
       const list = queryClient.getQueryData(companiesKeys.list()) as any[] | undefined;
@@ -219,3 +220,4 @@ export function useCompaniesWithApplicants(applicants: Applicant[] | undefined) 
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 }
+

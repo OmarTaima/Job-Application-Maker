@@ -3,6 +3,7 @@ import { departmentsService } from "../../services/departmentsService";
 import type {
   CreateDepartmentRequest,
   UpdateDepartmentRequest,
+  Department,
 } from "../../services/departmentsService";
 
 // Query keys
@@ -19,7 +20,7 @@ export const departmentsKeys = {
 export function useDepartments(companyId?: string, options?: { enabled?: boolean }) {
   const queryClient = useQueryClient();
 
-  return useQuery({
+  return useQuery<Department[]>({
     queryKey: departmentsKeys.list(companyId),
     queryFn: async () => {
       const cachedAll = queryClient.getQueryData(departmentsKeys.list()) as any[] | undefined;

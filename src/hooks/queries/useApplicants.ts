@@ -28,7 +28,7 @@ export function useApplicants(
 ) {
   const reduxApplicants = useAppSelector((s) => s.applicants.applicants);
 
-  return useQuery({
+  return useQuery<import("../../services/applicantsService").Applicant[]>({
     queryKey: applicantsKeys.list(companyId,  jobPositionId),
     // cast second arg to any to satisfy service signature when types differ
     queryFn: () => applicantsService.getAllApplicants(companyId, jobPositionId as any),
@@ -39,7 +39,7 @@ export function useApplicants(
 
 // Get applicant by ID
 export function useApplicant(id: string, options?: { initialData?: any }) {
-  return useQuery({
+  return useQuery<import("../../services/applicantsService").Applicant>({
     queryKey: applicantsKeys.detail(id),
     queryFn: () => applicantsService.getApplicantById(id),
     enabled: !!id,

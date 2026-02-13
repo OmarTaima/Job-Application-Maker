@@ -1,5 +1,6 @@
 import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
 import { usersService } from "../../services/usersService";
+import type { UsersResponse } from "../../services/usersService";
 
 export interface User {
   _id: string;
@@ -162,10 +163,20 @@ const usersSlice = createSlice({
         state.loading = true;
         state.error = null;
       })
-      .addCase(fetchUsers.fulfilled, (state, action: PayloadAction<User[]>) => {
-        state.loading = false;
-        state.users = action.payload;
-      })
+          .addCase(
+            fetchUsers.fulfilled,
+            (state, action) => {
+              state.loading = false;
+              const payload = action.payload;
+              if (Array.isArray(payload)) {
+                state.users = payload;
+              } else if (payload && Array.isArray((payload as UsersResponse).data)) {
+                state.users = (payload as UsersResponse).data;
+              } else {
+                state.users = [];
+              }
+            }
+          )
       .addCase(fetchUsers.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload as string;
@@ -176,7 +187,7 @@ const usersSlice = createSlice({
       })
       .addCase(
         fetchUserById.fulfilled,
-        (state, action: PayloadAction<User>) => {
+        (state, action) => {
           state.loading = false;
           state.currentUser = action.payload;
           state.isFetched = true;
@@ -190,7 +201,7 @@ const usersSlice = createSlice({
         state.loading = true;
         state.error = null;
       })
-      .addCase(createUser.fulfilled, (state, action: PayloadAction<User>) => {
+      .addCase(createUser.fulfilled, (state, action) => {
         state.loading = false;
         state.users.push(action.payload);
       })
@@ -198,7 +209,7 @@ const usersSlice = createSlice({
         state.loading = false;
         state.error = action.payload as string;
       })
-      .addCase(updateUser.fulfilled, (state, action: PayloadAction<User>) => {
+      .addCase(updateUser.fulfilled, (state, action) => {
         const index = state.users.findIndex(
           (u) => u._id === action.payload._id
         );
@@ -209,12 +220,12 @@ const usersSlice = createSlice({
           state.currentUser = action.payload;
         }
       })
-      .addCase(deleteUser.fulfilled, (state, action: PayloadAction<string>) => {
+      .addCase(deleteUser.fulfilled, (state, action) => {
         state.users = state.users.filter((u) => u._id !== action.payload);
       })
       .addCase(
         updateUserCompanies.fulfilled,
-        (state, action: PayloadAction<User>) => {
+        (state, action) => {
           const index = state.users.findIndex(
             (u) => u._id === action.payload._id
           );

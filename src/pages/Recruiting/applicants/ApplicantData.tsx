@@ -28,7 +28,7 @@ import {
 import type {
   Applicant,
   UpdateStatusRequest,
-} from '../../../store/slices/applicantsSlice';
+} from '../../../services/applicantsService';
 import { toPlainString } from '../../../utils/strings';
 
 const ApplicantData = () => {
@@ -62,7 +62,7 @@ const ApplicantData = () => {
   });
   
   // Prefer the fetched data, but fall back to navigation state if the fetch returns undefined
-  const applicant = fetchedApplicant ?? stateApplicant;
+  const applicant: any = (fetchedApplicant ?? stateApplicant) as any;
 
   if (loading) {
     return (

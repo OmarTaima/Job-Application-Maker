@@ -15,6 +15,7 @@ import {
   TableRow,
 } from "../../../components/ui/table";
 import { useRoles, usePermissions, useUsers, useUpdateRole } from "../../../hooks/queries";
+import type { User } from "../../../services/usersService";
 import { toPlainString } from "../../../utils/strings";
 
 export default function PreviewRole() {
@@ -24,10 +25,11 @@ export default function PreviewRole() {
   const isEditMode = searchParams.get("edit") === "true";
 
   // Fetch data
-  const { data: roles = [], isLoading: rolesLoading } = useRoles();
-  const { data: permissions = [], isLoading: permissionsLoading } =
+  const { data: roles = [] as any[], isLoading: rolesLoading } = useRoles();
+  const { data: permissions = [] as any[], isLoading: permissionsLoading } =
     usePermissions();
-  const { data: users = [], isLoading: usersLoading } = useUsers();
+  const { data: usersData, isLoading: usersLoading } = useUsers();
+  const users: User[] = Array.isArray(usersData) ? usersData : ((usersData as any)?.data ?? []) as User[];
   const updateRoleMutation = useUpdateRole();
 
   // Edit state
@@ -69,9 +71,8 @@ export default function PreviewRole() {
   // Find users with this role
   const roleUsers = useMemo(() => {
     if (!role) return [];
-    return users.filter((user) => {
-      const userRoleId =
-        typeof user.roleId === "string" ? user.roleId : user.roleId?._id;
+    return users.filter((user: User) => {
+      const userRoleId = typeof user.roleId === "string" ? user.roleId : (user.roleId as any)?._id;
       return userRoleId === role._id;
     });
   }, [users, role]);
@@ -81,7 +82,7 @@ export default function PreviewRole() {
     if (!role || !role.permissions) return [];
 
     return role.permissions
-      .map((rolePermId) => {
+      .map((rolePermId: any) => {
         // Handle both string IDs and permission objects
         const permId =
           typeof rolePermId === "string"
@@ -462,7 +463,7 @@ export default function PreviewRole() {
                         <td className="px-4 py-3">
                           <div className="flex flex-wrap gap-1">
                             {(perm.actions || ["read", "write", "create"]).map(
-                              (action) => {
+                              (action: any) => {
                                 const isPermSelected = editForm.permissions.includes(perm._id);
                                 const isAccessSelected = permissionAccess[perm._id]?.includes(action);
 
@@ -600,7 +601,7 @@ export default function PreviewRole() {
                 </TableRow>
               </TableHeader>
               <TableBody className="divide-y divide-gray-200 dark:divide-gray-700">
-                {roleUsers.map((user) => (
+                {roleUsers.map((user: User) => (
                   <TableRow
                     key={user._id}
                     className="hover:bg-gray-50 dark:hover:bg-gray-800"
