@@ -99,8 +99,14 @@ export default function Home() {
     filtered.forEach((a) => {
       c[a.status] = (c[a.status] || 0) + 1;
     });
+    // Always hide trashed from counts (display as 0)
+    c['trashed'] = 0;
     return c;
   }, [filtered]);
+
+  // Exclude trashed applicants for total calculations
+  const filteredNonTrashed = useMemo(() => filtered.filter((a) => a.status !== 'trashed'), [filtered]);
+  const applicantsNonTrashed = useMemo(() => applicants.filter((a) => a.status !== 'trashed'), [applicants]);
 
   const STATUS_ICON: Record<Applicant['status'] | 'total', any> = {
     total: UserIcon,
@@ -140,9 +146,9 @@ export default function Home() {
             <div className="flex items-center gap-3 ml-4">
               <div className="text-sm text-gray-500">Showing</div>
               <div className="font-semibold text-gray-800">
-                {loading ? "Loading..." : `${filtered.length} applicants`}
+                {loading ? "Loading..." : `${filteredNonTrashed.length} applicants`}
               </div>
-              <div className="text-sm text-gray-400">(from total {applicants.length})</div>
+              <div className="text-sm text-gray-400">(from total {applicantsNonTrashed.length})</div>
             </div>
           </div>
         </div>
@@ -162,13 +168,13 @@ export default function Home() {
             </div>
             <div className="mt-2 text-2xl font-bold text-gray-800">{loading ? (
               <span className="inline-block h-6 w-14 rounded bg-gray-200 animate-pulse" />
-            ) : filtered.length}</div>
+            ) : filteredNonTrashed.length}</div>
             {openStatus === 'total' && (
               <div className="mt-4 border-t pt-3 space-y-2 max-h-56 overflow-auto">
-                {filtered.length === 0 ? (
+                {filteredNonTrashed.length === 0 ? (
                   <div className="text-sm text-gray-500">No applicants</div>
                 ) : (
-                  filtered.map((a) => (
+                  filteredNonTrashed.map((a) => (
                     <div key={a._id} className="flex items-center justify-between">
                       <div>
                         <div className="text-sm font-medium text-gray-800">{a.fullName}</div>
