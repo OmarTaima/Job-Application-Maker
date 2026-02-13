@@ -1216,9 +1216,9 @@ const ApplicantData = () => {
                                         })()
                                       }
                                     >
-                                      <span dir={summaryIsArabic ? 'rtl' : undefined} className={summaryIsArabic ? 'text-right w-full' : ''}>
-                                        {displaySummary}
-                                      </span>
+                                      <span dir={summaryIsArabic ? 'rtl' : undefined} className={`${summaryIsArabic ? 'text-right w-full' : ''} font-cairo`}>
+                                          {displaySummary}
+                                        </span>
                                       <svg
                                         className={`size-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
                                         fill="none"
@@ -1309,7 +1309,7 @@ const ApplicantData = () => {
                                                             ${rowIsArabic ? "text-right" : "text-left"}
                                                           `}
                                                         >
-                                                          {label} :
+                                                          <span className="font-cairo">{label} :</span>
                                                         </div>
 
                                                         {/* Value */}
@@ -1416,7 +1416,7 @@ const ApplicantData = () => {
                     return (
                       <div key={key} className={`group p-4 bg-white dark:bg-gray-800 rounded-xl hover:shadow-md transition-all duration-200 border-l-4 border-blue-500`}>
                         <div className="flex items-center gap-4">
-                          <span className={`text-xs font-extrabold text-blue-600 dark:text-blue-400 uppercase tracking-wider whitespace-nowrap`}>
+                          <span className={`text-xs font-extrabold text-blue-600 dark:text-blue-400 uppercase tracking-wider whitespace-nowrap font-cairo`}>
                             {key
                               .replace(/_/g, ' ')
                               .replace(/\b\w/g, (c) => c.toUpperCase())}:
