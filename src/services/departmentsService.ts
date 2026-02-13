@@ -78,6 +78,7 @@ export const departmentsService = {
     try {
       const params: any = companyId ? { companyId } : {};
       // Request only non-deleted departments by default
+      // Always request only non-deleted departments
       params.deleted = "false";
       const response = await axios.get<DepartmentsResponse>("/departments", {
         params,

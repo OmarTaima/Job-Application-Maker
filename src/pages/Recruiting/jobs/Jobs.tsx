@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useDepartment } from "../../../hooks/queries";
 import Swal from "sweetalert2";
 import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
 import PageMeta from "../../../components/common/PageMeta";
@@ -26,6 +27,7 @@ import { toPlainString } from "../../../utils/strings";
 type Job = JobPosition & {
   companyName?: string;
   departmentName?: string;
+  departmentIdForFetch?: string;
 };
 
 export default function Jobs() {
@@ -130,23 +132,49 @@ export default function Jobs() {
           ? toPlainString((position.companyId as any).name) || "Unknown Company"
           : "Unknown Company";
 
-        const departmentName = typeof position.departmentId === "object" && position.departmentId
-          ? toPlainString((position.departmentId as any).name) || "Unknown Department"
-          : "Unknown Department";
+        let departmentName = "";
+        let departmentIdForFetch = undefined;
+        if (typeof position.departmentId === "object" && position.departmentId) {
+          departmentName = toPlainString((position.departmentId as any).name) || "";
+        } else if (typeof position.departmentId === "string" && position.departmentId) {
+          departmentIdForFetch = position.departmentId;
+        }
 
         return {
           ...position,
           companyName,
           departmentName,
+          departmentIdForFetch,
         };
       });
   }, [jobPositions, user, isAdmin]);
+
+  // Collect all missing department IDs
+  const missingDepartmentIds = useMemo(() => {
+    const ids = new Set<string>();
+    jobs.forEach((job: any) => {
+      if (!job.departmentName && job.departmentIdForFetch) {
+        ids.add(job.departmentIdForFetch);
+      }
+    });
+    return Array.from(ids);
+  }, [jobs]);
+
+  // Fetch all missing departments (one hook per id, but at top level)
+  const departmentDataMap: Record<string, any> = {};
+  missingDepartmentIds.forEach((id) => {
+    const { data } = useDepartment(id, { enabled: !!id });
+    if (data) departmentDataMap[id] = data;
+  });
 
   const filteredJobs = jobs.filter(
     (job: any) => {
       const title = typeof job.title === "string" ? job.title : job.title?.en || "";
       const companyName = toPlainString(job.companyName);
-      const departmentName = toPlainString(job.departmentName);
+      let departmentName = toPlainString(job.departmentName);
+      if (!departmentName && job.departmentIdForFetch && departmentDataMap[job.departmentIdForFetch]) {
+        departmentName = toPlainString(departmentDataMap[job.departmentIdForFetch].name);
+      }
       return (
         title.toLowerCase().includes(searchTerm.toLowerCase()) ||
         job.jobCode?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -466,7 +494,11 @@ export default function Jobs() {
                         </TableCell>
                         <TableCell className="px-5 py-4 text-start">
                           <span className="text-sm text-gray-600 dark:text-gray-400">
-                            {job.departmentName || "Unknown"}
+                            {job.departmentName
+                              ? job.departmentName
+                              : job.departmentIdForFetch && departmentDataMap[job.departmentIdForFetch]
+                              ? toPlainString(departmentDataMap[job.departmentIdForFetch].name)
+                              : ""}
                           </span>
                         </TableCell>
                         <TableCell className="px-5 py-4 text-start">

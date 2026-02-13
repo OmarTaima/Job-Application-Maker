@@ -1,5 +1,6 @@
 import type { ChangeEvent, FormEvent } from "react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import Swal from "sweetalert2";
 import { Link, useNavigate } from "react-router";
 import { useAuth } from "../../../context/AuthContext";
@@ -20,6 +21,7 @@ import {
   TableRow,
 } from "../../../components/ui/table";
 import { companiesService } from "../../../services/companiesService";
+import { usersService } from "../../../services/usersService";
 import {
   useUsers,
   useCreateUser,
@@ -73,7 +75,71 @@ export default function Users() {
   const canWrite = hasPermission("User Management", "write");
   
   // React Query hooks - data fetching happens automatically
-  const { data: users = [], isLoading: usersLoading, error } = useUsers();
+  // Pagination state
+  const [page, setPage] = useState(1);
+  const uiPageSize = 10; // number of items per UI page
+  const apiPageCount = 100; // fetch this many items per API request to allow instant UI paging
+  type User = {
+    _id: string;
+    fullName?: string;
+    name?: string;
+    email: string;
+    roleId?: string | { _id: string; name: string };
+    phone?: string;
+    isActive?: boolean;
+    [key: string]: any;
+  };
+  type UsersApiResponse = {
+    data?: User[];
+    pageCount?: number | string;
+    totalCount?: number | string;
+    page?: number | string;
+    [key: string]: any;
+  };
+
+  // Compute which API block (page) to request based on UI page
+  const blockSizePages = Math.max(1, Math.floor(apiPageCount / uiPageSize));
+  const apiPage = Math.max(1, Math.ceil(page / blockSizePages));
+
+  // Ensure usersResponse always has UsersApiResponse shape (this returns up to `apiPageCount` items)
+  const { data: usersResponse = {} as UsersApiResponse, isLoading: usersLoading, error } = useUsers({ page: apiPage, PageCount: apiPageCount });
+  // Ensure we have a typed response to avoid 'unknown' from the hook
+  const safeUsersResponse = (usersResponse ?? {}) as UsersApiResponse;
+  const users: User[] = Array.isArray(safeUsersResponse.data) ? safeUsersResponse.data : [];
+
+  const queryClient = useQueryClient();
+
+  const sortedUsers: User[] = users.slice().sort((a, b) => {
+    if (!!a.isActive === !!b.isActive) return 0;
+    return a.isActive ? -1 : 1;
+  });
+
+  // Parse pageCount and totalCount from API response robustly
+  const totalCount: number = Number(safeUsersResponse.totalCount) > 0 ? Number(safeUsersResponse.totalCount) : users.length;
+  const pageCount: number = Math.max(1, Math.ceil(totalCount / uiPageSize));
+
+  // Prefetch next API block for instant navigation when user approaches block boundary
+  useEffect(() => {
+    const maxApiPage = Math.max(1, Math.ceil(pageCount / blockSizePages));
+    if (apiPage < maxApiPage) {
+      const nextApiPage = apiPage + 1;
+      const nextKey = ["users", nextApiPage, apiPageCount];
+      // Use the object form for prefetchQuery to match the QueryClient API signature
+      queryClient.prefetchQuery({
+        queryKey: nextKey,
+        queryFn: () => usersService.getAllUsers({ page: nextApiPage, PageCount: apiPageCount }),
+      });
+    }
+  }, [apiPage, pageCount, blockSizePages, apiPageCount, queryClient]);
+
+  // Ensure local page state is within bounds (1..pageCount)
+  useEffect(() => {
+    const clamped = Math.max(1, Math.min(page, pageCount || 1));
+    if (clamped !== page) setPage(clamped);
+  }, [pageCount]);
+
+  // UI page to display
+  const displayedPage = page;
   const { data: roles = [] } = useRoles();
   const { data: permissions = [] } = usePermissions();
   const { data: companies = [] } = useCompanies();
@@ -378,7 +444,7 @@ export default function Users() {
       />
       <PageBreadcrumb pageTitle="Users" />
 
-      {loading ? (
+      {loading && users.length === 0 ? (
         <LoadingSpinner fullPage message="Loading users..." />
       ) : (
         <div className="space-y-6">
@@ -991,115 +1057,103 @@ export default function Users() {
                 No users found
               </div>
             ) : (
-              <Table className="min-w-[800px]">
-                <TableHeader>
-                  <TableRow>
-                    <TableCell
-                      isHeader
-                      className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
+              <>
+                <Table className="min-w-[800px]">
+                  <TableHeader>
+                    <TableRow>
+                      <TableCell isHeader className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800">Name</TableCell>
+                      <TableCell isHeader className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800">Email</TableCell>
+                      <TableCell isHeader className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800">Phone</TableCell>
+                      <TableCell isHeader className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800">Role</TableCell>
+                      <TableCell isHeader className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800">Status</TableCell>
+                      <TableCell isHeader className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800">Actions</TableCell>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {usersLoading && users.length > 0 && users.length < totalCount ? (
+                      // Show skeleton rows while fetching next page (only when not using full client-side list)
+                      Array.from({ length: uiPageSize }).map((_, i) => (
+                        <TableRow key={`skeleton-${i}`} className="animate-pulse">
+                          <TableCell className="px-4 py-3 text-sm">
+                            <div className="h-4 w-40 bg-gray-200 dark:bg-gray-700 rounded" />
+                          </TableCell>
+                          <TableCell className="px-4 py-3 text-sm">
+                            <div className="h-4 w-56 bg-gray-200 dark:bg-gray-700 rounded" />
+                          </TableCell>
+                          <TableCell className="px-4 py-3 text-sm">
+                            <div className="h-4 w-24 bg-gray-200 dark:bg-gray-700 rounded" />
+                          </TableCell>
+                          <TableCell className="px-4 py-3 text-sm">
+                            <div className="h-4 w-32 bg-gray-200 dark:bg-gray-700 rounded" />
+                          </TableCell>
+                          <TableCell className="px-4 py-3 text-sm">
+                            <div className="h-4 w-20 bg-gray-200 dark:bg-gray-700 rounded" />
+                          </TableCell>
+                          <TableCell className="px-4 py-3 text-sm">
+                            <div className="h-4 w-12 bg-gray-200 dark:bg-gray-700 rounded ml-auto" />
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      // Compute per-page users: if we have full list, slice it; otherwise server already provided page
+                      (() => {
+                        const start = ((displayedPage - 1) % blockSizePages) * uiPageSize;
+                        const end = start + uiPageSize;
+                        const pageUsers = sortedUsers.slice(start, end);
+                        return pageUsers.map((user: any) => {
+                          const roleName = typeof user.roleId === "object" && user.roleId ? user.roleId.name || "-" : typeof user.roleId === "string" ? user.roleId : "-";
+                          const userName = toPlainString(user.fullName || user.name || "-");
+                          return (
+                            <TableRow key={user._id} onClick={() => navigate(`/user/${user._id}`)} className="hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer">
+                              <TableCell className="px-4 py-3 text-sm">{userName}</TableCell>
+                              <TableCell className="px-4 py-3 text-sm">{user.email}</TableCell>
+                              <TableCell className="px-4 py-3 text-sm">{user.phone || "-"}</TableCell>
+                              <TableCell className="px-4 py-3 text-sm">{roleName}</TableCell>
+                              <TableCell className="px-4 py-3 text-sm">
+                                <span className={`px-2 py-1 text-xs rounded ${user.isActive !== false ? "bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200" : "bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200"}`}>{user.isActive !== false ? "Active" : "Inactive"}</span>
+                              </TableCell>
+                              <TableCell className="px-4 py-3 text-sm">
+                                <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                                  {canWrite && (
+                                    <button onClick={() => handleEditUser(user)} className="rounded p-1.5 text-brand-600 transition hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-brand-500/10" title="Edit user">
+                                      <PencilIcon className="size-4" />
+                                    </button>
+                                  )}
+                                  {canCreate && (
+                                    <button onClick={() => handleDeleteUser(user._id)} disabled={isDeletingUser === user._id} className="rounded p-1.5 text-error-600 transition hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-500/10 disabled:opacity-50 disabled:cursor-not-allowed" title={isDeletingUser === user._id ? "Deleting..." : "Delete user"}>
+                                      <TrashBinIcon className="size-4" />
+                                    </button>
+                                  )}
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        });
+                      })()
+                    )}
+                  </TableBody>
+                </Table>
+                {/* Pagination Controls */}
+                <div className="flex justify-between items-center mt-4">
+                  <span className="text-sm text-gray-500">Page {displayedPage} of {pageCount} | Total: {totalCount}</span>
+                  <div className="flex gap-2">
+                    <button
+                      disabled={displayedPage <= 1}
+                      onClick={() => setPage(Math.max(1, displayedPage - 1))}
+                      className="px-3 py-1 rounded bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 disabled:opacity-50"
                     >
-                      Name
-                    </TableCell>
-                    <TableCell
-                      isHeader
-                      className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
+                      Previous
+                    </button>
+                    <button
+                      disabled={displayedPage >= pageCount}
+                      onClick={() => setPage(Math.min(pageCount, displayedPage + 1))}
+                      className="px-3 py-1 rounded bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 disabled:opacity-50"
                     >
-                      Email
-                    </TableCell>
-                    <TableCell
-                      isHeader
-                      className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
-                    >
-                      Phone
-                    </TableCell>
-                    <TableCell
-                      isHeader
-                      className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
-                    >
-                      Role
-                    </TableCell>
-                    <TableCell
-                      isHeader
-                      className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
-                    >
-                      Status
-                    </TableCell>
-                    <TableCell
-                      isHeader
-                      className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
-                    >
-                      Actions
-                    </TableCell>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {users.map((user) => {
-                    const roleName =
-                      typeof user.roleId === "object" && user.roleId
-                        ? user.roleId.name || "-"
-                        : typeof user.roleId === "string" 
-                        ? user.roleId 
-                        : "-";
-                    const userName = toPlainString(user.fullName || user.name || "-");
-
-                    return (
-                      <TableRow
-                        key={user._id}
-                        onClick={() => navigate(`/user/${user._id}`)}
-                        className="hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer"
-                      >
-            
-                        <TableCell className="px-4 py-3 text-sm">
-                          {userName}
-                        </TableCell>
-                        <TableCell className="px-4 py-3 text-sm">
-                          {user.email}
-                        </TableCell>
-                        <TableCell className="px-4 py-3 text-sm">
-                          {user.phone || "-"}
-                        </TableCell>
-                        <TableCell className="px-4 py-3 text-sm">
-                          {roleName}
-                        </TableCell>
-                        <TableCell className="px-4 py-3 text-sm">
-                          <span
-                            className={`px-2 py-1 text-xs rounded ${
-                              user.isActive !== false
-                                ? "bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200"
-                                : "bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200"
-                            }`}
-                          >
-                            {user.isActive !== false ? "Active" : "Inactive"}
-                          </span>
-                        </TableCell>
-                        <TableCell className="px-4 py-3 text-sm">
-                          <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
-                            {canWrite && (
-                              <button
-                                onClick={() => handleEditUser(user)}
-                                className="rounded p-1.5 text-brand-600 transition hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-brand-500/10"
-                                title="Edit user"
-                              >
-                                <PencilIcon className="size-4" />
-                              </button>
-                            )}
-                            {canCreate && (
-                              <button
-                                onClick={() => handleDeleteUser(user._id)}
-                                disabled={isDeletingUser === user._id}
-                                className="rounded p-1.5 text-error-600 transition hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-500/10 disabled:opacity-50 disabled:cursor-not-allowed"
-                                title={isDeletingUser === user._id ? "Deleting..." : "Delete user"}
-                              >
-                                <TrashBinIcon className="size-4" />
-                              </button>
-                            )}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
+                      Next
+                    </button>
+                  </div>
+                </div>
+              </>
             )}
           </ComponentCard>
         </div>

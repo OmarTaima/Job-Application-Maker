@@ -175,61 +175,85 @@ class ApplicantsService {
    */
   async getAllApplicants(
     companyId?: string[],
-    jobPositionId?: string
+    jobPositionId?: string | string[]
   ): Promise<Applicant[]> {
     try {
-      const params: any = {};
+      const paramsBase: any = {};
       if (companyId && companyId.length > 0) {
         if (companyId.length === 1) {
-          params.companyId = companyId[0];
+          paramsBase.companyId = companyId[0];
         } else {
-          params.companyId = companyId.join(",");
+          paramsBase.companyId = companyId.join(",");
         }
       }
-     
-      if (jobPositionId) {
-        params.jobPositionId = jobPositionId;
-      }
-      
-      // Fetch all pages by making multiple requests
-      let allApplicants: Applicant[] = [];
-      let currentPage = 1;
-      let totalPages = 1;
-      
-      do {
-        const response = await axios.get("/applicants", { 
-          params: { ...params, page: currentPage, PageCount: 100 } 
-        });
-        const payload = response.data;
-        
-        // Extract applicants from current page
-        let pageData: Applicant[] = [];
-        if (Array.isArray(payload)) {
-          pageData = payload;
-        } else if (payload && Array.isArray(payload.data)) {
-          pageData = payload.data;
-        } else if (payload && payload.data && Array.isArray(payload.data.data)) {
-          pageData = payload.data.data;
-        } else if (payload && payload.data && Array.isArray(payload.data.docs)) {
-          pageData = payload.data.docs;
-        }
-        
-        allApplicants = [...allApplicants, ...pageData];
-        
-        // Determine if there are more pages
-        if (payload && payload.TotalCount && payload.PageCount) {
-          totalPages = Math.ceil(payload.TotalCount / payload.PageCount);
-        } else if (payload && payload.page && typeof payload.page === 'string') {
-          // Parse "1 of 3" format
-          const match = payload.page.match(/\d+\s+of\s+(\d+)/);
-          if (match) {
-            totalPages = parseInt(match[1], 10);
+      // Always filter out deleted applicants
+      paramsBase.deleted = false;
+
+      const collectFromOne = async (jpId?: string) => {
+        const result: Applicant[] = [];
+        let currentPage = 1;
+        let totalPages = 1;
+
+        do {
+          const params = { ...paramsBase, page: currentPage, PageCount: 100 } as any;
+          if (jpId) params.jobPositionId = jpId;
+          const response = await axios.get("/applicants", { params });
+          const payload = response.data;
+
+          // Extract applicants from current page
+          let pageData: Applicant[] = [];
+          if (Array.isArray(payload)) {
+            pageData = payload;
+          } else if (payload && Array.isArray(payload.data)) {
+            pageData = payload.data;
+          } else if (payload && payload.data && Array.isArray(payload.data.data)) {
+            pageData = payload.data.data;
+          } else if (payload && payload.data && Array.isArray(payload.data.docs)) {
+            pageData = payload.data.docs;
           }
-        }
-        
-        currentPage++;
-      } while (currentPage <= totalPages);
-      
+
+          result.push(...pageData);
+
+          // Determine total pages
+          if (payload && payload.TotalCount && payload.PageCount) {
+            totalPages = Math.ceil(payload.TotalCount / payload.PageCount);
+          } else if (payload && payload.page && typeof payload.page === 'string') {
+            const match = payload.page.match(/\d+\s+of\s+(\d+)/);
+            if (match) {
+              totalPages = parseInt(match[1], 10);
+            }
+          }
+
+          currentPage++;
+        } while (currentPage <= totalPages);
+
+        return result;
+      };
+
+      // Normalize jobPositionId param to array if comma-separated string provided
+      let jobIds: string[] | undefined;
+      if (Array.isArray(jobPositionId)) jobIds = jobPositionId;
+      else if (typeof jobPositionId === 'string' && jobPositionId.includes(',')) {
+        jobIds = jobPositionId.split(',').map((s) => s.trim()).filter(Boolean);
+      } else if (typeof jobPositionId === 'string' && jobPositionId.trim()) {
+        jobIds = [jobPositionId.trim()];
+      }
+
+      let allApplicants: Applicant[] = [];
+      if (jobIds && jobIds.length > 0) {
+        // Fetch per job id and aggregate, deduplicating by applicant _id
+        const sets = await Promise.all(jobIds.map((jid) => collectFromOne(jid)));
+        const combined = sets.flat();
+        const uniqueMap: Record<string, Applicant> = {};
+        combined.forEach((a) => {
+          if (a && a._id) uniqueMap[a._id] = a;
+        });
+        allApplicants = Object.values(uniqueMap);
+      } else {
+        // Single fetch (no job filter)
+        allApplicants = await collectFromOne(undefined);
+      }
+
       return allApplicants;
     } catch (error: any) {
       throw new ApiError(

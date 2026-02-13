@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import PageMeta from "../../components/common/PageMeta";
 import DatePicker from "../../components/form/date-picker";
 import { useAuth } from "../../context/AuthContext";
-import { useApplicants } from "../../hooks/queries";
+import { useApplicants, useJobPositions } from "../../hooks/queries";
 import type { Applicant } from "../../store/slices/applicantsSlice";
 import {
   PaperPlaneIcon,
@@ -50,8 +50,21 @@ export default function Home() {
     return usercompanyId.length > 0 ? usercompanyId : undefined;
   }, [user]);
 
+  // Fetch job positions first so we can convert company filter into jobPositionIds
+  const { data: jobPositions = [] } = useJobPositions(companyId);
+
+  const jobPositionIdsParam = useMemo(() => {
+    if (!companyId || companyId.length === 0) return undefined;
+    if (!jobPositions || jobPositions.length === 0) return undefined;
+    const ids = jobPositions
+      .map((j: any) => (typeof j._id === "string" ? j._id : j._id?._id))
+      .filter(Boolean);
+    if (ids.length === 0) return undefined;
+    return ids.join(",");
+  }, [companyId, jobPositions]);
+
   // Use React Query hook - handles caching, deduplication, and background refetching
-  const { data: applicants = [], isLoading: loading } = useApplicants(companyId);
+  const { data: applicants = [], isLoading: loading } = useApplicants(undefined, jobPositionIdsParam as any);
 
   const filtered = useMemo(() => {
     if (!range || range.length === 0) return applicants;

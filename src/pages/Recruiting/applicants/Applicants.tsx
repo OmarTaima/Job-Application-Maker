@@ -63,13 +63,27 @@ const Applicants = () => {
   }, [user?._id, user?.roleId?.name, user?.companies]);
 
   // Use React Query hooks
+  // Fetch job positions first so we can convert company filter into jobPositionIds
+  const { data: jobPositions = [], isLoading: jobPositionsLoading } =
+    useJobPositions(companyId);
+
+  // If the user is assigned to one or more companies, build a jobPositionId string
+  // that covers all positions inside those companies and pass it to applicants query
+  const jobPositionIdsParam = useMemo(() => {
+    if (!companyId || companyId.length === 0) return undefined;
+    if (!jobPositions || jobPositions.length === 0) return undefined;
+    const ids = jobPositions
+      .map((j: any) => (typeof j._id === "string" ? j._id : j._id?._id))
+      .filter(Boolean);
+    if (ids.length === 0) return undefined;
+    return ids.join(",");
+  }, [companyId, jobPositions]);
+
   const {
     data: applicants = [],
     isLoading: applicantsLoading,
     error,
-  } = useApplicants(companyId);
-  const { data: jobPositions = [], isLoading: jobPositionsLoading } =
-    useJobPositions(companyId);
+  } = useApplicants(undefined, jobPositionIdsParam as any);
   const updateStatusMutation = useUpdateApplicantStatus();
   const { data: allCompaniesRaw = [] } = useCompanies(companyId as any);
 

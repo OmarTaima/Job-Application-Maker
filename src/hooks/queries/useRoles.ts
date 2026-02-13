@@ -51,7 +51,9 @@ export function useCreateRole() {
           permissionsCount: newRole.permissions?.length || 0,
           usersCount: 0,
         };
-        return [...old, tempRole];
+        if (Array.isArray(old)) return [...old, tempRole];
+        if (old.data && Array.isArray(old.data)) return { ...old, data: [...old.data, tempRole] };
+        return old;
       });
 
       return { previousRoles };
@@ -70,10 +72,16 @@ export function useCreateRole() {
       }
 
       queryClient.setQueryData(rolesKeys.list(), (old: any) => {
-        if (!old) return [newRole];
-        return old
-          .map((role: any) => (role._id && String(role._id).startsWith("temp-") ? newRole : role))
-          .filter((role: any, index: number, self: any[]) => self.findIndex((r: any) => r._id === role._id) === index);
+        if (!old) return { data: [newRole] };
+        if (Array.isArray(old)) {
+          const updated = old.map((role: any) => (role._id && String(role._id).startsWith("temp-") ? newRole : role)).filter((role: any, index: number, self: any[]) => self.findIndex((r: any) => r._id === role._id) === index);
+          return updated;
+        }
+        if (old.data && Array.isArray(old.data)) {
+          const updated = old.data.map((role: any) => (role._id && String(role._id).startsWith("temp-") ? newRole : role)).filter((role: any, index: number, self: any[]) => self.findIndex((r: any) => r._id === role._id) === index);
+          return { ...old, data: updated };
+        }
+        return old;
       });
     },
     onSettled: () => {
@@ -95,9 +103,9 @@ export function useUpdateRole() {
 
       queryClient.setQueryData(rolesKeys.list(), (old: any) => {
         if (!old) return old;
-        return old.map((role: any) =>
-          role._id === id ? { ...role, ...data } : role
-        );
+        if (Array.isArray(old)) return old.map((role: any) => role._id === id ? { ...role, ...data } : role);
+        if (old.data && Array.isArray(old.data)) return { ...old, data: old.data.map((role: any) => role._id === id ? { ...role, ...data } : role) };
+        return old;
       });
 
       return { previousRoles };
@@ -125,7 +133,9 @@ export function useDeleteRole() {
 
       queryClient.setQueryData(rolesKeys.list(), (old: any) => {
         if (!old) return old;
-        return old.filter((role: any) => role._id !== id);
+        if (Array.isArray(old)) return old.filter((role: any) => role._id !== id);
+        if (old.data && Array.isArray(old.data)) return { ...old, data: old.data.filter((role: any) => role._id !== id) };
+        return old;
       });
 
       return { previousRoles };

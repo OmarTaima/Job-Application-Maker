@@ -19,7 +19,14 @@ export const companiesKeys = {
 export function useCompanies(companyId?: string[]) {
   return useQuery({
     queryKey: companiesKeys.list(companyId),
-    queryFn: () => companiesService.getAllCompanies(companyId),
+    queryFn: async () => {
+      // If caller passed a single companyId, prefer the single-company endpoint
+      if (companyId && companyId.length === 1) {
+        const comp = await companiesService.getCompanyById(companyId[0]);
+        return [comp];
+      }
+      return companiesService.getAllCompanies(companyId);
+    },
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 }
@@ -71,7 +78,9 @@ export function useCreateCompany() {
           _id: `temp-${Date.now()}`,
           createdAt: new Date().toISOString(),
         };
-        return [...old, tempCompany];
+        if (Array.isArray(old)) return [...old, tempCompany];
+        if (old.data && Array.isArray(old.data)) return { ...old, data: [...old.data, tempCompany] };
+        return old;
       });
 
       return { previousCompanies };
@@ -83,12 +92,23 @@ export function useCreateCompany() {
     },
     onSuccess: (newCompany) => {
       queryClient.setQueryData(companiesKeys.list(), (old: any) => {
-        if (!old) return [newCompany];
-        return old.map((company: any) => 
-          company._id.startsWith('temp-') ? newCompany : company
-        ).filter((company: any, index: number, self: any[]) => 
-          self.findIndex((c: any) => c._id === company._id) === index
-        );
+        if (!old) return { data: [newCompany] };
+        if (Array.isArray(old)) {
+          if (Array.isArray(old)) {
+            const updated = old.map((company: any) => company._id.startsWith('temp-') ? newCompany : company).filter((company: any, index: number, self: any[]) => self.findIndex((c: any) => c._id === company._id) === index);
+            return updated;
+          }
+          if (old && old.data && Array.isArray(old.data)) {
+            const updated = old.data.map((company: any) => company._id.startsWith('temp-') ? newCompany : company).filter((company: any, index: number, self: any[]) => self.findIndex((c: any) => c._id === company._id) === index);
+            return { ...old, data: updated };
+          }
+          return old;
+        }
+        if (old.data && Array.isArray(old.data)) {
+          const updated = old.data.map((company: any) => company._id.startsWith('temp-') ? newCompany : company).filter((company: any, index: number, self: any[]) => self.findIndex((c: any) => c._id === company._id) === index);
+          return { ...old, data: updated };
+        }
+        return old;
       });
     },
     onSettled: () => {
@@ -113,9 +133,11 @@ export function useUpdateCompany() {
 
       queryClient.setQueryData(companiesKeys.list(), (old: any) => {
         if (!old) return old;
-        return old.map((company: any) =>
-          company._id === id ? { ...company, ...data } : company
-        );
+        if (Array.isArray(old)) return old.map((company: any) => company._id === id ? { ...company, ...data } : company);
+        if (old && old.data && Array.isArray(old.data)) return { ...old, data: old.data.map((company: any) => company._id === id ? { ...company, ...data } : company) };
+        return old;
+        if (old.data && Array.isArray(old.data)) return { ...old, data: old.data.map((company: any) => company._id === id ? { ...company, ...data } : company) };
+        return old;
       });
 
       queryClient.setQueryData(companiesKeys.detail(id), (old: any) => {
@@ -151,7 +173,9 @@ export function useDeleteCompany() {
 
       queryClient.setQueryData(companiesKeys.list(), (old: any) => {
         if (!old) return old;
-        return old.filter((company: any) => company._id !== id);
+        if (Array.isArray(old)) return old.filter((company: any) => company._id !== id);
+        if (old.data && Array.isArray(old.data)) return { ...old, data: old.data.filter((company: any) => company._id !== id) };
+        return old;
       });
 
       return { previousCompanies };

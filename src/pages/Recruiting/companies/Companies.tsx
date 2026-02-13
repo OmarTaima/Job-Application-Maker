@@ -34,7 +34,7 @@ export default function Companies() {
   const [showRaw, setShowRaw] = useState(false);
 
   // Memoize user-derived values
-  const { isAdmin } = useMemo(() => {
+  const { isAdmin, companyId } = useMemo(() => {
     if (!user) return { isAdmin: false, companyId: undefined };
 
     const isAdmin = user?.roleId?.name?.toLowerCase().includes("admin");
@@ -53,7 +53,7 @@ export default function Companies() {
     data: companies = [],
     isLoading: companiesLoading,
     error,
-  } = useCompanies();
+  } = useCompanies(companyId);
   const { data: departments = [] } = useDepartments();
   const deleteCompanyMutation = useDeleteCompany();
 

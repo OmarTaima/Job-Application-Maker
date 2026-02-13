@@ -17,11 +17,15 @@ export const usersKeys = {
 };
 
 // Get all users
-export function useUsers(companyId?: string[]) {
+export function useUsers(params: any = {}) {
+  // Ensure page is a number
+  const pageParam = typeof params.page === "string" ? parseInt(params.page, 10) : params.page;
   return useQuery({
-    queryKey: usersKeys.list(companyId),
-    queryFn: () => usersService.getAllUsers(companyId),
+    queryKey: [...usersKeys.list(params.companyId), { page: pageParam }],
+    queryFn: () => usersService.getAllUsers({ ...params, page: pageParam }),
     staleTime: 5 * 60 * 1000,
+    // Keep previous page data while fetching next page to avoid empty loading states
+    keepPreviousData: true,
   });
 }
 
@@ -53,7 +57,12 @@ export function useCreateUser() {
           createdAt: new Date().toISOString(),
           deleted: false,
         };
-        return [...old, tempUser];
+        if (Array.isArray(old)) {
+          return [...old, tempUser];
+        } else if (old.data && Array.isArray(old.data)) {
+          return { ...old, data: [...old.data, tempUser] };
+        }
+        return old;
       });
 
       return { previousUsers };
@@ -67,12 +76,18 @@ export function useCreateUser() {
     },
     onSuccess: (newUser) => {
       queryClient.setQueriesData({ queryKey: usersKeys.lists() }, (old: any) => {
-        if (!old) return [newUser];
-        return old.map((user: any) => 
+        let arr: any[] = [];
+        if (Array.isArray(old)) arr = old;
+        else if (old && Array.isArray(old.data)) arr = old.data;
+        else if (!old) return { data: [newUser] };
+        else return old;
+        const updated = arr.map((user: any) =>
           user._id.startsWith('temp-') ? newUser : user
-        ).filter((user: any, index: number, self: any[]) => 
+        ).filter((user: any, index: number, self: any[]) =>
           self.findIndex((u: any) => u._id === user._id) === index
         );
+        if (Array.isArray(old)) return updated;
+        else return { ...old, data: updated };
       });
     },
     onSettled: () => {
@@ -96,12 +111,17 @@ export function useUpdateUser() {
       const previousDetail = queryClient.getQueryData(usersKeys.detail(id));
 
       queryClient.setQueriesData({ queryKey: usersKeys.lists() }, (old: any) => {
-        if (!old) return old;
-        return old.map((user: any) =>
+        let arr: any[] = [];
+        if (Array.isArray(old)) arr = old;
+        else if (old && Array.isArray(old.data)) arr = old.data;
+        else if (!old) return old;
+        else return old;
+        const updated = arr.map((user: any) =>
           user._id === id ? { ...user, ...data } : user
         );
+        if (Array.isArray(old)) return updated;
+        else return { ...old, data: updated };
       });
-
       queryClient.setQueryData(usersKeys.detail(id), (old: any) => {
         if (!old) return old;
         return { ...old, ...data };
@@ -136,8 +156,14 @@ export function useDeleteUser() {
       const previousUsers = queryClient.getQueriesData({ queryKey: usersKeys.lists() });
 
       queryClient.setQueriesData({ queryKey: usersKeys.lists() }, (old: any) => {
-        if (!old) return old;
-        return old.filter((user: any) => user._id !== id);
+        let arr: any[] = [];
+        if (Array.isArray(old)) arr = old;
+        else if (old && Array.isArray(old.data)) arr = old.data;
+        else if (!old) return old;
+        else return old;
+        const updated = arr.filter((user: any) => user._id !== id);
+        if (Array.isArray(old)) return updated;
+        else return { ...old, data: updated };
       });
 
       return { previousUsers };
@@ -178,19 +204,38 @@ export function useUpdateUserCompanies() {
 
       queryClient.setQueriesData({ queryKey: usersKeys.lists() }, (old: any) => {
         if (!old) return old;
-        return old.map((user: any) => {
-          if (user._id === userId) {
-            const updatedCompanies = user.companies?.map((c: any) => {
-              const cId = typeof c.companyId === 'string' ? c.companyId : c.companyId._id;
-              if (cId === companyId) {
-                return { ...c, departments: data.departments };
-              }
-              return c;
-            }) || [];
-            return { ...user, companies: updatedCompanies };
-          }
-          return user;
-        });
+        // handle both array and paginated envelope shapes
+        if (Array.isArray(old)) {
+          return old.map((user: any) => {
+            if (user._id === userId) {
+              const updatedCompanies = user.companies?.map((c: any) => {
+                const cId = typeof c.companyId === 'string' ? c.companyId : c.companyId._id;
+                if (cId === companyId) {
+                  return { ...c, departments: data.departments };
+                }
+                return c;
+              }) || [];
+              return { ...user, companies: updatedCompanies };
+            }
+            return user;
+          });
+        }
+        if (old.data && Array.isArray(old.data)) {
+          return { ...old, data: old.data.map((user: any) => {
+            if (user._id === userId) {
+              const updatedCompanies = user.companies?.map((c: any) => {
+                const cId = typeof c.companyId === 'string' ? c.companyId : c.companyId._id;
+                if (cId === companyId) {
+                  return { ...c, departments: data.departments };
+                }
+                return c;
+              }) || [];
+              return { ...user, companies: updatedCompanies };
+            }
+            return user;
+          }) };
+        }
+        return old;
       });
 
       queryClient.setQueryData(usersKeys.detail(userId), (old: any) => {

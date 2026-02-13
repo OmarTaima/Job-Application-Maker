@@ -95,6 +95,7 @@ export const rolesService = {
   async getAllRoles(): Promise<Role[]> {
     try {
       // Request only non-deleted roles by default
+      // Always request only non-deleted roles
       const response = await axios.get<RolesResponse>("/roles", { params: { deleted: "false" } });
       return response.data.data;
     } catch (error: any) {

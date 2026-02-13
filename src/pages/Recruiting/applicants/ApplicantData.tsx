@@ -16,6 +16,7 @@ import { useAuth } from '../../../context/AuthContext';
 import {
   useApplicant,
   useJobPositions,
+  useJobPosition,
   useCompaniesWithApplicants,
   useCompany,
   useUpdateApplicantStatus,
@@ -109,11 +110,18 @@ const ApplicantData = () => {
       Swal.fire('No CV', 'No CV file available for this applicant', 'info');
       return;
     }
+    // Navigate to internal preview page and pass the CV URL in location state.
     const url = cvUrl ?? applicant.cvFilePath;
-    window.open(url, '_blank', 'noopener');
+    // Disable direct download for now by using an internal preview route without a download control.
+    navigate(`/applicant/${id}/cv`, { state: { cvUrl: url } });
   };
   
   const { data: jobPositions = [] } = useJobPositions();
+  const jobPosIdString = applicant && typeof applicant.jobPositionId === 'string' ? applicant.jobPositionId : '';
+  const { data: jobPositionDetail } = useJobPosition(jobPosIdString, { enabled: !!jobPosIdString });
+  // If job position detail provides a company id, fetch that company record to resolve names reliably
+  const jpCompanyId = jobPositionDetail && ((jobPositionDetail as any).companyId ? (typeof (jobPositionDetail as any).companyId === 'string' ? (jobPositionDetail as any).companyId : (jobPositionDetail as any).companyId?._id) : '');
+  const { data: jobPosCompany } = useCompany(jpCompanyId || '', { enabled: !!jpCompanyId });
   // Fetch only companies that have applicants (in this case, just the current applicant's company)
   const { data: companies = [] } = useCompaniesWithApplicants(
     applicant ? [applicant] : undefined
@@ -172,16 +180,22 @@ const ApplicantData = () => {
   const getCompanyName = () => {
     if (!applicant) return '';
     // Company info is nested in jobPositionId when populated
+    // If jobPosition is populated object, use its company
     if (typeof applicant.jobPositionId === 'object') {
       const jobPos = applicant.jobPositionId as any;
       if (typeof jobPos.companyId === 'object' && jobPos.companyId?.name) {
         return toPlainString(jobPos.companyId.name);
       }
-      // Try to look up using the ID from jobPosition
-      const compId =
-        typeof jobPos.companyId === 'string'
-          ? jobPos.companyId
-          : jobPos.companyId?._id;
+      const compId = typeof jobPos.companyId === 'string' ? jobPos.companyId : jobPos.companyId?._id;
+      const found = companies.find((c) => c._id === compId);
+      if (found) return toPlainString((found as any).name);
+    }
+    // If we have fetched the job position detail for a string id, use it
+    if (jobPositionDetail && (jobPositionDetail as any).companyId) {
+      const jp = jobPositionDetail as any;
+      if (jobPosCompany && (jobPosCompany as any)._id) return toPlainString((jobPosCompany as any).name || '');
+      if (typeof jp.companyId === 'object' && jp.companyId?.name) return toPlainString(jp.companyId.name);
+      const compId = typeof jp.companyId === 'string' ? jp.companyId : jp.companyId?._id;
       const found = companies.find((c) => c._id === compId);
       if (found) return toPlainString((found as any).name);
     }
@@ -205,11 +219,27 @@ const ApplicantData = () => {
     // Department info is nested in jobPositionId when populated
     if (typeof applicant.jobPositionId === 'object') {
       const jobPos = applicant.jobPositionId as any;
-      if (
-        typeof jobPos.departmentId === 'object' &&
-        jobPos.departmentId?.name
-      ) {
+      if (typeof jobPos.departmentId === 'object' && jobPos.departmentId?.name) {
         return toPlainString(jobPos.departmentId.name);
+      }
+    }
+    if (jobPositionDetail && (jobPositionDetail as any).departmentId) {
+      const jp = jobPositionDetail as any;
+      if (jobPosCompany && (jobPosCompany as any).departments) {
+        const deps = (jobPosCompany as any).departments || [];
+        const depId = typeof jp.departmentId === 'string' ? jp.departmentId : jp.departmentId?._id;
+        const found = deps.find((d: any) => d._id === depId || d === depId || String(d._id) === String(depId));
+        if (found) return toPlainString(found.name || found);
+      }
+      if (typeof jp.departmentId === 'object' && jp.departmentId?.name) return toPlainString(jp.departmentId.name);
+      // departmentId might be string id; try to find in fetched companies list (departments may be nested there)
+      const depId = typeof jp.departmentId === 'string' ? jp.departmentId : jp.departmentId?._id;
+      if (depId) {
+        for (const c of companies) {
+          const deps = (c as any).departments || [];
+          const found = deps.find((d: any) => d._id === depId || d === depId || String(d._id) === String(depId));
+          if (found) return toPlainString(found.name || found);
+        }
       }
     }
     // Fallback to direct departmentId if exists
@@ -341,6 +371,16 @@ const ApplicantData = () => {
     if (!applicant) return null as any;
     // If we fetched the canonical company from server, prefer it
     if ((fetchedCompany as any) && (fetchedCompany as any)?._id) return fetchedCompany as any;
+    // If we fetched job position detail (for string jobPositionId), prefer company from it
+    if (jobPositionDetail && (jobPositionDetail as any).companyId) {
+      const jp = jobPositionDetail as any;
+      if (typeof jp.companyId === 'object' && jp.companyId?._id) return jp.companyId;
+      const compId = typeof jp.companyId === 'string' ? jp.companyId : jp.companyId?._id;
+      if (compId) {
+        const found = companies.find((c) => c._id === compId);
+        if (found) return found as any;
+      }
+    }
     // If jobPositionId is populated with company info
     if (typeof applicant.jobPositionId === 'object') {
       const jobPos = applicant.jobPositionId as any;

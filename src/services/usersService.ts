@@ -63,6 +63,11 @@ export interface UpdateDepartmentsRequest {
 export interface UsersResponse {
   success: boolean;
   data: User[];
+  // Optional pagination fields returned by the API
+  page?: number | string;
+  pageCount?: number | string;
+  totalCount?: number | string;
+  message?: string;
 }
 
 export interface UserResponse {
@@ -89,17 +94,17 @@ export class ApiError extends Error {
 
 // Users API service
 export const usersService = {
-  // Get all users
-  async getAllUsers(companyId?: string[]): Promise<User[]> {
+  // Get all users (with pagination)
+  async getAllUsers(params: any = {}): Promise<UsersResponse> {
     try {
-      const params: any =
-        companyId && companyId.length > 0
-          ? { companyId: companyId.join(",") }
-          : {};
-      // Request only non-deleted users by default
+      // Always request only non-deleted users
       params.deleted = "false";
+      // Force page and pageCount for pagination
+      // Use provided page and PageCount, default to 1 and 10
+      params.page = params.page || 1;
+      params.PageCount = params.PageCount || 100;
       const response = await axios.get<UsersResponse>("/users", { params });
-      return response.data.data;
+      return response.data;
     } catch (error: any) {
       throw new ApiError(
         getErrorMessage(error),

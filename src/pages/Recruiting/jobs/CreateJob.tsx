@@ -1504,7 +1504,7 @@ export default function CreateJob() {
                 <div className="flex items-end pb-2">
                   <Switch
                     label="Salary Visible"
-                    defaultChecked={jobForm.salaryVisible}
+                    checked={jobForm.salaryVisible}
                     onChange={(checked) =>
                       handleInputChange("salaryVisible", checked)
                     }

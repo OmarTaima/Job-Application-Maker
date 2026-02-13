@@ -32,6 +32,7 @@ import PreviewUser from "./pages/Recruiting/users/PreviewUser";
 import RecommendedFields from "./pages/Recruiting/systemSettings/RecommendedFields";
 import Applicants from "./pages/Recruiting/applicants/Applicants";
 import ApplicantData from "./pages/Recruiting/applicants/ApplicantData";
+import CVPreview from "./pages/Recruiting/applicants/CVPreview";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import PermissionProtectedRoute from "./components/auth/PermissionProtectedRoute";
 
@@ -63,6 +64,7 @@ export default function App() {
               />
               <Route path="applicants" element={<Applicants />} />
               <Route path="applicant/:id" element={<ApplicantData />} />
+              <Route path="applicant/:id/cv" element={<CVPreview />} />
 
               {/* Admin Routes - Protected by permissions */}
               <Route

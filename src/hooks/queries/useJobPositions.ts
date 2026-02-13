@@ -26,7 +26,9 @@ export function useJobPositions(companyId?: string[], deleted: boolean = false) 
       if (companyId && companyId.length === 1 && companyId[0] === '__NO_COMPANY__') {
         return Promise.resolve([] as any);
       }
-      return jobPositionsService.getAllJobPositions(companyId, deleted);
+      // service now accepts a single options object
+      // cast to any to satisfy current service typing (may expect a string[] overload)
+      return jobPositionsService.getAllJobPositions({ companyId, deleted } as any);
     },
     staleTime: 5 * 60 * 1000,
   });
@@ -123,9 +125,9 @@ export function useUpdateJobPosition() {
 
       queryClient.setQueriesData({ queryKey: jobPositionsKeys.lists() }, (old: any) => {
         if (!old) return old;
-        return old.map((job: any) =>
-          job._id === id ? { ...job, ...data } : job
-        );
+        if (Array.isArray(old)) return old.map((job: any) => job._id === id ? { ...job, ...data } : job);
+        if (old && old.data && Array.isArray(old.data)) return { ...old, data: old.data.map((job: any) => job._id === id ? { ...job, ...data } : job) };
+        return old;
       });
 
       queryClient.setQueryData(jobPositionsKeys.detail(id), (old: any) => {
@@ -216,12 +218,16 @@ export function useCloneJobPosition() {
     },
     onSuccess: (clonedJob) => {
       queryClient.setQueriesData({ queryKey: jobPositionsKeys.lists() }, (old: any) => {
-        if (!old) return [clonedJob];
-        return old.map((job: any) => 
-          job._id.startsWith('temp-') ? clonedJob : job
-        ).filter((job: any, index: number, self: any[]) => 
-          self.findIndex((j: any) => j._id === job._id) === index
-        );
+        if (!old) return { data: [clonedJob] };
+        if (Array.isArray(old)) {
+          const updated = old.map((job: any) => job._id.startsWith('temp-') ? clonedJob : job).filter((job: any, index: number, self: any[]) => self.findIndex((j: any) => j._id === job._id) === index);
+          return updated;
+        }
+        if (old && old.data && Array.isArray(old.data)) {
+          const updated = old.data.map((job: any) => job._id.startsWith('temp-') ? clonedJob : job).filter((job: any, index: number, self: any[]) => self.findIndex((j: any) => j._id === job._id) === index);
+          return { ...old, data: updated };
+        }
+        return old;
       });
     },
     onSettled: () => {

@@ -18,7 +18,8 @@ export default function PreviewUser() {
   const navigate = useNavigate();
 
   // Fetch data
-  const { data: users = [], isLoading: usersLoading } = useUsers();
+  const { data: usersResponse = {}, isLoading: usersLoading } = useUsers();
+  const users = Array.isArray(usersResponse) ? usersResponse : (usersResponse.data || []);
   const { data: roles = [] } = useRoles();
   const { data: companies = [] } = useCompanies();
   const { data: departments = [] } = useDepartments();

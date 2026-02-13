@@ -329,7 +329,7 @@ const AppSidebar: React.FC = () => {
       onMouseLeave={() => setIsHovered(false)}
     >
       <div
-        className={`py-8 flex ${
+        className={`py-8 ml-5 flex ${
           !isExpanded && !isHovered ? "lg:justify-center" : "justify-start"
         }`}
       >
@@ -353,6 +353,7 @@ const AppSidebar: React.FC = () => {
             </>
           ) : (
             <img
+            
               src="/images/logo/auth-logo.png"
               alt="Logo"
               width={200}
@@ -372,9 +373,8 @@ const AppSidebar: React.FC = () => {
                     : "justify-start"
                 }`}
               >
-                {isExpanded || isHovered || isMobileOpen ? (
-                  "Menu"
-                ) : (
+                {/* Menu title commented out */}
+                {isExpanded || isHovered || isMobileOpen ? null : (
                   <HorizontaLDots className="size-6" />
                 )}
               </h2>
@@ -389,9 +389,8 @@ const AppSidebar: React.FC = () => {
                       : "justify-start"
                   }`}
                 >
-                  {isExpanded || isHovered || isMobileOpen ? (
-                    "admin"
-                  ) : (
+                  {/* Admin title commented out */}
+                  {isExpanded || isHovered || isMobileOpen ? null : (
                     <HorizontaLDots />
                   )}
                 </h2>

@@ -177,7 +177,7 @@ class JobPositionsService {
   /**
    * Get all job positions
    */
-  async getAllJobPositions(companyId?: string[], deleted: boolean = false): Promise<JobPosition[]> {
+  async getAllJobPositions(companyId?: string[]): Promise<JobPosition[]> {
     try {
       const params: any = {};
       if (companyId && companyId.length > 0) {
@@ -193,9 +193,8 @@ class JobPositionsService {
           params.companyIds = ids;
         }
       }
-      // Default to requesting non-deleted job positions unless caller asks otherwise
-      // `deleted` boolean maps directly to the query param expected by the API
-      params.deleted = deleted ? "true" : "false";
+      // Always request only non-deleted job positions
+      params.deleted = "false";
       const response = await axios.get("/job-positions", { params });
       return response.data.data;
     } catch (error: any) {

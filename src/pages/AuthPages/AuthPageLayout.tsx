@@ -17,24 +17,28 @@ export default function AuthLayout({
             {/* <!-- ===== Common Grid Shape Start ===== --> */}
             <GridShape />
             <div className="flex flex-col items-center max-w-xs">
-              <Link to="/" className="block mb-4">
+              <Link to="/" className="block mt-65">
                 <img
                   width={2000}
                   height={100}
-                  src="/images/logo/auth-logo.png"
+                  src="/images/logo/HIRING.png"
                   alt="Logo"
                 />
               </Link>
-              <p className="text-center text-gray-400 dark:text-white/60">
-               Powered by SABERGROUPSTUDIOS © www.sabergroup-eg.com
-              </p>
             </div>
           </div>
+          <div className="w-full py-4 mt-auto text-center text-gray-400 dark:text-white/60">
+          <a href="https://www.sabergroup-eg.com" target="_blank" rel="noopener noreferrer">
+            Powered by SABERGROUPSTUDIOS ©
+          </a>
         </div>
+        </div>
+        
         <div className="fixed z-50 hidden bottom-6 right-6 sm:block">
           <ThemeTogglerTwo />
         </div>
       </div>
+        
     </div>
   );
 }

@@ -79,9 +79,9 @@ export function useUpdateApplicant() {
 
       queryClient.setQueriesData({ queryKey: applicantsKeys.lists() }, (old: any) => {
         if (!old) return old;
-        return old.map((applicant: any) =>
-          applicant._id === id ? { ...applicant, ...data } : applicant
-        );
+        if (Array.isArray(old)) return old.map((applicant: any) => applicant._id === id ? { ...applicant, ...data } : applicant);
+        if (old.data && Array.isArray(old.data)) return { ...old, data: old.data.map((applicant: any) => applicant._id === id ? { ...applicant, ...data } : applicant) };
+        return old;
       });
 
       queryClient.setQueryData(applicantsKeys.detail(id), (old: any) => {
@@ -126,11 +126,9 @@ export function useUpdateApplicantStatus() {
       // Optimistically update all list queries
       queryClient.setQueriesData({ queryKey: applicantsKeys.lists() }, (old: any) => {
         if (!old) return old;
-        return old.map((applicant: any) =>
-          applicant._id === id
-            ? { ...applicant, status: data.status }
-            : applicant
-        );
+        if (Array.isArray(old)) return old.map((applicant: any) => applicant._id === id ? { ...applicant, status: data.status } : applicant);
+        if (old.data && Array.isArray(old.data)) return { ...old, data: old.data.map((applicant: any) => applicant._id === id ? { ...applicant, status: data.status } : applicant) };
+        return old;
       });
 
       // Optimistically update the detail query
@@ -171,7 +169,9 @@ export function useDeleteApplicant() {
 
       queryClient.setQueriesData({ queryKey: applicantsKeys.lists() }, (old: any) => {
         if (!old) return old;
-        return old.filter((applicant: any) => applicant._id !== id);
+        if (Array.isArray(old)) return old.filter((applicant: any) => applicant._id !== id);
+        if (old.data && Array.isArray(old.data)) return { ...old, data: old.data.filter((applicant: any) => applicant._id !== id) };
+        return old;
       });
 
       return { previousLists };

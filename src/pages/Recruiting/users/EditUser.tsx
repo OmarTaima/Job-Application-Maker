@@ -81,7 +81,9 @@ export default function EditUser() {
   const [isSaving, setIsSaving] = useState(false);
 
   // Find the current user - use state data if available, otherwise find in fetched users
-  const user = userFromState || users.find((u) => u._id === id);
+  // Cast to any[] so TypeScript doesn't infer 'never' for an empty default
+  const userArray = Array.isArray(users) ? (users as any[]) : ([] as any[]);
+  const user = userFromState || userArray.find((u: any) => u._id === id);
 
   // Populate form when user data loads
   useEffect(() => {
@@ -196,7 +198,18 @@ export default function EditUser() {
 
         queryClient.setQueriesData({ queryKey: usersKeys.lists() }, (old: any) => {
           if (!old) return old;
-          return old.map((u: any) => (u._id === id ? { ...u, ...optimisticUser } : u));
+
+          // If the cached value is an object with a `data` array (e.g., paginated response)
+          if (typeof old === "object" && !Array.isArray(old) && old.data && Array.isArray(old.data)) {
+            return { ...old, data: old.data.map((u: any) => (u._id === id ? { ...u, ...optimisticUser } : u)) };
+          }
+
+          // If the cached value is a simple array of users
+          if (Array.isArray(old)) {
+            return old.map((u: any) => (u._id === id ? { ...u, ...optimisticUser } : u));
+          }
+
+          return old;
         });
 
         queryClient.setQueryData(usersKeys.detail(id), optimisticUser);
