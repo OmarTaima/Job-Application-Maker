@@ -13,6 +13,7 @@ const Label: FC<LabelProps> = ({ htmlFor, children, className, required }) => {
   return (
     <label
       htmlFor={htmlFor}
+      style={{ fontFamily: "Cairo, Outfit, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial" }}
       className={clsx(
         twMerge(
           "mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400",

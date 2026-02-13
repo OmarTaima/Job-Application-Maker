@@ -43,6 +43,8 @@ const ApplicantData = () => {
   // State for expanded custom responses
   const [expandedResponses, setExpandedResponses] = useState<Record<string, Set<number>>>({});
   const [expandedText, setExpandedText] = useState<Record<string, boolean>>({});
+  // Track expanded fields for repeatable-group items: { fieldKey: { itemIndex: Set<fieldNames> } }
+  const [expandedItemFields, setExpandedItemFields] = useState<Record<string, Record<number, Set<string>>>>({});
   // State for expanded cover letter textareas
 
   // Helper to detect Arabic text and apply RTL
@@ -1202,8 +1204,6 @@ const ApplicantData = () => {
                                 const displaySummary = summaryIsArabic
                                   ? (summaryText.length > 30 ? '...' + summaryText.slice(-30) : summaryText)
                                   : (summaryText.length > 30 ? summaryText.substring(0, 30) + '...' : summaryText);
-                                const expandedHasArabic = Object.values(item).some((v) => typeof v === 'string' && isArabic(v));
-
                                 return (
                                   <div key={idx} className="w-full">
                                     <button
@@ -1229,32 +1229,123 @@ const ApplicantData = () => {
                                       </svg>
                                     </button>
                                     {isExpanded && (
-                                      <div className={`mt-3 rounded-lg border border-gray-200 bg-gray-50 p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800 ${expandedHasArabic ? 'text-right' : ''}`} {...(expandedHasArabic ? { dir: 'rtl' } : {})}>
-                                        {
-                                          (() => {
-                                            const entries = Object.entries(item);
+                                        <div className="mt-3">
+                                        {/* Summary pill/header */}
+                                        <div className="mb-3 flex flex-wrap items-center gap-2">
+                                        
+                                        </div>
+
+                                        {/* Details card */}
+                                        <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+                                          {(() => {
+                                            const entries = Object.entries(item).filter(([_, v]) => {
+                                              if (v === null || v === undefined) return false;
+                                              const s = typeof v === "string" ? v : String(v);
+                                              return s.trim() !== "";
+                                            });
+
+                                            const formatValue = (v: any) => {
+                                              if (typeof v === "boolean") return v ? "Yes" : "No";
+                                              if (v === null || v === undefined) return "-";
+                                              if (Array.isArray(v)) return v.join(", ");
+                                              if (typeof v === "object") return JSON.stringify(v, null, 2);
+                                              return String(v);
+                                            };
+
                                             return (
-                                              <div className="grid grid-cols-1 gap-4">
-                                                {entries.map(([itemKey, itemValue]) => {
-                                                  const label = itemKey.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-                                                  const valueStr = typeof itemValue === 'string' ? itemValue : String(itemValue);
-                                                  const valueIsArabic = typeof itemValue === 'string' && isArabic(itemValue);
+                                                <div className="space-y-3">
+                                                  {entries.map(([itemKey, itemValue]) => {
+                                                  const label = itemKey
+                                                    .replace(/_/g, " ")
+                                                    .replace(/\b\w/g, (c) => c.toUpperCase());
+
+                                                  const valueStr = formatValue(itemValue);
+                                                  const valueIsArabic =
+                                                    typeof valueStr === "string" && isArabic(valueStr);
+
+                                                  // Determine row direction from label or value (Arabic -> RTL)
+                                                  const rowIsArabic = valueIsArabic || isArabic(label);
+                                                  const rowDir = rowIsArabic ? "rtl" : "ltr";
+
+                                                  // Field-level expansion state
+                                                  const isFieldExpanded = (expandedItemFields[key] && expandedItemFields[key][idx] && expandedItemFields[key][idx].has(itemKey)) || false;
+                                                  const needsTruncate = typeof valueStr === 'string' && valueStr.length > 20;
+
+                                                  const toggleField = (fieldName: string) => {
+                                                    setExpandedItemFields(prev => {
+                                                      const newState = { ...prev };
+                                                      if (!newState[key]) newState[key] = {};
+                                                      if (!newState[key][idx]) newState[key][idx] = new Set<string>();
+                                                      if (newState[key][idx].has(fieldName)) {
+                                                        newState[key][idx].delete(fieldName);
+                                                      } else {
+                                                        newState[key][idx].add(fieldName);
+                                                      }
+                                                      return { ...newState };
+                                                    });
+                                                  };
+
                                                   return (
-                                                    <div key={itemKey} dir="ltr" className="mb-3 last:mb-0 flex items-start gap-2 items-center">
-                                                      <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                                                        {label}
-                                                        <span className="ml-1 text-gray-500">:</span>
-                                                      </div>
-                                                      <div className={`text-sm text-gray-900 dark:text-white whitespace-pre-wrap ${valueIsArabic ? 'text-right' : ''}`} dir={valueIsArabic ? 'rtl' : undefined}>
-                                                        {valueStr}
+                                                    <div
+                                                      key={itemKey}
+                                                      dir={rowDir}
+                                                      className={`
+                                                        rounded-xl border border-gray-100 bg-gray-50 px-3 py-2
+                                                        dark:border-gray-700/60 dark:bg-gray-900/30
+                                                        transition
+                                                      `}
+                                                    >
+                                                      <div
+                                                        className={`
+                                                          grid grid-cols-1 gap-1
+                                                          ${rowIsArabic ? 'sm:grid-cols-[170px_1fr] sm:gap-4' : 'sm:grid-cols-[170px_1fr] sm:gap-4'}
+                                                        `}
+                                                      >
+                                                        {/* Label */}
+                                                        <div
+                                                          className={`
+                                                            text-xs font-semibold uppercase tracking-wide
+                                                            text-gray-500 dark:text-gray-400
+                                                            ${rowIsArabic ? "text-right" : "text-left"}
+                                                          `}
+                                                        >
+                                                          {label} :
+                                                        </div>
+
+                                                        {/* Value */}
+                                                        <div
+                                                          className={`
+                                                            text-sm font-medium -mr-15 text-gray-900 dark:text-white
+                                                            whitespace-pre-wrap break-words leading-relaxed
+                                                            ${rowIsArabic ? "text-right" : "text-left"}
+                                                          `}
+                                                        >
+                                                          {needsTruncate && !isFieldExpanded ? (
+                                                            <span className="inline-flex items-center gap-2">
+                                                              <span>{valueStr.slice(0, 20)}</span>
+                                                              <button
+                                                                type="button"
+                                                                onClick={() => toggleField(itemKey)}
+                                                                className="text-xs text-brand-600 hover:text-brand-700"
+                                                                aria-label={`Expand ${label}`}
+                                                              >
+                                                                ⋯
+                                                              </button>
+                                                            </span>
+                                                          ) : (
+                                                            <span>
+                                                              {valueStr}
+                                                            </span>
+                                                          )}
+                                                        </div>
                                                       </div>
                                                     </div>
                                                   );
                                                 })}
                                               </div>
                                             );
-                                          })()
-                                        }
+                                          })()}
+                                        </div>
                                       </div>
                                     )}
                                   </div>

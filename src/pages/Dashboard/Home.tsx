@@ -17,7 +17,6 @@ import {
 } from "../../icons";
 
 const STATUSES: { key: Applicant['status']; label: string }[] = [
-  { key: "applied", label: "Applied" },
   { key: "pending", label: "Pending" },
   { key: "interview", label: "Interview" },
   { key: "interviewed", label: "Interviewed" },

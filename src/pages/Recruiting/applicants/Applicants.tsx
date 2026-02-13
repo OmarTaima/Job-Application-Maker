@@ -615,6 +615,7 @@ const Applicants = () => {
     muiTableProps: {
       sx: {
         backgroundColor: isDarkMode ? '#24303F' : '#FFFFFF',
+        fontFamily: "'Cairo', Outfit, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans'",
       },
     },
     muiTableBodyProps: {
@@ -632,6 +633,7 @@ const Applicants = () => {
         backgroundColor: isDarkMode ? '#24303F' : '#FFFFFF',
         color: isDarkMode ? '#E4E7EC' : '#101828',
         borderColor: isDarkMode ? '#344054' : '#E4E7EC',
+        fontFamily: "'Cairo', Outfit, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans'",
       },
     },
     muiTableHeadCellProps: {
@@ -640,6 +642,7 @@ const Applicants = () => {
         color: isDarkMode ? '#E4E7EC' : '#344054',
         borderColor: isDarkMode ? '#344054' : '#E4E7EC',
         fontWeight: 600,
+        fontFamily: "'Cairo', Outfit, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans'",
       },
     },
     muiTopToolbarProps: {
