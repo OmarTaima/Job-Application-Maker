@@ -195,7 +195,7 @@ class ApplicantsService {
         let totalPages = 1;
 
         do {
-          const params = { ...paramsBase, page: currentPage, PageCount: 100 } as any;
+          const params = { ...paramsBase, page: currentPage, PageCount: 1000 } as any;
           if (jpId) params.jobPositionId = jpId;
           const response = await axios.get("/applicants", { params });
           const payload = response.data;
