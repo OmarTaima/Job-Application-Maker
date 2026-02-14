@@ -162,25 +162,7 @@ const ApplicantData = () => {
     window.open(url, '_blank');
   };
 
-  // Preview Cloudinary URL without fl_attachment (remove the forced-download transform)
-  const previewWithoutAttachment = () => {
-    if (!applicant?.cvFilePath) {
-      Swal.fire('No CV', 'No CV file available for this applicant', 'info');
-      return;
-    }
-    const url = cvUrl ?? applicant.cvFilePath;
-    try {
-      const parts = url.split('/upload/');
-      if (parts.length === 2) {
-        const previewUrl = `${parts[0]}/upload/${parts[1]}`;
-        window.open(previewUrl, '_blank');
-        return;
-      }
-    } catch (e) {
-      // ignore and fallback
-    }
-    window.open(url, '_blank');
-  };
+  // (previewWithoutAttachment removed)
   
   const { data: jobPositions = [] } = useJobPositions();
   const jobPosIdString = applicant && typeof applicant.jobPositionId === 'string' ? applicant.jobPositionId : '';
@@ -1206,16 +1188,7 @@ const ApplicantData = () => {
                   </svg>
                 </button>
 
-                <button
-                  type="button"
-                  onClick={previewWithoutAttachment}
-                  className="inline-flex items-center gap-2 text-sm font-bold text-white/80 hover:text-white/90 transition-colors"
-                >
-                  Preview (no-download)
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                </button>
+                {/* Preview (no-download) removed */}
               </div>
             </div>
           </div>
