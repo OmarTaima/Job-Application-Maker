@@ -115,7 +115,65 @@ const ApplicantData = () => {
     // Navigate to internal preview page and pass the CV URL in location state.
     const url = cvUrl ?? applicant.cvFilePath;
     // Disable direct download for now by using an internal preview route without a download control.
+    // Navigate to preview page
     navigate(`/applicant/${id}/cv`, { state: { cvUrl: url } });
+
+    // Also attempt to start a download. Prefer Cloudinary fl_attachment when possible,
+    // otherwise try fetch->blob fallback, and finally open in new tab.
+    const tryCloudinaryDownload = (u: string, filename?: string) => {
+      try {
+        const hostMatch = u.match(/^https?:\/\/([^/]+)\//i);
+        if (!hostMatch) return null;
+        const host = hostMatch[1];
+        if (!/res\.cloudinary\.com/i.test(host)) return null;
+        // Insert fl_attachment (with optional filename) after `upload/`
+        const parts = u.split('/');
+        const uploadIndex = parts.findIndex(p => p === 'upload');
+        if (uploadIndex === -1) return null;
+        const attachmentFlag = filename ? `fl_attachment:${filename}` : 'fl_attachment';
+        const newParts = [...parts.slice(0, uploadIndex + 1), attachmentFlag, ...parts.slice(uploadIndex + 1)];
+        return newParts.join('/');
+      } catch (e) {
+        return null;
+      }
+    };
+
+    const downloadViaFetch = async (u: string, filename?: string) => {
+      try {
+        const res = await fetch(u, { mode: 'cors' });
+        if (!res.ok) throw new Error('Network response not ok');
+        const blob = await res.blob();
+        const a = document.createElement('a');
+        const blobUrl = URL.createObjectURL(blob);
+        a.href = blobUrl;
+        a.download = filename || (u.split('/').pop() || 'download');
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+        return true;
+      } catch (err) {
+        return false;
+      }
+    };
+
+    // Try Cloudinary transformation first
+    (async () => {
+      const filename = applicant?.fullName ? `${applicant.fullName.replace(/\s+/g, '_')}_cv` : undefined;
+      const cloudUrl = tryCloudinaryDownload(url, filename ? `${filename}.pdf` : undefined);
+      if (cloudUrl) {
+        // Open in new tab to trigger download via cloudinary
+        window.open(cloudUrl, '_blank');
+        return;
+      }
+
+      // Try fetch->blob fallback
+      const ok = await downloadViaFetch(url, undefined);
+      if (ok) return;
+
+      // Final fallback: open original URL in new tab (may prompt download or display inline)
+      window.open(url, '_blank');
+    })();
   };
   
   const { data: jobPositions = [] } = useJobPositions();

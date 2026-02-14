@@ -803,3 +803,15 @@ span.flatpickr-weekday,
 .simplebar-scrollbar.simplebar-visible:before {
   @apply opacity-100;
 }
+
+/* Hide default MUI double-arrow sort icon for specific header cells */
+.hide-default-sort-icon .MuiTableSortLabel-icon {
+  display: none !important;
+  opacity: 0 !important;
+}
+
+/* Ensure no gap reserved when icon hidden */
+.hide-default-sort-icon .MuiTableSortLabel-root {
+  gap: 0 !important;
+}
+

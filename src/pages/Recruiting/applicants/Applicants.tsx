@@ -5,7 +5,6 @@ import {
   MaterialReactTable,
   useMaterialReactTable,
   type MRT_ColumnDef,
-  type MRT_PaginationState,
   type MRT_RowSelectionState,
   type MRT_ColumnFiltersState,
 } from "material-react-table";
@@ -33,18 +32,19 @@ const Applicants = () => {
   const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
   const [bulkAction, setBulkAction] = useState<string>("");
   const [isProcessing, setIsProcessing] = useState(false);
-  const [pagination, setPagination] = useState<MRT_PaginationState>({
-    pageIndex: 0,
-    pageSize: 10,
-  });
+  // MRT will manage pagination internally (page size set in initialState)
   const [rowSelection, setRowSelection] = useState<MRT_RowSelectionState>({});
   const [columnFilters, setColumnFilters] = useState<MRT_ColumnFiltersState>([]);
+  // MRT sorting state (control sorting externally so we can offer only asc/desc for Submitted)
+  const [sorting, setSorting] = useState<Array<any>>([{ id: 'submittedAt', desc: true }]);
+  // Sorting will be managed by MRT (default newest-first)
 
   // Get selected applicant IDs from row selection
   const selectedApplicantIds = useMemo(() => {
     return Object.keys(rowSelection);
   }, [rowSelection]);
 
+  // MRT will reset pagination when filters/sorting change internally
   // Memoize user-derived values
   const companyId = useMemo(() => {
     if (!user) return undefined;
@@ -157,70 +157,19 @@ const Applicants = () => {
     return map;
   }, [allCompanies]);
 
-  // Filter applicants based on MRT column filters
-  const filteredApplicants = useMemo(() => {
-    let filtered = applicants;
 
-    // Only apply if user has specific company restrictions
-    if (companyId && companyId.length > 0) {
-      filtered = filtered.filter((app: Applicant) => {
-        // Skip applicants with no job position (they'll be filtered out later)
-        if (!app.jobPositionId) return false;
-        
-        const getId = (v: any) => (typeof v === "string" ? v : v?._id);
-        const jobPositionId = getId(app.jobPositionId);
-        const jobPosition = jobPositionMap[jobPositionId];
-        
-        if (jobPosition?.companyId) {
-          const jobCompanyId = getId(jobPosition.companyId);
-          return companyId.includes(jobCompanyId);
-        }
-        return false;
-      });
-    }
 
-    // Always filter out trashed unless explicitly selected
-    const statusFilter = columnFilters.find(f => f.id === 'status');
-    if (!statusFilter || statusFilter.value === 'all') {
-      filtered = filtered.filter((app: Applicant) => app.status !== "trashed");
-    } else if (statusFilter.value && statusFilter.value !== 'all') {
-      filtered = filtered.filter((app: Applicant) => app.status === statusFilter.value);
-    }
+  // Determine dataset to pass to MRT: by default exclude trashed applicants unless
+  // the user explicitly filters for status === 'trashed'. This makes "All Statuses"
+  // hide trashed rows while still allowing an explicit trashed view.
+  const displayedApplicants = useMemo(() => {
+    const statusFilter = columnFilters.find((f) => f.id === 'status');
+    const explicitlyTrashed = statusFilter && statusFilter.value === 'trashed';
+    if (explicitlyTrashed) return applicants;
+    return applicants.filter((a: Applicant) => a.status !== 'trashed');
+  }, [applicants, columnFilters]);
 
-    // Apply company filter - filter through job position
-    const companyFilter = columnFilters.find(f => f.id === 'companyId');
-    if (companyFilter && companyFilter.value && companyFilter.value !== "all") {
-      filtered = filtered.filter((app: Applicant) => {
-        const getId = (v: any) => (typeof v === "string" ? v : v?._id);
-        const jobPositionId = getId(app.jobPositionId);
-        const jobPosition = jobPositionMap[jobPositionId];
-        if (jobPosition?.companyId) {
-          const companyId = getId(jobPosition.companyId);
-          return companyId === companyFilter.value;
-        }
-        return false;
-      });
-    }
-
-    // Apply job position filter
-    const jobFilter = columnFilters.find(f => f.id === 'jobPositionId');
-    if (jobFilter && jobFilter.value && jobFilter.value !== "all") {
-      filtered = filtered.filter((app: Applicant) => {
-        const getId = (v: any) => (typeof v === "string" ? v : v?._id);
-        const jobPositionId = getId(app.jobPositionId);
-        return jobPositionId === jobFilter.value;
-      });
-    }
-
-    return filtered;
-  }, [applicants, columnFilters, jobPositionMap, companyId]);
-
-  // Apply pagination
-  const paginatedApplicants = useMemo(() => {
-    const start = pagination.pageIndex * pagination.pageSize;
-    const end = start + pagination.pageSize;
-    return filteredApplicants.slice(start, end);
-  }, [filteredApplicants, pagination]);
+  // MRT will handle pagination (we pass full dataset to the table)
 
   const getStatusColor = useCallback((status: string) => {
     switch (status) {
@@ -452,9 +401,49 @@ const Applicants = () => {
       {
         accessorKey: "submittedAt",
         header: "Submitted",
+        // Custom header shows a two-state control (Newest / Oldest)
+        Header: ({ column, table }: { column: any; table: any }) => {
+          const sortingState = table.getState().sorting;
+          const submittedSort = sortingState.find((s: any) => s.id === column.id);
+          const desc = submittedSort ? submittedSort.desc : true;
+
+          const toggle = (e: any) => {
+            e.stopPropagation();
+            // Force two-state sorting only (no unsorted state)
+            table.setSorting([{ id: column.id, desc: !desc }]);
+          };
+
+          return (
+            <button
+              onClick={toggle}
+              className="flex items-center gap-1 text-sm font-medium"
+              type="button"
+              title={desc ? 'Newest' : 'Oldest'}
+            >
+              <span>Submitted</span>
+              <span className="text-xs">{desc ? '▼' : '▲'}</span>
+            </button>
+          );
+        },
         size: 120,
         enableColumnFilter: false,
-        Cell: ({ row }) => formatDate(row.original.submittedAt),
+        // Disable MRT's built-in sort UI for this column so we can render a single up/down arrow
+        enableSorting: true,
+        // Add a class to the head cell so we can hide MUI's default double-arrow icon
+        muiTableHeadCellProps: { className: 'hide-default-sort-icon' },
+        // Sorting function compares ISO date strings safely
+        sortingFn: (rowA: any, rowB: any, columnId: string) => {
+          const getVal = (r: any) => {
+            const v = r.getValue(columnId) ?? r.original?.submittedAt;
+            const t = v ? new Date(v).getTime() : 0;
+            return Number.isNaN(t) ? 0 : t;
+          };
+          const a = getVal(rowA);
+          const b = getVal(rowB);
+          if (a === b) return 0;
+          return a > b ? 1 : -1;
+        },
+        Cell: ({ row }: any) => formatDate(row.original.submittedAt),
       },
     ],
     [companyMap, jobPositionMap, getStatusColor, formatDate]
@@ -590,22 +579,29 @@ const Applicants = () => {
 
   const table = useMaterialReactTable({
     columns,
-    data: paginatedApplicants,
+    // Pass the displayedApplicants list (excludes trashed by default)
+    data: displayedApplicants,
     enableRowSelection: true,
-    enablePagination: false,
+    enablePagination: true,
     enableBatchRowSelection: false,
-    enableBottomToolbar: false,
+    enableBottomToolbar: true,
     enableTopToolbar: true,
-    enableColumnFilters: false,
-    enableFilters: false,
+    enableColumnFilters: true,
+    enableFilters: true,
     enableHiding: false,
     enableDensityToggle: false,
     enableFullScreenToggle: false,
-    enableSorting: false,
+    enableSorting: true,
     enableColumnActions: false,
-    manualPagination: true,
-    manualFiltering: true,
-    rowCount: filteredApplicants.length,
+    manualPagination: false,
+    manualFiltering: false,
+    manualSorting: false,
+    rowCount: displayedApplicants.length,
+    // Default pagination and sorting: 10 rows per page, newest first
+    initialState: {
+      pagination: { pageIndex: 0, pageSize: 10 },
+      sorting: [{ id: 'submittedAt', desc: true }],
+    },
     muiTablePaperProps: {
       sx: {
         backgroundColor: isDarkMode ? '#24303F' : '#FFFFFF',
@@ -643,6 +639,14 @@ const Applicants = () => {
         borderColor: isDarkMode ? '#344054' : '#E4E7EC',
         fontWeight: 600,
         fontFamily: "'Cairo', Outfit, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans'",
+        // Hide the default unsorted double-arrow icon; show icon only when active (sorted)
+        '& .MuiTableSortLabel-icon': {
+          opacity: 0,
+          transition: 'opacity 150ms ease',
+        },
+        '& .MuiTableSortLabel-root.MuiTableSortLabel-active .MuiTableSortLabel-icon': {
+          opacity: 1,
+        },
       },
     },
     muiTopToolbarProps: {
@@ -660,10 +664,12 @@ const Applicants = () => {
     state: {
       rowSelection,
       columnFilters,
+      sorting,
       isLoading: applicantsLoading || jobPositionsLoading,
       showSkeletons: applicantsLoading || jobPositionsLoading,
       showAlertBanner: false,
     },
+    onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onRowSelectionChange: setRowSelection,
     getRowId: (row) => row._id,
@@ -875,119 +881,7 @@ const Applicants = () => {
               <MaterialReactTable table={table} />
             </ThemeProvider>
 
-            {/* Custom Pagination Controls */}
-            {filteredApplicants.length > 0 && (
-              <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-4 px-2">
-                <div className="flex items-center gap-4 flex-wrap">
-                  <div className="text-sm text-gray-700 dark:text-gray-300">
-                    Showing {pagination.pageIndex * pagination.pageSize + 1} to{" "}
-                    {Math.min(
-                      (pagination.pageIndex + 1) * pagination.pageSize,
-                      filteredApplicants.length
-                    )}{" "}
-                    of {filteredApplicants.length} applicants
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <label htmlFor="pageSize" className="text-sm text-gray-700 dark:text-gray-300">
-                      Show:
-                    </label>
-                    <select
-                      id="pageSize"
-                      value={pagination.pageSize}
-                      onChange={(e) => {
-                        const newSize = Number(e.target.value);
-                        setPagination({
-                          pageIndex: 0,
-                          pageSize: newSize,
-                        });
-                      }}
-                      className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-1.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-transparent"
-                    >
-                      <option value={10}>10</option>
-                      <option value={25}>25</option>
-                      <option value={50}>50</option>
-                      <option value={100}>100</option>
-                      <option value={250}>250</option>
-                      <option value={500}>500</option>
-                    </select>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() =>
-                      setPagination((prev) => ({
-                        ...prev,
-                        pageIndex: Math.max(0, prev.pageIndex - 1),
-                      }))
-                    }
-                    disabled={pagination.pageIndex === 0}
-                    className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
-                  >
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                    </svg>
-                    Previous
-                  </button>
-
-                  <div className="flex items-center gap-1">
-                    {Array.from(
-                      { length: Math.ceil(filteredApplicants.length / pagination.pageSize) },
-                      (_, i) => {
-                        const totalPages = Math.ceil(filteredApplicants.length / pagination.pageSize);
-                        // Show max 5 page buttons
-                        if (totalPages <= 5) {
-                          return i;
-                        } else if (pagination.pageIndex <= 2) {
-                          return i < 5 ? i : null;
-                        } else if (pagination.pageIndex >= totalPages - 3) {
-                          return i >= totalPages - 5 ? i : null;
-                        } else {
-                          return i >= pagination.pageIndex - 2 && i <= pagination.pageIndex + 2 ? i : null;
-                        }
-                      }
-                    )
-                      .filter((i) => i !== null)
-                      .map((i) => (
-                        <button
-                          key={i}
-                          onClick={() =>
-                            setPagination((prev) => ({ ...prev, pageIndex: i as number }))
-                          }
-                          className={`h-9 w-9 rounded-lg text-sm font-medium transition ${
-                            pagination.pageIndex === i
-                              ? "bg-brand-500 text-white"
-                              : "border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
-                          }`}
-                        >
-                          {(i as number) + 1}
-                        </button>
-                      ))}
-                  </div>
-
-                  <button
-                    onClick={() =>
-                      setPagination((prev) => ({
-                        ...prev,
-                        pageIndex: Math.min(
-                          Math.ceil(filteredApplicants.length / pagination.pageSize) - 1,
-                          prev.pageIndex + 1
-                        ),
-                      }))
-                    }
-                    disabled={
-                      pagination.pageIndex >=
-                      Math.ceil(filteredApplicants.length / pagination.pageSize) - 1
-                    }
-                    className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
-                  >
-                    Next
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-            )}
+            {/* MRT handles pagination in its bottom toolbar (10 rows per page) */}
           </>
         </ComponentCard>
       </div>
