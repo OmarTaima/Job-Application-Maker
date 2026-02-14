@@ -107,36 +107,30 @@ const ApplicantData = () => {
     return base ? `${base}/${path.replace(/^\//, '')}` : path;
   }, [applicant?.cvFilePath]);
 
-  const openCv = () => {
+  // (internal preview removed) -- use the previewWithoutAttachment button to open inline
+
+  // Build Cloudinary download URL with fl_attachment to force download
+  const buildCloudinaryDownloadUrl = (u: string) => {
+    try {
+      if (!u) return null;
+      const urlParts = u.split('/upload/');
+      if (urlParts.length !== 2) return null;
+      const fileName = `CV_${(applicant?.applicantNo ?? applicant?._id ?? 'cv')}`;
+      const transformations = `f_auto/fl_attachment:${fileName}`;
+      const downloadUrl = `${urlParts[0]}/upload/${transformations}/${urlParts[1]}`;
+      return downloadUrl;
+    } catch (e) {
+      return null;
+    }
+  };
+
+  // Download CV (try Cloudinary fl_attachment, fallback to fetch->blob)
+  const downloadCv = async () => {
     if (!applicant?.cvFilePath) {
       Swal.fire('No CV', 'No CV file available for this applicant', 'info');
       return;
     }
-    // Navigate to internal preview page and pass the CV URL in location state.
     const url = cvUrl ?? applicant.cvFilePath;
-    // Disable direct download for now by using an internal preview route without a download control.
-    // Navigate to preview page
-    navigate(`/applicant/${id}/cv`, { state: { cvUrl: url } });
-
-    // Also attempt to start a download. Prefer Cloudinary fl_attachment when possible,
-    // otherwise try fetch->blob fallback, and finally open in new tab.
-    const tryCloudinaryDownload = (u: string, filename?: string) => {
-      try {
-        const hostMatch = u.match(/^https?:\/\/([^/]+)\//i);
-        if (!hostMatch) return null;
-        const host = hostMatch[1];
-        if (!/res\.cloudinary\.com/i.test(host)) return null;
-        // Insert fl_attachment (with optional filename) after `upload/`
-        const parts = u.split('/');
-        const uploadIndex = parts.findIndex(p => p === 'upload');
-        if (uploadIndex === -1) return null;
-        const attachmentFlag = filename ? `fl_attachment:${filename}` : 'fl_attachment';
-        const newParts = [...parts.slice(0, uploadIndex + 1), attachmentFlag, ...parts.slice(uploadIndex + 1)];
-        return newParts.join('/');
-      } catch (e) {
-        return null;
-      }
-    };
 
     const downloadViaFetch = async (u: string, filename?: string) => {
       try {
@@ -157,23 +151,35 @@ const ApplicantData = () => {
       }
     };
 
-    // Try Cloudinary transformation first
-    (async () => {
-      const filename = applicant?.fullName ? `${applicant.fullName.replace(/\s+/g, '_')}_cv` : undefined;
-      const cloudUrl = tryCloudinaryDownload(url, filename ? `${filename}.pdf` : undefined);
-      if (cloudUrl) {
-        // Open in new tab to trigger download via cloudinary
-        window.open(cloudUrl, '_blank');
+    const cloudUrl = buildCloudinaryDownloadUrl(url);
+    if (cloudUrl) {
+      window.open(cloudUrl, '_blank');
+      return;
+    }
+
+    const ok = await downloadViaFetch(url, undefined);
+    if (ok) return;
+    window.open(url, '_blank');
+  };
+
+  // Preview Cloudinary URL without fl_attachment (remove the forced-download transform)
+  const previewWithoutAttachment = () => {
+    if (!applicant?.cvFilePath) {
+      Swal.fire('No CV', 'No CV file available for this applicant', 'info');
+      return;
+    }
+    const url = cvUrl ?? applicant.cvFilePath;
+    try {
+      const parts = url.split('/upload/');
+      if (parts.length === 2) {
+        const previewUrl = `${parts[0]}/upload/${parts[1]}`;
+        window.open(previewUrl, '_blank');
         return;
       }
-
-      // Try fetch->blob fallback
-      const ok = await downloadViaFetch(url, undefined);
-      if (ok) return;
-
-      // Final fallback: open original URL in new tab (may prompt download or display inline)
-      window.open(url, '_blank');
-    })();
+    } catch (e) {
+      // ignore and fallback
+    }
+    window.open(url, '_blank');
   };
   
   const { data: jobPositions = [] } = useJobPositions();
@@ -1188,16 +1194,29 @@ const ApplicantData = () => {
                 </svg>
               </div>
               <Label className="text-xs text-white/80 font-bold uppercase">Resume</Label>
-              <button
-                type="button"
-                onClick={openCv}
-                className="inline-flex items-center gap-2 text-sm font-bold text-white hover:text-white/90 transition-colors"
-              >
-                Download CV
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                </svg>
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={downloadCv}
+                  className="inline-flex items-center gap-2 text-sm font-bold text-white hover:text-white/90 transition-colors"
+                >
+                  Download CV
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                  </svg>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={previewWithoutAttachment}
+                  className="inline-flex items-center gap-2 text-sm font-bold text-white/80 hover:text-white/90 transition-colors"
+                >
+                  Preview (no-download)
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                </button>
+              </div>
             </div>
           </div>
         )}

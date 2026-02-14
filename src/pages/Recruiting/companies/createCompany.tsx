@@ -99,22 +99,47 @@ export default function RecruitingDashboard() {
     }));
   };
 
-  const readFileAsDataUrl = (file: File) =>
-    new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result || ""));
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
+ 
+
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+
+  const uploadToCloudinary = async (file: File) => {
+    const CLOUD_NAME = (import.meta.env.VITE_CLOUDINARY_CLOUD_NAME as string) || "175237158579478";
+    const UPLOAD_PRESET = (import.meta.env.VITE_CLOUDINARY_PRESET as string)
+      || (import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET as string)
+      || "ml_default";
+
+    if (!CLOUD_NAME) throw new Error("Missing Cloudinary cloud name. Set VITE_CLOUDINARY_CLOUD_NAME in your .env");
+    if (!UPLOAD_PRESET) throw new Error("Missing Cloudinary upload preset. Set VITE_CLOUDINARY_PRESET in your .env");
+
+    const url = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`;
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("upload_preset", UPLOAD_PRESET);
+
+    const res = await fetch(url, { method: "POST", body: formData });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Cloudinary upload failed: ${res.status} ${text}`);
+    }
+    return res.json();
+  };
 
   const handleLogoChange = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setIsUploadingLogo(true);
     try {
-      const dataUrl = await readFileAsDataUrl(file);
-      setCompanyForm((prev) => ({ ...prev, logoPath: dataUrl }));
-    } catch (err) {
-      console.error("Failed to read logo file", err);
+      const result: any = await uploadToCloudinary(file);
+      // Cloudinary returns `secure_url` (publicly accessible)
+      const publicUrl = result?.secure_url || result?.url;
+      if (!publicUrl) throw new Error("No URL returned from Cloudinary");
+      setCompanyForm((prev) => ({ ...prev, logoPath: publicUrl }));
+    } catch (err: any) {
+      console.error("Failed to upload logo to Cloudinary", err);
+      setError(err?.message || "Failed to upload logo");
+    } finally {
+      setIsUploadingLogo(false);
     }
   };
 
@@ -265,11 +290,13 @@ export default function RecruitingDashboard() {
                 onChange={handleLogoChange}
                 className="block w-full text-sm text-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-brand-50 file:text-brand-600 file:hover:bg-brand-100 file:hover:text-brand-700 file:transition file:duration-150"
               />
-              {companyForm.logoPath && (
-                <div className="mt-2">
-                  <img src={companyForm.logoPath} alt="logo" className="h-16 w-auto rounded" />
-                </div>
-              )}
+                {isUploadingLogo ? (
+                  <div className="mt-2 text-sm text-gray-500">Uploading logo...</div>
+                ) : companyForm.logoPath ? (
+                  <div className="mt-2">
+                    <img src={companyForm.logoPath} alt="logo" className="h-16 w-auto rounded" />
+                  </div>
+                ) : null}
             </div>
             <div>
               <Label htmlFor="contactEmail" required>

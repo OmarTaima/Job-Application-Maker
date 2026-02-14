@@ -1,8 +1,8 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import PageMeta from "../../components/common/PageMeta";
 import DatePicker from "../../components/form/date-picker";
 import { useAuth } from "../../context/AuthContext";
-import { useApplicants, useJobPositions } from "../../hooks/queries";
+import { useApplicants } from "../../hooks/queries";
 import type { Applicant } from "../../store/slices/applicantsSlice";
 import {
   PaperPlaneIcon,
@@ -49,21 +49,40 @@ export default function Home() {
     return usercompanyId.length > 0 ? usercompanyId : undefined;
   }, [user]);
 
-  // Fetch job positions first so we can convert company filter into jobPositionIds
-  const { data: jobPositions = [] } = useJobPositions(companyId);
+  // Use React Query hook - fetch applicants filtered by companyId (undefined => all)
+  const { data: applicants = [], isLoading: loading, refetch, isFetching } = useApplicants(companyId as any);
 
-  const jobPositionIdsParam = useMemo(() => {
-    if (!companyId || companyId.length === 0) return undefined;
-    if (!jobPositions || jobPositions.length === 0) return undefined;
-    const ids = jobPositions
-      .map((j: any) => (typeof j._id === "string" ? j._id : j._id?._id))
-      .filter(Boolean);
-    if (ids.length === 0) return undefined;
-    return ids.join(",");
-  }, [companyId, jobPositions]);
+  const [lastRefetch, setLastRefetch] = useState<Date | null>(null);
+  const [elapsed, setElapsed] = useState<string | null>(null);
 
-  // Use React Query hook - handles caching, deduplication, and background refetching
-  const { data: applicants = [], isLoading: loading } = useApplicants(undefined, jobPositionIdsParam as any);
+  // When initial load finishes, start the timer from that moment
+  useEffect(() => {
+    if (!loading && lastRefetch === null) {
+      setLastRefetch(new Date());
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
+
+  // Tick elapsed timer when lastRefetch is set
+  useEffect(() => {
+    if (!lastRefetch) {
+      setElapsed(null);
+      return;
+    }
+
+    const update = () => {
+      const diff = Math.floor((Date.now() - lastRefetch.getTime()) / 1000);
+      const hrs = Math.floor(diff / 3600);
+      const mins = Math.floor((diff % 3600) / 60);
+      const secs = diff % 60;
+      const pad = (n: number) => n.toString().padStart(2, '0');
+      setElapsed(`${pad(hrs)}:${pad(mins)}:${pad(secs)}`);
+    };
+
+    update();
+    const id = setInterval(update, 1000);
+    return () => clearInterval(id);
+  }, [lastRefetch]);
 
   const filtered = useMemo(() => {
     if (!range || range.length === 0) return applicants;
@@ -146,6 +165,26 @@ export default function Home() {
               <div className="text-sm text-gray-500">Showing</div>
               <div className="font-semibold text-gray-800">
                 {loading ? "Loading..." : `${filteredNonTrashed.length} applicants`}
+              </div>
+              <div className="ml-4">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await refetch();
+                      setLastRefetch(new Date());
+                    } catch (e) {
+                      // ignore - errors handled by react-query
+                    }
+                  }}
+                  disabled={isFetching}
+                  className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-3 py-1 text-sm font-semibold text-white shadow-sm hover:bg-brand-600 disabled:opacity-50"
+                >
+                  {isFetching ? "Updating Data" : "Update Data"}
+                </button>
+              </div>
+              <div className="ml-3 text-sm text-gray-500">
+                {elapsed ? `Last Update: ${elapsed}` : "Not updated yet"}
               </div>
               <div className="text-sm text-gray-400">(from total {applicantsNonTrashed.length})</div>
             </div>
