@@ -66,37 +66,31 @@ const ApplicantData = () => {
   // Prefer the fetched data, but fall back to navigation state if the fetch returns undefined
   const applicant: any = (fetchedApplicant ?? stateApplicant) as any;
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <LoadingSpinner />
-      </div>
-    );
-  }
+  // Additional hooks (declare before conditional returns to preserve hook order)
+  const { data: jobPositions = [] } = useJobPositions();
+  const jobPosIdString = applicant && typeof applicant.jobPositionId === 'string' ? applicant.jobPositionId : '';
+  const { data: jobPositionDetail } = useJobPosition(jobPosIdString, { enabled: !!jobPosIdString });
+  const jpCompanyId = jobPositionDetail && ((jobPositionDetail as any).companyId ? (typeof (jobPositionDetail as any).companyId === 'string' ? (jobPositionDetail as any).companyId : (jobPositionDetail as any).companyId?._id) : '');
+  const { data: jobPosCompany } = useCompany(jpCompanyId || '', { enabled: !!jpCompanyId });
+  const { data: companies = [] } = useCompaniesWithApplicants(
+    applicant ? [applicant] : undefined
+  );
 
-  if (!applicant) {
-    return (
-      <div className="space-y-6">
-        <PageMeta
-          title="Applicant Not Found | Job Application Maker"
-          description="The requested applicant could not be found"
-        />
-        <PageBreadcrumb pageTitle="Applicant Not Found" />
-        <ComponentCard title="Applicant Not Found">
-          <div className="text-center py-12">
-            <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">Applicant Not Found</h3>
-            <p className="text-gray-600 dark:text-gray-400 mb-4">The applicant you're looking for doesn't exist or has been deleted.</p>
-            <button
-              onClick={() => navigate(-1)}
-              className="px-4 py-2 bg-brand-500 text-white rounded-lg hover:bg-brand-600 transition-colors"
-            >
-              Back
-            </button>
-          </div>
-        </ComponentCard>
-      </div>
-    );
-  }
+  const resolvedCompanyId = useMemo(() => {
+    if (!applicant) return '';
+    if (typeof applicant.jobPositionId === 'object') {
+      const jobPos = applicant.jobPositionId as any;
+      if (typeof jobPos.companyId === 'string') return jobPos.companyId;
+      if (typeof jobPos.companyId === 'object' && jobPos.companyId?._id) return jobPos.companyId._id;
+    }
+    if (typeof applicant.companyId === 'string') return applicant.companyId;
+    if (typeof applicant.companyId === 'object' && (applicant.companyId as any)?._id) return (applicant.companyId as any)._id;
+    return '';
+  }, [applicant]);
+
+  const { data: fetchedCompany } = useCompany(resolvedCompanyId || '', { enabled: !!resolvedCompanyId });
+
+  // Mutations are declared earlier to preserve hook order
 
   // Compute full CV download URL (prefix API base URL for relative paths)
   const cvUrl = useMemo(() => {
@@ -106,6 +100,8 @@ const ApplicantData = () => {
     const base = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
     return base ? `${base}/${path.replace(/^\//, '')}` : path;
   }, [applicant?.cvFilePath]);
+
+  
 
   // (internal preview removed) -- use the previewWithoutAttachment button to open inline
 
@@ -164,32 +160,8 @@ const ApplicantData = () => {
 
   // (previewWithoutAttachment removed)
   
-  const { data: jobPositions = [] } = useJobPositions();
-  const jobPosIdString = applicant && typeof applicant.jobPositionId === 'string' ? applicant.jobPositionId : '';
-  const { data: jobPositionDetail } = useJobPosition(jobPosIdString, { enabled: !!jobPosIdString });
-  // If job position detail provides a company id, fetch that company record to resolve names reliably
-  const jpCompanyId = jobPositionDetail && ((jobPositionDetail as any).companyId ? (typeof (jobPositionDetail as any).companyId === 'string' ? (jobPositionDetail as any).companyId : (jobPositionDetail as any).companyId?._id) : '');
-  const { data: jobPosCompany } = useCompany(jpCompanyId || '', { enabled: !!jpCompanyId });
-  // Fetch only companies that have applicants (in this case, just the current applicant's company)
-  const { data: companies = [] } = useCompaniesWithApplicants(
-    applicant ? [applicant] : undefined
-  );
 
-  // Derive a single companyId to fetch the canonical company record when needed
-  const resolvedCompanyId = useMemo(() => {
-    if (!applicant) return '';
-    if (typeof applicant.jobPositionId === 'object') {
-      const jobPos = applicant.jobPositionId as any;
-      if (typeof jobPos.companyId === 'string') return jobPos.companyId;
-      if (typeof jobPos.companyId === 'object' && jobPos.companyId?._id) return jobPos.companyId._id;
-    }
-    if (typeof applicant.companyId === 'string') return applicant.companyId;
-    if (typeof applicant.companyId === 'object' && (applicant.companyId as any)?._id) return (applicant.companyId as any)._id;
-    return '';
-  }, [applicant]);
-
-  // Fetch canonical company from server when we have its id (fallback if not present in `companies` list)
-  const { data: fetchedCompany } = useCompany(resolvedCompanyId || '', { enabled: !!resolvedCompanyId });
+  // Fetch canonical company is declared earlier to preserve hook order
 
   
 
@@ -1066,7 +1038,19 @@ const ApplicantData = () => {
               </svg>
             </div>
             <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Email</Label>
-            <p className="text-sm text-gray-900 dark:text-white break-words">{applicant.email}</p>
+            {applicant.email ? (
+              <a
+                href={`mailto:${applicant.email}?subject=${encodeURIComponent('Regarding your application')}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={`Send email to ${applicant.email}`}
+                className="text-sm text-gray-900 dark:text-white break-words"
+              >
+                {applicant.email}
+              </a>
+            ) : (
+              <p className="text-sm text-gray-900 dark:text-white">-</p>
+            )}
           </div>
         </div>
 
@@ -1079,7 +1063,19 @@ const ApplicantData = () => {
               </svg>
             </div>
             <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Phone</Label>
-            <p className="text-sm text-gray-900 dark:text-white">{applicant.phone}</p>
+            {applicant.phone ? (
+              <a
+                href={`https://wa.me/${(applicant.phone || '').toString().replace(/\D/g, '')}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={`Open WhatsApp chat with ${applicant.phone}`}
+                className="text-sm text-gray-900 dark:text-white"
+              >
+                {applicant.phone}
+              </a>
+            ) : (
+              <p className="text-sm text-gray-900 dark:text-white">-</p>
+            )}
           </div>
         </div>
 
@@ -2361,6 +2357,7 @@ const ApplicantData = () => {
                     </div>
                     <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
                       💬 SMS
+                      <span className="ml-2 inline-block rounded px-1.5 py-0.5 text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700">Soon</span>
                     </span>
                   </label>
                   <label className="group relative inline-flex items-center gap-3 cursor-pointer rounded-lg border border-gray-300 bg-white px-4 py-2.5 transition-all hover:border-brand-400 hover:bg-brand-50/50 dark:border-gray-600 dark:bg-gray-800 dark:hover:border-brand-600 dark:hover:bg-brand-900/20">
@@ -2383,6 +2380,7 @@ const ApplicantData = () => {
                     </div>
                     <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
                       📱 WhatsApp
+                      <span className="ml-2 inline-block rounded px-1.5 py-0.5 text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700">Soon</span>
                     </span>
                   </label>
                 </div>
@@ -2815,8 +2813,8 @@ const ApplicantData = () => {
             <Select
               options={[
                 { value: 'email', label: '📧 Email' },
-                { value: 'sms', label: '💬 SMS' },
-                { value: 'whatsapp', label: '📱 WhatsApp' },
+                { value: 'sms', label: '💬 SMS (Soon)' },
+                { value: 'whatsapp', label: '📱 WhatsApp (Soon)' },
               ]}
               value={messageForm.type}
               placeholder="Select message type"

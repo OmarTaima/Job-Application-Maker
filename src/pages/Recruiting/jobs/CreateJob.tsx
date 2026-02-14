@@ -1394,7 +1394,7 @@ export default function CreateJob() {
               <div className="flex items-center gap-4 pb-4 border-b border-gray-200 dark:border-gray-700">
                 <Switch
                   label="Bilingual Job (English & Arabic)"
-                  defaultChecked={jobForm.bilingual}
+                  checked={jobForm.bilingual}
                   onChange={(checked) => handleInputChange("bilingual", checked)}
                 />
                 <span className="text-sm text-gray-500 dark:text-gray-400">

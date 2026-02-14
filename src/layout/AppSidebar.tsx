@@ -171,15 +171,27 @@ const AppSidebar: React.FC = () => {
         if (subItem.path === "/jobs") return hasPermission("Job Position Management", "read");
         if (subItem.path === "/users") return hasPermission("User Management", "read");
         if (subItem.path === "/permissions") return hasPermission("Role Management", "read");
-        if (subItem.path === "/recommended-fields") return hasPermission("Settings Management", "read");
+        if (subItem.path === "/recommended-fields")
+          return (
+            hasPermission("Settings Management", "create") &&
+            hasPermission("Settings Management", "write")
+          );
         // Default: allow access (for dashboard, etc.)
         return true;
       });
     };
 
+    // Hide the whole "Company Management" nav if the user doesn't have create permission
+    const filteredItems = items.filter((nav) => {
+      if (nav.name === "Company Management") {
+        
+      }
+      return true;
+    });
+
     return (
       <ul className="flex flex-col gap-4">
-        {items.map((nav, index) => {
+        {filteredItems.map((nav, index) => {
           // Filter sub-items if they exist
           const visibleSubItems = nav.subItems ? filterSubItems(nav.subItems) : undefined;
           

@@ -77,30 +77,43 @@ export default function PreviewRole() {
     });
   }, [users, role]);
 
-  // Get permission details for this role
+  // Get permission details for this role (normalized)
   const rolePermissions = useMemo(() => {
     if (!role || !role.permissions) return [];
 
-    return role.permissions
-      .map((rolePermId: any) => {
-        // Handle both string IDs and permission objects
-        const permId =
-          typeof rolePermId === "string"
-            ? rolePermId
-            : (rolePermId as any).permission?._id ||
-              (rolePermId as any).permission;
-        const access =
-          typeof rolePermId === "object" ? (rolePermId as any).access : [];
+    return role.permissions.map((rolePerm: any) => {
+      // Determine permission id and access array from various shapes
+      const permId =
+        typeof rolePerm === "string"
+          ? rolePerm
+          : rolePerm?.permission?._id || rolePerm?.permission || (rolePerm?._id || undefined);
 
-        const permission = permissions.find((p) => p._id === permId);
-        if (!permission) return null;
+      const access = Array.isArray(rolePerm?.access)
+        ? rolePerm.access
+        : [];
 
+      // Try to find the permission metadata from the global permissions list
+      const permissionMeta = permissions.find((p) => p._id === permId);
+
+      if (permissionMeta) {
         return {
-          ...permission,
-          access: access.length > 0 ? access : permission.actions || [],
+          ...permissionMeta,
+          access: access.length > 0 ? access : permissionMeta.actions || [],
         };
-      })
-      .filter(Boolean);
+      }
+
+      // Fallback: if rolePerm itself contains a name, use it; otherwise show a user-friendly placeholder
+      const fallbackName =
+        (typeof rolePerm === "object" && (rolePerm.permission?.name || rolePerm.name)) ||
+        "Unknown Permission";
+
+      return {
+        _id: permId || "",
+        name: fallbackName,
+        description: "",
+        access: access.length > 0 ? access : [],
+      } as any;
+    });
   }, [role, permissions]);
 
   const loading = rolesLoading || permissionsLoading || usersLoading;

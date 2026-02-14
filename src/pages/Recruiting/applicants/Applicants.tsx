@@ -20,6 +20,7 @@ import {
   useUpdateApplicantStatus,
   useCompanies,
 } from "../../../hooks/queries";
+import { Menu, MenuItem, Checkbox, ListItemText } from "@mui/material";
 import type { Applicant } from "../../../store/slices/applicantsSlice";
 import { toPlainString } from "../../../utils/strings";
 
@@ -27,16 +28,64 @@ const Applicants = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
 
+  // Restore persisted table state (pagination, sorting, filters) from sessionStorage
+  const persistedTableState = useMemo(() => {
+    try {
+      const raw = sessionStorage.getItem('applicants_table_state');
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) {
+      return null;
+    }
+  }, []);
+
+  // Context menu state (declared early so menu position memo can read it)
+  const [contextMenu, setContextMenu] = useState<{
+    open: boolean;
+    x: number;
+    y: number;
+    row?: any;
+  }>({ open: false, x: 0, y: 0 });
+
+  const menuPos = useMemo(() => {
+    if (!contextMenu.open) return { x: 0, y: 0 };
+    try {
+      const maxW = Math.max(0, window.innerWidth - 220);
+      const maxH = Math.max(0, window.innerHeight - 160);
+      const x = Math.max(8, Math.min(contextMenu.x, maxW));
+      const y = Math.max(8, Math.min(contextMenu.y, maxH));
+      return { x, y };
+    } catch (err) {
+      return { x: contextMenu.x || 0, y: contextMenu.y || 0 };
+    }
+  }, [contextMenu.open, contextMenu.x, contextMenu.y]);
+
+  const saveTableState = () => {
+    try {
+      const state = table.getState();
+      sessionStorage.setItem('applicants_table_state', JSON.stringify({
+        pagination: state.pagination,
+        sorting: state.sorting,
+        columnFilters: state.columnFilters,
+      }));
+    } catch (e) {
+      // ignore
+    }
+  };
+
   // Local state
+const [statusAnchorEl, setStatusAnchorEl] = useState<null | HTMLElement>(null);
+
   const [isDeleting, setIsDeleting] = useState(false);
   const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
   const [bulkAction, setBulkAction] = useState<string>("");
   const [isProcessing, setIsProcessing] = useState(false);
   // MRT will manage pagination internally (page size set in initialState)
   const [rowSelection, setRowSelection] = useState<MRT_RowSelectionState>({});
-  const [columnFilters, setColumnFilters] = useState<MRT_ColumnFiltersState>([]);
+  const [columnFilters, setColumnFilters] = useState<MRT_ColumnFiltersState>(persistedTableState?.columnFilters ?? []);
   // MRT sorting state (control sorting externally so we can offer only asc/desc for Submitted)
-  const [sorting, setSorting] = useState<Array<any>>([{ id: 'submittedAt', desc: true }]);
+  const [sorting, setSorting] = useState<Array<any>>(persistedTableState?.sorting ?? [{ id: 'submittedAt', desc: true }]);
+  // Pagination state persisted
+  const [pagination, setPagination] = useState(() => persistedTableState?.pagination ?? { pageIndex: 0, pageSize: 10 });
   // Sorting will be managed by MRT (default newest-first)
 
   // Get selected applicant IDs from row selection
@@ -86,6 +135,8 @@ const Applicants = () => {
   const [bulkDeleteError, setBulkDeleteError] = useState("");
   const [jobFilterOpen, setJobFilterOpen] = useState(false);
   const jobFilterRef = useRef<HTMLDivElement | null>(null);
+  const [statusFilterOpen, setStatusFilterOpen] = useState(false);
+  const statusFilterRef = useRef<HTMLDivElement | null>(null);
 
 
   useEffect(() => {
@@ -98,6 +149,18 @@ const Applicants = () => {
     document.addEventListener("mousedown", handleOutside);
     return () => document.removeEventListener("mousedown", handleOutside);
   }, [jobFilterOpen]);
+
+  // Close status popover when clicking outside
+  useEffect(() => {
+    const handleOutside = (e: MouseEvent) => {
+      if (!statusFilterOpen) return;
+      if (statusFilterRef.current && !statusFilterRef.current.contains(e.target as Node)) {
+        setStatusFilterOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, [statusFilterOpen]);
 
   // Close job dropdown when the table's column filters change (e.g. user selected a job)
   useEffect(() => {
@@ -218,8 +281,17 @@ const Applicants = () => {
   // hide trashed rows while still allowing an explicit trashed view.
   const displayedApplicants = useMemo(() => {
     const statusFilter = columnFilters.find((f) => f.id === 'status');
-    const explicitlyTrashed = statusFilter && statusFilter.value === 'trashed';
-    if (explicitlyTrashed) return applicants;
+    const statusVal = statusFilter?.value;
+
+    // If user explicitly filtered for trashed (single value 'trashed'), show all applicants
+    if (statusVal === 'trashed') return applicants;
+
+    // If user selected multiple statuses (array), filter applicants to those statuses
+    if (Array.isArray(statusVal) && statusVal.length > 0) {
+      return applicants.filter((a: Applicant) => statusVal.includes(a.status));
+    }
+
+    // Default: exclude trashed applicants
     return applicants.filter((a: Applicant) => a.status !== 'trashed');
   }, [applicants, columnFilters]);
 
@@ -568,52 +640,113 @@ const Applicants = () => {
           return <span className="text-sm font-medium">{title}</span>;
         },
       },
-            {
-        accessorKey: "status",
-        header: "Status",
-        enableSorting: false,
-        Header: ({ column }) => (
-          <div className="flex items-center gap-2 -mt-1">
-            <span className="text-sm font-medium">Status</span>
-            <select
-              value={(column.getFilterValue() as string) ?? ""}
-              onChange={(e) => {
-                column.setFilterValue(e.target.value || undefined);
-              }}
-              onClick={(e) => e.stopPropagation()}
-              className="text-sm border-none bg-transparent appearance-none p-0 px-2 py-1 focus:outline-none focus:ring-0"
-              style={{ boxShadow: 'none' }}
+         {
+  accessorKey: "status",
+  header: "Status",
+  enableSorting: false,
+
+  Header: ({ column }) => {
+    const current = column.getFilterValue();
+    const selected: string[] = Array.isArray(current)
+      ? current
+      : current
+      ? [current]
+      : [];
+
+    const toggle = (s: string) => {
+      const next = new Set(selected);
+      if (next.has(s)) next.delete(s);
+      else next.add(s);
+
+      const arr = Array.from(next);
+      column.setFilterValue(arr.length ? arr : undefined);
+    };
+
+    return (
+      <div onMouseDown={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium">Status</span>
+
+          <button
+            type="button"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setStatusFilterOpen(true);
+              setStatusAnchorEl(e.currentTarget);
+            }}
+            className="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-1 text-xs text-gray-700 dark:bg-gray-700 dark:text-gray-200"
+          >
+            {selected.length ? `${selected.length}` : "Filter"}
+            <svg className="h-3 w-3" viewBox="0 0 20 20" fill="none">
+              <path
+                d="M6 8l4 4 4-4"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+
+          <Menu
+            anchorEl={statusAnchorEl}
+            open={statusFilterOpen}
+            onClose={() => {
+              setStatusFilterOpen(false);
+              setStatusAnchorEl(null);
+            }}
+            PaperProps={{
+              style: { maxHeight: 240, width: 220 },
+            }}
+          >
+            <MenuItem
+              onClick={() => column.setFilterValue(undefined)}
+              dense
             >
-              <option value="">All</option>
-              {statusOptions.map((s) => (
-                <option key={s} value={s}>
-                  {s.charAt(0).toUpperCase() + s.slice(1)}
-                </option>
-              ))}
-            </select>
-          </div>
-        ),
+              Clear
+            </MenuItem>
 
-        size: 120,
-        enableColumnFilter: true,
+            {statusOptions.map((s) => (
+              <MenuItem key={s} onClick={() => toggle(s)} dense>
+                <Checkbox checked={selected.includes(s)} size="small" />
+                <ListItemText
+                  primary={s.charAt(0).toUpperCase() + s.slice(1)}
+                />
+              </MenuItem>
+            ))}
+          </Menu>
+        </div>
+      </div>
+    );
+  },
 
-        Cell: ({ row }: { row: { original: Applicant } }) => {
-          const colors = getStatusColor(row.original.status);
+  filterFn: (row: any, columnId: string, filterValue: any) => {
+    if (!filterValue) return true;
+    const vals = Array.isArray(filterValue) ? filterValue : [filterValue];
+    if (!vals.length) return true;
+    const cell = String(row.getValue(columnId) ?? "");
+    return vals.includes(cell);
+  },
+Cell: ({ row }: { row: { original: Applicant } }) => {
+  const colors = getStatusColor(row.original.status);
 
-          return (
-            <span
-              style={{
-                backgroundColor: colors.bg,
-                color: colors.color,
-              }}
-              className="inline-block rounded-full px-3 py-1 text-xs font-semibold"
-            >
-              {row.original.status.charAt(0).toUpperCase() +
-                row.original.status.slice(1)}
-            </span>
-          );
-        },
-      },
+  return (
+    <span
+      style={{
+        backgroundColor: colors.bg,
+        color: colors.color,
+      }}
+      className="inline-block rounded-full px-3 py-1 text-xs font-semibold"
+    >
+      {row.original.status.charAt(0).toUpperCase() +
+        row.original.status.slice(1)}
+    </span>
+  );
+},
+  size: 120,
+  enableColumnFilter: true,
+},
       {
         accessorKey: "submittedAt",
         header: "Submitted",
@@ -662,7 +795,7 @@ const Applicants = () => {
         Cell: ({ row }: any) => formatDate(row.original.submittedAt),
       },
     ],
-    [companyMap, jobPositionMap, jobOptions, getStatusColor, formatDate]
+    [companyMap, jobPositionMap, jobOptions, getStatusColor, formatDate, statusFilterOpen]
   );
 
   // Create custom MUI theme that matches the app's dark mode
@@ -815,8 +948,9 @@ const Applicants = () => {
     rowCount: displayedApplicants.length,
     // Default pagination and sorting: 10 rows per page, newest first
     initialState: {
-      pagination: { pageIndex: 0, pageSize: 10 },
-      sorting: [{ id: 'submittedAt', desc: true }],
+      pagination,
+      sorting,
+      columnFilters,
     },
     muiTablePaperProps: {
       sx: {
@@ -866,6 +1000,9 @@ const Applicants = () => {
         '& .MuiIconButton-root': {
           display: 'none !important',
         },
+        // allow header popovers to overflow the table head cell
+        overflow: 'visible',
+        zIndex: 2,
       },
     },
     muiTopToolbarProps: {
@@ -884,10 +1021,12 @@ const Applicants = () => {
       rowSelection,
       columnFilters,
       sorting,
+      pagination,
       isLoading: applicantsLoading || jobPositionsLoading,
       showSkeletons: applicantsLoading || jobPositionsLoading,
       showAlertBanner: false,
     },
+    onPaginationChange: setPagination,
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onRowSelectionChange: setRowSelection,
@@ -956,9 +1095,26 @@ const Applicants = () => {
     },
     muiTableBodyRowProps: ({ row }) => ({
       onClick: () => {
+        try {
+          const state = table.getState();
+          sessionStorage.setItem('applicants_table_state', JSON.stringify({
+            pagination: state.pagination,
+            sorting: state.sorting,
+            columnFilters: state.columnFilters,
+          }));
+        } catch (e) {
+          // ignore
+        }
         navigate(`/applicant/${row.id}`, {
           state: { applicant: row.original },
         });
+      },
+      onContextMenu: (e) => {
+        try {
+          e.preventDefault();
+          e.stopPropagation();
+        } catch {}
+        setContextMenu({ open: true, x: e.clientX, y: e.clientY, row });
       },
       sx: {
         cursor: 'pointer',
@@ -969,6 +1125,36 @@ const Applicants = () => {
       },
     }),
   });
+
+  // Persist table state to sessionStorage so pagination/filtering is restored when returning
+  useEffect(() => {
+    try {
+      const toSave = {
+        pagination,
+        sorting,
+        columnFilters,
+      };
+      sessionStorage.setItem('applicants_table_state', JSON.stringify(toSave));
+    } catch (e) {
+      // ignore
+    }
+  }, [pagination, sorting, columnFilters]);
+
+  // Close custom context menu on outside click or Escape
+  useEffect(() => {
+    const onDocClick = () => {
+      setContextMenu((c) => (c.open ? { ...c, open: false } : c));
+    };
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setContextMenu((c) => (c.open ? { ...c, open: false } : c));
+    };
+    document.addEventListener('click', onDocClick);
+    document.addEventListener('keydown', onEsc);
+    return () => {
+      document.removeEventListener('click', onDocClick);
+      document.removeEventListener('keydown', onEsc);
+    };
+  }, []);
 
   return (
     <>
@@ -1072,6 +1258,58 @@ const Applicants = () => {
           </>
         </ComponentCard>
       </div>
+
+      {/* Custom context menu for applicant rows */}
+      {contextMenu.open && (
+        <div
+          style={{ position: 'fixed', left: menuPos.x, top: menuPos.y, zIndex: 11000 }}
+          onClick={(e) => {
+            e.stopPropagation();
+          }}
+        >
+          <div className="w-52 rounded bg-white dark:bg-gray-800 border dark:border-gray-700 shadow-lg overflow-hidden text-sm">
+            <button
+              className="w-full text-left px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
+              onClick={() => {
+                saveTableState();
+                try {
+                  const url = `${window.location.origin}/applicant/${contextMenu.row.id}`;
+                  window.open(url, '_blank');
+                } catch (err) {
+                  navigate(`/applicant/${contextMenu.row.id}`, { state: { applicant: contextMenu.row.original } });
+                }
+                setContextMenu((c) => ({ ...c, open: false }));
+              }}
+            >
+              Open in new tab
+            </button>
+            <button
+              className="w-full text-left px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
+              onClick={() => {
+                saveTableState();
+                navigate(`/applicant/${contextMenu.row.id}`, { state: { applicant: contextMenu.row.original } });
+                setContextMenu((c) => ({ ...c, open: false }));
+              }}
+            >
+              Open in this tab
+            </button>
+            <button
+              className="w-full text-left px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
+              onClick={async () => {
+                try {
+                  const url = `${window.location.origin}/applicant/${contextMenu.row.id}`;
+                  await navigator.clipboard.writeText(url);
+                } catch (err) {
+                  // ignore
+                }
+                setContextMenu((c) => ({ ...c, open: false }));
+              }}
+            >
+              Copy link
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Photo Preview Modal */}
       {previewPhoto && (
