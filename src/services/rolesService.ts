@@ -78,7 +78,7 @@ export const rolesService = {
    */
   async getAllPermissions(): Promise<Permission[]> {
     try {
-      const response = await axios.get<PermissionsResponse>("/permissions");
+      const response = await axios.get<PermissionsResponse>("/permissions?PageCount=1000");
       return response.data.data;
     } catch (error: any) {
       throw new ApiError(

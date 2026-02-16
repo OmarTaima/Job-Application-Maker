@@ -23,13 +23,13 @@ import {
   useScheduleInterview,
   useUpdateInterviewStatus,
   useAddComment,
-  useSendMessage,
 } from '../../../hooks/queries';
 import type {
   Applicant,
   UpdateStatusRequest,
 } from '../../../services/applicantsService';
 import { toPlainString } from '../../../utils/strings';
+import MessageModal from '../../../components/modals/MessageModal';
 
 const ApplicantData = () => {
   const { id } = useParams<{ id: string }>();
@@ -163,14 +163,12 @@ const ApplicantData = () => {
 
   // Fetch canonical company is declared earlier to preserve hook order
 
-  
 
   // Mutations
   const updateStatusMutation = useUpdateApplicantStatus();
   const scheduleInterviewMutation = useScheduleInterview();
   const updateInterviewMutation = useUpdateInterviewStatus();
   const addCommentMutation = useAddComment();
-  const sendMessageMutation = useSendMessage();
 
   // Interview update state
   const [updatingInterviewId] = useState<string | null>(null);
@@ -477,14 +475,8 @@ const ApplicantData = () => {
   const [customPhone, setCustomPhone] = useState('');
   const [messageTemplate, setMessageTemplate] = useState('');
   const [isSubmittingInterview, setIsSubmittingInterview] = useState(false);
-  const [isSubmittingMessage, setIsSubmittingMessage] = useState(false);
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [isSubmittingStatus, setIsSubmittingStatus] = useState(false);
-  const [messageForm, setMessageForm] = useState({
-    subject: '',
-    body: '',
-    type: 'email' as 'email' | 'sms' | 'whatsapp' | 'internal',
-  });
   const [commentForm, setCommentForm] = useState({
     text: '',
   });
@@ -493,7 +485,6 @@ const ApplicantData = () => {
     notes: '',
   });
   const [interviewError, setInterviewError] = useState('');
-  const [messageError, setMessageError] = useState('');
   const [commentError, setCommentError] = useState('');
   const [statusError, setStatusError] = useState('');
 
@@ -711,57 +702,6 @@ const ApplicantData = () => {
       });
     } finally {
       setIsSubmittingInterview(false);
-    }
-  };
-
-  const handleMessageSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!id || !applicant) return;
-
-    // Validate required fields - subject only for email
-    if (
-      messageForm.type === 'email' &&
-      (!messageForm.subject || !messageForm.subject.trim())
-    ) {
-      setMessageError('Subject is required when sending an email');
-      return;
-    }
-    if (!messageForm.body || !messageForm.body.trim()) {
-      setMessageError('Message body is required when sending a message');
-      return;
-    }
-
-    setIsSubmittingMessage(true);
-    try {
-      const messageData: any = {
-        content: messageForm.body,
-        type: messageForm.type,
-      };
-
-      // Close modal and reset form immediately
-      setMessageForm({ subject: '', body: '', type: 'email' });
-      setShowMessageModal(false);
-
-      // API call
-      await sendMessageMutation.mutateAsync({ id: id!, data: messageData });
-
-      await Swal.fire({
-        title: 'Success!',
-        text: 'Message sent successfully.',
-        icon: 'success',
-        position: 'center',
-        timer: 2000,
-        showConfirmButton: false,
-        customClass: {
-          container: '!mt-16',
-        },
-      });
-    } catch (err: any) {
-      const errorMsg = getErrorMessage(err);
-      setMessageError(errorMsg);
-      console.error('Error sending message:', err);
-    } finally {
-      setIsSubmittingMessage(false);
     }
   };
 
@@ -2775,133 +2715,7 @@ const ApplicantData = () => {
           </div>
         </div>
       </Modal>
-
-      {/* Message Modal */}
-      <Modal
-        isOpen={showMessageModal}
-        onClose={() => {
-          setShowMessageModal(false);
-          setMessageError('');
-        }}
-        className="max-w-2xl p-6"
-        closeOnBackdrop={false}
-      >
-        <form onSubmit={handleMessageSubmit} className="space-y-6">
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-            Send Message
-          </h2>
-
-          {messageError && (
-            <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-              <div className="flex items-start justify-between">
-                <p className="text-sm text-red-600 dark:text-red-400">
-                  <strong>Error:</strong> {messageError}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setMessageError('')}
-                  className="ml-3 text-red-400 hover:text-red-600 dark:hover:text-red-300"
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-          )}
-
-          <div>
-            <Label htmlFor="message-type">Message Type</Label>
-            <Select
-              options={[
-                { value: 'email', label: '📧 Email' },
-                { value: 'sms', label: '💬 SMS (Soon)' },
-                { value: 'whatsapp', label: '📱 WhatsApp (Soon)' },
-              ]}
-              value={messageForm.type}
-              placeholder="Select message type"
-              onChange={(value) =>
-                setMessageForm({
-                  ...messageForm,
-                  type: value as 'email' | 'sms' | 'whatsapp',
-                })
-              }
-            />
-          </div>
-
-          {/* Subject field - only for email */}
-          {messageForm.type === 'email' && (
-            <div>
-              <Label htmlFor="message-subject">Subject *</Label>
-              <Input
-                id="message-subject"
-                type="text"
-                value={messageForm.subject}
-                onChange={(e) =>
-                  setMessageForm({ ...messageForm, subject: e.target.value })
-                }
-                placeholder="Message subject"
-                required
-              />
-            </div>
-          )}
-
-          <div>
-            <Label htmlFor="message-body">Message *</Label>
-            <TextArea
-              value={messageForm.body}
-              onChange={(value) =>
-                setMessageForm({ ...messageForm, body: value })
-              }
-              placeholder="Enter your message to the applicant"
-              rows={5}
-            />
-          </div>
-
-          <div className="flex justify-end gap-3">
-            <button
-              type="button"
-              onClick={() => setShowMessageModal(false)}
-              className="rounded-lg border border-stroke px-6 py-2 hover:bg-gray-100 dark:border-strokedark dark:hover:bg-gray-800"
-              disabled={isSubmittingMessage}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="rounded-lg bg-purple-600 px-6 py-2 text-white hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-              disabled={isSubmittingMessage}
-            >
-              {isSubmittingMessage ? (
-                <>
-                  <svg
-                    className="animate-spin h-5 w-5"
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    ></circle>
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    ></path>
-                  </svg>
-                  <span>Sending...</span>
-                </>
-              ) : (
-                <span>Send Message</span>
-              )}
-            </button>
-          </div>
-        </form>
-      </Modal>
-
+      <MessageModal isOpen={showMessageModal} onClose={() => setShowMessageModal(false)} applicant={applicant} id={applicant._id} />
       {/* Comment Modal */}
       <Modal
         isOpen={showCommentModal}

@@ -7,3 +7,4 @@ export * from "./useApplicants";
 export * from "./useUsers";
 export * from "./useRoles";
 export * from "./useRecommendedFields";
+export * from "./useSendEmail"; // Add this line to export useSendEmail
