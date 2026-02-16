@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useDepartment } from "../../../hooks/queries";
 import Swal from "sweetalert2";
 import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
@@ -61,6 +61,9 @@ export default function Jobs() {
     data: jobPositions = [],
     isLoading: jobsLoading,
     error,
+    refetch: refetchJobPositions,
+    isFetching: isJobPositionsFetching,
+    isFetched: isJobPositionsFetched,
   } = useJobPositions(companyId);
   const deleteJobMutation = useDeleteJobPosition();
   const updateJobMutation = useUpdateJobPosition();
@@ -69,6 +72,8 @@ export default function Jobs() {
   const [deleteError, setDeleteError] = useState("");
   const [isDeletingJob, setIsDeletingJob] = useState<string | null>(null);
   const [isUpdatingJob, setIsUpdatingJob] = useState<string | null>(null);
+  const [lastRefetch, setLastRefetch] = useState<Date | null>(null);
+  const [elapsed, setElapsed] = useState<string | null>(null);
 
   // Helper function to extract detailed error messages
   const getErrorMessage = (err: any): string => {
@@ -256,6 +261,34 @@ export default function Jobs() {
 
   const isLoading = jobsLoading;
 
+  useEffect(() => {
+    if (!lastRefetch && isJobPositionsFetched) setLastRefetch(new Date());
+  }, [isJobPositionsFetched]);
+
+  useEffect(() => {
+    if (!lastRefetch) {
+      setElapsed(null);
+      return;
+    }
+    const formatRelative = (d: Date) => {
+      const diffSec = Math.floor((Date.now() - d.getTime()) / 1000);
+      if (diffSec < 60) return "now";
+      const mins = Math.floor(diffSec / 60);
+      if (mins < 60) return `${mins} min ago`;
+      const hours = Math.floor(mins / 60);
+      if (hours < 24) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+      const days = Math.floor(hours / 24);
+      if (days === 1) return "yesterday";
+      if (days < 7) return `${days} days ago`;
+      return d.toLocaleDateString();
+    };
+
+    const update = () => setElapsed(formatRelative(lastRefetch));
+    update();
+    const id = setInterval(update, 30 * 1000);
+    return () => clearInterval(id);
+  }, [lastRefetch]);
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -376,7 +409,25 @@ export default function Jobs() {
                 className="h-11 w-full max-w-md rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/20 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800"
               />
             </div>
-            {canCreate && (
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  if (isJobPositionsFetched && refetchJobPositions) {
+                    await refetchJobPositions();
+                    setLastRefetch(new Date());
+                  }
+                } catch (e) {
+                  // ignore
+                }
+              }}
+              disabled={isJobPositionsFetching}
+              className="inline-flex mr-1 items-center gap-2 rounded-lg bg-brand-500 px-3 py-2 text-sm font-semibold text-white ml-2 disabled:opacity-50"
+            >
+              {isJobPositionsFetching ? 'Updating Data' : 'Update Data'}
+            </button>
+            <div className="mr-5 text-sm text-gray-500">{elapsed ? `Last Update: ${elapsed}` : 'Not updated yet'}</div>
+         {canCreate && (
               <Link
                 to="/create-job"
                 className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
@@ -386,6 +437,8 @@ export default function Jobs() {
               </Link>
             )}
           </div>
+            
+            
 
           {isLoading ? (
             <LoadingSpinner message="Loading jobs..." />

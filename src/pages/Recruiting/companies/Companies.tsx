@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Swal from "sweetalert2";
 import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
 import PageMeta from "../../../components/common/PageMeta";
@@ -31,7 +31,6 @@ export default function Companies() {
   const canEdit = hasPermission("Company Management", "write");
 
   const [searchTerm, setSearchTerm] = useState<string>("");
-  const [showRaw, setShowRaw] = useState(false);
 
   // Memoize user-derived values
   const { isAdmin, companyId } = useMemo(() => {
@@ -53,12 +52,46 @@ export default function Companies() {
     data: companies = [],
     isLoading: companiesLoading,
     error,
+    refetch: refetchCompanies,
+    isFetching: isCompaniesFetching,
+    isFetched: isCompaniesFetched,
   } = useCompanies(companyId);
   const { data: departments = [] } = useDepartments();
   const deleteCompanyMutation = useDeleteCompany();
 
   const [deleteError, setDeleteError] = useState("");
   const [isDeletingCompany, setIsDeletingCompany] = useState<string | null>(null);
+  const [lastRefetch, setLastRefetch] = useState<Date | null>(null);
+  const [elapsed, setElapsed] = useState<string | null>(null);
+
+  // Initialize and update elapsed label
+  useEffect(() => {
+    if (!lastRefetch && isCompaniesFetched) setLastRefetch(new Date());
+  }, [isCompaniesFetched]);
+
+  useEffect(() => {
+    if (!lastRefetch) {
+      setElapsed(null);
+      return;
+    }
+    const formatRelative = (d: Date) => {
+      const diffSec = Math.floor((Date.now() - d.getTime()) / 1000);
+      if (diffSec < 60) return "now";
+      const mins = Math.floor(diffSec / 60);
+      if (mins < 60) return `${mins} min ago`;
+      const hours = Math.floor(mins / 60);
+      if (hours < 24) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+      const days = Math.floor(hours / 24);
+      if (days === 1) return "yesterday";
+      if (days < 7) return `${days} days ago`;
+      return d.toLocaleDateString();
+    };
+
+    const update = () => setElapsed(formatRelative(lastRefetch));
+    update();
+    const id = setInterval(update, 30 * 1000);
+    return () => clearInterval(id);
+  }, [lastRefetch]);
 
   // Helper function to extract detailed error messages
   const getErrorMessage = (err: any): string => {
@@ -126,7 +159,8 @@ export default function Companies() {
 
     try {
       setIsDeletingCompany(companyId);
-      await deleteCompanyMutation.mutateAsync(companyId);
+      // Optimistic delete: fire mutation (hook will update cache) and show success immediately
+      deleteCompanyMutation.mutate(companyId);
       await Swal.fire({
         title: "Deleted!",
         text: "Company has been deleted successfully.",
@@ -275,7 +309,25 @@ export default function Companies() {
                   className="h-11 w-full max-w-md rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/20 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800"
                 />
               </div>
-              {canCreate && (
+              <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      if (refetchCompanies) {
+                        await refetchCompanies();
+                        setLastRefetch(new Date());
+                      }
+                    } catch (e) {
+                      // ignore
+                    }
+                  }}
+                  disabled={isCompaniesFetching}
+                  className="inline-flex mr-1 items-center gap-2 rounded-lg bg-brand-500 px-3 py-2 text-sm font-semibold text-white ml-2 disabled:opacity-50"
+                >
+                  {isCompaniesFetching ? 'Updating Data' : 'Update Data'}
+                </button>
+                  <div className="mr-5 text-sm text-gray-500">{elapsed ? `Last Update: ${elapsed}` : 'Not updated yet'}</div>
+                     {canCreate && (
                 <Link
                   to="/recruiting"
                   className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600"
@@ -284,14 +336,10 @@ export default function Companies() {
                   Create Company
                 </Link>
               )}
-              <button
-                onClick={() => setShowRaw((s) => !s)}
-                className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 ml-2"
-                type="button"
-              >
-                {showRaw ? "Hide raw data" : "Show raw data"}
-              </button>
+                
             </div>
+           
+    
 
             {filteredCompanies.length === 0 ? (
               <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 py-12 dark:border-gray-700">

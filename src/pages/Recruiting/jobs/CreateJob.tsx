@@ -17,6 +17,7 @@ import {
   useCompanies,
   useDepartments,
 } from "../../../hooks/queries";
+import { useSavedFields } from "../../../hooks/queries";
 import { useRecommendedFields } from "../../../hooks/queries/useRecommendedFields";
 import { useCreateJobPosition, useUpdateJobPosition, useJobPositions } from "../../../hooks/queries/useJobPositions";
 import { toPlainString } from "../../../utils/strings";
@@ -749,6 +750,68 @@ export default function CreateJob() {
   // Recommended selection panel state
   const [showRecommendedPanel, setShowRecommendedPanel] = useState(false);
   const [selectedRecommended, setSelectedRecommended] = useState<string[]>([]);
+
+  // Saved fields (same UI/logic as recommended fields but for user's saved fields)
+  const { data: savedFields = [], isLoading: savedFieldsLoading } = useSavedFields();
+  const [showSavedPanel, setShowSavedPanel] = useState(false);
+  const [selectedSaved, setSelectedSaved] = useState<string[]>([]);
+
+  const toggleSelectSaved = (fieldId: string) => {
+    setSelectedSaved((prev) => (prev.includes(fieldId) ? prev.filter((n) => n !== fieldId) : [...prev, fieldId]));
+  };
+
+  const isSavedAdded = (fieldId: string) => {
+    return jobForm.customFields.some((cf) => cf.fieldId === `sav_${fieldId}` || cf.fieldId === fieldId);
+  };
+
+  const handleAddSelectedSaved = () => {
+    if (selectedSaved.length === 0) return;
+    const currentFieldCount = jobForm.customFields.length;
+    setJobForm((prev) => {
+      const additions: CustomField[] = [];
+      let currentMax = prev.customFields.reduce((m, cf) => Math.max(m, cf.displayOrder || 0), 0);
+      selectedSaved.forEach((fieldId) => {
+        if (prev.customFields.some((cf) => cf.fieldId === `sav_${fieldId}` || cf.fieldId === fieldId)) return;
+        const sf = (savedFields as any).find((s: any) => s.fieldId === fieldId);
+        if (!sf) return;
+        currentMax += 1;
+        const newField: CustomField = {
+          fieldId: `sav_${sf.fieldId}`,
+          label: convertToString(sf.label) || "",
+          labelAr: (sf.label && typeof sf.label === 'object' && sf.label.ar) ? sf.label.ar : convertToString(sf.label),
+          inputType: sf.inputType as CustomField['inputType'],
+          isRequired: sf.isRequired || false,
+          minValue: sf.minValue,
+          maxValue: sf.maxValue,
+          choices: convertChoicesArray(sf.choices),
+          choicesAr: convertChoicesArrayAr(sf.choices),
+          subFields: Array.isArray(sf.groupFields)
+            ? sf.groupFields.map((g: any) => ({
+                fieldId: g.fieldId || `sub_${Date.now()}`,
+                label: convertToString(g.label) || "",
+                labelAr: (g.label && typeof g.label === 'object' && g.label.ar) ? g.label.ar : convertToString(g.label),
+                inputType: g.inputType as SubField['inputType'],
+                isRequired: g.isRequired || false,
+                choices: Array.isArray(g.choices) ? g.choices.map((c: any) => (typeof c === 'object' && c.en ? c.en : convertToString(c))) : [],
+              }))
+            : undefined,
+          displayOrder: currentMax,
+        };
+        additions.push(newField);
+      });
+      return { ...prev, customFields: [...prev.customFields, ...additions] };
+    });
+    // collapse newly added
+    setCollapsedFields(prev => {
+      const next = new Set(prev);
+      for (let i = 0; i < selectedSaved.length; i++) {
+        next.add(currentFieldCount + i);
+      }
+      return next;
+    });
+    setSelectedSaved([]);
+    setShowSavedPanel(false);
+  };
 
   const toggleSelectRecommended = (fieldId: string) => {
     setSelectedRecommended((prev) =>
@@ -1908,6 +1971,69 @@ export default function CreateJob() {
                     Recommended
                   </button>
 
+                  <div className="inline-block ml-2 relative">
+                    <button
+                      type="button"
+                      onClick={() => setShowSavedPanel((s) => !s)}
+                      className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                    >
+                      Saved Fields
+                    </button>
+
+                    {showSavedPanel && (
+                      <div className="absolute right-0 mt-2 w-80 rounded-md border bg-white p-3 shadow-lg z-50">
+                        <div className="max-h-64 overflow-auto">
+                          {savedFieldsLoading ? (
+                            <div className="text-sm text-gray-500">Loading...</div>
+                          ) : (
+                            (savedFields as any).map((sf: any, idx: number) => {
+                              const fieldId = sf.fieldId;
+                              const disabled = isSavedAdded(fieldId);
+                              const checked = selectedSaved.includes(fieldId);
+                              const inputId = `sav_${idx}_${fieldId}`;
+                              return (
+                                <label key={`${fieldId}_${idx}`} htmlFor={inputId} className={`flex items-center justify-between gap-3 py-2 ${disabled ? 'opacity-60' : ''}`}>
+                                  <div className="flex items-center gap-3">
+                                    <input
+                                      id={inputId}
+                                      type="checkbox"
+                                      checked={disabled || checked}
+                                      disabled={disabled}
+                                      onChange={() => toggleSelectSaved(fieldId)}
+                                      className="h-4 w-4 rounded border-gray-300 text-brand-600"
+                                    />
+                                    <div className="text-sm">
+                                      <div className="font-medium">{convertToString(sf.label) || fieldId}</div>
+                                      {sf.description && <div className="text-xs text-gray-500">{convertToString(sf.description)}</div>}
+                                    </div>
+                                  </div>
+                                  {disabled && <span className="text-xs text-green-600">Added</span>}
+                                </label>
+                              );
+                            })
+                          )}
+                        </div>
+                        <div className="mt-3 flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => { setSelectedSaved([]); setShowSavedPanel(false); }}
+                            className="rounded px-3 py-1 text-sm text-gray-600 hover:bg-gray-100"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleAddSelectedSaved}
+                            disabled={selectedSaved.length === 0}
+                            className="rounded bg-brand-500 px-3 py-1 text-sm text-white disabled:opacity-50"
+                          >
+                            Add Selected
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   {showRecommendedPanel && (
                     <div className="absolute right-0 mt-2 w-80 rounded-md border bg-white p-3 shadow-lg z-50">
                       <div className="max-h-64 overflow-auto">
@@ -2145,59 +2271,51 @@ export default function CreateJob() {
                       field.inputType === "radio" ||
                       field.inputType === "dropdown") && (
                       <div>
-                        <div className={`grid gap-3 ${jobForm.bilingual ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
+                        <div className={`grid gap-3 items-start ${jobForm.bilingual ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
                           <div>
                             <Label>Choices{jobForm.bilingual && " (English)"}</Label>
-                            <div className="flex gap-2">
-                              <div className="flex-1">
+                            <Input
+                              value={newChoice[fieldIndex] || ""}
+                              onChange={(e) => setNewChoice(prev => ({ ...prev, [fieldIndex]: e.target.value }))}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  handleAddChoice(fieldIndex);
+                                }
+                              }}
+                              placeholder="Add a choice"
+                            />
+                          </div>
+                          {jobForm.bilingual && (
+                            <div>
+                              <Label>Choices (Arabic)</Label>
+                              <div dir="rtl">
                                 <Input
-                                  value={newChoice[fieldIndex] || ""}
-                                  onChange={(e) => setNewChoice(prev => ({ ...prev, [fieldIndex]: e.target.value }))}
+                                  value={newChoiceAr[fieldIndex] || ""}
+                                  onChange={(e) => setNewChoiceAr(prev => ({ ...prev, [fieldIndex]: e.target.value }))}
                                   onKeyDown={(e) => {
                                     if (e.key === "Enter") {
                                       e.preventDefault();
                                       handleAddChoice(fieldIndex);
                                     }
                                   }}
-                                  placeholder="Add a choice"
+                                  placeholder="أضف خيارًا"
                                 />
                               </div>
+                            </div>
+                          )}
+                          <div className="md:col-span-2">
+                            <div className="mt-2">
                               <button
                                 type="button"
                                 onClick={() => handleAddChoice(fieldIndex)}
                                 className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600"
                               >
                                 <PlusIcon className="size-4" />
+                                Add Choice
                               </button>
                             </div>
                           </div>
-                          {jobForm.bilingual && (
-                            <div>
-                              <Label>Choices (Arabic)</Label>
-                              <div className="flex gap-2">
-                                <div dir="rtl" className="flex-1">
-                                  <Input
-                                    value={newChoiceAr[fieldIndex] || ""}
-                                    onChange={(e) => setNewChoiceAr(prev => ({ ...prev, [fieldIndex]: e.target.value }))}
-                                    onKeyDown={(e) => {
-                                      if (e.key === "Enter") {
-                                        e.preventDefault();
-                                        handleAddChoice(fieldIndex);
-                                      }
-                                    }}
-                                    placeholder="أضف خيارًا"
-                                  />
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => handleAddChoice(fieldIndex)}
-                                  className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600"
-                                >
-                                  <PlusIcon className="size-4" />
-                                </button>
-                              </div>
-                            </div>
-                          )}
                         </div>
                         <div className="mt-2 space-y-1">
                           {field.choices?.map((choice, choiceIndex) => (
@@ -2359,73 +2477,65 @@ export default function CreateJob() {
                                   subField.inputType === "dropdown") && (
                                   <div>
                                     <Label>Choices{jobForm.bilingual && " (English)"}</Label>
-                                    <div className="flex gap-2">
-                                      <Input
-                                        value={newSubFieldChoice[`${fieldIndex}-${subFieldIndex}`] || ""}
-                                        onChange={(e) =>
-                                          setNewSubFieldChoice(prev => ({ ...prev, [`${fieldIndex}-${subFieldIndex}`]: e.target.value }))
-                                        }
-                                        onKeyDown={(e) => {
-                                          if (e.key === "Enter") {
-                                            e.preventDefault();
+                                    <div>
+                                      <div className="grid gap-2 md:grid-cols-2">
+                                        <div>
+                                          <Input
+                                            value={newSubFieldChoice[`${fieldIndex}-${subFieldIndex}`] || ""}
+                                            onChange={(e) =>
+                                              setNewSubFieldChoice(prev => ({ ...prev, [`${fieldIndex}-${subFieldIndex}`]: e.target.value }))
+                                            }
+                                            onKeyDown={(e) => {
+                                              if (e.key === "Enter") {
+                                                e.preventDefault();
+                                                handleAddSubFieldChoice(
+                                                  fieldIndex,
+                                                  subFieldIndex
+                                                );
+                                              }
+                                            }}
+                                            placeholder="Add a choice"
+                                          />
+                                        </div>
+                                        {jobForm.bilingual && (
+                                          <div>
+                                            <div dir="rtl">
+                                              <Input
+                                                value={newSubFieldChoiceAr[`${fieldIndex}-${subFieldIndex}`] || ""}
+                                                onChange={(e) =>
+                                                  setNewSubFieldChoiceAr(prev => ({ ...prev, [`${fieldIndex}-${subFieldIndex}`]: e.target.value }))
+                                                }
+                                                onKeyDown={(e) => {
+                                                  if (e.key === "Enter") {
+                                                    e.preventDefault();
+                                                    handleAddSubFieldChoice(
+                                                      fieldIndex,
+                                                      subFieldIndex
+                                                    );
+                                                  }
+                                                }}
+                                                placeholder="أضف خيارًا"
+                                              />
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                      <div className="mt-2 md:col-span-2">
+                                        <button
+                                          type="button"
+                                          onClick={() =>
                                             handleAddSubFieldChoice(
                                               fieldIndex,
                                               subFieldIndex
-                                            );
+                                            )
                                           }
-                                        }}
-                                        placeholder="Add a choice"
-                                      />
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          handleAddSubFieldChoice(
-                                            fieldIndex,
-                                            subFieldIndex
-                                          )
-                                        }
-                                        className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600"
-                                      >
-                                        <PlusIcon className="size-4" />
-                                      </button>
-                                    </div>
-                                    {jobForm.bilingual && (
-                                      <div className="mt-2">
-                                        <Label>Choices (Arabic)</Label>
-                                        <div className="flex gap-2">
-                                          <div dir="rtl" className="flex-1">
-                                            <Input
-                                              value={newSubFieldChoiceAr[`${fieldIndex}-${subFieldIndex}`] || ""}
-                                              onChange={(e) =>
-                                                setNewSubFieldChoiceAr(prev => ({ ...prev, [`${fieldIndex}-${subFieldIndex}`]: e.target.value }))
-                                              }
-                                              onKeyDown={(e) => {
-                                                if (e.key === "Enter") {
-                                                  e.preventDefault();
-                                                  handleAddSubFieldChoice(
-                                                    fieldIndex,
-                                                    subFieldIndex
-                                                  );
-                                                }
-                                              }}
-                                              placeholder="أضف خيارًا"
-                                            />
-                                          </div>
-                                          <button
-                                            type="button"
-                                            onClick={() =>
-                                              handleAddSubFieldChoice(
-                                                fieldIndex,
-                                                subFieldIndex
-                                              )
-                                            }
-                                            className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600"
-                                          >
-                                            <PlusIcon className="size-4" />
-                                          </button>
-                                        </div>
+                                          className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600"
+                                        >
+                                          <PlusIcon className="size-4" />
+                                          Add Choice
+                                        </button>
                                       </div>
-                                    )}
+                                    </div>
                                     <div className="mt-2 space-y-1">
                                       {subField.choices?.map(
                                         (choice, choiceIndex) => (

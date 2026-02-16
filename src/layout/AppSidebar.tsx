@@ -40,6 +40,11 @@ const navItems: NavItem[] = [
       { name: "Jobs", path: "/jobs", pro: false },
     ],
   },
+  {
+    icon: <GridIcon />,
+    name: "Saved Fields",
+    path: "/recruiting/saved-fields",
+  },
 ];
   //   icon: <CalenderIcon />,
   //   name: "Calendar",
@@ -176,6 +181,8 @@ const AppSidebar: React.FC = () => {
             hasPermission("Settings Management", "create") &&
             hasPermission("Settings Management", "write")
           );
+        if (subItem.path === "/recruiting/saved-fields")
+          return true; // Saved fields are available to authenticated users
         // Default: allow access (for dashboard, etc.)
         return true;
       });

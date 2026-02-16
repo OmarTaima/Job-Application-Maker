@@ -134,7 +134,15 @@ export function useUpdateApplicantStatus() {
       // Optimistically update the detail query
       queryClient.setQueryData(applicantsKeys.detail(id), (old: any) => {
         if (!old) return old;
-        return { ...old, status: data.status };
+        const tempHistory = {
+          _id: `temp-${Date.now()}`,
+          status: data.status,
+          notes: (data as any).notes,
+          changedAt: new Date().toISOString(),
+          // preserve any extra fields (e.g., notifications) if present
+          ...(data as any).notifications ? { notifications: (data as any).notifications } : {},
+        };
+        return { ...old, status: data.status, statusHistory: [...(old.statusHistory || []), tempHistory] };
       });
 
       // Return context with the previous values
@@ -199,17 +207,25 @@ export function useScheduleInterview() {
       data,
     }: {
       id: string;
-      data: ScheduleInterviewRequest;
-    }) => applicantsService.scheduleInterview(id, data),
+      data: ScheduleInterviewRequest & { _id?: string; companyId?: any; notifications?: any };
+    }) => {
+      // Sanitize payload for network: remove client-only fields
+      const payload: any = { ...data };
+      delete payload._id;
+      delete payload.companyId;
+      delete payload.notifications;
+      return applicantsService.scheduleInterview(id, payload);
+    },
     onMutate: async ({ id, data }) => {
       await queryClient.cancelQueries({ queryKey: applicantsKeys.detail(id) });
       const previousDetail = queryClient.getQueryData(applicantsKeys.detail(id));
 
       queryClient.setQueryData(applicantsKeys.detail(id), (old: any) => {
         if (!old) return old;
+        const tempId = (data as any)?._id ?? `temp-${Date.now()}`;
         const newInterview = {
           ...data,
-          _id: `temp-${Date.now()}`,
+          _id: tempId,
           issuedAt: new Date().toISOString(),
         };
         return {

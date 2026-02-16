@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import { useState, useMemo, useCallback, useEffect} from "react";
 import Swal from "sweetalert2";
 import { useNavigate } from "react-router";
 import {
@@ -73,7 +73,6 @@ const Applicants = () => {
   };
 
   // Local state
-const [statusAnchorEl, setStatusAnchorEl] = useState<null | HTMLElement>(null);
 
   const [isDeleting, setIsDeleting] = useState(false);
   const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
@@ -120,55 +119,58 @@ const [statusAnchorEl, setStatusAnchorEl] = useState<null | HTMLElement>(null);
 
   // Use React Query hooks
   // Fetch job positions first so we can convert company filter into jobPositionIds
-  const { data: jobPositions = [], isLoading: jobPositionsLoading } =
+  const { data: jobPositions = [], isLoading: jobPositionsLoading, refetch: refetchJobPositions, isFetching: isJobPositionsFetching, isFetched: isJobPositionsFetched } =
     useJobPositions(companyId);
 
   const {
     data: applicants = [],
     isLoading: applicantsLoading,
     error,
+    refetch: refetchApplicants,
+    isFetching: isApplicantsFetching,
+    isFetched: isApplicantsFetched,
   } = useApplicants(companyId as any);
   const updateStatusMutation = useUpdateApplicantStatus();
-  const { data: allCompaniesRaw = [] } = useCompanies(companyId as any);
-
+  const { data: allCompaniesRaw = [], refetch: refetchCompanies, isFetching: isCompaniesFetching, isFetched: isCompaniesFetched } = useCompanies(companyId as any);
+  const [lastRefetch, setLastRefetch] = useState<Date | null>(null);
+  const [elapsed, setElapsed] = useState<string | null>(null);
+const [statusAnchorEl, setStatusAnchorEl] = useState<HTMLElement | null>(null);
+const [jobAnchorEl, setJobAnchorEl] = useState<HTMLElement | null>(null);
   const [bulkStatusError, setBulkStatusError] = useState("");
   const [bulkDeleteError, setBulkDeleteError] = useState("");
-  const [jobFilterOpen, setJobFilterOpen] = useState(false);
-  const jobFilterRef = useRef<HTMLDivElement | null>(null);
-  const [statusFilterOpen, setStatusFilterOpen] = useState(false);
-  const statusFilterRef = useRef<HTMLDivElement | null>(null);
 
 
+ 
   useEffect(() => {
-    const handleOutside = (e: MouseEvent) => {
-      if (!jobFilterOpen) return;
-      if (jobFilterRef.current && !jobFilterRef.current.contains(e.target as Node)) {
-        setJobFilterOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleOutside);
-    return () => document.removeEventListener("mousedown", handleOutside);
-  }, [jobFilterOpen]);
-
-  // Close status popover when clicking outside
-  useEffect(() => {
-    const handleOutside = (e: MouseEvent) => {
-      if (!statusFilterOpen) return;
-      if (statusFilterRef.current && !statusFilterRef.current.contains(e.target as Node)) {
-        setStatusFilterOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleOutside);
-    return () => document.removeEventListener("mousedown", handleOutside);
-  }, [statusFilterOpen]);
-
-  // Close job dropdown when the table's column filters change (e.g. user selected a job)
-  useEffect(() => {
-    const jobFilter = columnFilters.find((f) => f.id === 'jobPositionId');
-    if (jobFilter) {
-      setJobFilterOpen(false);
+    if (!lastRefetch && (isJobPositionsFetched || isApplicantsFetched || isCompaniesFetched)) {
+      setLastRefetch(new Date());
     }
-  }, [columnFilters]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isJobPositionsFetched, isApplicantsFetched, isCompaniesFetched]);
+
+  useEffect(() => {
+    if (!lastRefetch) {
+      setElapsed(null);
+      return;
+    }
+    const formatRelative = (d: Date) => {
+      const diffSec = Math.floor((Date.now() - d.getTime()) / 1000);
+      if (diffSec < 60) return "now";
+      const mins = Math.floor(diffSec / 60);
+      if (mins < 60) return `${mins} min ago`;
+      const hours = Math.floor(mins / 60);
+      if (hours < 24) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+      const days = Math.floor(hours / 24);
+      if (days === 1) return "yesterday";
+      if (days < 7) return `${days} days ago`;
+      return d.toLocaleDateString();
+    };
+
+    const update = () => setElapsed(formatRelative(lastRefetch));
+    update();
+    const id = setInterval(update, 30 * 1000);
+    return () => clearInterval(id);
+  }, [lastRefetch]);
 
   
   // Synchronously measure the button and set dropdown position when opening
@@ -256,6 +258,16 @@ const [statusAnchorEl, setStatusAnchorEl] = useState<null | HTMLElement>(null);
       .filter((x) => x.id && x.title);
   }, [jobPositions]);
 
+  const companyOptions = useMemo(() => {
+    return allCompanies
+      .map((c: any) => {
+        const id = typeof c._id === 'string' ? c._id : c._id?._id || '';
+        const title = toPlainString(c?.name) || c?.title || '';
+        return { id, title };
+      })
+      .filter((x) => x.id && x.title);
+  }, [allCompanies]);
+
   
   // Create company lookup map
   const companyMap = useMemo(() => {
@@ -341,16 +353,15 @@ const [statusAnchorEl, setStatusAnchorEl] = useState<null | HTMLElement>(null);
 
     try {
       setIsProcessing(true);
-      await Promise.all(
-        selectedApplicantIds.map((id) =>
-          updateStatusMutation.mutateAsync({
-            id,
-            data: {
-              status: bulkAction as any,
-              notes: `Bulk status change to ${bulkAction} on ${new Date().toLocaleDateString()}`,
-            },
-          })
-        )
+      // Optimistically trigger mutations and show success immediately
+      selectedApplicantIds.forEach((aid) =>
+        updateStatusMutation.mutate({
+          id: aid,
+          data: {
+            status: bulkAction as any,
+            notes: `Bulk status change to ${bulkAction} on ${new Date().toLocaleDateString()}`,
+          },
+        })
       );
 
       await Swal.fire({
@@ -390,16 +401,15 @@ const [statusAnchorEl, setStatusAnchorEl] = useState<null | HTMLElement>(null);
 
     try {
       setIsDeleting(true);
-      await Promise.all(
-        selectedApplicantIds.map((id) =>
-          updateStatusMutation.mutateAsync({
-            id,
-            data: {
-              status: "trashed",
-              notes: `Moved to trash on ${new Date().toLocaleDateString()}`,
-            },
-          })
-        )
+      // Optimistically mark as trashed
+      selectedApplicantIds.forEach((aid) =>
+        updateStatusMutation.mutate({
+          id: aid,
+          data: {
+            status: "trashed",
+            notes: `Moved to trash on ${new Date().toLocaleDateString()}`,
+          },
+        })
       );
 
       await Swal.fire({
@@ -497,149 +507,257 @@ const [statusAnchorEl, setStatusAnchorEl] = useState<null | HTMLElement>(null);
         enableSorting: false,
 
       },
-      ...(showCompanyColumn
-        ? [
-            {
-              accessorKey: "companyId",
-              header: "Company",
-              size: 150,
-              enableColumnFilter: true,
-              enableSorting: false,
-              Cell: ({ row }: { row: { original: Applicant } }) => {
-                // Get company from job position since applicant doesn't have companyId directly
-                const jobPositionId = row.original.jobPositionId;
-                const getId = (v: any) => (typeof v === "string" ? v : v?._id);
-                const jobPosition = jobPositionMap[getId(jobPositionId)];
-
-                if (jobPosition?.companyId) {
-                  const companyId = getId(jobPosition.companyId);
-                  const company = companyMap[companyId];
-                  return toPlainString(company?.name) || company?.title || "N/A";
-                }
-
-                return "N/A";
-              },
-            },
-          ]
-        : []),
+      ... (showCompanyColumn
+  ? [
       {
-        id: "jobPositionId",
-        header: "Job Position",
+        id: "companyId",
+        header: "Company",
+        size: 150,
+        enableColumnFilter: true,
         enableSorting: false,
-        // Normalize jobPositionId to the job TITLE so MRT's filtering compares by name
         accessorFn: (row: any) => {
           const raw = row?.jobPositionId;
           const getId = (v: any) => (typeof v === 'string' ? v : v?._id ?? v?.id ?? '');
-
-          // If applicant already embeds a title, use it
-          if (raw && typeof raw === 'object' && 'title' in raw) {
-            const cand = typeof raw.title === 'string' ? raw.title : raw?.title?.en ?? '';
-            return cand || '';
-          }
-
           const jobId = getId(raw);
-          if (!jobId) return '';
-
-          // Try jobOptions list first
-          const opt = jobOptions.find((o: any) => o.id === jobId);
-          if (opt) return opt.title;
-          const j = jobPositionMap[jobId];
-          if (j) return typeof j.title === 'string' ? j.title : j.title?.en ?? '';
-
-          // Last resort: scan jobPositions list for matching id
-          if (Array.isArray(jobPositions)) {
-            const getIdValue = (v: any) => (typeof v === 'string' ? v : v?._id ?? v?.id ?? '');
-            const found = jobPositions.find((jp: any) => {
-              const candidateId = getIdValue(jp._id) || getIdValue(jp.id) || '';
-              return candidateId === jobId;
-            });
-            if (found) return typeof found.title === 'string' ? found.title : found.title?.en ?? '';
-          }
-
-          return '';
+          const job = jobPositionMap[jobId];
+          const comp = job?.companyId ? getId(job.companyId) : '';
+          return comp;
         },
+        Header: ({ column }: { column: any }) => {
+          const current = column.getFilterValue();
+          const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+          
+          const selected: string[] = Array.isArray(current)
+            ? current
+            : current
+            ? [current]
+            : [];
 
-        Header: ({ column }) => (
-          <div className="flex items-center gap-2 -mt-1">
-            <span className="text-sm font-medium">Job Position</span>
-            <select
-              value={(column.getFilterValue() as string) ?? ""}
-              onChange={(e) => {
-                column.setFilterValue(e.target.value || undefined);
-              }}
-              onClick={(e) => e.stopPropagation()}
-              className="text-sm border-none bg-transparent appearance-none p-0 px-2 py-1 focus:outline-none focus:ring-0"
-              style={{ boxShadow: 'none' }}
-            >
-              <option value="">All</option>
-              {jobOptions.map((j) => (
-                <option key={j.id} value={j.title}>
-                  {j.title}
-                </option>
-              ))}
-            </select>
-          </div>
-        ),
-
-        size: 200,
-        enableColumnFilter: true,
-
-        Cell: ({ row }: { row: { original: Applicant } }) => {
-
-          const raw = row.original.jobPositionId;
-          let title: string | null = null;
-
-          // If applicant stores jobPosition as an object with a title, use it
-          if (raw && typeof raw === 'object' && 'title' in raw) {
-            const cand = typeof (raw as any).title === 'string' ? (raw as any).title : (raw as any)?.title?.en;
-            if (cand) title = cand;
-          }
-
-          // Determine an id to lookup in maps
-          const getId = (v: any) => {
-            if (!v) return '';
-            if (typeof v === 'string') return v;
-            return v._id ?? v.id ?? '';
+          const toggle = (id: string) => {
+            const next = new Set(selected);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            const arr = Array.from(next);
+            column.setFilterValue(arr.length ? arr : undefined);
           };
 
-          const jobId = getId(raw);
+          const clear = () => {
+            column.setFilterValue(undefined);
+            setAnchorEl(null);
+          };
 
-          // Try jobPositionMap
-          if (!title && jobId) {
-            const job = jobPositionMap[jobId];
-            if (job) {
-              title = typeof job.title === 'string' ? job.title : job.title?.en || null;
-            }
+          const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setAnchorEl(event.currentTarget);
+          };
+
+          const handleClose = () => {
+            setAnchorEl(null);
+          };
+
+          return (
+            <div onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center gap-2 -mt-1">
+                <span className="text-sm font-medium">Company</span>
+                <div>
+                  <button
+                    type="button"
+                    onClick={handleClick}
+                    className="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-1 text-xs text-gray-700 dark:bg-gray-700 dark:text-gray-200"
+                  >
+                    {selected.length ? `${selected.length}` : "Filter"}
+                    <svg className="h-3 w-3" viewBox="0 0 20 20" fill="none">
+                      <path d="M6 8l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+
+                  <Menu
+                    anchorEl={anchorEl}
+                    open={Boolean(anchorEl)}
+                    onClose={handleClose}
+                    onClick={(e) => e.stopPropagation()}
+                    PaperProps={{ style: { maxHeight: 300, width: 240 } }}
+                  >
+                    <MenuItem onClick={clear} dense>Clear</MenuItem>
+                    {companyOptions.map((c) => (
+                      <MenuItem 
+                        key={c.id} 
+                        dense 
+                        onClick={(e) => { 
+                          e.preventDefault(); 
+                          e.stopPropagation(); 
+                          toggle(c.id); 
+                        }}
+                      >
+                        <Checkbox checked={selected.includes(c.id)} size="small" />
+                        <ListItemText primary={c.title} />
+                      </MenuItem>
+                    ))}
+                  </Menu>
+                </div>
+              </div>
+            </div>
+          );
+        },
+        filterFn: (row: any, columnId: string, filterValue: any) => {
+          if (!filterValue) return true;
+          const vals = Array.isArray(filterValue) ? filterValue : [filterValue];
+          if (!vals.length) return true;
+          const cell = String(row.getValue(columnId) ?? "");
+          return vals.includes(cell);
+        },
+        Cell: ({ row }: { row: { original: Applicant } }) => {
+          // display company name via job position
+          const jobPositionId = row.original.jobPositionId;
+          const getId = (v: any) => (typeof v === 'string' ? v : v?._id ?? v?.id ?? '');
+          const jobPosition = jobPositionMap[getId(jobPositionId)];
+          if (jobPosition?.companyId) {
+            const companyId = typeof jobPosition.companyId === 'string' ? jobPosition.companyId : jobPosition.companyId._id || '';
+            const company = companyMap[companyId];
+            return toPlainString(company?.name) || company?.title || 'N/A';
           }
-
-          // If still not found, try directly searching jobPositions array (covers alternate id shapes)
-          if (!title && jobId && Array.isArray(jobPositions)) {
-            const getIdValue = (v: any) => (typeof v === 'string' ? v : v?._id ?? v?.id);
-            const jobFromList = jobPositions.find((jp: any) => {
-              const candidateId = getIdValue(jp._id) || getIdValue(jp.id) || '';
-              return candidateId === jobId;
-            });
-            if (jobFromList) {
-              title = typeof jobFromList.title === 'string' ? jobFromList.title : jobFromList.title?.en || null;
-            }
-          }
-
-          // Try jobOptions fallback
-          if (!title && jobId) {
-            const opt = jobOptions.find((o) => o.id === jobId);
-            if (opt) title = opt.title;
-          }
-
-          // Final fallback: if raw is a string show shortened id, else placeholder
-          if (!title) {
-            if (typeof raw === 'string' && raw) title = String(raw).slice(0, 8);
-            else if (jobId) title = String(jobId).slice(0, 8);
-            else title = 'N/A';
-          }
-
-          return <span className="text-sm font-medium">{title}</span>;
+          return 'N/A';
         },
       },
+    ]
+  : []),
+ {
+  id: "jobPositionId",
+  header: "Job Position",
+  enableSorting: false,
+
+  accessorFn: (row: any) => {
+    const raw = row?.jobPositionId;
+    const getId = (v: any) =>
+      typeof v === "string" ? v : v?._id ?? v?.id ?? "";
+    return getId(raw);
+  },
+
+  Header: ({ column }: { column: any }) => {
+    const current = column.getFilterValue();
+    const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+    
+    const selected: string[] = Array.isArray(current)
+      ? current
+      : current
+      ? [current]
+      : [];
+
+    const toggle = (jobId: string) => {
+      const next = new Set(selected);
+      if (next.has(jobId)) next.delete(jobId);
+      else next.add(jobId);
+
+      const arr = Array.from(next);
+      column.setFilterValue(arr.length ? arr : undefined);
+    };
+
+    const clear = () => {
+      column.setFilterValue(undefined);
+      setAnchorEl(null);
+    };
+
+    const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setAnchorEl(event.currentTarget);
+    };
+
+    const handleClose = () => {
+      setAnchorEl(null);
+    };
+
+    return (
+      <div onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-2 -mt-1">
+          <span className="text-sm font-medium">Job Position</span>
+
+          <button
+            type="button"
+            onClick={handleClick}
+            className="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-1 text-xs text-gray-700 dark:bg-gray-700 dark:text-gray-200"
+          >
+            {selected.length ? `${selected.length}` : "Filter"}
+            <svg className="h-3 w-3" viewBox="0 0 20 20" fill="none">
+              <path
+                d="M6 8l4 4 4-4"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+
+          <Menu
+            anchorEl={anchorEl}
+            open={Boolean(anchorEl)}
+            onClose={handleClose}
+            onClick={(e) => e.stopPropagation()}
+            PaperProps={{
+              style: { maxHeight: 280, width: 260 },
+            }}
+          >
+            <MenuItem onClick={clear} dense>
+              Clear
+            </MenuItem>
+
+            {jobOptions.map((j) => (
+              <MenuItem
+                key={j.id}
+                dense
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  toggle(j.id);
+                  // Don't close the menu after selection to allow multiple selections
+                }}
+              >
+                <Checkbox checked={selected.includes(j.id)} size="small" />
+                <ListItemText primary={j.title} />
+              </MenuItem>
+            ))}
+          </Menu>
+        </div>
+      </div>
+    );
+  },
+
+  filterFn: (row: any, columnId: string, filterValue: any) => {
+    if (!filterValue) return true;
+    const vals = Array.isArray(filterValue) ? filterValue : [filterValue];
+    if (!vals.length) return true;
+
+    const cell = String(row.getValue(columnId) ?? "");
+    return vals.includes(cell);
+  },
+
+  size: 200,
+  enableColumnFilter: true,
+
+  Cell: ({ row }: { row: { original: Applicant } }) => {
+    const raw = row.original.jobPositionId;
+
+    const getId = (v: any) => {
+      if (!v) return "";
+      if (typeof v === "string") return v;
+      return v._id ?? v.id ?? "";
+    };
+
+    const jobId = getId(raw);
+    const job = jobPositionMap[jobId];
+
+    const title =
+      typeof job?.title === "string"
+        ? job.title
+        : job?.title?.en ??
+          jobOptions.find((o) => o.id === jobId)?.title ??
+          "N/A";
+
+    return <span className="text-sm font-medium">{title}</span>;
+  },
+},
          {
   accessorKey: "status",
   header: "Status",
@@ -647,6 +765,7 @@ const [statusAnchorEl, setStatusAnchorEl] = useState<null | HTMLElement>(null);
 
   Header: ({ column }) => {
     const current = column.getFilterValue();
+
     const selected: string[] = Array.isArray(current)
       ? current
       : current
@@ -662,18 +781,28 @@ const [statusAnchorEl, setStatusAnchorEl] = useState<null | HTMLElement>(null);
       column.setFilterValue(arr.length ? arr : undefined);
     };
 
+    const clear = () => {
+      column.setFilterValue(undefined);
+      setStatusAnchorEl(null);
+    };
+
     return (
       <div onMouseDown={(e) => e.stopPropagation()}>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 -mt-1">
           <span className="text-sm font-medium">Status</span>
 
           <button
             type="button"
-            onMouseDown={(e) => {
+            onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              setStatusFilterOpen(true);
-              setStatusAnchorEl(e.currentTarget);
+
+              // IMPORTANT: close job if open
+              setJobAnchorEl(null);
+
+              const target = e.currentTarget as HTMLElement;
+              if (statusAnchorEl === target) setStatusAnchorEl(null);
+              else setStatusAnchorEl(target);
             }}
             className="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-1 text-xs text-gray-700 dark:bg-gray-700 dark:text-gray-200"
           >
@@ -691,24 +820,28 @@ const [statusAnchorEl, setStatusAnchorEl] = useState<null | HTMLElement>(null);
 
           <Menu
             anchorEl={statusAnchorEl}
-            open={statusFilterOpen}
-            onClose={() => {
-              setStatusFilterOpen(false);
-              setStatusAnchorEl(null);
-            }}
+            open={Boolean(statusAnchorEl)}
+            onClose={() => setStatusAnchorEl(null)}
             PaperProps={{
               style: { maxHeight: 240, width: 220 },
+              onMouseDown: (e: any) => e.stopPropagation(),
             }}
+            onClick={(e) => e.stopPropagation()}
           >
-            <MenuItem
-              onClick={() => column.setFilterValue(undefined)}
-              dense
-            >
+            <MenuItem onClick={clear} dense>
               Clear
             </MenuItem>
 
             {statusOptions.map((s) => (
-              <MenuItem key={s} onClick={() => toggle(s)} dense>
+              <MenuItem
+                key={s}
+                dense
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  toggle(s);
+                }}
+              >
                 <Checkbox checked={selected.includes(s)} size="small" />
                 <ListItemText
                   primary={s.charAt(0).toUpperCase() + s.slice(1)}
@@ -725,28 +858,32 @@ const [statusAnchorEl, setStatusAnchorEl] = useState<null | HTMLElement>(null);
     if (!filterValue) return true;
     const vals = Array.isArray(filterValue) ? filterValue : [filterValue];
     if (!vals.length) return true;
+
     const cell = String(row.getValue(columnId) ?? "");
     return vals.includes(cell);
   },
-Cell: ({ row }: { row: { original: Applicant } }) => {
-  const colors = getStatusColor(row.original.status);
 
-  return (
-    <span
-      style={{
-        backgroundColor: colors.bg,
-        color: colors.color,
-      }}
-      className="inline-block rounded-full px-3 py-1 text-xs font-semibold"
-    >
-      {row.original.status.charAt(0).toUpperCase() +
-        row.original.status.slice(1)}
-    </span>
-  );
-},
   size: 120,
   enableColumnFilter: true,
-},
+
+  Cell: ({ row }: { row: { original: Applicant } }) => {
+    const colors = getStatusColor(row.original.status);
+
+    return (
+      <span
+        style={{
+          backgroundColor: colors.bg,
+          color: colors.color,
+        }}
+        className="inline-block rounded-full px-3 py-1 text-xs font-semibold"
+      >
+        {row.original.status.charAt(0).toUpperCase() +
+          row.original.status.slice(1)}
+      </span>
+    );
+  },
+}
+,
       {
         accessorKey: "submittedAt",
         header: "Submitted",
@@ -795,7 +932,7 @@ Cell: ({ row }: { row: { original: Applicant } }) => {
         Cell: ({ row }: any) => formatDate(row.original.submittedAt),
       },
     ],
-    [companyMap, jobPositionMap, jobOptions, getStatusColor, formatDate, statusFilterOpen]
+    [companyMap, jobPositionMap, jobOptions, getStatusColor, formatDate, statusAnchorEl, jobAnchorEl]
   );
 
   // Create custom MUI theme that matches the app's dark mode
@@ -1036,60 +1173,34 @@ Cell: ({ row }: { row: { original: Applicant } }) => {
       
 
       return (
-        <div style={{
-          backgroundColor: isDarkMode ? '#1C2434' : '#FFFFFF',
-        }} className="flex items-center gap-3 p-2">
-          {/* <select
-            value={(columnFilters.find(f => f.id === 'status')?.value as string) || 'all'}
-            onChange={(e) => {
-              const value = e.target.value;
-              setColumnFilters(prev => {
-                const filtered = prev.filter(f => f.id !== 'status');
-                if (value && value !== 'all') {
-                  return [...filtered, { id: 'status', value }];
+        <div
+          style={{ backgroundColor: isDarkMode ? '#1C2434' : '#FFFFFF' }}
+          className="flex items-center p-2 w-full"
+        >
+          <div className="flex-1" />
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  const promises: Promise<any>[] = [];
+                  if (isJobPositionsFetched && refetchJobPositions) promises.push(refetchJobPositions());
+                  if (isApplicantsFetched && refetchApplicants) promises.push(refetchApplicants());
+                  if (isCompaniesFetched && refetchCompanies) promises.push(refetchCompanies());
+                  if (promises.length === 0) return;
+                  await Promise.all(promises);
+                  setLastRefetch(new Date());
+                } catch (e) {
+                  // ignore
                 }
-                return filtered;
-              });
-            }}
-            className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500"
-          >
-            <option value="all">All Statuses</option>
-            <option value="pending">Pending</option>
-            <option value="approved">Approved</option>
-            <option value="interview">Interview</option>
-            <option value="interviewed">Interviewed</option>
-            <option value="rejected">Rejected</option>
-            <option value="trashed">Trashed</option>
-          </select>
-          
-         
-
-          <select
-            value={(columnFilters.find(f => f.id === 'jobPositionId')?.value as string) || 'all'}
-            onChange={(e) => {
-              const value = e.target.value;
-              setColumnFilters(prev => {
-                const filtered = prev.filter(f => f.id !== 'jobPositionId');
-                if (value && value !== 'all') {
-                  return [...filtered, { id: 'jobPositionId', value }];
-                }
-                return filtered;
-              });
-            }}
-            className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <option value="all">
-              Select The Job Position
-            </option>
-            {filteredJobs.map((job: any) => {
-              const jobTitle = typeof job.title === 'string' ? job.title : job.title?.en || 'Untitled';
-              return (
-                <option key={jobTitle} value={jobTitle}>
-                  {jobTitle}
-                </option>
-              );
-            })}
-          </select> */}
+              }}
+              disabled={isJobPositionsFetching || isApplicantsFetching || isCompaniesFetching}
+              className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-3 py-1 text-sm font-semibold text-white shadow-sm hover:bg-brand-600 disabled:opacity-50"
+            >
+              {(isJobPositionsFetching || isApplicantsFetching || isCompaniesFetching) ? 'Updating Data' : 'Update Data'}
+            </button>
+            <div className="text-sm text-gray-500">{elapsed ? `Last Update: ${elapsed}` : 'Not updated yet'}</div>
+          </div>
         </div>
       );
     },

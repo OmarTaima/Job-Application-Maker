@@ -69,18 +69,24 @@ export default function Home() {
       setElapsed(null);
       return;
     }
-
-    const update = () => {
-      const diff = Math.floor((Date.now() - lastRefetch.getTime()) / 1000);
-      const hrs = Math.floor(diff / 3600);
-      const mins = Math.floor((diff % 3600) / 60);
-      const secs = diff % 60;
-      const pad = (n: number) => n.toString().padStart(2, '0');
-      setElapsed(`${pad(hrs)}:${pad(mins)}:${pad(secs)}`);
+    const formatRelative = (d: Date) => {
+      const diffSec = Math.floor((Date.now() - d.getTime()) / 1000);
+      if (diffSec < 60) return "now";
+      const mins = Math.floor(diffSec / 60);
+      if (mins < 60) return `${mins} min ago`;
+      const hours = Math.floor(mins / 60);
+      if (hours < 24) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+      const days = Math.floor(hours / 24);
+      if (days === 1) return "yesterday";
+      if (days < 7) return `${days} days ago`;
+      return d.toLocaleDateString();
     };
 
+    const update = () => setElapsed(formatRelative(lastRefetch));
+
     update();
-    const id = setInterval(update, 1000);
+    // update every 30 seconds (relative times don't need per-second precision)
+    const id = setInterval(update, 30 * 1000);
     return () => clearInterval(id);
   }, [lastRefetch]);
 
@@ -166,7 +172,7 @@ export default function Home() {
               <div className="font-semibold text-gray-800">
                 {loading ? "Loading..." : `${filteredNonTrashed.length} applicants`}
               </div>
-              <div className="ml-4">
+              <div className="lg:ml-130">
                 <button
                   type="button"
                   onClick={async () => {

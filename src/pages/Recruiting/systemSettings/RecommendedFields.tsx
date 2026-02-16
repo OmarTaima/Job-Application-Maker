@@ -751,62 +751,54 @@ const RecommendedFields = () => {
                     form.type === "checkbox" ||
                     form.type === "tags") && (
                     <div className="mt-4">
-                      <div className="grid gap-3 grid-cols-1 md:grid-cols-2">
+                      <Label>Choices</Label>
+                      <div className="grid gap-3 grid-cols-1 md:grid-cols-2 mt-2">
                         <div>
                           <Label>Choices (English)</Label>
-                          <div className="flex gap-2">
-                            <div className="flex-1">
-                              <Input
-                                value={newChoice}
-                                onChange={(e) => setNewChoice(e.target.value)}
-                                onKeyDown={(
-                                  e: React.KeyboardEvent<HTMLInputElement>
-                                ) => {
-                                  if (e.key === "Enter") {
-                                    e.preventDefault();
-                                    handleAddChoice();
-                                  }
-                                }}
-                                placeholder="Add a choice"
-                              />
-                            </div>
-                            <button
-                              type="button"
-                              onClick={handleAddChoice}
-                              className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600"
-                            >
-                              <PlusIcon className="size-4" />
-                            </button>
+                          <div>
+                            <Input
+                              value={newChoice}
+                              onChange={(e) => setNewChoice(e.target.value)}
+                              onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  handleAddChoice();
+                                }
+                              }}
+                              placeholder="Add a choice"
+                            />
                           </div>
                         </div>
+
                         <div>
-                          <Label>Choices (Arabic)</Label>
-                          <div className="flex gap-2">
-                            <div dir="rtl" className="flex-1">
-                              <Input
-                                value={newChoiceAr}
-                                onChange={(e) => setNewChoiceAr(e.target.value)}
-                                onKeyDown={(
-                                  e: React.KeyboardEvent<HTMLInputElement>
-                                ) => {
-                                  if (e.key === "Enter") {
-                                    e.preventDefault();
-                                    handleAddChoice();
-                                  }
-                                }}
-                                placeholder="أضف خيارًا"
-                              />
-                            </div>
-                            <button
-                              type="button"
-                              onClick={handleAddChoice}
-                              className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600"
-                            >
-                              <PlusIcon className="size-4" />
-                            </button>
+                          <Label className="text-right">Choices (Arabic)</Label>
+                          <div dir="rtl">
+                            <Input
+                              value={newChoiceAr}
+                              onChange={(e) => setNewChoiceAr(e.target.value)}
+                              onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  handleAddChoice();
+                                }
+                              }}
+                              placeholder="أضف خيارًا"
+                            />
                           </div>
                         </div>
                       </div>
+
+                      <div className="mt-3 flex justify-start">
+                        <button
+                          type="button"
+                          onClick={handleAddChoice}
+                          className="inline-flex items-center gap-2 rounded-lg bg-brand-500 pl-5 pr-4 py-2 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600"
+                        >
+                          <PlusIcon className="size-4" />
+                          <span>Add Choice</span>
+                        </button>
+                      </div>
+
                       <div className="mt-2 space-y-1">
                         {form.options?.map((option, index) => (
                           <div
@@ -1012,33 +1004,30 @@ const RecommendedFields = () => {
                                 groupField.inputType === "checkbox" ||
                                 groupField.inputType === "dropdown") && (
                                 <div>
-                                  <Label>Choices (English)</Label>
-                                  <div className="flex gap-2">
-                                    <Input
-                                      value={newGroupFieldChoice[`${groupFieldIndex}`] || ""}
-                                      onChange={(e) =>
-                                        setNewGroupFieldChoice(prev => ({ ...prev, [`${groupFieldIndex}`]: e.target.value }))
-                                      }
-                                      onKeyDown={(e) => {
-                                        if (e.key === "Enter") {
-                                          e.preventDefault();
-                                          handleAddGroupFieldChoice(groupFieldIndex);
-                                        }
-                                      }}
-                                      placeholder="Add a choice"
-                                    />
-                                    <button
-                                      type="button"
-                                      onClick={() => handleAddGroupFieldChoice(groupFieldIndex)}
-                                      className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600"
-                                    >
-                                      <PlusIcon className="size-4" />
-                                    </button>
-                                  </div>
-                                  <div className="mt-2">
-                                    <Label>Choices (Arabic)</Label>
-                                    <div className="flex gap-2">
-                                      <div dir="rtl" className="flex-1">
+                                  <Label>Choices</Label>
+                                  <div className="grid gap-3 grid-cols-1 md:grid-cols-2 mt-2">
+                                    <div>
+                                      <Label>Choices (English)</Label>
+                                      <div>
+                                        <Input
+                                          value={newGroupFieldChoice[`${groupFieldIndex}`] || ""}
+                                          onChange={(e) =>
+                                            setNewGroupFieldChoice(prev => ({ ...prev, [`${groupFieldIndex}`]: e.target.value }))
+                                          }
+                                          onKeyDown={(e) => {
+                                            if (e.key === "Enter") {
+                                              e.preventDefault();
+                                              handleAddGroupFieldChoice(groupFieldIndex);
+                                            }
+                                          }}
+                                          placeholder="Add a choice"
+                                        />
+                                      </div>
+                                    </div>
+
+                                    <div>
+                                      <Label className="text-right">Choices (Arabic)</Label>
+                                      <div dir="rtl">
                                         <Input
                                           value={newGroupFieldChoiceAr[`${groupFieldIndex}`] || ""}
                                           onChange={(e) =>
@@ -1053,15 +1042,20 @@ const RecommendedFields = () => {
                                           placeholder="أضف خيارًا"
                                         />
                                       </div>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleAddGroupFieldChoice(groupFieldIndex)}
-                                        className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600"
-                                      >
-                                        <PlusIcon className="size-4" />
-                                      </button>
                                     </div>
                                   </div>
+
+                                  <div className="mt-3 flex justify-start">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleAddGroupFieldChoice(groupFieldIndex)}
+                                      className="inline-flex items-center gap-2 rounded-lg bg-brand-500 pl-5 pr-4 py-2 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600"
+                                    >
+                                      <PlusIcon className="size-4" />
+                                      <span>Add Choice</span>
+                                    </button>
+                                  </div>
+
                                   <div className="mt-2 space-y-1">
                                     {groupField.choices?.map((choice, choiceIndex) => (
                                       <div

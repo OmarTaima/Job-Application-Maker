@@ -17,9 +17,18 @@ export default function UserMetaCard() {
       <div className="p-5 border border-gray-200 rounded-2xl dark:border-gray-800 lg:p-6">
         <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex flex-col items-center w-full gap-6 xl:flex-row">
-            <div className="w-20 h-20 overflow-hidden border border-gray-200 rounded-full dark:border-gray-800">
-              <img src={user?.profilePhoto || (user as any)?.avatar || '/images/user/owner.jpg'} alt={user?.fullName || user?.name || 'User'} />
-            </div>
+            <span className="overflow-hidden rounded-full h-20 w-20 flex items-center justify-center bg-gray-100 dark:bg-gray-800">
+              <svg
+                width="64"
+                height="64"
+                viewBox="0 0 40 40"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                aria-hidden="true"
+              >
+                <circle cx="20" cy="20" r="19" stroke="#CBD5E1" strokeWidth="2" fill="none" />
+              </svg>
+            </span>
             <div className="order-3 xl:order-2">
               <h4 className="mb-2 text-lg font-semibold text-center text-gray-800 dark:text-white/90 xl:text-left">
                 {user?.fullName || user?.name || "User"}

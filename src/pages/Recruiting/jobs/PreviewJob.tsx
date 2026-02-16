@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import Swal from "sweetalert2";
 import { useParams, useNavigate, useLocation } from "react-router";
 import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
@@ -23,10 +23,13 @@ export default function PreviewJob() {
   const jobFromState = location.state?.job;
   
   // Fallback: Fetch job by ID only if no data in state
-  const { data: jobFromApi, isLoading: isLoadingJob } = useJobPosition(
-    jobId || "",
-    { enabled: !jobFromState && !!jobId }
-  );
+  const {
+    data: jobFromApi,
+    isLoading: isLoadingJob,
+    refetch: refetchJob,
+    isFetching: isJobFetching,
+    isFetched: isJobFetched,
+  } = useJobPosition(jobId || "", { enabled: !jobFromState && !!jobId });
   
   // Use data from state if available, otherwise use fetched data
   const job = jobFromState || jobFromApi;
@@ -49,8 +52,8 @@ export default function PreviewJob() {
   }, [job]);
 
   // Fetch company and department names ONLY if not already populated
-  const { data: companyFromApi } = useCompany(companyId || "", { enabled: !companyData && !!companyId });
-  const { data: departmentFromApi } = useDepartment(departmentId || "", { enabled: !departmentData && !!departmentId });
+  const { data: companyFromApi, refetch: refetchCompany, isFetched: isCompanyFetched, isFetching: isCompanyFetching } = useCompany(companyId || "", { enabled: !companyData && !!companyId });
+  const { data: departmentFromApi, refetch: refetchDepartment, isFetched: isDepartmentFetched, isFetching: isDepartmentFetching } = useDepartment(departmentId || "", { enabled: !departmentData && !!departmentId });
   
   // Use populated data if available, otherwise use fetched data
   const company = companyData || companyFromApi;
@@ -61,6 +64,39 @@ export default function PreviewJob() {
 
   const [deleteError, setDeleteError] = useState("");
   const [isDeletingJob, setIsDeletingJob] = useState(false);
+  const [lastRefetch, setLastRefetch] = useState<Date | null>(null);
+  const [elapsed, setElapsed] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isLoadingJob && lastRefetch === null && (isJobFetched || isCompanyFetched || isDepartmentFetched)) {
+      setLastRefetch(new Date());
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoadingJob]);
+
+  useEffect(() => {
+    if (!lastRefetch) {
+      setElapsed(null);
+      return;
+    }
+    const formatRelative = (d: Date) => {
+      const diffSec = Math.floor((Date.now() - d.getTime()) / 1000);
+      if (diffSec < 60) return "now";
+      const mins = Math.floor(diffSec / 60);
+      if (mins < 60) return `${mins} min ago`;
+      const hours = Math.floor(mins / 60);
+      if (hours < 24) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+      const days = Math.floor(hours / 24);
+      if (days === 1) return "yesterday";
+      if (days < 7) return `${days} days ago`;
+      return d.toLocaleDateString();
+    };
+
+    const update = () => setElapsed(formatRelative(lastRefetch));
+    update();
+    const id = setInterval(update, 30 * 1000);
+    return () => clearInterval(id);
+  }, [lastRefetch]);
 
   // Helper function to extract detailed error messages
   const getErrorMessage = (err: any): string => {
@@ -286,6 +322,28 @@ export default function PreviewJob() {
         </div>
         <div className="flex items-center gap-2">
           <button
+            type="button"
+            onClick={async () => {
+              try {
+                const promises: Promise<any>[] = [];
+                if (isJobFetched && refetchJob) promises.push(refetchJob());
+                if (isCompanyFetched && refetchCompany) promises.push(refetchCompany());
+                if (isDepartmentFetched && refetchDepartment) promises.push(refetchDepartment());
+                if (promises.length === 0) return;
+                await Promise.all(promises);
+                setLastRefetch(new Date());
+              } catch (e) {
+                // ignore
+              }
+            }}
+            disabled={isJobFetching || isCompanyFetching || isDepartmentFetching}
+            className="inline-flex mr-1 items-center gap-2 rounded-lg bg-brand-500 px-3 py-1 text-sm font-semibold text-white shadow-sm hover:bg-brand-600 disabled:opacity-50"
+          >
+            { (isJobFetching || isCompanyFetching || isDepartmentFetching) ? 'Updating Data' : 'Update Data' }
+          </button>
+          <div className="text-sm mr-5 text-gray-500">{elapsed ? `Last Update: ${elapsed}` : 'Not updated yet'}</div>
+
+          <button
             onClick={handleEdit}
             className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600"
           >
@@ -305,19 +363,7 @@ export default function PreviewJob() {
 
       {/* Job Status */}
       <div className="flex items-center gap-3">
-        <span
-          className={`inline-flex items-center rounded-full px-4 py-1.5 text-sm font-semibold ${
-            job.status === "open"
-              ? "bg-green-100 text-green-700 ring-1 ring-inset ring-green-200 dark:bg-green-500/10 dark:text-green-200 dark:ring-green-400/40"
-              : job.status === "closed"
-              ? "bg-red-100 text-red-700 ring-1 ring-inset ring-red-200 dark:bg-red-500/10 dark:text-red-200 dark:ring-red-400/40"
-              : "bg-gray-100 text-gray-700 ring-1 ring-inset ring-gray-200 dark:bg-gray-500/10 dark:text-gray-200 dark:ring-gray-400/40"
-          }`}
-        >
-          {job.status
-            ? job.status.charAt(0).toUpperCase() + job.status.slice(1)
-            : "Unknown"}
-        </span>
+        
         <span className="inline-flex items-center rounded-full bg-brand-50 px-4 py-1.5 text-sm font-semibold text-brand-600 ring-1 ring-inset ring-brand-200 dark:bg-brand-500/10 dark:text-brand-200 dark:ring-brand-400/40">
           {job.openPositions || 0} Open Position
           {job.openPositions !== 1 ? "s" : ""}

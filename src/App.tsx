@@ -30,6 +30,9 @@ import Permissions from "./pages/Recruiting/roles/Permissions";
 import PreviewRole from "./pages/Recruiting/roles/PreviewRole";
 import PreviewUser from "./pages/Recruiting/users/PreviewUser";
 import RecommendedFields from "./pages/Recruiting/systemSettings/RecommendedFields";
+import SavedFields from "./pages/Recruiting/savedFields/SavedFields";
+import SavedFieldsPreview from "./pages/Recruiting/savedFields/savedfieldspreview";
+import CreateSavedField from "./pages/Recruiting/savedFields/createSavedfield";
 import Applicants from "./pages/Recruiting/applicants/Applicants";
 import ApplicantData from "./pages/Recruiting/applicants/ApplicantData";
 import CVPreview from "./pages/Recruiting/applicants/CVPreview";
@@ -65,6 +68,9 @@ export default function App() {
               <Route path="applicants" element={<Applicants />} />
               <Route path="applicant/:id" element={<ApplicantData />} />
               <Route path="applicant/:id/cv" element={<CVPreview />} />
+              <Route path="recruiting/saved-fields" element={<SavedFields />} />
+              <Route path="recruiting/saved-fields/preview/:fieldId" element={<SavedFieldsPreview />} />
+              <Route path="recruiting/saved-fields/create" element={<CreateSavedField />} />
 
               {/* Admin Routes - Protected by permissions */}
               <Route

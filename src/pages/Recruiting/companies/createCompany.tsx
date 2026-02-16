@@ -149,65 +149,82 @@ export default function RecruitingDashboard() {
     setError(null);
     setSuccessMessage(null);
 
+    // Prepare optimistic temp company and snapshot previous cache
+    const previousCompanies = queryClient.getQueryData(companiesKeys.list());
+    const tempId = `temp-${Date.now()}`;
+    const tempCompany: any = {
+      ...companyForm,
+      _id: tempId,
+      createdAt: new Date().toISOString(),
+    };
+
     try {
-      const resultAction = await dispatch(
+      // Insert temp company into React Query cache immediately
+      queryClient.setQueryData<any>(companiesKeys.list(), (old: any) => {
+        if (!old) return [tempCompany];
+        if (Array.isArray(old)) return [...old, tempCompany];
+        if (old.data && Array.isArray(old.data)) return { ...old, data: [...old.data, tempCompany] };
+        return old;
+      });
+
+      // Show success alert immediately (optimistic UX)
+      await Swal.fire({
+        title: "Success!",
+        text: "Company created successfully.",
+        icon: "success",
+        position: "center",
+        timer: 1500,
+        showConfirmButton: false,
+        customClass: { container: "!mt-16" },
+      });
+
+      // Dispatch create in background; update cache when response arrives
+      const promise = dispatch(
         createCompany({
           name: companyForm.name,
           description: companyForm.description,
           contactEmail: companyForm.contactEmail,
           phone: companyForm.phone,
-          address: companyForm.address.map(a => ({ en: a.en, ar: a.ar, location: a.location })),
+          address: companyForm.address.map((a) => ({ en: a.en, ar: a.ar, location: a.location })),
           website: companyForm.website,
           logoPath: companyForm.logoPath,
         })
-      );
+      ) as any;
 
-      if (createCompany.fulfilled.match(resultAction)) {
-        const newCompany = resultAction.payload as any;
-
-        await Swal.fire({
-          title: "Success!",
-          text: "Company created successfully.",
-          icon: "success",
-          position: "center",
-          timer: 1500,
-          showConfirmButton: false,
-          customClass: { container: "!mt-16" },
-        });
-
-        // Defensive: some backends may return unexpected payload shapes.
-        const newId = newCompany?._id ?? newCompany?.data?._id ?? null;
-        if (newId) {
-          // Prime React Query cache so the company detail page has data immediately
+      promise.then((resultAction: any) => {
+        if (createCompany.fulfilled.match(resultAction)) {
+          const newCompany = resultAction.payload as any;
+          const newId = newCompany?._id ?? newCompany?.data?._id ?? null;
+          // Replace temp entry with real server data
           try {
-            queryClient.setQueryData(companiesKeys.detail(newId), newCompany);
+            queryClient.setQueryData<any>(companiesKeys.list(), (old: any) => {
+              if (!old) return [newCompany];
+              if (Array.isArray(old)) return old.map((c: any) => (c._id === tempId ? newCompany : c));
+              if (old.data && Array.isArray(old.data)) return { ...old, data: old.data.map((c: any) => (c._id === tempId ? newCompany : c)) };
+              return old;
+            });
+            if (newId) queryClient.setQueryData(companiesKeys.detail(newId), newCompany);
+            if (newId) navigate(`/company/${newId}`);
           } catch (e) {
             // ignore cache errors
           }
-          navigate(`/company/${newId}`);
         } else {
-          // Sanitize large fields (e.g. logo data URL) before showing or logging
-          const sanitized: any = { ...(newCompany || {}) };
-          if (sanitized.logoPath) delete sanitized.logoPath;
-          // Log full sanitized payload for debugging
-          console.error("Create company payload missing _id:", sanitized);
-
-          // Show a short preview in the UI and direct developer to console for full data
-          const preview = JSON.stringify(sanitized, null, 2);
-          const short = preview.length > 1000 ? preview.slice(0, 1000) + "..." : preview;
-          setError("Company created but server response did not include an ID. Server response preview: " + short);
+          // rollback on failure
+          queryClient.setQueryData(companiesKeys.list(), previousCompanies);
+          const errorMessage = resultAction.payload as string || "Failed to create company";
+          setError(errorMessage);
         }
-      } else {
-        // Handle rejected action
-        const errorMessage = resultAction.payload as string || "Failed to create company";
-        setError(errorMessage);
-      }
+      }).catch((err: any) => {
+        queryClient.setQueryData(companiesKeys.list(), previousCompanies);
+        console.error('Create company failed', err);
+        setError(err?.message || 'Failed to create company');
+      }).finally(() => setIsSubmitting(false));
     } catch (err: any) {
-      const errorMessage = err?.message || "Failed to create company";
-      setError(errorMessage);
-      console.error("Error creating company:", err);
-    } finally {
       setIsSubmitting(false);
+      setError(err?.message || "Failed to create company");
+      console.error("Error creating company:", err);
+      // rollback
+      queryClient.setQueryData(companiesKeys.list(), previousCompanies);
     }
   };
 

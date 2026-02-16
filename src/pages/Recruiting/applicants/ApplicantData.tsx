@@ -58,7 +58,7 @@ const ApplicantData = () => {
 
   // React Query hooks - only fetch if we don't have state data
   // If we have state data, the query will still run but we use the state data immediately
-  const { data: fetchedApplicant, isLoading: loading, error } = useApplicant(id || '', {
+  const { data: fetchedApplicant, isLoading: loading, error, isFetched: isApplicantFetched } = useApplicant(id || '', {
     // Use initialData if we have it from navigation state
     initialData: stateApplicant,
   });
@@ -67,14 +67,16 @@ const ApplicantData = () => {
   const applicant: any = (fetchedApplicant ?? stateApplicant) as any;
 
   // Additional hooks (declare before conditional returns to preserve hook order)
-  const { data: jobPositions = [] } = useJobPositions();
+  const { data: jobPositions = [],  isFetched: isJobPositionsFetched } = useJobPositions();
   const jobPosIdString = applicant && typeof applicant.jobPositionId === 'string' ? applicant.jobPositionId : '';
-  const { data: jobPositionDetail } = useJobPosition(jobPosIdString, { enabled: !!jobPosIdString });
+  const { data: jobPositionDetail, isFetched: isJobPositionDetailFetched } = useJobPosition(jobPosIdString, { enabled: !!jobPosIdString });
   const jpCompanyId = jobPositionDetail && ((jobPositionDetail as any).companyId ? (typeof (jobPositionDetail as any).companyId === 'string' ? (jobPositionDetail as any).companyId : (jobPositionDetail as any).companyId?._id) : '');
-  const { data: jobPosCompany } = useCompany(jpCompanyId || '', { enabled: !!jpCompanyId });
-  const { data: companies = [] } = useCompaniesWithApplicants(
+  const { data: jobPosCompany, isFetched: isJobPosCompanyFetched } = useCompany(jpCompanyId || '', { enabled: !!jpCompanyId });
+  const { data: companies = [],  isFetched: isCompaniesWithApplicantsFetched } = useCompaniesWithApplicants(
     applicant ? [applicant] : undefined
   );
+
+  const [lastRefetch, setLastRefetch] = useState<Date | null>(null);
 
   const resolvedCompanyId = useMemo(() => {
     if (!applicant) return '';
@@ -171,7 +173,6 @@ const ApplicantData = () => {
   const addCommentMutation = useAddComment();
 
   // Interview update state
-  const [updatingInterviewId] = useState<string | null>(null);
 
   // Derived data - handle both string IDs and populated objects
   const getJobTitle = (): { en: string } => {
@@ -460,6 +461,15 @@ const ApplicantData = () => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchedCompany, showInterviewModal]);
+
+  useEffect(() => {
+    if (!lastRefetch && (isApplicantFetched || isJobPositionsFetched || isJobPositionDetailFetched || isJobPosCompanyFetched || isCompaniesWithApplicantsFetched)) {
+      setLastRefetch(new Date());
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isApplicantFetched, isJobPositionsFetched, isJobPositionDetailFetched, isJobPosCompanyFetched, isCompaniesWithApplicantsFetched]);
+
+ 
   const [notificationChannels, setNotificationChannels] = useState({
     email: true,
     sms: false,
@@ -647,9 +657,9 @@ const ApplicantData = () => {
         },
       };
 
-      // First: Update applicant status to "interview" if not already
+      // First: Optimistically update applicant status to "interview" if not already
       if (applicant && applicant.status !== 'interview') {
-        await updateStatusMutation.mutateAsync({
+        updateStatusMutation.mutate({
           id: id!,
           data: {
             status: 'interview',
@@ -658,28 +668,24 @@ const ApplicantData = () => {
         });
       }
 
-      // Second: Create the interview (returns updated applicant with the new interview)
-      const updatedApplicant = await scheduleInterviewMutation.mutateAsync({
+      // Use a temp id so we can optimistically update interview status as well
+      const tempInterviewId = `temp-${Date.now()}`;
+      interviewData._id = tempInterviewId;
+
+      // Second: Optimistically create the interview (hooks will add a temp interview)
+      scheduleInterviewMutation.mutate({
         id: id!,
         data: interviewData,
       });
 
-      // Third: Get the newly created interview ID and set its status to 'scheduled'
-      const createdInterview =
-        updatedApplicant?.interviews && updatedApplicant.interviews.length
-          ? updatedApplicant.interviews[updatedApplicant.interviews.length - 1]
-          : null;
+      // Third: Optimistically set the interview status to 'scheduled' on the temp interview
+      updateInterviewMutation.mutate({
+        applicantId: id!,
+        interviewId: tempInterviewId,
+        data: { status: 'scheduled' },
+      });
 
-      if (createdInterview && createdInterview._id) {
-        await updateInterviewMutation.mutateAsync({
-          applicantId: id!,
-          interviewId: createdInterview._id,
-          data: { status: 'scheduled' },
-        });
-      }
-
-      // Success: keep modal closed and show confirmation
-
+      // Show success immediately (do not wait for network)
       await Swal.fire({
         title: 'Success!',
         text: 'Interview scheduled successfully.',
@@ -705,6 +711,9 @@ const ApplicantData = () => {
     }
   };
 
+  
+    
+
   const handleCommentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!id || !applicant) return;
@@ -720,8 +729,8 @@ const ApplicantData = () => {
       setCommentForm({ text: '' });
       setShowCommentModal(false);
 
-      // API call
-      await addCommentMutation.mutateAsync({ id: id!, data: commentData });
+      // API call (optimistic)
+      addCommentMutation.mutate({ id: id!, data: commentData });
 
       await Swal.fire({
         title: 'Success!',
@@ -758,8 +767,8 @@ const ApplicantData = () => {
       setStatusForm({ status: '', notes: '' });
       setShowStatusModal(false);
 
-      // Update status via React Query mutation
-      await updateStatusMutation.mutateAsync({ id: id!, data: statusData });
+      // Update status via React Query mutation (optimistic)
+      updateStatusMutation.mutate({ id: id!, data: statusData });
 
       await Swal.fire({
         title: 'Success!',
@@ -899,6 +908,31 @@ const ApplicantData = () => {
               <PlusIcon className="h-3 w-3 sm:h-4 sm:w-4" />
               <span className="hidden sm:inline">Send</span> Message
             </button>
+            {/* <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    const promises: Promise<any>[] = [];
+                    if (isApplicantFetched && refetchApplicant) promises.push(refetchApplicant());
+                    if (isJobPositionsFetched && refetchJobPositions) promises.push(refetchJobPositions());
+                    if (isJobPositionDetailFetched && refetchJobPositionDetail) promises.push(refetchJobPositionDetail());
+                    if (isJobPosCompanyFetched && refetchJobPosCompany) promises.push(refetchJobPosCompany());
+                    if (isCompaniesWithApplicantsFetched && refetchCompaniesWithApplicants) promises.push(refetchCompaniesWithApplicants());
+                    if (promises.length === 0) return;
+                    await Promise.all(promises);
+                    setLastRefetch(new Date());
+                  } catch (e) {
+                    // ignore
+                  }
+                }}
+                disabled={isApplicantFetching || isJobPositionsFetching || isJobPositionDetailFetching || isJobPosCompanyFetching || isCompaniesWithApplicantsFetching}
+                className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-3 py-1 text-sm font-semibold text-white shadow-sm hover:bg-brand-600 disabled:opacity-50"
+              >
+                {(isApplicantFetching || isJobPositionsFetching || isJobPositionDetailFetching || isJobPosCompanyFetching || isCompaniesWithApplicantsFetching) ? 'Updating Data' : 'Update Data'}
+              </button>
+              <div className="ml-2 text-sm text-gray-500">{elapsed ? `Last Update: ${elapsed}` : 'Not updated yet'}</div>
+            </div> */}
             <button
               onClick={() => setShowCommentModal(true)}
               className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-gray-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-gray-700"
@@ -2573,37 +2607,29 @@ const ApplicantData = () => {
                 <div className="grid grid-cols-2 gap-2">
                   {(!selectedInterview.status || selectedInterview.status !== 'scheduled') && (
                     <button
-                      onClick={async () => {
+                      onClick={() => {
                         // Optimistically update local state
                         setSelectedInterview({ ...selectedInterview, status: 'scheduled' });
-                        try {
-                          // Close modal immediately when request is sent
-                          setShowInterviewSettingsModal(false);
-                          setSelectedInterview(null);
-                          await updateInterviewMutation.mutateAsync({
-                            applicantId: applicant._id,
-                            interviewId: selectedInterview._id,
-                            data: { status: 'scheduled' },
-                          });
-                          await Swal.fire({
-                            title: 'Success!',
-                            text: 'Interview status updated to scheduled.',
-                            icon: 'success',
-                            position: 'center',
-                            timer: 2000,
-                            showConfirmButton: false,
-                            customClass: { container: '!mt-16' },
-                          });
-                        } catch (error) {
-                          console.error('Error updating interview:', error);
-                          Swal.fire({
-                            title: 'Error',
-                            text: 'Failed to update interview status.',
-                            icon: 'error',
-                          });
-                        }
+                        // Close modal immediately when request is sent
+                        setShowInterviewSettingsModal(false);
+                        setSelectedInterview(null);
+                        // Optimistic mutation
+                        updateInterviewMutation.mutate({
+                          applicantId: applicant._id,
+                          interviewId: selectedInterview._id,
+                          data: { status: 'scheduled' },
+                        });
+                        Swal.fire({
+                          title: 'Success!',
+                          text: 'Interview status updated to scheduled.',
+                          icon: 'success',
+                          position: 'center',
+                          timer: 2000,
+                          showConfirmButton: false,
+                          customClass: { container: '!mt-16' },
+                        });
                       }}
-                      disabled={updatingInterviewId === selectedInterview._id}
+                      
                       className="rounded-lg bg-blue-500 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       📅 Scheduled
@@ -2611,37 +2637,29 @@ const ApplicantData = () => {
                   )}
                   {(!selectedInterview.status || selectedInterview.status !== 'completed') && (
                     <button
-                      onClick={async () => {
+                      onClick={() => {
                         // Optimistically update local state
                         setSelectedInterview({ ...selectedInterview, status: 'completed' });
-                        try {
-                          // Close modal immediately when request is sent
-                          setShowInterviewSettingsModal(false);
-                          setSelectedInterview(null);
-                          await updateInterviewMutation.mutateAsync({
-                            applicantId: applicant._id,
-                            interviewId: selectedInterview._id,
-                            data: { status: 'completed' },
-                          });
-                          await Swal.fire({
-                            title: 'Success!',
-                            text: 'Interview marked as completed.',
-                            icon: 'success',
-                            position: 'center',
-                            timer: 2000,
-                            showConfirmButton: false,
-                            customClass: { container: '!mt-16' },
-                          });
-                        } catch (error) {
-                          console.error('Error updating interview:', error);
-                          Swal.fire({
-                            title: 'Error',
-                            text: 'Failed to update interview status.',
-                            icon: 'error',
-                          });
-                        }
+                        // Close modal immediately when request is sent
+                        setShowInterviewSettingsModal(false);
+                        setSelectedInterview(null);
+                        // Optimistic mutation
+                        updateInterviewMutation.mutate({
+                          applicantId: applicant._id,
+                          interviewId: selectedInterview._id,
+                          data: { status: 'completed' },
+                        });
+                        Swal.fire({
+                          title: 'Success!',
+                          text: 'Interview marked as completed.',
+                          icon: 'success',
+                          position: 'center',
+                          timer: 2000,
+                          showConfirmButton: false,
+                          customClass: { container: '!mt-16' },
+                        });
                       }}
-                      disabled={updatingInterviewId === selectedInterview._id}
+                      
                       className="rounded-lg bg-green-500 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       ✓ Completed
@@ -2649,37 +2667,29 @@ const ApplicantData = () => {
                   )}
                   {(!selectedInterview.status || selectedInterview.status !== 'cancelled') && (
                     <button
-                      onClick={async () => {
+                      onClick={() => {
                         // Optimistically update local state
                         setSelectedInterview({ ...selectedInterview, status: 'cancelled' });
-                        try {
-                          // Close modal immediately when request is sent
-                          setShowInterviewSettingsModal(false);
-                          setSelectedInterview(null);
-                          await updateInterviewMutation.mutateAsync({
-                            applicantId: applicant._id,
-                            interviewId: selectedInterview._id,
-                            data: { status: 'cancelled' },
-                          });
-                          await Swal.fire({
-                            title: 'Success!',
-                            text: 'Interview cancelled.',
-                            icon: 'success',
-                            position: 'center',
-                            timer: 2000,
-                            showConfirmButton: false,
-                            customClass: { container: '!mt-16' },
-                          });
-                        } catch (error) {
-                          console.error('Error updating interview:', error);
-                          Swal.fire({
-                            title: 'Error',
-                            text: 'Failed to update interview status.',
-                            icon: 'error',
-                          });
-                        }
+                        // Close modal immediately when request is sent
+                        setShowInterviewSettingsModal(false);
+                        setSelectedInterview(null);
+                        // Optimistic mutation
+                        updateInterviewMutation.mutate({
+                          applicantId: applicant._id,
+                          interviewId: selectedInterview._id,
+                          data: { status: 'cancelled' },
+                        });
+                        Swal.fire({
+                          title: 'Success!',
+                          text: 'Interview cancelled.',
+                          icon: 'success',
+                          position: 'center',
+                          timer: 2000,
+                          showConfirmButton: false,
+                          customClass: { container: '!mt-16' },
+                        });
                       }}
-                      disabled={updatingInterviewId === selectedInterview._id}
+                      
                       className="rounded-lg bg-red-500 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       ✕ Cancelled
