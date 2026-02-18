@@ -110,6 +110,7 @@ export type CreateApplicantRequest = {
   lastName: string;
   email: string;
   phone: string;
+  gender?: string;
   jobPositionId: string;
   companyId: string;
   departmentId: string;
@@ -123,6 +124,7 @@ export type UpdateApplicantRequest = {
   firstName?: string;
   lastName?: string;
   email?: string;
+  gender?: string;
   phone?: string;
   address?: string;
   resume?: string;

@@ -623,8 +623,8 @@ const [jobAnchorEl, setJobAnchorEl] = useState<HTMLElement | null>(null);
           const cell = String(row.getValue(columnId) ?? "");
           return vals.includes(cell);
         },
-        Cell: ({ row }: { row: { original: Applicant } }) => {
-          const raw = row.original.customResponses?.gender || row.original.customResponses?.['النوع'] || (row.original as any)['النوع'];
+        Cell: ({ row }: { row: { original: any } }) => {
+          const raw = row.original.gender || row.original.customResponses?.gender || row.original.customResponses?.['النوع'] || (row.original as any)['النوع'] || '';
           const g = normalizeGender(raw);
           return g || '-';
         },

@@ -79,6 +79,7 @@ export type Applicant = {
   fullName: string;
   firstName?: string;
   lastName?: string;
+  gender?: string;
   email: string;
   phone: string;
   address?: string;
