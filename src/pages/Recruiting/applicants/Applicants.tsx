@@ -289,35 +289,6 @@ const [jobAnchorEl, setJobAnchorEl] = useState<HTMLElement | null>(null);
       .filter((x) => x.id && x.title);
   }, [allCompanies]);
 
-  const genderOptions = useMemo(() => {
-    const s = new Set<string>();
-    applicants.forEach((a: any) => {
-      const raw = a?.gender || a?.customResponses?.gender || a?.customResponses?.['النوع'] || (a as any)['النوع'];
-      const g = normalizeGender(raw);
-      if (g) s.add(g);
-    });
-    return Array.from(s).map((g) => ({ id: g, title: g }));
-  }, [applicants]);
-
-  
-  // Create company lookup map
-  const companyMap = useMemo(() => {
-    const map: Record<string, any> = {};
-    allCompanies.forEach((company: any) => {
-      // Store by both possible ID formats
-      const stringId = typeof company._id === "string" ? company._id : company._id?._id;
-      if (stringId) {
-        map[stringId] = company;
-      }
-      // Also store by _id directly in case it's already a string
-      if (company._id) {
-        map[company._id] = company;
-      }
-    });
-    return map;
-  }, [allCompanies]);
-
-
 
   // Determine dataset to pass to MRT: by default exclude trashed applicants unless
   // the user explicitly filters for status === 'trashed'. This makes "All Statuses"
@@ -344,6 +315,53 @@ const [jobAnchorEl, setJobAnchorEl] = useState<HTMLElement | null>(null);
 
     return applicants.filter((a: Applicant) => a.status !== 'trashed');
   }, [applicants, columnFilters, isSuperAdmin]);
+
+  // Build gender filter options from the currently displayed dataset so
+  // the filter menu matches visible rows and respects trashed-visibility
+  // rules. Ensure common buckets appear first.
+  const genderOptions = useMemo(() => {
+    const s = new Set<string>();
+    const rows = Array.isArray((displayedApplicants as any)) ? displayedApplicants as any : applicants;
+    rows.forEach((a: any) => {
+      const raw = a?.gender || a?.customResponses?.gender || a?.customResponses?.['النوع'] || (a as any)['النوع'];
+      const g = normalizeGender(raw);
+      if (g) s.add(g);
+    });
+    const items = Array.from(s);
+    // Place Male/Female first, then any others alphabetically
+    const ordered = [] as string[];
+    if (items.includes('Male')) ordered.push('Male');
+    if (items.includes('Female')) ordered.push('Female');
+    items.forEach((it) => {
+      if (it !== 'Male' && it !== 'Female') ordered.push(it);
+    });
+    return ordered.map((g) => ({ id: g, title: g }));
+  }, [displayedApplicants, applicants]);
+
+  
+  // Create company lookup map
+  const companyMap = useMemo(() => {
+    const map: Record<string, any> = {};
+    allCompanies.forEach((company: any) => {
+      // Store by both possible ID formats
+      const stringId = typeof company._id === "string" ? company._id : company._id?._id;
+      if (stringId) {
+        map[stringId] = company;
+      }
+      // Also store by _id directly in case it's already a string
+      if (company._id) {
+        map[company._id] = company;
+      }
+    });
+    return map;
+  }, [allCompanies]);
+
+
+
+  // Determine dataset to pass to MRT: by default exclude trashed applicants unless
+  // the user explicitly filters for status === 'trashed'. This makes "All Statuses"
+  // hide trashed rows while still allowing an explicit trashed view.
+  
 
   // MRT will handle pagination (we pass full dataset to the table)
 
