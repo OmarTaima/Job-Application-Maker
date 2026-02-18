@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect} from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import Swal from "sweetalert2";
 import { useNavigate } from "react-router";
 import {
@@ -316,27 +316,71 @@ const [jobAnchorEl, setJobAnchorEl] = useState<HTMLElement | null>(null);
     return applicants.filter((a: Applicant) => a.status !== 'trashed');
   }, [applicants, columnFilters, isSuperAdmin]);
 
-  // Build gender filter options from the currently displayed dataset so
-  // the filter menu matches visible rows and respects trashed-visibility
-  // rules. Ensure common buckets appear first.
+  // Build gender filter options from the applicants dataset but apply only
+  // the trashed-visibility rule (so options persist after refresh even when
+  // columnFilters are restored from sessionStorage). Order Male/Female first.
   const genderOptions = useMemo(() => {
     const s = new Set<string>();
-    const rows = Array.isArray((displayedApplicants as any)) ? displayedApplicants as any : applicants;
+    const rows = Array.isArray(applicants) ? applicants : [];
     rows.forEach((a: any) => {
+      // Respect trashed visibility for non-super-admins
+      if (!isSuperAdmin && a?.status === 'trashed') return;
       const raw = a?.gender || a?.customResponses?.gender || a?.customResponses?.['النوع'] || (a as any)['النوع'];
       const g = normalizeGender(raw);
       if (g) s.add(g);
     });
     const items = Array.from(s);
-    // Place Male/Female first, then any others alphabetically
-    const ordered = [] as string[];
+    const ordered: string[] = [];
     if (items.includes('Male')) ordered.push('Male');
     if (items.includes('Female')) ordered.push('Female');
     items.forEach((it) => {
       if (it !== 'Male' && it !== 'Female') ordered.push(it);
     });
     return ordered.map((g) => ({ id: g, title: g }));
-  }, [displayedApplicants, applicants]);
+  }, [applicants, isSuperAdmin]);
+
+  // Keep a ref to genderOptions so memoized column Header closures can
+  // access the latest list even when `columns` is memoized and not re-created.
+  const genderOptionsRef = useRef<typeof genderOptions>(genderOptions);
+  useEffect(() => {
+    genderOptionsRef.current = genderOptions;
+  }, [genderOptions]);
+
+  // Sanitize persisted column filters: if a gender filter was stored but the
+  // available gender options don't include the stored values, remove/trim
+  // the gender filter so the filter menu shows proper options after reload.
+  useEffect(() => {
+    try {
+      const genderFilterIndex = columnFilters.findIndex((f: any) => f.id === 'gender');
+      if (genderFilterIndex === -1) return;
+      const current = columnFilters[genderFilterIndex];
+      const vals = Array.isArray(current.value) ? current.value : (current.value ? [current.value] : []);
+      if (!vals.length) return;
+      const optionIds = new Set(genderOptions.map((g) => g.id));
+      const intersection = vals.filter((v: string) => optionIds.has(v));
+      if (intersection.length === vals.length) return; // all valid
+      // build new filters array with updated gender filter (or removed)
+      const next = columnFilters.slice();
+      if (intersection.length === 0) {
+        next.splice(genderFilterIndex, 1);
+      } else {
+        next[genderFilterIndex] = { ...next[genderFilterIndex], value: intersection };
+      }
+      setColumnFilters(next);
+      // persist cleaned state immediately so page reloads start clean
+      try {
+        const raw = sessionStorage.getItem('applicants_table_state');
+        const parsed = raw ? JSON.parse(raw) : {};
+        parsed.columnFilters = next;
+        sessionStorage.setItem('applicants_table_state', JSON.stringify(parsed));
+      } catch (e) {
+        // ignore persistence errors
+      }
+    } catch (e) {
+      // ignore
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [genderOptions]);
 
   
   // Create company lookup map
@@ -622,7 +666,7 @@ const [jobAnchorEl, setJobAnchorEl] = useState<HTMLElement | null>(null);
                     PaperProps={{ style: { maxHeight: 240, width: 200 } }}
                   >
                     <MenuItem onClick={clear} dense>Clear</MenuItem>
-                    {genderOptions.map((g) => (
+                    {(genderOptionsRef.current || []).map((g) => (
                       <MenuItem key={g.id} dense onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggle(g.id); }}>
                         <Checkbox checked={selected.includes(g.id)} size="small" />
                         <ListItemText primary={g.title} />
