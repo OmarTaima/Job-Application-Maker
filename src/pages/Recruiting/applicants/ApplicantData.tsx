@@ -1,18 +1,14 @@
+// Core React imports
 import { useState, useMemo, useEffect } from 'react';
+// UI helpers and third-party utilities
 import Swal from 'sweetalert2';
 import { useParams, useNavigate, useLocation } from 'react-router';
-import ComponentCard from '../../../components/common/ComponentCard';
 import PageBreadcrumb from '../../../components/common/PageBreadCrumb';
 import PageMeta from '../../../components/common/PageMeta';
 import LoadingSpinner from '../../../components/common/LoadingSpinner';
 import Label from '../../../components/form/Label';
-import Input from '../../../components/form/input/InputField';
-import TextArea from '../../../components/form/input/TextArea';
-import Select from '../../../components/form/Select';
-import DatePicker from '../../../components/form/date-picker';
 import { Modal } from '../../../components/ui/modal';
 import { PlusIcon } from '../../../icons';
-import { useAuth } from '../../../context/AuthContext';
 import {
   useApplicant,
   useJobPositions,
@@ -23,6 +19,7 @@ import {
   useScheduleInterview,
   useUpdateInterviewStatus,
   useAddComment,
+  useSendEmail,
 } from '../../../hooks/queries';
 import type {
   Applicant,
@@ -30,43 +27,52 @@ import type {
 } from '../../../services/applicantsService';
 import { toPlainString } from '../../../utils/strings';
 import MessageModal from '../../../components/modals/MessageModal';
+import InterviewScheduleModal from '../../../components/modals/InterviewScheduleModal';
+import CommentModal from '../../../components/modals/commentmodal';
+import InterviewSettingsModal from '../../../components/modals/InterviewSettingsModal';
+import StatusChangeModal from '../../../components/modals/StatusChangeModal';
+import StatusHistory from './statusHistory';
+import CustomResponses from './CustomResponses';
 
+// Simple Quill editor integration (dynamic import to avoid react-quill)
+import 'quill/dist/quill.snow.css';
+
+// Lightweight Quill editor wrapper
+// Dynamically imports Quill to avoid bundling react-quill and to enable server-safe loading.
+
+
+// Main page component
+// Renders applicant details, activity timeline, and provides actions (schedule interview, send messages, comments, status updates)
 const ApplicantData = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const location = useLocation();
-  const { user } = useAuth();
 
-  // Get applicant data from location state if available (passed from Applicants page)
+  // Navigation / incoming state
+  // If the previous route passed applicant data via location.state we can use it for instant rendering
   const stateApplicant = location.state?.applicant as Applicant | undefined;
 
-  // State for expanded custom responses
-  const [expandedResponses, setExpandedResponses] = useState<Record<string, Set<number>>>({});
-  const [expandedText, setExpandedText] = useState<Record<string, boolean>>({});
-  // Track expanded fields for repeatable-group items: { fieldKey: { itemIndex: Set<fieldNames> } }
-  const [expandedItemFields, setExpandedItemFields] = useState<Record<string, Record<number, Set<string>>>>({});
-  // State for expanded cover letter textareas
-
-  // Helper to detect Arabic text and apply RTL
+  
+  // Helper: detect Arabic characters in a string
+  // Used to apply RTL layout where appropriate
   const isArabic = (text?: any) => {
     if (!text || typeof text !== 'string') return false;
     return /[\u0600-\u06FF]/.test(text);
   };
   
-  // State for activity timeline tab
-  const [activityTab, setActivityTab] = useState<'all' | 'status' | 'actions' | 'interview'>('all');
+  // UI state: active tab in the Activity Timeline
 
-  // React Query hooks - only fetch if we don't have state data
-  // If we have state data, the query will still run but we use the state data immediately
+  // Data fetching (react-query hooks)
+  // Fetch applicant and related entities; initialData uses navigation state when available for instant UI
   const { data: fetchedApplicant, isLoading: loading, error, isFetched: isApplicantFetched } = useApplicant(id || '', {
-    // Use initialData if we have it from navigation state
     initialData: stateApplicant,
   });
   
   // Prefer the fetched data, but fall back to navigation state if the fetch returns undefined
   const applicant: any = (fetchedApplicant ?? stateApplicant) as any;
 
-  // Additional hooks (declare before conditional returns to preserve hook order)
+  // Related data hooks (job positions, company details)
+  // Declared here to preserve hook order for React
   const { data: jobPositions = [],  isFetched: isJobPositionsFetched } = useJobPositions();
   const jobPosIdString = applicant && typeof applicant.jobPositionId === 'string' ? applicant.jobPositionId : '';
   const { data: jobPositionDetail, isFetched: isJobPositionDetailFetched } = useJobPosition(jobPosIdString, { enabled: !!jobPosIdString });
@@ -92,9 +98,9 @@ const ApplicantData = () => {
 
   const { data: fetchedCompany } = useCompany(resolvedCompanyId || '', { enabled: !!resolvedCompanyId });
 
-  // Mutations are declared earlier to preserve hook order
+  // Mutations: react-query mutation hooks for creating/updating comments, interviews, status and sending emails
 
-  // Compute full CV download URL (prefix API base URL for relative paths)
+  // Utility: compute full CV download URL (handles relative paths and data URLs)
   const cvUrl = useMemo(() => {
     if (!applicant?.cvFilePath) return null;
     const path = applicant.cvFilePath;
@@ -107,7 +113,7 @@ const ApplicantData = () => {
 
   // (internal preview removed) -- use the previewWithoutAttachment button to open inline
 
-  // Build Cloudinary download URL with fl_attachment to force download
+  // Utility: Build Cloudinary URL that forces attachment download with a friendly filename
   const buildCloudinaryDownloadUrl = (u: string) => {
     try {
       if (!u) return null;
@@ -122,7 +128,7 @@ const ApplicantData = () => {
     }
   };
 
-  // Download CV (try Cloudinary fl_attachment, fallback to fetch->blob)
+  // Action: download CV with fallbacks (Cloudinary trick, fetch->blob, open in new tab)
   const downloadCv = async () => {
     if (!applicant?.cvFilePath) {
       Swal.fire('No CV', 'No CV file available for this applicant', 'info');
@@ -160,21 +166,19 @@ const ApplicantData = () => {
     window.open(url, '_blank');
   };
 
-  // (previewWithoutAttachment removed)
-  
+  // (preview helper removed)
 
-  // Fetch canonical company is declared earlier to preserve hook order
-
-
-  // Mutations
+  // Mutation hooks
   const updateStatusMutation = useUpdateApplicantStatus();
   const scheduleInterviewMutation = useScheduleInterview();
   const updateInterviewMutation = useUpdateInterviewStatus();
   const addCommentMutation = useAddComment();
+  const sendEmailMutation = useSendEmail();
 
-  // Interview update state
+  // Interview-related UI state and form helpers
 
-  // Derived data - handle both string IDs and populated objects
+  // Derived data helpers: resolve job title, company name, department and address
+  // These helpers handle both string IDs and populated objects returned by the API
   const getJobTitle = (): { en: string } => {
     if (!applicant) return { en: '' };
     // If jobPositionId is populated object, use its title directly
@@ -271,6 +275,51 @@ const ApplicantData = () => {
     return '';
   };
 
+  // Fallback helpers: prefer top-level applicant fields, then customResponses
+  const getBirthDateValue = () => {
+    if (!applicant) return null;
+    return (
+      applicant.birthDate ||
+      (applicant as any).birthdate ||
+      applicant.customResponses?.birthdate ||
+      applicant.customResponses?.birthDate ||
+      // Arabic keys fallback
+      applicant.customResponses?.['تاريخ_الميلاد'] ||
+      applicant.customResponses?.['تاريخ الميلاد'] ||
+      (applicant as any)['تاريخ_الميلاد'] ||
+      (applicant as any)['تاريخ الميلاد'] ||
+      null
+    );
+  };
+
+  const getGenderValue = () => {
+    if (!applicant) return null;
+    return (
+      applicant.gender ||
+      applicant.customResponses?.gender ||
+      // Arabic keys fallback
+      applicant.customResponses?.['النوع'] ||
+      applicant.customResponses?.['gender'] ||
+      (applicant as any)['النوع'] ||
+      null
+    );
+  };
+
+  const normalizeGenderLocal = (raw: any) => {
+    if (raw === null || raw === undefined) return '';
+    const s = String(raw).trim();
+    if (!s) return '';
+    const lower = s.toLowerCase();
+    const arabicMale = ['ذكر', 'ذَكر', 'ذكرً'];
+    const arabicFemale = ['انثى', 'أنثى', 'انثي', 'انسه', 'أنسه', 'انثا'];
+    if (arabicMale.includes(s) || arabicMale.includes(lower)) return 'Male';
+    if (arabicFemale.includes(s) || arabicFemale.includes(lower)) return 'Female';
+    if (lower === 'male' || lower === 'm') return 'Male';
+    if (lower === 'female' || lower === 'f') return 'Female';
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  };
+
+  // Resolve and normalize an address string for the applicant's company
   const getCompanyAddress = () => {
     if (!applicant) return '';
 
@@ -327,7 +376,7 @@ const ApplicantData = () => {
     return resolved || '';
   };
 
-  // Try to fill interviewForm.location using the best available company object
+  // Prefill interview form location from the best available company address
   const fillCompanyAddress = (): boolean => {
     try {
       const comp = (fetchedCompany as any && (fetchedCompany as any)?._id) ? (fetchedCompany as any) : companyObj;
@@ -385,7 +434,7 @@ const ApplicantData = () => {
     }
   };
 
-  // Resolve the single company object for this applicant (prefer populated jobPosition -> company, then applicant.companyId, then lookup from companies list)
+  // Resolve canonical company object for the current applicant
   const companyObj = (() => {
     if (!applicant) return null as any;
     // If we fetched the canonical company from server, prefer it
@@ -428,7 +477,7 @@ const ApplicantData = () => {
   const companyName = getCompanyName();
   const departmentName = getDepartmentName();
 
-  // Modal states
+  // Modal visibility and selected item state
   const [showInterviewModal, setShowInterviewModal] = useState(false);
   const [showMessageModal, setShowMessageModal] = useState(false);
   const [showCommentModal, setShowCommentModal] = useState(false);
@@ -436,10 +485,9 @@ const ApplicantData = () => {
   const [showInterviewSettingsModal, setShowInterviewSettingsModal] = useState(false);
   const [showPhotoModal, setShowPhotoModal] = useState(false);
   const [selectedInterview, setSelectedInterview] = useState<any>(null);
-  const [expandedHistory, setExpandedHistory] = useState<string | null>(null);
   const [formResetKey, setFormResetKey] = useState(0);
 
-  // Form states
+  // Interview form state and related flags
   const [interviewForm, setInterviewForm] = useState({
     date: '',
     time: '',
@@ -484,7 +532,10 @@ const ApplicantData = () => {
   >('company');
   const [customPhone, setCustomPhone] = useState('');
   const [messageTemplate, setMessageTemplate] = useState('');
+  const [interviewEmailSubject, setInterviewEmailSubject] = useState('Interview Invitation');
   const [isSubmittingInterview, setIsSubmittingInterview] = useState(false);
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [previewHtml, setPreviewHtml] = useState('');
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [isSubmittingStatus, setIsSubmittingStatus] = useState(false);
   const [commentForm, setCommentForm] = useState({
@@ -498,53 +549,95 @@ const ApplicantData = () => {
   const [commentError, setCommentError] = useState('');
   const [statusError, setStatusError] = useState('');
 
-  // Generate message template based on selected notification channels
-  const generateMessageTemplate = () => {
-    if (!applicant) return '';
+  
 
-    const applicantName = applicant.fullName;
-    const interviewDate = interviewForm.date
-      ? new Date(interviewForm.date).toLocaleDateString('en-US', {
-          weekday: 'long',
-          year: 'numeric',
-          month: 'long',
-          day: 'numeric',
-        })
-      : '[Interview Date]';
-    const interviewTime = interviewForm.time || '[Interview Time]';
-    const interviewType = interviewForm.type;
-    const location = interviewForm.location || 'our office';
-    const link = interviewForm.link || '[Video Link]';
-
-    // Only one channel can be active at a time
-    if (notificationChannels.email) {
-      return `Dear ${applicantName},\n\nWe are pleased to invite you for an interview for the position you applied for.\n\nInterview Details:\n• Date: ${interviewDate}\n• Time: ${interviewTime}\n• Type: ${
-        interviewType.charAt(0).toUpperCase() + interviewType.slice(1)
-      }\n${
-        interviewType === 'video'
-          ? `• Link: ${link}`
-          : interviewType === 'in-person'
-          ? `• Location: ${location}`
-          : `• Mode: Phone Call`
-      }\n\nPlease confirm your availability at your earliest convenience.\n\nBest regards,\nHR Team`;
-    } else if (notificationChannels.whatsapp) {
-      return `Hi ${applicantName}! 👋\n\nGreat news! We'd like to invite you for an interview:\n\n📅 ${interviewDate}\n⏰ ${interviewTime}\n${
-        interviewType === 'video'
-          ? `🎥 ${link}`
-          : interviewType === 'in-person'
-          ? `📍 ${location}`
-          : `📞 Phone Interview`
-      }\n\nPlease confirm if you're available. Looking forward to meeting you!`;
-    } else if (notificationChannels.sms) {
-      return `Hi ${applicantName}, You're invited for a ${interviewType} interview on ${interviewDate} at ${interviewTime}. ${
-        interviewType === 'in-person' ? `Location: ${location}` : ''
-      }Please confirm. - HR Team`;
-    }
-
-    return '';
+  // Email helper: add inline styles to Quill-produced HTML for better email client rendering
+  const inlineStyleHtml = (html: string) => {
+    if (!html) return '';
+    let out = String(html);
+    out = out.replace(/<p(?![^>]*style)/g, '<p style="margin:0 0 12px;color:#444;">');
+    out = out.replace(/<ul(?![^>]*style)/g, '<ul style="margin:0 0 12px 18px;padding-left:18px;">');
+    out = out.replace(/<ol(?![^>]*style)/g, '<ol style="margin:0 0 12px 18px;padding-left:18px;">');
+    out = out.replace(/<li(?![^>]*style)/g, '<li style="margin-bottom:6px;">');
+    return out;
   };
 
-  // Helper function to extract detailed error messages
+  // HTML utility: escape content for safe HTML embedding
+  const escapeHtml = (s: string) =>
+    String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+
+  // Sanitize message template: remove quoted blocks and normalize whitespace
+  const sanitizeMessageTemplate = (htmlOrText: string) => {
+    if (!htmlOrText) return '';
+    let out = String(htmlOrText);
+
+    // Remove blockquotes which often contain quoted/repeated content
+    out = out.replace(/<blockquote[\s\S]*?<\/blockquote>/gi, '');
+
+    // Remove any leading quote-lines in plain text (lines starting with >)
+    out = out.replace(/(^|\n)\s*>.*(?=\n|$)/g, '');
+    // Remove HTML-encoded greater-than quote markers
+    out = out.replace(/(^|\n)\s*&gt;+\s*/gi, '$1');
+
+    // Remove any leading '>' or '&gt;' inside HTML paragraphs (e.g. <p>&gt;Dear...</p> -> <p>Dear...</p>)
+    out = out.replace(/<p([^>]*)>\s*(?:&gt;|>)+\s*/gi, '<p$1>');
+
+    // Remove a leading greeting like "Dear Name," if it's the very first content — avoids duplicate greetings
+    out = out.replace(/^\s*(?:<p[^>]*>\s*)?(Dear\s+[A-Za-z0-9\-\s,.]{1,80}[,:]?)(?:<\/p>\s*)?/i, '');
+
+    // Normalize multiple blank lines and trim
+    out = out.replace(/(\r?\n){2,}/g, '\n\n').trim();
+    return out;
+  };
+
+  // Build the full HTML email wrapper for interview invitations
+  const buildInterviewEmailHtml = (opts: { subject: string; jobTitle: string; interview: any; rawMessage: string; applicantName?: string }) => {
+    const { subject, rawMessage } = opts;
+    const sanitizedBody = sanitizeMessageTemplate(rawMessage || '');
+
+    // If sanitizedBody is HTML (contains tags) keep it; otherwise convert plaintext newlines to paragraphs.
+    let bodyHtml = '';
+    if (sanitizedBody.indexOf('<') !== -1) {
+      bodyHtml = inlineStyleHtml(sanitizedBody);
+    } else {
+      const parts = sanitizedBody.split(/\r?\n/).map(p => p.trim()).filter(p => p.length > 0);
+      bodyHtml = parts.map(p => `<p style="margin:0 0 12px;color:#444;">${escapeHtml(p)}</p>`).join('');
+    }
+
+    // Do not inject any greeting/intro/signature — use exactly what user wrote in Quill (sanitized above)
+    return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; background-color: #f5f5f5; margin:0; padding:0; }
+    .container { max-width:600px; margin:24px auto; background:#fff; border-radius:8px; overflow:hidden; }
+    .header { padding:28px 30px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); text-align:center; }
+    .header h1 { color:#fff; margin:0; font-size:20px; font-weight:600; }
+    .content { padding:28px 30px; color:#222; }
+    .footer { padding:18px 30px; color:#999; font-size:12px; text-align:center; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header"><h1>${subject}</h1></div>
+      <div class="content">
+      <div style="margin-top:12px;margin-bottom:18px;">${bodyHtml}</div>
+    </div>
+    <div class="footer">This is an automated message from our HR system. Please do not reply to this email.</div>
+  </div>
+</body>
+</html>`;
+  };
+
+  // Error helper: extract readable messages from API/network errors
   const getErrorMessage = (err: any): string => {
     // Check for validation errors in 'details' array (new format)
     if (
@@ -576,8 +669,8 @@ const ApplicantData = () => {
     return 'An unexpected error occurred';
   };
 
-  // React Query automatically handles data fetching, no useEffect needed
-
+  // UI options and form handlers
+  // Status options used in the change-status flow
   const statusOptions = [
     { value: 'pending', label: 'Pending' },
     { value: 'interview', label: 'Interview' },
@@ -586,6 +679,7 @@ const ApplicantData = () => {
     { value: 'rejected', label: 'Rejected' },
   ];
 
+  // Form handler: submit interview scheduling data, create interview and optionally send notifications
   const handleInterviewSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!id || !applicant) return;
@@ -607,6 +701,8 @@ const ApplicantData = () => {
     }
 
     setIsSubmittingInterview(true);
+    // snapshot interview form before we reset UI state
+    const interviewSnapshot = { ...interviewForm };
     // Close modal immediately when request is sent
     setInterviewForm({
       date: '',
@@ -625,22 +721,22 @@ const ApplicantData = () => {
     setShowInterviewModal(false);
 
     try {
-      // Combine date and time into scheduledAt
+      // Combine date and time into scheduledAt using the snapshot
       let scheduledAt: string | undefined;
-      if (interviewForm.date && interviewForm.time) {
-        scheduledAt = `${interviewForm.date}T${interviewForm.time}:00`;
-      } else if (interviewForm.date) {
-        scheduledAt = `${interviewForm.date}T00:00:00`;
+      if (interviewSnapshot.date && interviewSnapshot.time) {
+        scheduledAt = `${interviewSnapshot.date}T${interviewSnapshot.time}:00`;
+      } else if (interviewSnapshot.date) {
+        scheduledAt = `${interviewSnapshot.date}T00:00:00`;
       }
 
-      // Build payload matching backend scheduleInterviewSchema
+      // Build payload matching backend scheduleInterviewSchema (from snapshot)
       const interviewData: any = {
         scheduledAt,
-        description: interviewForm.description || undefined,
-        type: interviewForm.type || undefined,
-        location: interviewForm.location || undefined,
-        videoLink: interviewForm.link || undefined,
-        notes: interviewForm.comment || undefined,
+        description: interviewSnapshot.description || undefined,
+        type: interviewSnapshot.type || undefined,
+        location: interviewSnapshot.location || undefined,
+        videoLink: interviewSnapshot.link || undefined,
+        notes: interviewSnapshot.comment || undefined,
         // Include the applicant's company id if resolved so backend can associate notifications/settings
         companyId: companyObj?._id,
         // Include notifications preferences
@@ -672,20 +768,139 @@ const ApplicantData = () => {
       const tempInterviewId = `temp-${Date.now()}`;
       interviewData._id = tempInterviewId;
 
-      // Second: Optimistically create the interview (hooks will add a temp interview)
-      scheduleInterviewMutation.mutate({
-        id: id!,
-        data: interviewData,
-      });
+      // Second: create the interview on server and wait for result
+      const updatedApplicant = await scheduleInterviewMutation.mutateAsync({ id: id!, data: interviewData });
 
-      // Third: Optimistically set the interview status to 'scheduled' on the temp interview
-      updateInterviewMutation.mutate({
-        applicantId: id!,
-        interviewId: tempInterviewId,
-        data: { status: 'scheduled' },
-      });
+      // Attempt to find the created interview id returned from server
+      let createdInterviewId: string | undefined;
+      try {
+        const interviews = (updatedApplicant as any)?.interviews || [];
+        createdInterviewId = interviews.find((iv: any) => {
+          if (!iv) return false;
+          // match by scheduledAt, type and notes as best-effort
+          return (
+            (iv.scheduledAt === interviewData.scheduledAt) &&
+            (iv.type === interviewData.type) &&
+            ((iv.notes || '') === (interviewData.notes || ''))
+          );
+        })?._id;
+      } catch (e) {
+        // ignore
+      }
 
-      // Show success immediately (do not wait for network)
+      // Third: set the interview status to 'scheduled' on the created interview (wait for server) if we found it
+      if (createdInterviewId) {
+        await updateInterviewMutation.mutateAsync({
+          applicantId: id!,
+          interviewId: createdInterviewId,
+          data: { status: 'scheduled' },
+        });
+      }
+
+      // Notifications: if email channel selected, send email and save message
+      if (notificationChannels.email) {
+        try {
+          // Ensure Quill HTML has basic inline styles for email clients
+          const inlineStyleHtml = (html: string) => {
+            if (!html) return '';
+            let out = String(html);
+            // style paragraphs
+            out = out.replace(/<p(?![^>]*style)/g, '<p style="margin:0 0 12px;color:#444;">');
+            // style unordered lists
+            out = out.replace(/<ul(?![^>]*style)/g, '<ul style="margin:0 0 12px 18px;padding-left:18px;">');
+            // style ordered lists
+            out = out.replace(/<ol(?![^>]*style)/g, '<ol style="margin:0 0 12px 18px;padding-left:18px;">');
+            // style list items
+            out = out.replace(/<li(?![^>]*style)/g, '<li style="margin-bottom:6px;">');
+            return out;
+          };
+
+          // Remove interview details that may be duplicated inside the message template
+          const sanitizeMessageTemplate = (htmlOrText: string) => {
+            if (!htmlOrText) return '';
+            let out = String(htmlOrText);
+
+            // Remove any blockquote sections
+            out = out.replace(/<blockquote[\s\S]*?<\/blockquote>/gi, '');
+
+            // If it's HTML, try removing a paragraph titled 'Interview Details' and following list
+            if (out.indexOf('<') !== -1) {
+              // Remove <p>Interview Details</p> plus following <ul> or <ol>
+              out = out.replace(/<p[^>]*>\s*Interview Details\s*<\/p>\s*(?:<ul[\s\S]*?<\/ul>|<ol[\s\S]*?<\/ol>)/i, '');
+              // Remove any remaining list items that contain Date:, Time:, Type:, Location:, Link:
+              out = out.replace(/<li[^>]*>\s*(?:Date|Time|Type|Location|Link):[\s\S]*?<\/li>/gi, '');
+              // Also remove standalone paragraphs that start with 'Interview Details' or bullets
+              out = out.replace(/<p[^>]*>\s*(?:Interview Details|•|\-|\*)[\s\S]*?<\/p>/gi, '');
+
+              // Remove leading encoded or literal '>' inside paragraph starts (e.g. <p>&gt;Text</p> or <p>>Text</p>)
+              out = out.replace(/(<(p|div|li|span)[^>]*>)\s*(?:&gt;|>)+\s*/gi, '$1');
+            } else {
+              // Plain text: remove 'Interview Details' block and following lines starting with bullets or labels
+              out = out.replace(/Interview Details[\s\S]*?(?=\n\s*\n|$)/i, '');
+              out = out.replace(/(^|\n)\s*[•\-*]\s*(Date|Time|Type|Location|Link):.*(?=\n|$)/gi, '');
+            }
+
+            // Remove any leading quote-lines in plain text (lines starting with >)
+            out = out.replace(/(^|\n)\s*>+\s*/g, '$1');
+            // Remove HTML encoded greater-than markers at line starts
+            out = out.replace(/(^|\n)\s*&gt;+\s*/gi, '$1');
+
+            // Remove a leading greeting like "Dear Name," if it's the very first content — avoids duplicate greetings
+            out = out.replace(/^\s*(?:<p[^>]*>\s*)?(Dear\s+[A-Za-z0-9\-\s,.]{1,80}[,:]?)(?:<\/p>\s*)?/i, '');
+
+            return out.trim();
+          };
+
+          const toEmail = emailOption === 'custom' ? customEmail || applicant.email : applicant.email;
+          const fromEmail = companyObj?.email ? `${companyObj?.name || 'Company'} <${companyObj?.email}>` : 'Valora HR <hr@valora-rs.com>';
+          const subject = interviewEmailSubject || `Interview Invitation`;
+
+              const sanitizedBody = sanitizeMessageTemplate(messageTemplate || '');
+
+
+            const emailHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+</head>
+<body style="font-family: Arial, sans-serif; padding: 20px; margin: 0; background-color: #f5f5f5;">
+  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden;">
+    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center;">
+      <h1 style="color: #ffffff; margin: 0; font-size: 24px;">${subject}</h1>
+    </div>
+    <div style="padding: 30px;">
+      <div style="font-size: 16px; line-height: 1.6; color: #444;">
+        ${inlineStyleHtml(sanitizedBody || '')}
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+`;
+
+          // Send email via mutation
+          await sendEmailMutation.mutateAsync({
+            to: toEmail,
+            from: fromEmail,
+            subject,
+            html: emailHtml,
+          });
+        } catch (err: any) {
+          const errMsg = getErrorMessage(err);
+          console.error('Error sending interview notification:', err);
+          setInterviewError(errMsg);
+          await Swal.fire({
+            title: 'Notification Error',
+            text: String(errMsg),
+            icon: 'error',
+          });
+        }
+      }
+
+      // Show success (scheduled and notifications handled)
       await Swal.fire({
         title: 'Success!',
         text: 'Interview scheduled successfully.',
@@ -714,6 +929,7 @@ const ApplicantData = () => {
   
     
 
+  // Form handler: add an internal comment to the applicant
   const handleCommentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!id || !applicant) return;
@@ -752,6 +968,7 @@ const ApplicantData = () => {
     }
   };
 
+  // Form handler: change applicant status
   const handleStatusChange = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!id || !applicant || !statusForm.status) return;
@@ -790,6 +1007,7 @@ const ApplicantData = () => {
     }
   };
 
+  // UI helper: map applicant status to Tailwind color classes for badges
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'pending':
@@ -807,6 +1025,7 @@ const ApplicantData = () => {
     }
   };
 
+  // Render loading state while applicant data is being fetched
   if (loading) {
     return (
       <div className="space-y-6">
@@ -820,6 +1039,7 @@ const ApplicantData = () => {
     );
   }
 
+  // Render an error state when applicant cannot be loaded
   if (error || !applicant) {
     return (
       <>
@@ -842,6 +1062,7 @@ const ApplicantData = () => {
     );
   }
 
+  // Small utility to format dates for display in the UI
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString('en-US', {
       year: 'numeric',
@@ -861,7 +1082,7 @@ const ApplicantData = () => {
       <PageBreadcrumb pageTitle={applicant.fullName} />
 
       <div className="grid gap-6">
-        {/* Back Button and Actions */}
+        {/* Top actions: back button, status/change actions, schedule/send/add comment buttons */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <button
             onClick={() => navigate('/applicants')}
@@ -943,7 +1164,8 @@ const ApplicantData = () => {
           </div>
         </div>
 
-        {/* Personal Information */}
+        {/* Personal Information Card
+          Renders profile header, photo, name, contact details, job/company/department, address, status, submission date and resume actions */}
         <div className="relative overflow-hidden rounded-2xl bg-white dark:bg-gray-900 shadow-xl">
   {/* Decorative background */}
   <div className="absolute inset-0 bg-gradient-to-br from-brand-500/5 via-purple-500/5 to-blue-500/5 dark:from-brand-500/10 dark:via-purple-500/10 dark:to-blue-500/10"></div>
@@ -987,8 +1209,8 @@ const ApplicantData = () => {
       </div>
     </div>
 
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        {/* Full Name */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        {/* Full Name: applicant full name, supports RTL for Arabic */}
         <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-brand-500 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
           <div className="flex items-baseline gap-4">
             <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-brand-100 dark:bg-brand-900/30 rounded-lg group-hover:scale-110 transition-transform">
@@ -1003,7 +1225,7 @@ const ApplicantData = () => {
           </div>
         </div>
 
-        {/* Email */}
+        {/* Email: clickable mailto link when available */}
         <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-blue-500 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
           <div className="flex items-baseline gap-4">
             <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-blue-100 dark:bg-blue-900/30 rounded-lg group-hover:scale-110 transition-transform">
@@ -1028,7 +1250,7 @@ const ApplicantData = () => {
           </div>
         </div>
 
-        {/* Phone */}
+        {/* Phone: clickable WhatsApp link when available */}
         <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-green-500 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
           <div className="flex items-baseline gap-4">
             <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-green-100 dark:bg-green-900/30 rounded-lg group-hover:scale-110 transition-transform">
@@ -1053,7 +1275,39 @@ const ApplicantData = () => {
           </div>
         </div>
 
-        {/* Job Position */}
+          {/* Birth Date: applicant birth date */}
+          <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-teal-400 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
+            <div className="flex items-baseline gap-4">
+              <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-teal-100 dark:bg-teal-900/30 rounded-lg group-hover:scale-110 transition-transform">
+                <svg className="w-6 h-6 text-teal-600 dark:text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </div>
+              <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Birth Date</Label>
+              <p className="text-sm text-gray-900 dark:text-white">{(() => {
+                const bd = getBirthDateValue();
+                return bd ? new Date(bd).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '-';
+              })()}</p>
+            </div>
+          </div>
+
+          {/* Gender: applicant gender */}
+          <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-pink-400 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
+            <div className="flex items-baseline gap-4">
+              <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-pink-100 dark:bg-pink-900/30 rounded-lg group-hover:scale-110 transition-transform">
+                <svg className="w-6 h-6 text-pink-600 dark:text-pink-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 11c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2" />
+                </svg>
+              </div>
+              <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Gender</Label>
+              <p className="text-sm text-gray-900 dark:text-white">{(() => {
+                const g = getGenderValue();
+                return g ? normalizeGenderLocal(g) : '-';
+              })()}</p>
+            </div>
+          </div>
+
+          {/* Job Position: resolved title from job position or lookup */}
         <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-purple-500 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
           <div className="flex items-baseline gap-4">
             <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-purple-100 dark:bg-purple-900/30 rounded-lg group-hover:scale-110 transition-transform">
@@ -1066,7 +1320,7 @@ const ApplicantData = () => {
           </div>
         </div>
 
-        {/* Company */}
+        {/* Company: resolved company name from job position, applicant or lookup */}
         <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-orange-500 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
           <div className="flex items-baseline gap-4">
             <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-orange-100 dark:bg-orange-900/30 rounded-lg group-hover:scale-110 transition-transform">
@@ -1079,7 +1333,7 @@ const ApplicantData = () => {
           </div>
         </div>
 
-        {/* Department */}
+        {/* Department: resolved department name if available */}
         <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-pink-500 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
           <div className="flex items-baseline gap-4">
             <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-pink-100 dark:bg-pink-900/30 rounded-lg group-hover:scale-110 transition-transform">
@@ -1092,7 +1346,7 @@ const ApplicantData = () => {
           </div>
         </div>
 
-        {/* Address */}
+        {/* Address: applicant-provided address */}
         <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-teal-500 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
@@ -1108,7 +1362,7 @@ const ApplicantData = () => {
           </div>
         </div>
 
-        {/* Status */}
+        {/* Status: shows current applicant status badge */}
         <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-yellow-500 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
           <div className="flex items-baseline gap-4">
             <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-yellow-100 dark:bg-yellow-900/30 rounded-lg group-hover:scale-110 transition-transform">
@@ -1123,7 +1377,7 @@ const ApplicantData = () => {
           </div>
         </div>
 
-        {/* Submitted */}
+        {/* Submitted: timestamp when application was submitted */}
         <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-indigo-500 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
           <div className="flex items-baseline gap-4">
             <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-indigo-100 dark:bg-indigo-900/30 rounded-lg group-hover:scale-110 transition-transform">
@@ -1136,7 +1390,7 @@ const ApplicantData = () => {
           </div>
         </div>
 
-        {/* Resume */}
+        {/* Resume: download CV and related actions */}
         {applicant.cvFilePath && (
           <div className="group relative pl-5 pr-5 py-5 bg-gradient-to-br from-brand-500 to-brand-600 dark:from-brand-600 dark:to-brand-700 backdrop-blur-sm rounded-xl border-l-4 border-brand-700 hover:shadow-2xl transition-all duration-200">
             <div className="flex items-baseline gap-4">
@@ -1158,7 +1412,6 @@ const ApplicantData = () => {
                   </svg>
                 </button>
 
-                {/* Preview (no-download) removed */}
               </div>
             </div>
           </div>
@@ -1168,915 +1421,13 @@ const ApplicantData = () => {
   </div>
 </div>
 
-        {/* Custom Responses */}
-        {applicant.customResponses &&
-          Object.keys(applicant.customResponses).length > 0 && (
-            <div className="rounded-2xl overflow-hidden bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-900 dark:to-gray-800 border-2 border-blue-200 dark:border-blue-900/50 shadow-lg">
-              <div className="bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-700 dark:to-indigo-700 px-8 py-6">
-                <div className="flex items-center gap-4">
-                  <div className="p-3 bg-white/20 backdrop-blur-sm rounded-xl">
-                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <h3 className="text-2xl font-extrabold text-white">Application Responses</h3>
-                    <p className="text-sm text-blue-100 mt-0.5">Custom field responses and additional information</p>
-                  </div>
-                </div>
-              </div>
-              <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-5">
-                {Object.entries(applicant.customResponses).map(
-                  ([key, value]) => {
-                    // Helper function to toggle expansion for a specific item
-                    const toggleExpand = (index: number) => {
-                      setExpandedResponses(prev => {
-                        const newState = { ...prev };
-                        if (!newState[key]) {
-                          newState[key] = new Set();
-                        }
-                        const currentSet = new Set(newState[key]);
-                        if (currentSet.has(index)) {
-                          currentSet.delete(index);
-                        } else {
-                          currentSet.add(index);
-                        }
-                        newState[key] = currentSet;
-                        return newState;
-                      });
-                    };
+        <CustomResponses applicant={applicant} />
 
-                    // Helper function to render value properly
-                    const renderValue = () => {
-                      if (Array.isArray(value)) {
-                        // Check if array contains objects
-                        if (value.length > 0 && typeof value[0] === 'object' && value[0] !== null) {
-                          // Render each object as an expandable tag
-                          return (
-                            <div className="flex flex-wrap gap-2">
-                              {value.map((item, idx) => {
-                                const isExpanded = expandedResponses[key]?.has(idx) || false;
-                                // Get a summary for the tag (e.g., first field value or index)
-                                const firstKey = Object.keys(item)[0];
-                                const summary = item[firstKey] || `Item ${idx + 1}`;
-                                const summaryText = String(summary);
-                                const summaryIsArabic = isArabic(summaryText);
-                                const displaySummary = summaryIsArabic
-                                  ? (summaryText.length > 30 ? '...' + summaryText.slice(-30) : summaryText)
-                                  : (summaryText.length > 30 ? summaryText.substring(0, 30) + '...' : summaryText);
-                                return (
-                                  <div key={idx} className="w-full">
-                                    <button
-                                      onClick={() => toggleExpand(idx)}
-                                      className={
-                                        (() => {
-                                          const normalizedKey = key.replace(/\s|_/g, '').toLowerCase();
-                                          const isGrayTag = ['workexperience', 'certifications'].includes(normalizedKey);
-                                          return `inline-flex items-center justify-between w-full gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition ${isGrayTag ? 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800/30 dark:text-gray-300 dark:hover:bg-gray-800/50' : 'bg-brand-100 text-brand-700 hover:bg-brand-200 dark:bg-brand-900/30 dark:text-brand-300 dark:hover:bg-brand-900/50'}`;
-                                        })()
-                                      }
-                                    >
-                                      <span dir={summaryIsArabic ? 'rtl' : undefined} className={`${summaryIsArabic ? 'text-right w-full' : ''} font-cairo`}>
-                                          {displaySummary}
-                                        </span>
-                                      <svg
-                                        className={`size-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-                                        fill="none"
-                                        stroke="currentColor"
-                                        viewBox="0 0 24 24"
-                                      >
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                      </svg>
-                                    </button>
-                                    {isExpanded && (
-                                        <div className="mt-3">
-                                        {/* Summary pill/header */}
-                                        <div className="mb-3 flex flex-wrap items-center gap-2">
-                                        
-                                        </div>
+        
+        
 
-                                        {/* Details card */}
-                                        <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-                                          {(() => {
-                                            const entries = Object.entries(item).filter(([_, v]) => {
-                                              if (v === null || v === undefined) return false;
-                                              const s = typeof v === "string" ? v : String(v);
-                                              return s.trim() !== "";
-                                            });
-
-                                            const formatValue = (v: any) => {
-                                              if (typeof v === "boolean") return v ? "Yes" : "No";
-                                              if (v === null || v === undefined) return "-";
-                                              if (Array.isArray(v)) return v.join(", ");
-                                              if (typeof v === "object") return JSON.stringify(v, null, 2);
-                                              return String(v);
-                                            };
-
-                                            return (
-                                                <div className="space-y-3">
-                                                  {entries.map(([itemKey, itemValue]) => {
-                                                  const label = itemKey
-                                                    .replace(/_/g, " ")
-                                                    .replace(/\b\w/g, (c) => c.toUpperCase());
-
-                                                  const valueStr = formatValue(itemValue);
-                                                  const valueIsArabic =
-                                                    typeof valueStr === "string" && isArabic(valueStr);
-
-                                                  // Determine row direction from label or value (Arabic -> RTL)
-                                                  const rowIsArabic = valueIsArabic || isArabic(label);
-                                                  const rowDir = rowIsArabic ? "rtl" : "ltr";
-
-                                                  // Field-level expansion state
-                                                  const isFieldExpanded = (expandedItemFields[key] && expandedItemFields[key][idx] && expandedItemFields[key][idx].has(itemKey)) || false;
-                                                  const needsTruncate = typeof valueStr === 'string' && valueStr.length > 20;
-
-                                                  const toggleField = (fieldName: string) => {
-                                                    setExpandedItemFields(prev => {
-                                                      const newState = { ...prev };
-                                                      if (!newState[key]) newState[key] = {};
-                                                      if (!newState[key][idx]) newState[key][idx] = new Set<string>();
-                                                      if (newState[key][idx].has(fieldName)) {
-                                                        newState[key][idx].delete(fieldName);
-                                                      } else {
-                                                        newState[key][idx].add(fieldName);
-                                                      }
-                                                      return { ...newState };
-                                                    });
-                                                  };
-
-                                                  return (
-                                                    <div
-                                                      key={itemKey}
-                                                      dir={rowDir}
-                                                      className={`
-                                                        rounded-xl border border-gray-100 bg-gray-50 px-3 py-2
-                                                        dark:border-gray-700/60 dark:bg-gray-900/30
-                                                        transition
-                                                      `}
-                                                    >
-                                                      <div
-                                                        className={`
-                                                          grid grid-cols-1 gap-1
-                                                          ${rowIsArabic ? 'sm:grid-cols-[170px_1fr] sm:gap-4' : 'sm:grid-cols-[170px_1fr] sm:gap-4'}
-                                                        `}
-                                                      >
-                                                        {/* Label */}
-                                                        <div
-                                                          className={`
-                                                            text-xs font-semibold mt-1 uppercase tracking-wide
-                                                            text-gray-500 dark:text-gray-400
-                                                            ${rowIsArabic ? "text-right" : "text-left"}
-                                                          `}
-                                                        >
-                                                          <span className="font-cairo">{label} :</span>
-                                                        </div>
-
-                                                        {/* Value */}
-                                                        <div
-                                                          className={`
-                                                            text-sm font-medium -mr-15 text-gray-900 dark:text-white
-                                                            whitespace-pre-wrap break-words leading-relaxed
-                                                            ${rowIsArabic ? "text-right" : "text-left"}
-                                                          `}
-                                                        >
-                                                          {needsTruncate && !isFieldExpanded ? (
-                                                            <span className="inline-flex items-center gap-2">
-                                                              <span>{valueStr.slice(0, 20)}</span>
-                                                              <button
-                                                                type="button"
-                                                                onClick={() => toggleField(itemKey)}
-                                                                className="text-xs text-brand-600 hover:text-brand-700"
-                                                                aria-label={`Expand ${label}`}
-                                                              >
-                                                                ⋯
-                                                              </button>
-                                                            </span>
-                                                          ) : (
-                                                            <span>
-                                                              {valueStr}
-                                                            </span>
-                                                          )}
-                                                        </div>
-                                                      </div>
-                                                    </div>
-                                                  );
-                                                })}
-                                              </div>
-                                            );
-                                          })()}
-                                        </div>
-                                      </div>
-                                    )}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          );
-                        }
-                        // Simple array of primitives - detect Arabic elements
-                        const joined = value.join(', ');
-                        if (value.some((v: any) => isArabic(String(v)))) {
-                          return (
-                            <div dir="rtl" className="text-right text-gray-900 dark:text-white">
-                              {joined}
-                            </div>
-                          );
-                        }
-                        return joined;
-                      }
-                      // Simple value - handle Arabic direction and multiline text
-                      if (typeof value === 'string') {
-                        const containsNewline = value.includes('\n');
-                        if (isArabic(value)) {
-                          return (
-                            <div dir="rtl" className="text-right text-gray-900 dark:text-white">
-                              {containsNewline ? (
-                                <div className="whitespace-pre-wrap">{value}</div>
-                              ) : (
-                                value
-                              )}
-                            </div>
-                          );
-                        }
-                        if (containsNewline) {
-                          return (
-                            <div className="whitespace-pre-wrap text-gray-900 dark:text-white">
-                              {value}
-                            </div>
-                          );
-                        }
-                        return String(value);
-                      }
-                      return String(value);
-                    };
-
-                    const valueIsArabicOverall = (() => {
-                      if (Array.isArray(value)) {
-                        // primitives or objects
-                        if (value.length === 0) return false;
-                        return value.some((v: any) => {
-                          if (typeof v === 'string') return isArabic(String(v));
-                          if (typeof v === 'object' && v !== null) {
-                            return Object.values(v).some((x) => typeof x === 'string' && isArabic(x));
-                          }
-                          return false;
-                        });
-                      }
-                      if (typeof value === 'string') return isArabic(value);
-                      if (typeof value === 'object' && value !== null) {
-                        return Object.values(value).some((v) => typeof v === 'string' && isArabic(v));
-                      }
-                      return false;
-                    })();
-
-                    const normalizedKey = key.replace(/\s|_/g, '').toLowerCase();
-                    const isCoverText = typeof value === 'string' && /cover/.test(normalizedKey);
-
-                    return (
-                      <div key={key} className={`group p-4 bg-white dark:bg-gray-800 rounded-xl hover:shadow-md transition-all duration-200 border-l-4 border-blue-500`}>
-                        <div className="flex items-center gap-4">
-                          <span className={`text-xs font-extrabold text-blue-600 dark:text-blue-400 uppercase tracking-wider whitespace-nowrap font-cairo`}>
-                            {key
-                              .replace(/_/g, ' ')
-                              .replace(/\b\w/g, (c) => c.toUpperCase())}:
-                          </span>
-
-                          {isCoverText ? (
-                            <button
-                              type="button"
-                              onClick={() => setExpandedText(prev => ({ ...prev, [key]: !prev[key] }))}
-                              className="inline-flex items-center gap-2 px-2 py-1 text-xs font-medium rounded bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-300"
-                            >
-                              {expandedText[key] ? 'Collapse' : 'Expand'}
-                              <svg className={`w-3 h-3 text-blue-600 dark:text-blue-300 transition-transform ${expandedText[key] ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                              </svg>
-                            </button>
-                          ) : (
-                            <div className={`text-sm text-gray-900 dark:text-white leading-relaxed ${valueIsArabicOverall ? 'flex-none max-w-[60%] min-w-0 break-words text-right' : 'flex-1'}`}>
-                              {renderValue()}
-                            </div>
-                          )}
-                        </div>
-
-                        {isCoverText && expandedText[key] && (
-                          <div className={`mt-3 p-2 rounded bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 whitespace-pre-wrap ${valueIsArabicOverall ? 'text-right' : ''} max-h-40 overflow-auto`} dir={typeof value === 'string' && isArabic(value) ? 'rtl' : undefined}>
-                            {value}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  }
-                )}
-              </div>
-            </div>
-          )}
-
-        {/* Status History */}
-        <div>
-        <ComponentCard
-          title="Activity Timeline"
-          desc="Track all activities, status changes, messages, and comments"
-        >
-          {/* Tabs */}
-          <div className="mb-6 border-b border-gray-200 dark:border-gray-700">
-            <nav className="-mb-px flex space-x-8" aria-label="Tabs">
-              <button
-                onClick={() => setActivityTab('all')}
-                className={`whitespace-nowrap border-b-2 px-1 py-4 text-sm font-medium transition ${
-                  activityTab === 'all'
-                    ? 'border-brand-500 text-brand-600 dark:text-brand-400'
-                    : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
-                }`}
-              >
-                All
-              </button>
-              <button
-                onClick={() => setActivityTab('status')}
-                className={`whitespace-nowrap border-b-2 px-1 py-4 text-sm font-medium transition ${
-                  activityTab === 'status'
-                    ? 'border-brand-500 text-brand-600 dark:text-brand-400'
-                    : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
-                }`}
-              >
-                Status
-              </button>
-              <button
-                onClick={() => setActivityTab('actions')}
-                className={`whitespace-nowrap border-b-2 px-1 py-4 text-sm font-medium transition ${
-                  activityTab === 'actions'
-                    ? 'border-brand-500 text-brand-600 dark:text-brand-400'
-                    : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
-                }`}
-              >
-                Actions
-              </button>
-              <button
-                onClick={() => setActivityTab('interview')}
-                className={`whitespace-nowrap border-b-2 px-1 py-4 text-sm font-medium transition ${
-                  activityTab === 'interview'
-                    ? 'border-brand-500 text-brand-600 dark:text-brand-400'
-                    : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
-                }`}
-              >
-                Interview
-              </button>
-            </nav>
-          </div>
-
-          <div className="flex flex-wrap gap-4">
-            {loading ? (
-              <div className="w-full space-y-3">
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <div
-                    key={i}
-                    className="cursor-pointer rounded-lg border border-stroke p-4 transition hover:bg-gray-50 dark:border-strokedark dark:hover:bg-gray-800/50"
-                  >
-                    <div className="h-4 w-1/3 rounded bg-gray-200 dark:bg-gray-700 animate-pulse" />
-                    <div className="mt-3 h-3 w-1/2 rounded bg-gray-200 dark:bg-gray-700 animate-pulse" />
-                    <div className="mt-2 h-3 w-2/3 rounded bg-gray-200 dark:bg-gray-700 animate-pulse" />
-                  </div>
-                ))}
-              </div>
-            ) : (
-              (() => {
-              // Combine all activities into a single timeline
-              const activities: Array<{
-                type: 'status' | 'message' | 'comment' | 'interview';
-                date: string;
-                data: any;
-              }> = [];
-
-              // Add status history
-              applicant.statusHistory?.forEach((history: any) => {
-                activities.push({
-                  type: 'status',
-                  date: history.changedAt,
-                  data: history,
-                });
-              });
-
-              // Add messages
-              applicant.messages?.forEach((message: any) => {
-                activities.push({
-                  type: 'message',
-                  date:
-                    message.sentAt ||
-                    (message as any).createdAt ||
-                    new Date().toISOString(),
-                  data: message,
-                });
-              });
-
-              // Add comments
-              applicant.comments?.forEach((comment: any) => {
-                activities.push({
-                  type: 'comment',
-                  date:
-                    (comment as any).commentedAt ||
-                    comment.changedAt ||
-                    (comment as any).createdAt ||
-                    new Date().toISOString(),
-                  data: comment,
-                });
-              });
-
-              // Add interviews
-              applicant.interviews?.forEach((interview: any) => {
-                activities.push({
-                  type: 'interview',
-                  date:
-                    interview.scheduledAt ||
-                    interview.createdAt ||
-                    (interview as any).issuedAt ||
-                    new Date().toISOString(),
-                  data: interview,
-                });
-              });
-
-              // Sort by date (newest first)
-              activities.sort(
-                (a, b) =>
-                  new Date(b.date).getTime() - new Date(a.date).getTime()
-              );
-
-              // Filter activities based on selected tab
-              const filteredActivities = activities.filter((activity) => {
-                if (activityTab === 'all') return true;
-                if (activityTab === 'status') return activity.type === 'status';
-                if (activityTab === 'actions') return activity.type === 'message' || activity.type === 'comment';
-                if (activityTab === 'interview') {
-                  // Show only interviews, not status changes
-                  return activity.type === 'interview';
-                }
-                return false;
-              });
-
-              return filteredActivities.map((activity, index) => {
-                if (activity.type === 'status') {
-                  const history = activity.data;
-                  return (
-                    <div
-                      key={`status-${index}`}
-                      onClick={() =>
-                        setExpandedHistory(
-                          expandedHistory === `status-${index}`
-                            ? null
-                            : `status-${index}`
-                        )
-                      }
-                      className="cursor-pointer rounded-lg border border-stroke p-4 transition hover:bg-gray-50 dark:border-strokedark dark:hover:bg-gray-800/50"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`rounded-full px-3 py-1 text-xs font-semibold ${getStatusColor(
-                              history.status
-                            )}`}
-                          >
-                            {history.status.charAt(0).toUpperCase() +
-                              history.status.slice(1)}
-                          </span>
-                          {/* Notification Icons */}
-                          <div className="flex items-center gap-1">
-                            <span
-                              title="Email"
-                              className={`text-sm ${
-                                (history as any).notifications?.channels?.email
-                                  ? 'opacity-100'
-                                  : 'opacity-30 grayscale'
-                              }`}
-                            >
-                              📧
-                            </span>
-                            <span
-                              title="SMS"
-                              className={`text-sm ${
-                                (history as any).notifications?.channels?.sms
-                                  ? 'opacity-100'
-                                  : 'opacity-30 grayscale'
-                              }`}
-                            >
-                              💬
-                            </span>
-                            <span
-                              title="WhatsApp"
-                              className={`text-sm ${
-                                (history as any).notifications?.channels
-                                  ?.whatsapp
-                                  ? 'opacity-100'
-                                  : 'opacity-30 grayscale'
-                              }`}
-                            >
-                              📱
-                            </span>
-                          </div>
-                        </div>
-                        <svg
-                          className={`h-4 w-4 transition-transform ${
-                            expandedHistory === `status-${index}`
-                              ? 'rotate-180'
-                              : ''
-                          }`}
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M19 9l-7 7-7-7"
-                          />
-                        </svg>
-                      </div>
-                      <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-                        {formatDate(history.changedAt)}
-                      </p>
-                      {(() => {
-                        // Try to show the real user who triggered this change when possible.
-                        let actorName: string | null = null;
-
-                        // If changedBy is a non-system string, use it directly
-                        if (
-                          history.changedBy &&
-                          typeof history.changedBy === 'string' &&
-                          history.changedBy.toLowerCase() !== 'system'
-                        ) {
-                          actorName = history.changedBy;
-                        }
-
-                        // If changedBy is an object, try to read fullName/email
-                        if (!actorName && history.changedBy && typeof history.changedBy === 'object') {
-                          actorName = (history.changedBy as any).fullName || (history.changedBy as any).email || null;
-                        }
-
-                        // If actor is still unknown or labeled 'system', try to infer from nearby activities
-                        if (!actorName) {
-                          const histTime = history.changedAt ? new Date(history.changedAt).getTime() : null;
-                          const withinWindow = (time?: string) => {
-                            if (!histTime || !time) return false;
-                            const t = new Date(time).getTime();
-                            return Math.abs(t - histTime) <= 2 * 60 * 1000; // 2 minutes
-                          };
-
-                          // Search messages
-                          if (!actorName && applicant.messages) {
-                            const match = applicant.messages.find((m: any) => (withinWindow(m.sentAt) || withinWindow((m as any).createdAt)) && (m.sentBy || (m as any).sentBy));
-                            if (match) actorName = typeof match.sentBy === 'string' ? match.sentBy : (match.sentBy?.fullName || match.sentBy?.email || null);
-                          }
-
-                          // Search comments
-                          if (!actorName && applicant.comments) {
-                            const match = applicant.comments.find((c: any) => (withinWindow(c.changedAt) || withinWindow((c as any).commentedAt) || withinWindow((c as any).createdAt)) && (c.changedBy || c.author));
-                            if (match) actorName = typeof match.changedBy === 'string' ? match.changedBy : (match.changedBy?.fullName || match.changedBy?.email || match.author || null);
-                          }
-
-                          // Search interviews
-                          if (!actorName && applicant.interviews) {
-                            const match = applicant.interviews.find((iv: any) => (withinWindow(iv.scheduledAt) || withinWindow(iv.createdAt) || withinWindow((iv as any).issuedAt)) && (iv.issuedBy));
-                            if (match) actorName = typeof match.issuedBy === 'string' ? match.issuedBy : (match.issuedBy?.fullName || match.issuedBy?.email || null);
-                          }
-                        }
-
-                        // If still unknown, show the currently logged in user
-                        const currentUserLabel = (user?.fullName || user?.email) ? (user?.fullName || user?.email) : 'Current User';
-                        return (
-                          <p className="text-sm text-gray-600 dark:text-gray-400">
-                            By: {actorName || (typeof history.changedBy === 'string' && history.changedBy.toLowerCase() !== 'system' ? history.changedBy : (history.changedBy as any)?.fullName || (history.changedBy as any)?.email || currentUserLabel)}
-                          </p>
-                        );
-                      })()}
-                      {expandedHistory === `status-${index}` &&
-                        history.notes && (
-                          <div className="mt-3 border-t border-stroke pt-3 dark:border-strokedark">
-                            <p className="text-sm text-gray-700 dark:text-gray-300">
-                              {history.notes}
-                            </p>
-                          </div>
-                        )}
-                    </div>
-                  );
-                } else if (activity.type === 'message') {
-                  const message = activity.data;
-                  return (
-                    <div
-                      key={`message-${index}`}
-                      onClick={() =>
-                        setExpandedHistory(
-                          expandedHistory === `message-${index}`
-                            ? null
-                            : `message-${index}`
-                        )
-                      }
-                      className="cursor-pointer rounded-lg border border-stroke p-4 transition hover:bg-gray-50 dark:border-strokedark dark:hover:bg-gray-800/50"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="rounded-full bg-purple-100 px-3 py-1 text-xs font-semibold text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">
-                          💌 Message
-                        </span>
-                        <svg
-                          className={`h-4 w-4 transition-transform ${
-                            expandedHistory === `message-${index}`
-                              ? 'rotate-180'
-                              : ''
-                          }`}
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M19 9l-7 7-7-7"
-                          />
-                        </svg>
-                      </div>
-                      <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-                        {formatDate(message.sentAt)}
-                      </p>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
-                        By:{' '}
-                        {typeof message.sentBy === 'string'
-                          ? message.sentBy
-                          : (message.sentBy as any)?.fullName ||
-                            (message.sentBy as any)?.email ||
-                            'Unknown'}
-                      </p>
-                      {message.subject && (
-                        <p className="mt-1 text-sm font-medium text-gray-700 dark:text-gray-300">
-                          {message.subject}
-                        </p>
-                      )}
-                      {expandedHistory === `message-${index}` &&
-                        (message.content || message.body || (message as any).message) && (
-                          <div className="mt-3 border-t border-stroke pt-3 dark:border-strokedark">
-                            <p className="text-sm text-gray-700 dark:text-gray-300">
-                              {message.content || message.body || (message as any).message}
-                            </p>
-                          </div>
-                        )}
-                    </div>
-                  );
-                } else if (activity.type === 'comment') {
-                  const comment = activity.data;
-                  return (
-                    <div
-                      key={`comment-${index}`}
-                      onClick={() =>
-                        setExpandedHistory(
-                          expandedHistory === `comment-${index}`
-                            ? null
-                            : `comment-${index}`
-                        )
-                      }
-                      className="cursor-pointer rounded-lg border border-stroke p-4 transition hover:bg-gray-50 dark:border-strokedark dark:hover:bg-gray-800/50"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700 dark:bg-gray-900/30 dark:text-gray-400">
-                          💬 Comment
-                        </span>
-                        <svg
-                          className={`h-4 w-4 transition-transform ${
-                            expandedHistory === `comment-${index}`
-                              ? 'rotate-180'
-                              : ''
-                          }`}
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M19 9l-7 7-7-7"
-                          />
-                        </svg>
-                      </div>
-                      <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-                        {formatDate(
-                          (comment as any).commentedAt ||
-                            comment.changedAt ||
-                            (comment as any).createdAt ||
-                            new Date().toISOString()
-                        )}
-                      </p>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
-                        By:{' '}
-                        {(() => {
-                          const author =
-                            (comment as any).commentedBy ||
-                            comment.changedBy ||
-                            (comment as any).author ||
-                            (comment as any).createdBy;
-                          if (typeof author === 'string') {
-                            return author;
-                          }
-                          if (author && typeof author === 'object') {
-                            return (
-                              author.fullName ||
-                              (typeof author.name === 'object' ? toPlainString(author.name) : author.name) ||
-                              author.email ||
-                              author.username ||
-                              'User'
-                            );
-                          }
-                          return 'Unknown';
-                        })()}
-                      </p>
-                      {expandedHistory === `comment-${index}` &&
-                        (comment.comment || comment.text) && (
-                          <div className="mt-3 border-t border-stroke pt-3 dark:border-strokedark">
-                            <p className="text-sm text-gray-700 dark:text-gray-300">
-                              {comment.comment || comment.text}
-                            </p>
-                          </div>
-                        )}
-                    </div>
-                  );
-                } else if (activity.type === 'interview') {
-                  const interview = activity.data;
-                  return (
-                    <div
-                      key={`interview-${index}`}
-                      onClick={() =>
-                        setExpandedHistory(
-                          expandedHistory === `interview-${index}`
-                            ? null
-                            : `interview-${index}`
-                        )
-                      }
-                      className="cursor-pointer rounded-lg border border-stroke p-4 transition hover:bg-gray-50 dark:border-strokedark dark:hover:bg-gray-800/50"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                              interview.status?.toLowerCase() === 'completed'
-                                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                                : interview.status?.toLowerCase() === 'cancelled'
-                                ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                                : interview.status?.toLowerCase() === 'rescheduled'
-                                ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
-                                : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-                            }`}
-                          >
-                            📅 Interview {interview.status ? `- ${interview.status.charAt(0).toUpperCase() + interview.status.slice(1)}` : 'Scheduled'}
-                          </span>
-                          {/* Notification Icons */}
-                          <div className="flex items-center gap-1">
-                            <span
-                              title="Email"
-                              className={`text-sm ${
-                                (interview as any).notifications?.channels
-                                  ?.email
-                                  ? 'opacity-100'
-                                  : 'opacity-30 grayscale'
-                              }`}
-                            >
-                              📧
-                            </span>
-                            <span
-                              title="SMS"
-                              className={`text-sm ${
-                                (interview as any).notifications?.channels?.sms
-                                  ? 'opacity-100'
-                                  : 'opacity-30 grayscale'
-                              }`}
-                            >
-                              💬
-                            </span>
-                            <span
-                              title="WhatsApp"
-                              className={`text-sm ${
-                                (interview as any).notifications?.channels
-                                  ?.whatsapp
-                                  ? 'opacity-100'
-                                  : 'opacity-30 grayscale'
-                              }`}
-                            >
-                              📱
-                            </span>
-                          </div>
-                        </div>
-                        <svg
-                          className={`h-4 w-4 transition-transform ${
-                            expandedHistory === `interview-${index}`
-                              ? 'rotate-180'
-                              : ''
-                          }`}
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M19 9l-7 7-7-7"
-                          />
-                        </svg>
-                      </div>
-                      <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-                        {formatDate(interview.createdAt || interview.scheduledAt || (interview as any).issuedAt || new Date().toISOString())}
-                      </p>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
-                        By:{' '}
-                        {typeof interview.issuedBy === 'string'
-                          ? interview.issuedBy
-                          : (interview.issuedBy as any)?.fullName ||
-                            (interview.issuedBy as any)?.email ||
-                            user?.fullName ||
-                            user?.email ||
-                            'System'}
-                      </p>
-                      {(interview as any).scheduledAt && (
-                        <p className="mt-1 text-sm font-medium text-blue-600 dark:text-blue-400">
-                          📅 Scheduled: {formatDate((interview as any).scheduledAt)}
-                        </p>
-                      )}
-                      {interview.status && (
-                        <p className="mt-1 text-xs font-medium text-gray-500 dark:text-gray-400">
-                          Status: <span className="capitalize">{interview.status}</span>
-                        </p>
-                      )}
-                      {expandedHistory === `interview-${index}` && (
-                        <div className="mt-3 space-y-2 border-t border-stroke pt-3 dark:border-strokedark">
-                          {(interview as any).scheduledAt && (
-                            <div className="flex items-start gap-2">
-                              <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 min-w-[80px]">Scheduled:</span>
-                              <span className="text-sm text-gray-700 dark:text-gray-300">
-                                {new Date((interview as any).scheduledAt).toLocaleString('en-US', {
-                                  weekday: 'short',
-                                  year: 'numeric',
-                                  month: 'short',
-                                  day: 'numeric',
-                                  hour: '2-digit',
-                                  minute: '2-digit'
-                                })}
-                              </span>
-                            </div>
-                          )}
-                          {interview.type && (
-                            <div className="flex items-start gap-2">
-                              <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 min-w-[80px]">Type:</span>
-                              <span className="text-sm text-gray-700 dark:text-gray-300 capitalize">{interview.type}</span>
-                            </div>
-                          )}
-                          {(interview as any).location && (
-                            <div className="flex items-start gap-2">
-                              <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 min-w-[80px]">Location:</span>
-                              <span className="text-sm text-gray-700 dark:text-gray-300">{(interview as any).location}</span>
-                            </div>
-                          )}
-                          {(interview as any).videoLink && (
-                            <div className="flex items-start gap-2">
-                              <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 min-w-[80px]">Video Link:</span>
-                              <a href={(interview as any).videoLink} target="_blank" rel="noopener noreferrer" className="text-sm text-brand-600 hover:underline dark:text-brand-400">
-                                {(interview as any).videoLink}
-                              </a>
-                            </div>
-                          )}
-                          {interview.description && (
-                            <div className="flex items-start gap-2">
-                              <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 min-w-[80px]">Description:</span>
-                              <span className="text-sm text-gray-700 dark:text-gray-300">{interview.description}</span>
-                            </div>
-                          )}
-                          {((interview as any).notes || interview.comment) && (
-                            <div className="flex items-start gap-2">
-                              <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 min-w-[80px]">Notes:</span>
-                              <span className="text-sm text-gray-700 dark:text-gray-300">{(interview as any).notes || interview.comment}</span>
-                            </div>
-                          )}
-                          {(interview as any).createdAt && (
-                            <div className="flex items-start gap-2">
-                              <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 min-w-[80px]">Created:</span>
-                              <span className="text-sm text-gray-700 dark:text-gray-300">
-                                {new Date((interview as any).createdAt).toLocaleString('en-US', {
-                                  year: 'numeric',
-                                  month: 'short',
-                                  day: 'numeric',
-                                  hour: '2-digit',
-                                  minute: '2-digit'
-                                })}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                }
-                return null;
-              });
-            })())}
-          </div>
-        </ComponentCard>
-      </div>
+      {/* Activity timeline (status, messages, comments, interviews) */}
+      <StatusHistory applicant={applicant} loading={loading} />
 
       {/* Photo Preview Modal */}
       <Modal
@@ -2093,632 +1444,77 @@ const ApplicantData = () => {
           />
         </div>
       </Modal>
-      <Modal
-        isOpen={showInterviewModal}
-        onClose={() => {
-          setShowInterviewModal(false);
-          setInterviewError('');
-          // Reset form and increment key when closing
-          setInterviewForm({
-            date: '',
-            time: '',
-            description: '',
-            comment: '',
-            location: '',
-            link: '',
-            type: 'phone',
-          });
-          setFormResetKey(prev => prev + 1);
-        }}
-        className="max-w-[1100px] p-6 lg:p-10"
-        closeOnBackdrop={false}
-      >
-        <form
-          key={`interview-form-${formResetKey}`}
-          onSubmit={handleInterviewSubmit}
-          className="flex flex-col px-2"
-        >
-          <div>
-            <h5 className="mb-2 font-semibold text-gray-800 text-xl dark:text-white/90 lg:text-2xl">
-              Schedule Interview
-            </h5>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              Set up an interview and choose notification preferences
-            </p>
-          </div>
+      
+            {/* Interview Schedule Modal (moved to separate component) */}
+            <InterviewScheduleModal
+              isOpen={showInterviewModal}
+              onClose={() => {
+                setShowInterviewModal(false);
+                setInterviewError('');
+                setInterviewForm({ date: '', time: '', description: '', comment: '', location: '', link: '', type: 'phone' });
+                setFormResetKey(prev => prev + 1);
+              }}
+              formResetKey={formResetKey}
+              interviewForm={interviewForm}
+              setInterviewForm={setInterviewForm}
+              interviewError={interviewError}
+              setInterviewError={setInterviewError}
+              handleInterviewSubmit={handleInterviewSubmit}
+              fillCompanyAddress={fillCompanyAddress}
+              notificationChannels={notificationChannels}
+              setNotificationChannels={setNotificationChannels}
+              emailOption={emailOption}
+              setEmailOption={setEmailOption}
+              customEmail={customEmail}
+              setCustomEmail={setCustomEmail}
+              phoneOption={phoneOption}
+              setPhoneOption={setPhoneOption}
+              customPhone={customPhone}
+              setCustomPhone={setCustomPhone}
+              messageTemplate={messageTemplate}
+              setMessageTemplate={setMessageTemplate}
+              interviewEmailSubject={interviewEmailSubject}
+              setInterviewEmailSubject={setInterviewEmailSubject}
+              isSubmittingInterview={isSubmittingInterview}
+              setIsSubmittingInterview={setIsSubmittingInterview}
+              setShowPreviewModal={setShowPreviewModal}
+              setPreviewHtml={setPreviewHtml}
+              buildInterviewEmailHtml={buildInterviewEmailHtml}
+              getJobTitle={getJobTitle}
+              applicant={applicant}
+            />
 
-          {interviewError && (
-            <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-              <div className="flex items-start justify-between">
-                <p className="text-sm text-red-600 dark:text-red-400">
-                  <strong>Error:</strong> {interviewError}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setInterviewError('')}
-                  className="ml-3 text-red-400 hover:text-red-600 dark:hover:text-red-300"
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-          )}
-
-          <div className="mt-6 space-y-4">
-            {/* Date, Time, and Type Grid */}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <div>
-                <DatePicker
-                  id="interview-date"
-                  label="Interview Date"
-                  placeholder="Select interview date"
-                  onChange={(selectedDates) => {
-                    if (selectedDates.length > 0) {
-                      const date = selectedDates[0];
-                      const formattedDate = date.toISOString().split('T')[0];
-                      setInterviewForm({
-                        ...interviewForm,
-                        date: formattedDate,
-                      });
-                    }
-                  }}
-                />
-              </div>
-
-              <div>
-                <DatePicker
-                  id="interview-time"
-                  label="Interview Time"
-                  mode="time"
-                  placeholder="Select interview time"
-                  onChange={(selectedDates) => {
-                    if (selectedDates.length > 0) {
-                      const date = selectedDates[0];
-                      const hours = date.getHours().toString().padStart(2, '0');
-                      const minutes = date
-                        .getMinutes()
-                        .toString()
-                        .padStart(2, '0');
-                      setInterviewForm({
-                        ...interviewForm,
-                        time: `${hours}:${minutes}`,
-                      });
-                    }
-                  }}
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="interview-type">Interview Type</Label>
-                <Select
-                  options={[
-                    { value: 'phone', label: 'Phone' },
-                    { value: 'video', label: 'Video' },
-                    { value: 'in-person', label: 'In-Person' },
-                  ]}
-                  placeholder="Select interview type"
-                  onChange={(value) =>
-                    setInterviewForm({
-                      ...interviewForm,
-                      type: value as 'phone' | 'video' | 'in-person',
-                    })
-                  }
-                />
-              </div>
-            </div>
-
-            {/* Location and Video Link Grid */}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <Label htmlFor="interview-location">Location (Optional)</Label>
-                <Input
-                  id="interview-location"
-                  type="text"
-                  value={interviewForm.location}
-                  onChange={(e) =>
-                    setInterviewForm({
-                      ...interviewForm,
-                      location: e.target.value,
-                    })
-                  }
-                  placeholder="Office address or meeting room"
-                />
-                <div className="mt-2">
-                  <button
-                    type="button"
-                    onClick={() => fillCompanyAddress()}
-                    className="text-sm text-brand-600 hover:underline"
-                  >
-                    Use company address
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <Label htmlFor="interview-link">Video Link (Optional)</Label>
-                <Input
-                  id="interview-link"
-                  type="url"
-                  value={interviewForm.link}
-                  onChange={(e) =>
-                    setInterviewForm({ ...interviewForm, link: e.target.value })
-                  }
-                  placeholder="https://meet.example.com/..."
-                />
-              </div>
-            </div>
-
-            {/* Description and Comment Grid */}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <Label htmlFor="interview-description">Description</Label>
-                <TextArea
-                  value={interviewForm.description}
-                  onChange={(value) =>
-                    setInterviewForm({ ...interviewForm, description: value })
-                  }
-                  placeholder="e.g., Technical Interview, HR Round"
-                  rows={2}
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="interview-comment">Comment</Label>
-                <TextArea
-                  value={interviewForm.comment}
-                  onChange={(value) =>
-                    setInterviewForm({ ...interviewForm, comment: value })
-                  }
-                  placeholder="Add notes about this interview"
-                  rows={2}
-                />
-              </div>
-            </div>
-
-            {/* Notification Options */}
-            <div className="rounded-lg border border-gray-200 bg-gray-50/50 p-4 dark:border-gray-700 dark:bg-gray-800/30">
-              <h3 className="mb-3 text-base font-medium text-gray-800 dark:text-white/90">
-                Notification Settings
-              </h3>
-
-              {/* Notification Channels */}
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-400">
-                  Send notification via:
-                </label>
-                <div className="flex flex-wrap gap-3">
-                  <label className="group relative inline-flex items-center gap-3 cursor-pointer rounded-lg border border-gray-300 bg-white px-4 py-2.5 transition-all hover:border-brand-400 hover:bg-brand-50/50 dark:border-gray-600 dark:bg-gray-800 dark:hover:border-brand-600 dark:hover:bg-brand-900/20">
-                    <input
-                      type="radio"
-                      name="notificationChannel"
-                      checked={notificationChannels.email}
-                      onChange={() => {
-                        setNotificationChannels({
-                          email: true,
-                          sms: false,
-                          whatsapp: false,
-                        });
-                        setEmailOption('company');
-                        setMessageTemplate(generateMessageTemplate());
-                      }}
-                      className="peer sr-only"
-                    />
-                    <div className="h-5 w-5 rounded-full border-2 border-gray-300 bg-white transition-all peer-checked:border-brand-600 peer-checked:bg-brand-600 dark:border-gray-600 dark:bg-gray-700 dark:peer-checked:border-brand-500 dark:peer-checked:bg-brand-500 flex items-center justify-center">
-                      <div className="h-2 w-2 rounded-full bg-white scale-0 peer-checked:scale-100 transition-transform"></div>
-                    </div>
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                      📧 Email
-                    </span>
-                  </label>
-                  <label className="group relative inline-flex items-center gap-3 cursor-pointer rounded-lg border border-gray-300 bg-white px-4 py-2.5 transition-all hover:border-brand-400 hover:bg-brand-50/50 dark:border-gray-600 dark:bg-gray-800 dark:hover:border-brand-600 dark:hover:bg-brand-900/20">
-                    <input
-                      type="radio"
-                      name="notificationChannel"
-                      checked={notificationChannels.sms}
-                      onChange={() => {
-                        setNotificationChannels({
-                          email: false,
-                          sms: true,
-                          whatsapp: false,
-                        });
-                        setPhoneOption('company');
-                        setMessageTemplate(generateMessageTemplate());
-                      }}
-                      className="peer sr-only"
-                    />
-                    <div className="h-5 w-5 rounded-full border-2 border-gray-300 bg-white transition-all peer-checked:border-brand-600 peer-checked:bg-brand-600 dark:border-gray-600 dark:bg-gray-700 dark:peer-checked:border-brand-500 dark:peer-checked:bg-brand-500 flex items-center justify-center">
-                      <div className="h-2 w-2 rounded-full bg-white scale-0 peer-checked:scale-100 transition-transform"></div>
-                    </div>
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                      💬 SMS
-                      <span className="ml-2 inline-block rounded px-1.5 py-0.5 text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700">Soon</span>
-                    </span>
-                  </label>
-                  <label className="group relative inline-flex items-center gap-3 cursor-pointer rounded-lg border border-gray-300 bg-white px-4 py-2.5 transition-all hover:border-brand-400 hover:bg-brand-50/50 dark:border-gray-600 dark:bg-gray-800 dark:hover:border-brand-600 dark:hover:bg-brand-900/20">
-                    <input
-                      type="radio"
-                      name="notificationChannel"
-                      checked={notificationChannels.whatsapp}
-                      onChange={() => {
-                        setNotificationChannels({
-                          email: false,
-                          sms: false,
-                          whatsapp: true,
-                        });
-                        setMessageTemplate(generateMessageTemplate());
-                      }}
-                      className="peer sr-only"
-                    />
-                    <div className="h-5 w-5 rounded-full border-2 border-gray-300 bg-white transition-all peer-checked:border-brand-600 peer-checked:bg-brand-600 dark:border-gray-600 dark:bg-gray-700 dark:peer-checked:border-brand-500 dark:peer-checked:bg-brand-500 flex items-center justify-center">
-                      <div className="h-2 w-2 rounded-full bg-white scale-0 peer-checked:scale-100 transition-transform"></div>
-                    </div>
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                      📱 WhatsApp
-                      <span className="ml-2 inline-block rounded px-1.5 py-0.5 text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700">Soon</span>
-                    </span>
-                  </label>
-                </div>
-                {/* Email and Phone Options Grid */}
-                <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  {/* Email Options */}
-                  {notificationChannels.email && (
-                    <div className="space-y-2">
-                      <Label htmlFor="email-option">Email Address</Label>
-                      <Select
-                        options={[
-                          { value: 'company', label: 'Company Email' },
-                          { value: 'user', label: 'My Email' },
-                          { value: 'custom', label: 'Custom Email' },
-                        ]}
-                        value={emailOption}
-                        placeholder="Select email option"
-                        onChange={(value) =>
-                          setEmailOption(value as 'company' | 'user' | 'custom')
-                        }
-                      />
-                      {emailOption === 'custom' && (
-                        <Input
-                          id="custom-email"
-                          type="email"
-                          value={customEmail}
-                          onChange={(e) => setCustomEmail(e.target.value)}
-                          placeholder="Enter custom email address"
-                          className="mt-2"
-                        />
-                      )}
-                    </div>
-                  )}
-
-                  {/* Phone Options for SMS/WhatsApp */}
-                  {(notificationChannels.sms ||
-                    notificationChannels.whatsapp) && (
-                    <div className="space-y-2">
-                      <Label htmlFor="phone-option">Phone Number</Label>
-                      {notificationChannels.sms ? (
-                        <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-600 dark:bg-gray-700/50">
-                          <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                            Company Number (SMS)
-                          </p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                            SMS will be sent from the company number only
-                          </p>
-                        </div>
-                      ) : (
-                        <>
-                          <Select
-                            options={[
-                              { value: 'company', label: 'Company Number' },
-                              { value: 'user', label: 'My Phone' },
-                              {
-                                value: 'whatsapp',
-                                label: 'Current WhatsApp Number',
-                              },
-                              { value: 'custom', label: 'Custom Number' },
-                            ]}
-                            value={phoneOption}
-                            placeholder="Select phone option"
-                            onChange={(value) =>
-                              setPhoneOption(
-                                value as
-                                  | 'company'
-                                  | 'user'
-                                  | 'whatsapp'
-                                  | 'custom'
-                              )
-                            }
-                          />
-                          {phoneOption === 'custom' && (
-                            <Input
-                              id="custom-phone"
-                              type="tel"
-                              value={customPhone}
-                              onChange={(e) => setCustomPhone(e.target.value)}
-                              placeholder="Enter custom phone number"
-                              className="mt-2"
-                            />
-                          )}
-                          {phoneOption === 'whatsapp' && (
-                            <p className="text-xs text-gray-500 dark:text-gray-400">
-                              Will use the number currently logged in to
-                              WhatsApp Web/Desktop
-                            </p>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-              {/* Message Template */}
-              {(notificationChannels.email ||
-                notificationChannels.sms ||
-                notificationChannels.whatsapp) && (
-                <div className="mt-4">
-                  <Label htmlFor="message-template">
-                    Message Template
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setMessageTemplate(generateMessageTemplate())
-                      }
-                      className="ml-2 text-xs text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300"
-                    >
-                      🔄 Regenerate
-                    </button>
-                  </Label>
-                  <TextArea
-                    value={messageTemplate}
-                    onChange={(value) => setMessageTemplate(value)}
-                    placeholder="Message content will appear here..."
-                    rows={8}
-                  />
-                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    Templates for:{' '}
-                    {[
-                      notificationChannels.email && 'Email',
-                      notificationChannels.whatsapp && 'WhatsApp',
-                      notificationChannels.sms && 'SMS',
-                    ]
-                      .filter(Boolean)
-                      .join(', ')}
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 mt-6 sm:justify-end">
-            <button
-              type="button"
-              onClick={() => setShowInterviewModal(false)}
-              disabled={isSubmittingInterview}
-              className="flex w-full justify-center rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-white/[0.03] sm:w-auto"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmittingInterview}
-              className="flex w-full justify-center items-center gap-2 rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50 disabled:cursor-not-allowed sm:w-auto"
-            >
-              {isSubmittingInterview ? (
-                <>
-                  <svg
-                    className="animate-spin h-5 w-5 text-white"
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    ></circle>
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    ></path>
-                  </svg>
-                  <span>Scheduling...</span>
-                </>
-              ) : (
-                <span>Schedule Interview</span>
-              )}
-            </button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* Interview Settings Modal */}
-      <Modal
+      <InterviewSettingsModal
         isOpen={showInterviewSettingsModal}
         onClose={() => {
           setShowInterviewSettingsModal(false);
           setSelectedInterview(null);
         }}
-        className="max-w-md p-6"
-        closeOnBackdrop={false}
+        applicant={applicant}
+        selectedInterview={selectedInterview}
+        setSelectedInterview={setSelectedInterview}
+        setShowInterviewSettingsModal={setShowInterviewSettingsModal}
+        updateInterviewMutation={updateInterviewMutation}
+      />
+      {/* Preview Email Modal */}
+      <Modal
+        isOpen={showPreviewModal}
+        onClose={() => {
+          setShowPreviewModal(false);
+          setPreviewHtml('');
+        }}
+        className="max-w-2xl p-6"
       >
-        <div className="space-y-6">
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-            Interview Settings
-          </h2>
-
-          {applicant.interviews && applicant.interviews.length > 0 && (
-            <div>
-              <Label>Select Interview to Manage</Label>
-              <Select
-                placeholder="Choose an interview..."
-                value={selectedInterview?._id}
-                options={applicant.interviews.map((iv: any) => ({
-                  value: iv._id,
-                  label: `${iv.type ? iv.type.charAt(0).toUpperCase() + iv.type.slice(1) : 'Interview'} - ${iv.scheduledAt ? new Date(iv.scheduledAt).toLocaleString() : 'No date'}${iv.status ? ` - ${iv.status}` : ''}`,
-                }))}
-                onChange={(val) => {
-                  const found = applicant.interviews?.find((it: any) => it._id === val) || null;
-                  setSelectedInterview(found);
-                }}
-              />
-            </div>
-          )}
-
-          {selectedInterview && (
-            <div className="space-y-4">
-              {/* Current Interview Info */}
-              <div className="rounded-lg bg-gray-50 dark:bg-gray-800 p-4">
-                <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                  Current Interview
-                </h3>
-                <div className="space-y-1 text-sm">
-                  <p className="text-gray-600 dark:text-gray-400">
-                    <span className="font-medium">Date:</span>{' '}
-                    {selectedInterview.scheduledAt
-                      ? new Date(selectedInterview.scheduledAt).toLocaleString()
-                      : 'Not scheduled'}
-                  </p>
-                  <p className="text-gray-600 dark:text-gray-400">
-                    <span className="font-medium">Type:</span>{' '}
-                    {selectedInterview.type || 'N/A'}
-                  </p>
-                  <p className="text-gray-600 dark:text-gray-400">
-                    <span className="font-medium">Status:</span>{' '}
-                    <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize
-                      {selectedInterview.status === 'completed'
-                        ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
-                        : selectedInterview.status === 'cancelled'
-                        ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
-                        : 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400'}
-                    ">
-                      {selectedInterview.status || 'scheduled'}
-                    </span>
-                  </p>
-                </div>
-              </div>
-
-              {/* Status Update Buttons */}
-              <div className="space-y-3">
-                <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-                  Update Status
-                </h3>
-                <div className="grid grid-cols-2 gap-2">
-                  {(!selectedInterview.status || selectedInterview.status !== 'scheduled') && (
-                    <button
-                      onClick={() => {
-                        // Optimistically update local state
-                        setSelectedInterview({ ...selectedInterview, status: 'scheduled' });
-                        // Close modal immediately when request is sent
-                        setShowInterviewSettingsModal(false);
-                        setSelectedInterview(null);
-                        // Optimistic mutation
-                        updateInterviewMutation.mutate({
-                          applicantId: applicant._id,
-                          interviewId: selectedInterview._id,
-                          data: { status: 'scheduled' },
-                        });
-                        Swal.fire({
-                          title: 'Success!',
-                          text: 'Interview status updated to scheduled.',
-                          icon: 'success',
-                          position: 'center',
-                          timer: 2000,
-                          showConfirmButton: false,
-                          customClass: { container: '!mt-16' },
-                        });
-                      }}
-                      
-                      className="rounded-lg bg-blue-500 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      📅 Scheduled
-                    </button>
-                  )}
-                  {(!selectedInterview.status || selectedInterview.status !== 'completed') && (
-                    <button
-                      onClick={() => {
-                        // Optimistically update local state
-                        setSelectedInterview({ ...selectedInterview, status: 'completed' });
-                        // Close modal immediately when request is sent
-                        setShowInterviewSettingsModal(false);
-                        setSelectedInterview(null);
-                        // Optimistic mutation
-                        updateInterviewMutation.mutate({
-                          applicantId: applicant._id,
-                          interviewId: selectedInterview._id,
-                          data: { status: 'completed' },
-                        });
-                        Swal.fire({
-                          title: 'Success!',
-                          text: 'Interview marked as completed.',
-                          icon: 'success',
-                          position: 'center',
-                          timer: 2000,
-                          showConfirmButton: false,
-                          customClass: { container: '!mt-16' },
-                        });
-                      }}
-                      
-                      className="rounded-lg bg-green-500 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      ✓ Completed
-                    </button>
-                  )}
-                  {(!selectedInterview.status || selectedInterview.status !== 'cancelled') && (
-                    <button
-                      onClick={() => {
-                        // Optimistically update local state
-                        setSelectedInterview({ ...selectedInterview, status: 'cancelled' });
-                        // Close modal immediately when request is sent
-                        setShowInterviewSettingsModal(false);
-                        setSelectedInterview(null);
-                        // Optimistic mutation
-                        updateInterviewMutation.mutate({
-                          applicantId: applicant._id,
-                          interviewId: selectedInterview._id,
-                          data: { status: 'cancelled' },
-                        });
-                        Swal.fire({
-                          title: 'Success!',
-                          text: 'Interview cancelled.',
-                          icon: 'success',
-                          position: 'center',
-                          timer: 2000,
-                          showConfirmButton: false,
-                          customClass: { container: '!mt-16' },
-                        });
-                      }}
-                      
-                      className="rounded-lg bg-red-500 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      ✕ Cancelled
-                    </button>
-                  )}
-                  
-                </div>
-              </div>
-
-              {/* Add Comment */}
-              <div className="space-y-2">
-                <Label>Add Comment (Optional)</Label>
-                <TextArea
-                  placeholder="Add notes about this status change..."
-                  rows={3}
-                  className="w-full"
-                />
-              </div>
-            </div>
-          )}
-
+        <div className="space-y-4">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Email Preview</h2>
+          <div className="border rounded p-4 bg-white dark:bg-gray-800" style={{ maxHeight: '70vh', overflow: 'auto' }}>
+            <div dangerouslySetInnerHTML={{ __html: previewHtml }} />
+          </div>
           <div className="flex justify-end">
             <button
               type="button"
-              onClick={() => {
-                setShowInterviewSettingsModal(false);
-                setSelectedInterview(null);
-              }}
-              className="rounded-lg bg-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
+              onClick={() => setShowPreviewModal(false)}
+              className="rounded-lg border border-stroke px-4 py-2 hover:bg-gray-100 dark:border-strokedark dark:hover:bg-gray-800"
             >
               Close
             </button>
@@ -2726,197 +1522,34 @@ const ApplicantData = () => {
         </div>
       </Modal>
       <MessageModal isOpen={showMessageModal} onClose={() => setShowMessageModal(false)} applicant={applicant} id={applicant._id} />
-      {/* Comment Modal */}
-      <Modal
+      <CommentModal
         isOpen={showCommentModal}
         onClose={() => {
           setShowCommentModal(false);
           setCommentError('');
         }}
-        className="max-w-2xl p-6"
-        closeOnBackdrop={false}
-      >
-        <form onSubmit={handleCommentSubmit} className="space-y-6">
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-            Add Comment
-          </h2>
+        commentForm={commentForm}
+        setCommentForm={setCommentForm}
+        commentError={commentError}
+        setCommentError={setCommentError}
+        handleCommentSubmit={handleCommentSubmit}
+        isSubmittingComment={isSubmittingComment}
+      />
 
-          {commentError && (
-            <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-              <div className="flex items-start justify-between">
-                <p className="text-sm text-red-600 dark:text-red-400">
-                  <strong>Error:</strong> {commentError}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setCommentError('')}
-                  className="ml-3 text-red-400 hover:text-red-600 dark:hover:text-red-300"
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-          )}
-
-          <div>
-            <Label htmlFor="comment-text">Comment</Label>
-            <TextArea
-              value={commentForm.text}
-              onChange={(value) => setCommentForm({ text: value })}
-              placeholder="Enter your internal comment about this applicant"
-              rows={5}
-            />
-          </div>
-
-          <div className="flex justify-end gap-3">
-            <button
-              type="button"
-              onClick={() => setShowCommentModal(false)}
-              className="rounded-lg border border-stroke px-6 py-2 hover:bg-gray-100 dark:border-strokedark dark:hover:bg-gray-800"
-              disabled={isSubmittingComment}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="rounded-lg bg-gray-600 px-6 py-2 text-white hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-              disabled={isSubmittingComment}
-            >
-              {isSubmittingComment ? (
-                <>
-                  <svg
-                    className="animate-spin h-5 w-5"
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    ></circle>
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    ></path>
-                  </svg>
-                  <span>Adding...</span>
-                </>
-              ) : (
-                <span>Add Comment</span>
-              )}
-            </button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* Status Change Modal */}
-      <Modal
+      <StatusChangeModal
         isOpen={showStatusModal}
         onClose={() => {
           setShowStatusModal(false);
           setStatusError('');
         }}
-        className="max-w-2xl p-6"
-        closeOnBackdrop={false}
-      >
-        <form onSubmit={handleStatusChange} className="space-y-6">
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-            Change Status
-          </h2>
-
-          {statusError && (
-            <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-              <div className="flex items-start justify-between">
-                <p className="text-sm text-red-600 dark:text-red-400">
-                  <strong>Error:</strong> {statusError}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setStatusError('')}
-                  className="ml-3 text-red-400 hover:text-red-600 dark:hover:text-red-300"
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-          )}
-
-          <div>
-            <Label htmlFor="status-select">New Status</Label>
-            <Select
-              options={statusOptions}
-              placeholder="Select new status"
-              onChange={(value) =>
-                setStatusForm({
-                  ...statusForm,
-                  status: value as Applicant['status'],
-                })
-              }
-            />
-          </div>
-
-          <div>
-            <Label htmlFor="status-notes">Notes (Optional)</Label>
-            <TextArea
-              value={statusForm.notes}
-              onChange={(value) =>
-                setStatusForm({ ...statusForm, notes: value })
-              }
-              placeholder="Add notes about this status change"
-              rows={3}
-            />
-          </div>
-
-          <div className="flex justify-end gap-3">
-            <button
-              type="button"
-              onClick={() => setShowStatusModal(false)}
-              className="rounded-lg border border-stroke px-6 py-2 hover:bg-gray-100 dark:border-strokedark dark:hover:bg-gray-800"
-              disabled={isSubmittingStatus}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="rounded-lg bg-green-600 px-6 py-2 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-              disabled={isSubmittingStatus}
-            >
-              {isSubmittingStatus ? (
-                <>
-                  <svg
-                    className="animate-spin h-5 w-5"
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    ></circle>
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    ></path>
-                  </svg>
-                  <span>Updating...</span>
-                </>
-              ) : (
-                <span>Update Status</span>
-              )}
-            </button>
-          </div>
-        </form>
-      </Modal>
+        statusForm={statusForm}
+        setStatusForm={setStatusForm}
+        statusError={statusError}
+        setStatusError={setStatusError}
+        handleStatusChange={handleStatusChange}
+        isSubmittingStatus={isSubmittingStatus}
+        statusOptions={statusOptions}
+      />
     </>
   );
 };

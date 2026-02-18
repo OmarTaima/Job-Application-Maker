@@ -35,7 +35,6 @@ import SavedFieldsPreview from "./pages/Recruiting/savedFields/savedfieldsprevie
 import CreateSavedField from "./pages/Recruiting/savedFields/createSavedfield";
 import Applicants from "./pages/Recruiting/applicants/Applicants";
 import ApplicantData from "./pages/Recruiting/applicants/ApplicantData";
-import CVPreview from "./pages/Recruiting/applicants/CVPreview";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import PermissionProtectedRoute from "./components/auth/PermissionProtectedRoute";
 
@@ -67,7 +66,6 @@ export default function App() {
               />
               <Route path="applicants" element={<Applicants />} />
               <Route path="applicant/:id" element={<ApplicantData />} />
-              <Route path="applicant/:id/cv" element={<CVPreview />} />
               <Route path="recruiting/saved-fields" element={<SavedFields />} />
               <Route path="recruiting/saved-fields/preview/:fieldId" element={<SavedFieldsPreview />} />
               <Route path="recruiting/saved-fields/create" element={<CreateSavedField />} />

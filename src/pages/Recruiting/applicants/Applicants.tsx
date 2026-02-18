@@ -28,6 +28,11 @@ const Applicants = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
 
+  const isSuperAdmin = useMemo(() => {
+    const roleName = user?.roleId?.name;
+    return typeof roleName === 'string' && roleName.toLowerCase() === 'super admin';
+  }, [user?.roleId?.name]);
+
   // Restore persisted table state (pagination, sorting, filters) from sessionStorage
   const persistedTableState = useMemo(() => {
     try {
@@ -237,6 +242,22 @@ const [jobAnchorEl, setJobAnchorEl] = useState<HTMLElement | null>(null);
     return map;
   }, [jobPositions]);
 
+  // Normalize gender values: map Arabic variants to English buckets
+  const normalizeGender = (raw: any) => {
+    if (raw === null || raw === undefined) return '';
+    const s = String(raw).trim();
+    if (!s) return '';
+    const lower = s.toLowerCase();
+    const arabicMale = ['ذكر', 'ذكرً', 'ذَكر'];
+    const arabicFemale = ['انثى', 'أنثى', 'انثي', 'انسه', 'أنسه', 'انثا'];
+    if (arabicMale.includes(s) || arabicMale.includes(lower)) return 'Male';
+    if (arabicFemale.includes(s) || arabicFemale.includes(lower)) return 'Female';
+    if (lower === 'male' || lower === 'm') return 'Male';
+    if (lower === 'female' || lower === 'f') return 'Female';
+    // fallback: title-case the original
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  };
+
   // Build filter options
   const statusOptions = useMemo(() => {
     const defaultStatuses = ['pending','approved','interview','interviewed','rejected','trashed'];
@@ -268,6 +289,16 @@ const [jobAnchorEl, setJobAnchorEl] = useState<HTMLElement | null>(null);
       .filter((x) => x.id && x.title);
   }, [allCompanies]);
 
+  const genderOptions = useMemo(() => {
+    const s = new Set<string>();
+    applicants.forEach((a: any) => {
+      const raw = a?.gender || a?.customResponses?.gender || a?.customResponses?.['النوع'] || (a as any)['النوع'];
+      const g = normalizeGender(raw);
+      if (g) s.add(g);
+    });
+    return Array.from(s).map((g) => ({ id: g, title: g }));
+  }, [applicants]);
+
   
   // Create company lookup map
   const companyMap = useMemo(() => {
@@ -295,17 +326,24 @@ const [jobAnchorEl, setJobAnchorEl] = useState<HTMLElement | null>(null);
     const statusFilter = columnFilters.find((f) => f.id === 'status');
     const statusVal = statusFilter?.value;
 
-    // If user explicitly filtered for trashed (single value 'trashed'), show all applicants
-    if (statusVal === 'trashed') return applicants;
-
-    // If user selected multiple statuses (array), filter applicants to those statuses
-    if (Array.isArray(statusVal) && statusVal.length > 0) {
-      return applicants.filter((a: Applicant) => statusVal.includes(a.status));
+    // Super admin: allow viewing trashed when explicitly filtered
+    if (isSuperAdmin) {
+      if (statusVal === 'trashed') return applicants;
+      if (Array.isArray(statusVal) && statusVal.length > 0) {
+        return applicants.filter((a: Applicant) => statusVal.includes(a.status));
+      }
+      return applicants.filter((a: Applicant) => a.status !== 'trashed');
     }
 
-    // Default: exclude trashed applicants
+    // Non-super-admin: never show trashed applicants regardless of filters
+    if (Array.isArray(statusVal) && statusVal.length > 0) {
+      const allowed = statusVal.filter((s: any) => s !== 'trashed');
+      if (allowed.length === 0) return applicants.filter((a: Applicant) => a.status !== 'trashed');
+      return applicants.filter((a: Applicant) => allowed.includes(a.status) && a.status !== 'trashed');
+    }
+
     return applicants.filter((a: Applicant) => a.status !== 'trashed');
-  }, [applicants, columnFilters]);
+  }, [applicants, columnFilters, isSuperAdmin]);
 
   // MRT will handle pagination (we pass full dataset to the table)
 
@@ -506,6 +544,90 @@ const [jobAnchorEl, setJobAnchorEl] = useState<HTMLElement | null>(null);
         enableColumnFilter: true,
         enableSorting: false,
 
+      },
+      {
+        id: 'gender',
+        accessorFn: (row: any) => normalizeGender(row.gender || row.customResponses?.gender || row.customResponses?.['النوع'] || (row as any)['النوع'] || ''),
+        header: 'Gender',
+        size: 110,
+        enableColumnFilter: true,
+        enableSorting: false,
+        Header: ({ column }: { column: any }) => {
+          const current = column.getFilterValue();
+          const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+
+          const selected: string[] = Array.isArray(current)
+            ? current
+            : current
+            ? [current]
+            : [];
+
+          const toggle = (val: string) => {
+            const next = new Set(selected);
+            if (next.has(val)) next.delete(val);
+            else next.add(val);
+            const arr = Array.from(next);
+            column.setFilterValue(arr.length ? arr : undefined);
+          };
+
+          const clear = () => { column.setFilterValue(undefined); setAnchorEl(null); };
+
+          const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setAnchorEl(event.currentTarget);
+          };
+
+          const handleClose = () => setAnchorEl(null);
+
+          return (
+            <div onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center gap-2 -mt-1">
+                <span className="text-sm font-medium">Gender</span>
+                <div>
+                  <button
+                    type="button"
+                    onClick={handleClick}
+                    className="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-1 text-xs text-gray-700 dark:bg-gray-700 dark:text-gray-200"
+                  >
+                    {selected.length ? `${selected.length}` : "Filter"}
+                    <svg className="h-3 w-3" viewBox="0 0 20 20" fill="none">
+                      <path d="M6 8l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+
+                  <Menu
+                    anchorEl={anchorEl}
+                    open={Boolean(anchorEl)}
+                    onClose={handleClose}
+                    onClick={(e) => e.stopPropagation()}
+                    PaperProps={{ style: { maxHeight: 240, width: 200 } }}
+                  >
+                    <MenuItem onClick={clear} dense>Clear</MenuItem>
+                    {genderOptions.map((g) => (
+                      <MenuItem key={g.id} dense onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggle(g.id); }}>
+                        <Checkbox checked={selected.includes(g.id)} size="small" />
+                        <ListItemText primary={g.title} />
+                      </MenuItem>
+                    ))}
+                  </Menu>
+                </div>
+              </div>
+            </div>
+          );
+        },
+        filterFn: (row: any, columnId: string, filterValue: any) => {
+          if (!filterValue) return true;
+          const vals = Array.isArray(filterValue) ? filterValue : [filterValue];
+          if (!vals.length) return true;
+          const cell = String(row.getValue(columnId) ?? "");
+          return vals.includes(cell);
+        },
+        Cell: ({ row }: { row: { original: Applicant } }) => {
+          const raw = row.original.customResponses?.gender || row.original.customResponses?.['النوع'] || (row.original as any)['النوع'];
+          const g = normalizeGender(raw);
+          return g || '-';
+        },
       },
       ... (showCompanyColumn
   ? [

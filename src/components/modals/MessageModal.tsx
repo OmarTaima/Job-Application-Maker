@@ -1,12 +1,63 @@
 import Swal from 'sweetalert2';
 import { Modal } from '../ui/modal';
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useSendMessage, useSendEmail } from '../../hooks/queries'; // Add useSendEmail
 import { getErrorMessage } from '../../utils/errorHandler';
 import Label from '../form/Label';
 import Select from '../form/Select';
 import Input from '../form/input/InputField';
 import TextArea from '../form/input/TextArea';
+
+import 'quill/dist/quill.snow.css';
+
+function QuillEditor({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const quillRef = useRef<any>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    if (!containerRef.current) return;
+    // dynamic import to avoid bundling issues
+    (async () => {
+      const QuillModule = await import('quill');
+      const Quill = (QuillModule as any).default ?? QuillModule;
+      if (!mounted || !containerRef.current) return;
+      quillRef.current = new Quill(containerRef.current, {
+        theme: 'snow',
+        modules: {
+          toolbar: [
+            ['bold', 'italic', 'underline'],
+            [{ list: 'ordered' }, { list: 'bullet' }],
+            ['link'],
+          ],
+        },
+      });
+      quillRef.current.root.innerHTML = value || '';
+      quillRef.current.on('text-change', () => onChange(quillRef.current.root.innerHTML));
+    })();
+
+    return () => {
+      mounted = false;
+      if (quillRef.current) {
+        try {
+          quillRef.current.off && quillRef.current.off('text-change');
+        } catch (e) {
+          /* ignore */
+        }
+        quillRef.current = null;
+      }
+    };
+  }, []);
+
+  // keep external value in sync
+  useEffect(() => {
+    if (quillRef.current && quillRef.current.root && quillRef.current.root.innerHTML !== value) {
+      quillRef.current.root.innerHTML = value || '';
+    }
+  }, [value]);
+
+  return <div className="border rounded bg-white dark:bg-gray-800" style={{ minHeight: 120 }} ref={containerRef} />;
+}
 
 const MessageModal = ({
   isOpen,
@@ -71,9 +122,9 @@ const MessageModal = ({
     <div style="padding: 30px;">
       <p style="font-size: 16px; color: #333; margin-bottom: 20px;">Dear ${applicant.fullName || 'Applicant'},</p>
       
-      <div style="font-size: 16px; line-height: 1.6; color: #444;">
-        ${messageForm.body.replace(/\n/g, '<br/>')}
-      </div>
+        <div style="font-size: 16px; line-height: 1.6; color: #444;">
+          ${messageForm.body || ''}
+        </div>
       
       <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;"/>
       
@@ -210,14 +261,21 @@ const MessageModal = ({
 
         <div>
           <Label htmlFor="message-body">Message *</Label>
-          <TextArea
-            value={messageForm.body}
-            onChange={(value) =>
-              setMessageForm({ ...messageForm, body: value })
-            }
-            placeholder="Enter your message to the applicant"
-            rows={5}
-          />
+          {messageForm.type === 'email' ? (
+            <QuillEditor
+              value={messageForm.body}
+              onChange={(content) => setMessageForm({ ...messageForm, body: content })}
+            />
+          ) : (
+            <TextArea
+              value={messageForm.body}
+              onChange={(value) =>
+                setMessageForm({ ...messageForm, body: value })
+              }
+              placeholder="Enter your message to the applicant"
+              rows={5}
+            />
+          )}
         </div>
 
         {/* Preview for email */}
