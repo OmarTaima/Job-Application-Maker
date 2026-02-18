@@ -1,4 +1,3 @@
-import React from 'react';
 import Swal from 'sweetalert2';
 import { Modal } from '../ui/modal';
 import Label from '../form/Label';
