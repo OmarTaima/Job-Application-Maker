@@ -21,8 +21,10 @@ import {
   useCompanies,
 } from "../../../hooks/queries";
 import { Menu, MenuItem, Checkbox, ListItemText } from "@mui/material";
+import  { normalizeLabelSimple, canonicalMap, getCanonicalType, buildFieldToJobIds, isExcludedLabel } from "../../../components/modals/CustomFilterModal";
 import type { Applicant } from "../../../store/slices/applicantsSlice";
 import { toPlainString } from "../../../utils/strings";
+import CustomFilterModal from "../../../components/modals/CustomFilterModal";
 
 const Applicants = () => {
   const navigate = useNavigate();
@@ -36,6 +38,9 @@ const Applicants = () => {
   // Restore persisted table state (pagination, sorting, filters) from sessionStorage
   const persistedTableState = useMemo(() => {
     try {
+      // prefer localStorage (persist across reloads) then fallback to sessionStorage
+      const rawLocal = localStorage.getItem('applicants_table_state');
+      if (rawLocal) return JSON.parse(rawLocal);
       const raw = sessionStorage.getItem('applicants_table_state');
       return raw ? JSON.parse(raw) : null;
     } catch (e) {
@@ -67,11 +72,20 @@ const Applicants = () => {
   const saveTableState = () => {
     try {
       const state = table.getState();
-      sessionStorage.setItem('applicants_table_state', JSON.stringify({
+      const toSave: any = {
         pagination: state.pagination,
         sorting: state.sorting,
         columnFilters: state.columnFilters,
-      }));
+      };
+      try {
+        // include customFilters if present in component scope
+        if (Array.isArray((window as any).__app_customFilters)) {
+          toSave.customFilters = (window as any).__app_customFilters;
+        }
+      } catch {}
+      const str = JSON.stringify(toSave);
+      sessionStorage.setItem('applicants_table_state', str);
+      try { localStorage.setItem('applicants_table_state', str); } catch (e) { /* ignore */ }
     } catch (e) {
       // ignore
     }
@@ -124,25 +138,40 @@ const Applicants = () => {
 
   // Use React Query hooks
   // Fetch job positions first so we can convert company filter into jobPositionIds
-  const { data: jobPositions = [], isLoading: jobPositionsLoading, refetch: refetchJobPositions, isFetching: isJobPositionsFetching, isFetched: isJobPositionsFetched } =
-    useJobPositions(companyId);
+  // If the Company column has an active filter, prefer that companyId(s)
+  const selectedCompanyFilter = useMemo(() => {
+    try {
+      const cf = Array.isArray(columnFilters) ? columnFilters.find((c: any) => c.id === 'companyId') : undefined;
+      if (!cf) return undefined;
+      const v = cf.value;
+      if (!v) return undefined;
+      if (Array.isArray(v) && v.length) return v;
+      return typeof v === 'string' ? [v] : undefined;
+    } catch (e) {
+      return undefined;
+    }
+  }, [columnFilters]);
 
-  const {
-    data: applicants = [],
-    isLoading: applicantsLoading,
-    error,
-    refetch: refetchApplicants,
-    isFetching: isApplicantsFetching,
-    isFetched: isApplicantsFetched,
-  } = useApplicants(companyId as any);
-  const updateStatusMutation = useUpdateApplicantStatus();
-  const { data: allCompaniesRaw = [], refetch: refetchCompanies, isFetching: isCompaniesFetching, isFetched: isCompaniesFetched } = useCompanies(companyId as any);
-  const [lastRefetch, setLastRefetch] = useState<Date | null>(null);
-  const [elapsed, setElapsed] = useState<string | null>(null);
-const [statusAnchorEl, setStatusAnchorEl] = useState<HTMLElement | null>(null);
-const [jobAnchorEl, setJobAnchorEl] = useState<HTMLElement | null>(null);
-  const [bulkStatusError, setBulkStatusError] = useState("");
-  const [bulkDeleteError, setBulkDeleteError] = useState("");
+  const jobPositionCompanyParam = selectedCompanyFilter ?? companyId;
+const { data: jobPositions = [], isLoading: jobPositionsLoading, refetch: refetchJobPositions, isFetching: isJobPositionsFetching, isFetched: isJobPositionsFetched } =
+   useJobPositions(jobPositionCompanyParam);
+const {
+   data: applicants = [],
+   isLoading: applicantsLoading,
+   error,
+   refetch: refetchApplicants,
+   isFetching: isApplicantsFetching,
+   isFetched: isApplicantsFetched,
+ } = useApplicants(companyId as any);
+ const updateStatusMutation = useUpdateApplicantStatus();
+ const { data: allCompaniesRaw = [], refetch: refetchCompanies, isFetching: isCompaniesFetching, isFetched: isCompaniesFetched } = useCompanies(companyId as any);
+ const [lastRefetch, setLastRefetch] = useState<Date | null>(null);
+ const [elapsed, setElapsed] = useState<string | null>(null);
+ const [statusAnchorEl, setStatusAnchorEl] = useState<HTMLElement | null>(null);
+ const [jobAnchorEl, setJobAnchorEl] = useState<HTMLElement | null>(null);
+ const [bulkStatusError, setBulkStatusError] = useState("");
+ const [bulkDeleteError, setBulkDeleteError] = useState("");
+ 
 
 
  
@@ -242,6 +271,19 @@ const [jobAnchorEl, setJobAnchorEl] = useState<HTMLElement | null>(null);
     return map;
   }, [jobPositions]);
 
+  // Field-exclusion and canonical helpers are provided by CustomFilterModal
+  // via named exports. See src/components/modals/CustomFilterModal.tsx
+
+  // Which job positions are currently selected in the Job Position column filter
+ 
+
+  // Map normalized field keys -> set of jobPosition ids that declare that field
+  const fieldToJobIds = useMemo(() => buildFieldToJobIds(jobPositions), [jobPositions]);
+  
+
+  // Final deduped list by normalized label (merge fields that differ by id but share the same label)
+ 
+
   // Normalize gender values: map Arabic variants to English buckets
   const normalizeGender = (raw: any) => {
     if (raw === null || raw === undefined) return '';
@@ -279,6 +321,64 @@ const [jobAnchorEl, setJobAnchorEl] = useState<HTMLElement | null>(null);
       .filter((x) => x.id && x.title);
   }, [jobPositions]);
 
+  // availableCustomFields was replaced by dedupedCustomFields; keep jobPositions dependency above
+
+  // Custom filters configured via the modal (rehydrate from persisted table state)
+  const [customFilters, setCustomFilters] = useState<Array<any>>(persistedTableState?.customFilters ?? []);
+  useEffect(() => {
+    try { (window as any).__app_customFilters = customFilters; } catch { }
+  }, [customFilters]);
+
+  // On mount, hydrate any persisted customFilters (covers SPA back-navigation)
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem('applicants_table_state');
+      const parsed = raw ? JSON.parse(raw) : null;
+      if (parsed && Array.isArray(parsed.customFilters)) {
+        setCustomFilters(parsed.customFilters);
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, []);
+
+  // Persist customFilters to sessionStorage immediately so navigation/back
+  // restores current modal filter state even if the user didn't click Save.
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem('applicants_table_state');
+      const parsed = raw ? JSON.parse(raw) : {};
+      parsed.customFilters = customFilters || [];
+      const str = JSON.stringify(parsed);
+      sessionStorage.setItem('applicants_table_state', str);
+      try { localStorage.setItem('applicants_table_state', str); } catch (e) { /* ignore */ }
+    } catch (e) {
+      // ignore
+    }
+  }, [customFilters]);
+
+  // Clear persisted localStorage state when navigating away from Applicants/ApplicantData pages
+  useEffect(() => {
+    return () => {
+      // run after navigation completes so pathname reflects destination
+      setTimeout(() => {
+        try {
+          const p = window.location.pathname || '';
+          const inApplicantsPages = p.startsWith('/applicant') || p.startsWith('/applicants');
+          if (!inApplicantsPages) {
+            try { localStorage.removeItem('applicants_table_state'); } catch (e) { /* ignore */ }
+            try { sessionStorage.removeItem('applicants_table_state'); } catch (e) { /* ignore */ }
+          }
+        } catch (e) {
+          // ignore
+        }
+      }, 0);
+    };
+  }, []);
+  const [customFilterOpen, setCustomFilterOpen] = useState(false);
+  // Modal-local selected jobs for composing custom filters
+
+
   const companyOptions = useMemo(() => {
     return allCompanies
       .map((c: any) => {
@@ -315,6 +415,601 @@ const [jobAnchorEl, setJobAnchorEl] = useState<HTMLElement | null>(null);
 
     return applicants.filter((a: Applicant) => a.status !== 'trashed');
   }, [applicants, columnFilters, isSuperAdmin]);
+
+  // Apply custom filters (from Filter Settings modal) on top of displayedApplicants
+  // Helper to robustly read a custom response value for a given filter definition
+  const getCustomResponseValue = (a: any, f: any) => {
+    if (!a) return '';
+    const responses = a.customResponses || a.customFieldResponses || {};
+    // also consider top-level applicant properties (many imports store some fields at root)
+    const top = a || {};
+    
+    const tryKey = (k: any) => {
+      if (k === undefined || k === null) return undefined;
+      if (typeof k !== 'string' && typeof k !== 'number') return undefined;
+      const key = String(k);
+      if (responses && Object.prototype.hasOwnProperty.call(responses, key)) return responses[key];
+      if (top && Object.prototype.hasOwnProperty.call(top, key)) return top[key];
+      return undefined;
+    };
+
+    // 1) try exact fieldId
+    const byId = tryKey(f.fieldId);
+    if (byId !== undefined) return byId;
+
+    // 2) try explicit labels stored on the filter
+    const byEn = tryKey(f.labelEn);
+    if (byEn !== undefined) return byEn;
+    const byAr = tryKey(f.labelAr);
+    if (byAr !== undefined) return byAr;
+
+    // 3) try common label key
+    const byLabel = tryKey(f.label);
+    if (byLabel !== undefined) return byLabel;
+
+    // 4) fallback: search keys by normalized match (handles localized keys).
+    // Also compare underscore/space variants so keys like "الحالة_العسكرية" match "الحالة العسكرية".
+    const norm = (s: any) => (s || '').toString().replace(/\u200E|\u200F/g, '').replace(/[^\w\u0600-\u06FF\s]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+    const rawTargets = [f.labelEn, f.labelAr, f.fieldId].filter(Boolean);
+    const targetSet = new Set<string>();
+    rawTargets.map(norm).forEach((t) => {
+      if (!t) return;
+      targetSet.add(t);
+      targetSet.add(t.replace(/\s+/g, '_'));
+      targetSet.add(t.replace(/_/g, ' '));
+    });
+    // If this filter maps to a canonical type, prefer matching only the allowed response keys
+    const canonical = getCanonicalType(f);
+    if (canonical && canonicalMap[canonical]) {
+      const allowed = canonicalMap[canonical].map((s) => normalizeLabelSimple(s));
+      for (const [k, v] of Object.entries(responses || {})) {
+        try {
+          const nk = normalizeLabelSimple(k);
+          if (allowed.includes(nk) || allowed.some((al) => nk.includes(al) || al.includes(nk))) return v;
+        } catch (e) {
+          // ignore
+        }
+      }
+      // no matching key found for canonical field -> return empty
+      return '';
+    }
+    // search both responses map and top-level applicant fields
+    for (const [k, v] of Object.entries({ ...(responses || {}), ...(top || {}) })) {
+      const nk = norm(k);
+      if (targetSet.has(nk)) return v;
+      // also try underscore/space variants of the key
+      if (targetSet.has(nk.replace(/\s+/g, '_'))) return v;
+      if (targetSet.has(nk.replace(/_/g, ' '))) return v;
+    }
+
+    // 5) Heuristics for numeric/range fields: try to find a numeric candidate
+    const matchesSalaryLabel = (/salary|expected salary|الراتب|الراتب المتوقع|راتب/).test(((f.label?.en || '') + ' ' + (f.label?.ar || '')).toString().toLowerCase());
+    if (f.type === 'range' || matchesSalaryLabel) {
+      for (const v of Object.values({ ...(responses || {}), ...(top || {}) })) {
+        // primitive number
+        if (typeof v === 'number') return v;
+        // string with digits (e.g., "5,000 SAR")
+        if (typeof v === 'string' && /\d|[\u0660-\u0669\u06F0-\u06F9]/.test(v)) return v;
+        if (Array.isArray(v)) {
+          const found = v.find((it) => (typeof it === 'number') || (typeof it === 'string' && /\d/.test(it)));
+          if (found !== undefined) return found;
+        }
+        if (typeof v === 'object' && v !== null) {
+          const candidateKeys = ['value','val','amount','salary','expectedSalary','min','max','amountValue','numeric','0'];
+          for (const ck of candidateKeys) {
+            if (Object.prototype.hasOwnProperty.call(v, ck)) {
+              const cand = (v as any)[ck];
+              if (cand !== undefined && cand !== null && (typeof cand === 'number' || (typeof cand === 'string' && /\d/.test(cand)))) return cand;
+            }
+          }
+        }
+      }
+    }
+
+    return '';
+  };
+
+  // Helper: normalize any raw response into an array of primitive strings for comparison
+  const extractResponseItems = (raw: any): string[] => {
+    if (raw === null || raw === undefined) return [];
+    const pickFromObject = (o: any) => {
+      if (o === null || o === undefined) return '';
+      if (typeof o === 'number') return String(o);
+      if (typeof o === 'string') return o;
+      // common object shapes
+      return (o.id ?? o._id ?? o.value ?? o.val ?? o.en ?? o.ar ?? o.label ?? o.name ?? '') + '';
+    };
+
+    if (Array.isArray(raw)) return raw.map(pickFromObject).filter((s) => s !== '');
+    if (typeof raw === 'object') {
+      // If object is a map of keys -> values, try to return meaningful values
+      // e.g., { value: '123' } or { id: 'x', label: 'Label' }
+      const candidates: string[] = [];
+      const prim = pickFromObject(raw);
+      if (prim) candidates.push(prim);
+      // include any primitive child values
+      Object.entries(raw).forEach(([k, v]) => {
+        if (v === null || v === undefined) return;
+        if (typeof v === 'object') return;
+        // If the value is a boolean true, include the key (e.g., { Exempted: true })
+        if (typeof v === 'boolean') {
+          if (v) candidates.push(String(k));
+          return;
+        }
+        // include both the primitive value and the key so maps and keyed-boolean shapes match
+        candidates.push(String(v));
+        candidates.push(String(k));
+      });
+      return Array.from(new Set(candidates)).filter((s) => s !== '');
+    }
+
+    return [String(raw)];
+  };
+
+  const normalizeForCompare = (s: any) => (s || '').toString().replace(/\u200E|\u200F/g, '').trim().toLowerCase();
+
+  const expandForms = (s: string) => {
+    const out = new Set<string>();
+    if (!s) return [] as string[];
+    out.add(s);
+    out.add(s.replace(/\s+/g, '_'));
+    out.add(s.replace(/_/g, ' '));
+    return Array.from(out);
+  };
+
+  const filteredApplicants = useMemo(() => {
+    if (!customFilters || !customFilters.length) return displayedApplicants;
+    return displayedApplicants.filter((a: any) => {
+      const FILTER_DEBUG = true;
+      const log = (...args: any[]) => { if (FILTER_DEBUG && typeof console !== 'undefined' && console.log) console.log('[FilterDebug]', ...args); };
+      try {
+        for (const f of customFilters) {
+          let raw = getCustomResponseValue(a, f);
+          // Override for hardcoded personal-info filters that are not stored
+          // as job custom fields.
+          try {
+            if (f.fieldId === '__gender') {
+              raw = a?.gender || a?.customResponses?.gender || a?.customResponses?.['النوع'] || (a as any)['النوع'] || raw || '';
+            }
+            if (f.fieldId === '__birthdate') {
+              raw = a?.birthdate || a?.dateOfBirth || a?.dob || a?.customResponses?.birthdate || a?.customResponses?.['تarih'] || a?.customResponses?.['تاريخ الميلاد'] || raw || '';
+            }
+            if (f.fieldId === '__has_cv') {
+              const hasTop = Boolean(
+                a?.resume || a?.cv || a?.attachments || a?.resumeUrl || a?.cvFilePath || a?.cvFile || a?.cvUrl || a?.resumeFilePath || a?.resumeFile || a?.cv_file_path || a?.cv_file || a?.cv_path
+              );
+              let has = hasTop;
+              try {
+                const resp = a?.customResponses || a?.customFieldResponses || {};
+                for (const [k, v] of Object.entries(resp || {})) {
+                  const lk = String(k || '').toLowerCase();
+                  if (lk.includes('cv') || lk.includes('resume') || lk.includes('cvfile') || lk.includes('cv_file') || lk.includes('cvfilepath')) {
+                    if (v) { has = true; break; }
+                  }
+                }
+              } catch (e) {
+                // ignore
+              }
+              raw = has;
+            }
+          } catch (e) {
+            // ignore overrides on error
+          }
+
+          // Only enforce job-based exclusion for engineering specialization
+          // (fields that truly belong to a single job). All other custom filters
+          // are evaluated across applicants regardless of jobPositionId.
+          try {
+            const canonical = getCanonicalType(f);
+            if (canonical === 'engineering_specialization') {
+              const rawLabel = `${f.labelEn || f.label?.en || ''} ${f.labelAr || f.label?.ar || ''} ${f.fieldId || ''}`;
+              const keyNorm = normalizeLabelSimple(rawLabel) || String(f.fieldId || '');
+              const allowedUnion = new Set<string>();
+              const addSet = (s?: Set<string>) => { if (!s) return; s.forEach((x) => allowedUnion.add(String(x))); };
+              addSet(fieldToJobIds[keyNorm]);
+              addSet(fieldToJobIds[String(f.fieldId || '')]);
+              try {
+                addSet(fieldToJobIds[canonical]);
+                (canonicalMap[canonical] || []).forEach((v) => {
+                  const nk = normalizeLabelSimple(v);
+                  if (nk) addSet(fieldToJobIds[nk]);
+                });
+              } catch (e) {
+                // ignore
+              }
+
+              // If this canonical field maps to a single job, exclude applicants
+              // whose jobPositionId isn't that job unless the applicant already
+              // contains a matching canonical response key.
+              if (allowedUnion.size === 1) {
+                const getId = (v: any) => (typeof v === 'string' ? v : v?._id ?? v?.id ?? '');
+                const applicantJobId = getId(a.jobPositionId);
+                try {
+                  const topLevelKeys = Object.keys(a || {}).filter((k) => k !== 'customResponses' && k !== 'customFieldResponses' && k !== 'customFields');
+                  const customRespKeys = Object.keys(a?.customResponses || {});
+                  const customFieldRespKeys = Object.keys(a?.customFieldResponses || {});
+                  const cfKeys = Object.keys(a?.customFields || {});
+                  const allKeys = Array.from(new Set([...topLevelKeys, ...customRespKeys, ...customFieldRespKeys, ...cfKeys]));
+                  const respKeys = allKeys.map((k) => normalizeLabelSimple(k));
+                  const allowedLabels = canonicalMap[canonical].map((s) => normalizeLabelSimple(s));
+                  const hasRespKeyMatch = respKeys.some((rk) => allowedLabels.some((al) => rk === al || rk.includes(al) || al.includes(rk)));
+                  if (!hasRespKeyMatch) {
+                    if (!applicantJobId || !allowedUnion.has(String(applicantJobId))) {
+                      log(a._id || a.id || '(no id)', 'excluded-by-job', { applicantJobId, allowed: Array.from(allowedUnion), field: keyNorm });
+                      return false;
+                    }
+                  }
+                } catch (e) {
+                  if (!applicantJobId || !allowedUnion.has(String(applicantJobId))) {
+                    log(a._id || a.id || '(no id)', 'excluded-by-job', { applicantJobId, allowed: Array.from(allowedUnion), field: keyNorm });
+                    return false;
+                  }
+                }
+              }
+            }
+          } catch (e) {
+            // ignore and continue
+          }
+
+          // Special: boolean presence filters (work experience, courses, personal skills)
+          if (f.type === 'hasWorkExperience' || f.type === 'hasField' || f.type === 'hasCV' || f.fieldId === '__has_cv') {
+            const want = f.value; // true/false/'any'
+            if (want === 'any' || want === undefined) continue;
+
+            const evaluateHas = () => {
+              try {
+                if (f.type === 'hasWorkExperience') {
+                  if (Array.isArray(a.workExperiences) && a.workExperiences.length) return true;
+                  if (Array.isArray(a.experiences) && a.experiences.length) return true;
+                  const resp = a?.customResponses || a?.customFieldResponses || {};
+                  const keys = ['work_experience','workExperience','workexperience','الخبرة','خبرة'];
+                  for (const k of keys) {
+                    if (Object.prototype.hasOwnProperty.call(resp, k)) {
+                      const v = resp[k];
+                      if (v === true) return true;
+                      if (Array.isArray(v) && v.length) return true;
+                      if (typeof v === 'string' && v.trim()) return true;
+                      if (typeof v === 'object' && Object.keys(v).length) return true;
+                    }
+                  }
+                  for (const v of Object.values(resp)) {
+                    if (Array.isArray(v) && v.length) return true;
+                  }
+                  return false;
+                }
+
+                // hardcoded CV presence filter
+                if (f.fieldId === '__has_cv' || f.type === 'hasCV') {
+                  const hasTop = Boolean(
+                    a?.resume || a?.cv || a?.attachments || a?.resumeUrl || a?.cvFilePath || a?.cvFile || a?.cvUrl || a?.resumeFilePath || a?.resumeFile || a?.cv_file_path || a?.cv_file || a?.cv_path
+                  );
+                  if (hasTop) return true;
+                  try {
+                    const resp = a?.customResponses || a?.customFieldResponses || {};
+                    for (const [k, v] of Object.entries(resp || {})) {
+                      const lk = String(k || '').toLowerCase();
+                      if (lk.includes('cv') || lk.includes('resume') || lk.includes('cvfile') || lk.includes('cv_file') || lk.includes('cvfilepath')) {
+                        if (v) return true;
+                      }
+                      // also consider string values containing a file URL
+                      if (typeof v === 'string' && /https?:\/\/.+\.(pdf|docx?|rtf|txt|zip)$/i.test(v)) return true;
+                    }
+                  } catch (e) {
+                    // ignore
+                  }
+                  return false;
+                }
+
+                // generic hasField: consider getCustomResponseValue truthy -> has response
+                const rawVal = getCustomResponseValue(a, f);
+                if (rawVal === undefined || rawVal === null) return false;
+                if (rawVal === '') return false;
+                if (Array.isArray(rawVal)) return rawVal.length > 0;
+                if (typeof rawVal === 'object') return Object.keys(rawVal).length > 0;
+                if (typeof rawVal === 'string') return rawVal.trim().length > 0;
+                if (typeof rawVal === 'number') return true;
+                if (typeof rawVal === 'boolean') return rawVal === true;
+                return false;
+              } catch (e) {
+                return false;
+              }
+            };
+
+            const hasIt = evaluateHas();
+            if ((want === true && !hasIt) || (want === false && hasIt)) {
+              log(a._id || a.id || '(no id)', 'has-field-no-match', { want, hasIt, field: f.fieldId || f.label });
+              return false;
+            }
+            continue;
+          }
+
+          // RANGE / NUMBER
+          if (f.type === 'range') {
+            let num: number | null = null;
+            if (raw === null || raw === undefined || raw === '') return false;
+            const toNum = (v: any) => {
+              if (v === null || v === undefined) return NaN;
+              if (typeof v === 'number') return v;
+              const rawS = String(v);
+              // normalize Arabic-Indic and Extended-Indic digits to ASCII
+              const conv = (str: string) => {
+                const map: Record<string,string> = {
+                  '\u0660':'0','\u0661':'1','\u0662':'2','\u0663':'3','\u0664':'4','\u0665':'5','\u0666':'6','\u0667':'7','\u0668':'8','\u0669':'9',
+                  '\u06F0':'0','\u06F1':'1','\u06F2':'2','\u06F3':'3','\u06F4':'4','\u06F5':'5','\u06F6':'6','\u06F7':'7','\u06F8':'8','\u06F9':'9'
+                };
+                return str.replace(/[\u0660-\u0669\u06F0-\u06F9]/g, (ch) => map[ch] || ch);
+              };
+              const s = conv(rawS).replace(/[^0-9.\-]/g, '');
+              const p = Number(s);
+              return Number.isFinite(p) ? p : NaN;
+            };
+            if (typeof raw === 'number') num = raw;
+            else if (typeof raw === 'string') {
+              const parsed = toNum(raw);
+              num = Number.isNaN(parsed) ? null : parsed;
+            } else if (Array.isArray(raw)) {
+              const nums = raw.map(toNum).filter((n) => Number.isFinite(n));
+              if (nums.length) num = Math.max(...nums); else num = null;
+            } else if (typeof raw === 'object') {
+              // prefer explicit numeric keys (max/min/amount/value), otherwise try to extract any numeric child
+              const candKeys = ['max','value','val','amount','salary','expectedSalary','min','amountValue','numeric','0'];
+              let found: number | null = null;
+              for (const ck of candKeys) {
+                if (Object.prototype.hasOwnProperty.call(raw, ck)) {
+                  const c = toNum((raw as any)[ck]);
+                  if (Number.isFinite(c)) { found = (found === null ? c : Math.max(found, c)); }
+                }
+              }
+              if (found === null) {
+                // inspect object children
+                const children = Object.values(raw).map(toNum).filter((n) => Number.isFinite(n));
+                if (children.length) found = Math.max(...children);
+              }
+              num = found;
+            } else num = null;
+            if (num === null || !Number.isFinite(num)) {
+              log(a._id || a.id || '(no id)', 'range-no-number', { raw, parsed: num, filter: f.value });
+              return false;
+            }
+            const parseFilterNum = (v: any) => {
+              if (v === undefined || v === null || v === '') return undefined;
+              const s = String(v).replace(/[^0-9.\-]/g, '');
+              const p = Number(s);
+              return Number.isFinite(p) ? p : undefined;
+            };
+            const minFilter = parseFilterNum(f.value?.min);
+            const maxFilter = parseFilterNum(f.value?.max);
+            if (minFilter !== undefined && num < minFilter) {
+              log(a._id || a.id || '(no id)', 'range-fail-min', { num, minFilter, field: f.label || f.fieldId });
+              return false;
+            }
+            if (maxFilter !== undefined && num > maxFilter) {
+              log(a._id || a.id || '(no id)', 'range-fail-max', { num, maxFilter, field: f.label || f.fieldId });
+              return false;
+            }
+            continue;
+          }
+
+          // MULTI / CHOICES
+          if (f.type === 'multi') {
+            const valsRaw = Array.isArray(f.value) ? f.value : (f.value !== undefined && f.value !== null ? [f.value] : []);
+            const valsNormalized = valsRaw
+              .map((v: any) => normalizeForCompare((v && (v.id || v._id || v.en || v.ar)) ? (v.id || v._id || v.en || v.ar) : v))
+              .filter((x: string) => x);
+            if (!valsNormalized.length) continue;
+
+            const valsExpandedSet = new Set<string>();
+            valsNormalized.forEach((v: string) => expandForms(v).forEach((x) => valsExpandedSet.add(x)));
+
+            const rawItems = extractResponseItems(raw).map(normalizeForCompare);
+
+            // Direct equality checks between the filter values and the raw response
+            // (handles primitives, arrays, objects and keyed-boolean maps). This
+            // ensures we compare the actual stored customResponse value to the
+            // selected filter value before falling back to normalized/expanded forms.
+            let matched = false;
+            let matchedSource: string | null = null;
+            try {
+              // primitives
+              if (typeof raw === 'string' || typeof raw === 'number' || typeof raw === 'boolean') {
+                const rv = normalizeForCompare(raw);
+                if (rv && valsExpandedSet.has(rv)) { matched = true; matchedSource = 'primitive'; }
+              }
+              // arrays
+              if (!matched && Array.isArray(raw)) {
+                for (const el of raw) {
+                  const v = normalizeForCompare(el);
+                  if (v && valsExpandedSet.has(v)) { matched = true; matchedSource = 'array-element'; break; }
+                }
+              }
+              // objects: check values first, then check keyed booleans (key name when value truthy)
+              if (!matched && raw && typeof raw === 'object') {
+                for (const v of Object.values(raw)) {
+                  const nv = normalizeForCompare(v);
+                    if (nv && valsExpandedSet.has(nv)) { matched = true; matchedSource = 'object-value'; break; }
+                }
+                if (!matched) {
+                  for (const [k, v] of Object.entries(raw)) {
+                    if (v === true || v === 'true' || v === 1 || v === '1') {
+                      const nk = normalizeForCompare(k);
+                      if (nk && valsExpandedSet.has(nk)) { matched = true; matchedSource = 'object-key-boolean'; break; }
+                    }
+                  }
+                }
+              }
+            } catch (e) {
+              // ignore and fall back to normalized/rawItems matching
+            }
+
+            if (!matched) {
+              matched = rawItems.some((rv) => valsExpandedSet.has(rv));
+              if (matched) matchedSource = 'normalized-rawItems';
+            }
+
+            if (!matched && Array.isArray(f.choices) && f.choices.length) {
+              const choiceNormsForSelected = new Set<string>();
+              f.choices.forEach((c: any) => {
+                const forms = [c.id ?? c._id ?? c.en ?? c.ar ?? c.value ?? c.val ?? c.label ?? ''];
+                if (c.en) forms.push(c.en);
+                if (c.ar) forms.push(c.ar);
+                if (c.value) forms.push(c.value);
+                const formsNorm = Array.from(new Set(forms.map((fm: any) => normalizeForCompare(fm)).filter(Boolean)));
+                const expanded = formsNorm.flatMap((fn: string) => expandForms(fn));
+                if (expanded.some((fn: string) => valsExpandedSet.has(fn))) {
+                  expanded.forEach((fn: string) => choiceNormsForSelected.add(fn));
+                }
+              });
+
+              if (choiceNormsForSelected.size) matched = rawItems.some((rv) => choiceNormsForSelected.has(rv));
+            }
+
+            if (!matched) {
+              log(a._id || a.id || '(no id)', 'multi-no-match', { field: f.fieldId || f.label, vals: f.value, raw, rawItems, valsExpanded: Array.from(valsExpandedSet), matchedSource });
+              return false;
+            }
+            continue;
+          }
+
+          // TEXT / CONTAINS
+          if (f.type === 'text') {
+            const needle = normalizeForCompare(f.value || '');
+            if (!needle) continue;
+            const rawItems = extractResponseItems(raw).map(normalizeForCompare);
+            let matched = rawItems.some((it) => it.includes(needle));
+            // If this is engineering specialization, only search the canonical
+            // allowed response keys so we don't match unrelated fields.
+            if (!matched) {
+              try {
+                const canonical = getCanonicalType(f);
+                const allResp = a?.customResponses || a?.customFieldResponses || {};
+                if (canonical === 'engineering_specialization' && canonicalMap[canonical]) {
+                  const allowed = canonicalMap[canonical].map((s) => normalizeLabelSimple(s));
+                  for (const [k, v] of Object.entries(allResp)) {
+                    const nk = normalizeLabelSimple(k);
+                    if (!nk) continue;
+                    if (!(allowed.includes(nk) || allowed.some((al) => nk.includes(al) || al.includes(nk)))) continue;
+                    const items = extractResponseItems(v).map(normalizeForCompare);
+                    if (items.some((it) => it.includes(needle))) {
+                      matched = true;
+                      break;
+                    }
+                  }
+                } else {
+                  // Non-engineering canonical fields: preserve previous behavior
+                  if (canonical && canonicalMap[canonical]) {
+                    const allowed = canonicalMap[canonical].map((s) => normalizeLabelSimple(s));
+                    for (const [k, v] of Object.entries(allResp)) {
+                      const nk = normalizeLabelSimple(k);
+                      if (!nk) continue;
+                      if (!(allowed.includes(nk) || allowed.some((al) => nk.includes(al) || al.includes(nk)))) continue;
+                      const items = extractResponseItems(v).map(normalizeForCompare);
+                      if (items.some((it) => it.includes(needle))) {
+                        matched = true;
+                        break;
+                      }
+                    }
+                  } else {
+                    for (const v of Object.values(allResp)) {
+                      const items = extractResponseItems(v).map(normalizeForCompare);
+                      if (items.some((it) => it.includes(needle))) {
+                        matched = true;
+                        break;
+                      }
+                    }
+                  }
+                }
+              } catch (e) {
+                // ignore
+              }
+            }
+            if (!matched) {
+              log(a._id || a.id || '(no id)', 'text-no-match', { field: f.fieldId || f.label, needle, rawItems });
+              return false;
+            }
+            continue;
+          }
+
+          // BIRTH YEAR filter (choose year and Before/After)
+          if (f.type === 'birthYear') {
+            const v = f.value || {};
+            const selYear = Number(v.year);
+            if (!selYear || !Number.isFinite(selYear)) continue;
+            const mode = v.mode === 'before' ? 'before' : 'after';
+            const rawItems = extractResponseItems(raw);
+            const convDigits = (str: string) => {
+              const map: Record<string,string> = {
+                '\u0660':'0','\u0661':'1','\u0662':'2','\u0663':'3','\u0664':'4','\u0665':'5','\u0666':'6','\u0667':'7','\u0668':'8','\u0669':'9',
+                '\u06F0':'0','\u06F1':'1','\u06F2':'2','\u06F3':'3','\u06F4':'4','\u06F5':'5','\u06F6':'6','\u06F7':'7','\u06F8':'8','\u06F9':'9'
+              };
+              return str.replace(/[\u0660-\u0669\u06F0-\u06F9]/g, (ch) => map[ch] || ch);
+            };
+
+            const extractYear = (r: any) => {
+              if (r === null || r === undefined) return null;
+              if (typeof r === 'number') {
+                const n = Math.floor(r);
+                if (n > 1900 && n < 2100) return n;
+                return null;
+              }
+              let s = String(r).trim();
+              if (!s) return null;
+              s = convDigits(s);
+              // try Date parse
+              try {
+                const d = new Date(s);
+                if (!Number.isNaN(d.getTime())) return d.getFullYear();
+              } catch {
+                // ignore
+              }
+              // fallback: find a 4-digit year (1900-2099)
+              const m = s.match(/(19|20)\d{2}/);
+              if (m) return Number(m[0]);
+              return null;
+            };
+
+            const matched = rawItems.some((r) => {
+              const y = extractYear(r);
+              if (!y) return false;
+              if (mode === 'before') return y < selYear;
+              return y > selYear;
+            });
+            if (!matched) {
+              log(a._id || a.id || '(no id)', 'birthyear-no-match', { field: f.fieldId || f.label, filter: { year: selYear, mode }, rawItems });
+              return false;
+            }
+            continue;
+          }
+
+          // DATE equality (yyyy-mm-dd)
+          if (f.type === 'date') {
+            const target = f.value;
+            if (!target) continue;
+            const rawItems = extractResponseItems(raw);
+            const matchFound = rawItems.some((r) => {
+              try {
+                const d = new Date(String(r));
+                if (Number.isNaN(d.getTime())) return false;
+                const iso = d.toISOString().slice(0, 10);
+                return iso === String(target);
+              } catch {
+                return false;
+              }
+            });
+            if (!matchFound) {
+              log(a._id || a.id || '(no id)', 'date-no-match', { field: f.fieldId || f.label, target, rawItems });
+              return false;
+            }
+            continue;
+          }
+        }
+        log(a._id || a.id || '(no id)', 'included', { filters: customFilters.map((ff: any) => ff.fieldId || ff.label) });
+        return true;
+      } catch (e) {
+        log(a._id || a.id || '(no id)', 'error-eval', e);
+        return false;
+      }
+    });
+  }, [displayedApplicants, customFilters]);
 
   // Build gender filter options from the applicants dataset but apply only
   // the trashed-visibility rule (so options persist after refresh even when
@@ -1249,8 +1944,8 @@ const [jobAnchorEl, setJobAnchorEl] = useState<HTMLElement | null>(null);
 
   const table = useMaterialReactTable({
     columns,
-    // Pass the displayedApplicants list (excludes trashed by default)
-    data: displayedApplicants,
+    // Pass the filteredApplicants list (applies custom filters on top of displayedApplicants)
+    data: filteredApplicants,
     enableRowSelection: true,
     enablePagination: true,
     enableBatchRowSelection: false,
@@ -1383,6 +2078,29 @@ const [jobAnchorEl, setJobAnchorEl] = useState<HTMLElement | null>(null);
             >
               {(isJobPositionsFetching || isApplicantsFetching || isCompaniesFetching) ? 'Updating Data' : 'Update Data'}
             </button>
+            <button
+              type="button"
+              onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                try { (e.currentTarget as HTMLButtonElement).blur(); } catch {}
+                // remove any existing customFilters that target excluded fields
+                try {
+                  setCustomFilters((prev) => prev.filter((cf: any) => {
+                      const rawCandidates = [`${cf.labelEn || ''} ${cf.labelAr || ''}`, cf.labelEn || '', cf.labelAr || '', cf.fieldId || ''];
+                      for (const rc of rawCandidates) {
+                        if (isExcludedLabel(rc)) return false;
+                      }
+                      return true;
+                    }));
+                } catch (e) {
+                  // ignore
+                }
+                setCustomFilterOpen(true);
+              }}
+              className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-3 py-1 text-sm font-semibold text-white shadow-sm hover:bg-brand-600"
+            >
+              Filter Settings
+            </button>
+            
             <div className="text-sm text-gray-500">{elapsed ? `Last Update: ${elapsed}` : 'Not updated yet'}</div>
           </div>
         </div>
@@ -1497,7 +2215,8 @@ const [jobAnchorEl, setJobAnchorEl] = useState<HTMLElement | null>(null);
                 </div>
               </div>
             )}
-
+ {/* Filter Settings button above the table */}
+                {/* removed in-body toolbar button; moved to ComponentCard header actions */}
             {error && (
               <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg">
                 {String(error)}
@@ -1543,6 +2262,8 @@ const [jobAnchorEl, setJobAnchorEl] = useState<HTMLElement | null>(null);
                 </div>
               </div>
             )}
+
+            {/* Filter Settings moved to card header actions */}
 
             {/* Material React Table */}
             <ThemeProvider theme={muiTheme}>
@@ -1606,6 +2327,7 @@ const [jobAnchorEl, setJobAnchorEl] = useState<HTMLElement | null>(null);
         </div>
       )}
 
+    
       {/* Photo Preview Modal */}
       {previewPhoto && (
         <div
@@ -1628,6 +2350,19 @@ const [jobAnchorEl, setJobAnchorEl] = useState<HTMLElement | null>(null);
           </div>
         </div>
       )}
+      {/* Custom Filter Modal */}
+      <CustomFilterModal
+        open={customFilterOpen}
+        onClose={() => setCustomFilterOpen(false)}
+        jobPositions={jobPositions}
+        applicants={applicants}
+        jobPositionMap={jobPositionMap}
+        customFilters={customFilters}
+        setCustomFilters={setCustomFilters}
+        columnFilters={columnFilters}
+        setColumnFilters={setColumnFilters}
+        genderOptions={genderOptions}
+      />
     </>
   );
 };

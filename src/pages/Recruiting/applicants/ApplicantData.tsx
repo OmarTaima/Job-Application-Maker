@@ -376,6 +376,25 @@ const ApplicantData = () => {
     return resolved || '';
   };
 
+  // Clear persisted localStorage state when navigating away from Applicants/ApplicantData pages
+  useEffect(() => {
+    return () => {
+      // run after navigation completes so pathname reflects destination
+      setTimeout(() => {
+        try {
+          const p = window.location.pathname || '';
+          const inApplicantsPages = p.startsWith('/applicant') || p.startsWith('/applicants');
+          if (!inApplicantsPages) {
+            try { localStorage.removeItem('applicants_table_state'); } catch (e) { /* ignore */ }
+            try { sessionStorage.removeItem('applicants_table_state'); } catch (e) { /* ignore */ }
+          }
+        } catch (e) {
+          // ignore
+        }
+      }, 0);
+    };
+  }, []);
+
   // Prefill interview form location from the best available company address
   const fillCompanyAddress = (): boolean => {
     try {
