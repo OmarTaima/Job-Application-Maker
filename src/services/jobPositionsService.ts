@@ -177,24 +177,50 @@ class JobPositionsService {
   /**
    * Get all job positions
    */
-  async getAllJobPositions(companyId?: string[]): Promise<JobPosition[]> {
+  async getAllJobPositions(
+    companyIdOrOptions?:
+      | string[]
+      | string
+      | { companyId?: string[] | string; deleted?: boolean }
+  ): Promise<JobPosition[]> {
     try {
       const params: any = {};
-      if (companyId && companyId.length > 0) {
-        // Normalize incoming companyId to an array of ids (guard against a comma-joined string)
-        const ids = Array.isArray(companyId)
-          ? companyId
-          : String(companyId).split(",").map((s) => s.trim()).filter(Boolean);
 
-        if (ids.length === 1) {
-          params.companyId = ids[0];
-        } else if (ids.length > 1) {
-          // Send as companyIds array so the backend receives multiple ids correctly
-          params.companyIds = ids;
+      // Determine shape: either an array/string of ids, or an options object
+      let ids: string[] | undefined;
+      let deleted = false;
+
+      if (Array.isArray(companyIdOrOptions)) {
+        ids = companyIdOrOptions as string[];
+      } else if (
+        companyIdOrOptions &&
+        typeof companyIdOrOptions === "object"
+      ) {
+        const opts: any = companyIdOrOptions;
+        if (opts.companyId) {
+          ids = Array.isArray(opts.companyId)
+            ? opts.companyId
+            : String(opts.companyId)
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean);
         }
+        if (opts.deleted !== undefined) deleted = !!opts.deleted;
+      } else if (companyIdOrOptions !== undefined) {
+        // single string id or comma separated
+        ids = String(companyIdOrOptions)
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
       }
-      // Always request only non-deleted job positions
-      params.deleted = "false";
+
+      if (ids && ids.length > 0) {
+        if (ids.length === 1) params.companyId = ids[0];
+        else params.companyIds = ids;
+      }
+
+      params.deleted = deleted ? "true" : "false";
+
       const response = await axios.get("/job-positions", { params });
       return response.data.data;
     } catch (error: any) {
