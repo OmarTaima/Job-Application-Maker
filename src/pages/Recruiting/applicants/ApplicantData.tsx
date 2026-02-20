@@ -20,7 +20,11 @@ import {
   useUpdateInterviewStatus,
   useAddComment,
   useSendEmail,
+  useMarkApplicantSeen,
+  applicantsKeys,
 } from '../../../hooks/queries';
+import { useAuth } from '../../../context/AuthContext';
+import { useQueryClient } from '@tanstack/react-query';
 import type {
   Applicant,
   UpdateStatusRequest,
@@ -174,6 +178,51 @@ const ApplicantData = () => {
   const updateInterviewMutation = useUpdateInterviewStatus();
   const addCommentMutation = useAddComment();
   const sendEmailMutation = useSendEmail();
+  const markSeenMutation = useMarkApplicantSeen();
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+
+  // mark as seen by current user when applicant is viewed
+  useEffect(() => {
+    if (!applicant || !user || !user._id) return;
+    const userId = user._id as string;
+    const seenBy = (applicant as any).seenBy ?? [];
+    if (!Array.isArray(seenBy) || !seenBy.includes(userId)) {
+      // optimistic update of detail cache
+      try {
+        queryClient.setQueryData(applicantsKeys.detail(applicant._id), (old: any) => {
+          if (!old) return old;
+          const cur = old.seenBy ?? [];
+          if (Array.isArray(cur) && cur.includes(userId)) return old;
+          return { ...old, seenBy: Array.isArray(cur) ? [...cur, userId] : [userId] };
+        });
+
+        // also optimistically update any applicants list queries so the list view reflects seen immediately
+        try {
+          queryClient.setQueriesData({ queryKey: applicantsKeys.lists() }, (old: any) => {
+            if (!old) return old;
+            const addSeenTo = (arr: any[]) => arr.map((a: any) => {
+              if (!a) return a;
+              if ((a._id || a.id) !== (applicant._id || applicant.id)) return a;
+              const cur = a.seenBy ?? [];
+              if (Array.isArray(cur) && cur.includes(userId)) return a;
+              return { ...a, seenBy: Array.isArray(cur) ? [...cur, userId] : [userId] };
+            });
+
+            if (Array.isArray(old)) return addSeenTo(old);
+            if (old.data && Array.isArray(old.data)) return { ...old, data: addSeenTo(old.data) };
+            return old;
+          });
+        } catch (e) {
+          // ignore list update failures
+        }
+
+        markSeenMutation.mutate(applicant._id);
+      } catch (e) {
+        // ignore errors silently
+      }
+    }
+  }, [applicant?._id, (applicant as any)?.seenBy?.length, user?._id]);
 
   // Interview-related UI state and form helpers
 

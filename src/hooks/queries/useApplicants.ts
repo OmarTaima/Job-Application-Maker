@@ -107,6 +107,30 @@ export function useUpdateApplicant() {
   });
 }
 
+// Mark applicant as seen
+export function useMarkApplicantSeen() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => applicantsService.markAsSeen(id),
+    onMutate: async (id: string) => {
+      await queryClient.cancelQueries({ queryKey: applicantsKeys.detail(id) });
+      const previous = queryClient.getQueryData(applicantsKeys.detail(id));
+      // optimistic update is handled by caller since we don't have user id here
+      return { previous };
+    },
+    onError: (_err, id, context: any) => {
+      if (context?.previous) {
+        queryClient.setQueryData(applicantsKeys.detail(id as string), context.previous);
+      }
+    },
+    onSuccess: (_data, id) => {
+      queryClient.invalidateQueries({ queryKey: applicantsKeys.detail(id as string) });
+      queryClient.invalidateQueries({ queryKey: applicantsKeys.lists() });
+    },
+  });
+}
+
 // Update applicant status
 export function useUpdateApplicantStatus() {
   const queryClient = useQueryClient();

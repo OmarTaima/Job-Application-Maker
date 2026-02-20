@@ -463,6 +463,22 @@ class ApplicantsService {
       );
     }
   }
+
+  /**
+   * Mark an applicant as seen by the current authenticated user.
+   * Backend uses $addToSet so the operation is idempotent.
+   */
+  async markAsSeen(applicantId: string): Promise<void> {
+    try {
+      await axios.patch(`/applicants/${applicantId}/seen`);
+    } catch (error: any) {
+      throw new ApiError(
+        getErrorMessage(error),
+        error.response?.status,
+        error.response?.data?.details
+      );
+    }
+  }
 }
 
 export const applicantsService = new ApplicantsService();

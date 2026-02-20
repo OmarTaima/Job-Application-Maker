@@ -30,6 +30,7 @@ const navItems: NavItem[] = [
     subItems: [
       { name: "Create Company", path: "/recruiting", pro: false },
       { name: "Companies", path: "/companies", pro: false },
+      // { name: "Company Settings", path: "/recruiting/company-settings", pro: false },
     ],
   },
   {
@@ -172,6 +173,7 @@ const AppSidebar: React.FC = () => {
         if (subItem.path === "/applicants") return hasPermission("Applicant Management", "read");
         if (subItem.path === "/recruiting") return hasPermission("Company Management", "create");
         if (subItem.path === "/companies") return hasPermission("Company Management", "read");
+        if (subItem.path === "/recruiting/company-settings") return hasPermission("Company Management", "write");
         if (subItem.path === "/create-job") return hasPermission("Job Position Management", "create");
         if (subItem.path === "/jobs") return hasPermission("Job Position Management", "read");
         if (subItem.path === "/users") return hasPermission("User Management", "read");

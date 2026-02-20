@@ -48,6 +48,34 @@ export interface CompanyResponse {
   data: Company;
 }
 
+export interface CompanySettings {
+  _id: string;
+  company: string;
+  mailSettings?: {
+    availableMails?: string[];
+    defaultMail?: string | null;
+    companyDomain?: string | null;
+  };
+  createdAt?: string;
+}
+
+export interface CreateCompanySettingsRequest {
+  company: string;
+  mailSettings?: {
+    availableMails?: string[];
+    defaultMail?: string | null;
+    companyDomain?: string | null;
+  };
+}
+
+export interface UpdateCompanySettingsRequest {
+  mailSettings?: {
+    availableMails?: string[];
+    defaultMail?: string | null;
+    companyDomain?: string | null;
+  };
+}
+
 // API Error class
 export class ApiError extends Error {
   constructor(
@@ -208,6 +236,52 @@ export const companiesService = {
       const companies = await this.getAllCompanies(companyId);
       // Fallback: if server ignored companyId, still filter locally
       return companies.filter(company => companyId.includes(company._id));
+    } catch (error: any) {
+      throw new ApiError(
+        getErrorMessage(error),
+        error.response?.status,
+        error.response?.data?.details
+      );
+    }
+  },
+
+  // Company settings endpoints
+  async getCompanySettingsByCompany(companyId: string): Promise<CompanySettings | null> {
+    try {
+      const response = await axios.get<any>(`/company`, { params: { company: companyId } });
+      // server may return single settings or array; normalize
+      let data = response.data?.data ?? response.data ?? null;
+      if (Array.isArray(data)) data = data[0] ?? null;
+      if (!data) return null;
+      return data as CompanySettings;
+    } catch (error: any) {
+      throw new ApiError(
+        getErrorMessage(error),
+        error.response?.status,
+        error.response?.data?.details
+      );
+    }
+  },
+
+  async createCompanySettings(payload: CreateCompanySettingsRequest): Promise<CompanySettings> {
+    try {
+      const response = await axios.post<any>(`/company`, payload);
+      const data = response.data?.data ?? response.data ?? null;
+      return data as CompanySettings;
+    } catch (error: any) {
+      throw new ApiError(
+        getErrorMessage(error),
+        error.response?.status,
+        error.response?.data?.details
+      );
+    }
+  },
+
+  async updateCompanySettings(id: string, payload: UpdateCompanySettingsRequest): Promise<CompanySettings> {
+    try {
+      const response = await axios.put<any>(`/company/${id}`, payload);
+      const data = response.data?.data ?? response.data ?? null;
+      return data as CompanySettings;
     } catch (error: any) {
       throw new ApiError(
         getErrorMessage(error),

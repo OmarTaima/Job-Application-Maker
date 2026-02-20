@@ -1,9 +1,9 @@
-import Chart from "react-apexcharts";
+import { Suspense, lazy, useState } from "react";
 import { ApexOptions } from "apexcharts";
+const Chart = lazy(() => import("react-apexcharts"));
 import { Dropdown } from "../ui/dropdown/Dropdown";
 import { DropdownItem } from "../ui/dropdown/DropdownItem";
 import { MoreDotIcon } from "../../icons";
-import { useState } from "react";
 
 export default function MonthlySalesChart() {
   const options: ApexOptions = {
@@ -133,7 +133,9 @@ export default function MonthlySalesChart() {
 
       <div className="max-w-full overflow-x-auto custom-scrollbar">
         <div className="-ml-5 min-w-[650px] xl:min-w-full pl-2">
-          <Chart options={options} series={series} type="bar" height={180} />
+          <Suspense fallback={<div className="h-[180px] w-full bg-gray-50 dark:bg-gray-800"/>}>
+            <Chart options={options} series={series} type="bar" height={180} />
+          </Suspense>
         </div>
       </div>
     </div>

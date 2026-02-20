@@ -1,6 +1,7 @@
-import Chart from "react-apexcharts";
+import { Suspense, lazy } from "react";
 import { ApexOptions } from "apexcharts";
 import ChartTab from "../common/ChartTab";
+const Chart = lazy(() => import("react-apexcharts"));
 
 export default function StatisticsChart() {
   const options: ApexOptions = {
@@ -129,7 +130,9 @@ export default function StatisticsChart() {
 
       <div className="max-w-full overflow-x-auto custom-scrollbar">
         <div className="min-w-[1000px] xl:min-w-full">
-          <Chart options={options} series={series} type="area" height={310} />
+          <Suspense fallback={<div className="h-[310px] w-full bg-gray-50 dark:bg-gray-800"/>}>
+            <Chart options={options} series={series} type="area" height={310} />
+          </Suspense>
         </div>
       </div>
     </div>

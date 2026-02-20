@@ -1,5 +1,6 @@
-import Chart from "react-apexcharts";
+import { Suspense, lazy } from "react";
 import { ApexOptions } from "apexcharts";
+const Chart = lazy(() => import("react-apexcharts"));
 
 export default function BarChartOne() {
   const options: ApexOptions = {
@@ -90,7 +91,9 @@ export default function BarChartOne() {
   return (
     <div className="max-w-full overflow-x-auto custom-scrollbar">
       <div id="chartOne" className="min-w-[1000px]">
-        <Chart options={options} series={series} type="bar" height={180} />
+        <Suspense fallback={<div className="h-[180px] w-full bg-gray-50 dark:bg-gray-800"/>}>
+          <Chart options={options} series={series} type="bar" height={180} />
+        </Suspense>
       </div>
     </div>
   );

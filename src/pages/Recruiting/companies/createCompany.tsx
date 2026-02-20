@@ -102,6 +102,7 @@ export default function RecruitingDashboard() {
  
 
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  
 
   const uploadToCloudinary = async (file: File) => {
     const CLOUD_NAME = (import.meta.env.VITE_CLOUDINARY_CLOUD_NAME as string) || "175237158579478";
@@ -436,6 +437,8 @@ export default function RecruitingDashboard() {
               {isSubmitting ? "Creating..." : "Create Company"}
             </button>
           </div>
+
+          {/* Company settings are configured in a separate page under Company Management */}
 
         
         </form>

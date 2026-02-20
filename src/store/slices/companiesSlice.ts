@@ -1,5 +1,6 @@
 import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
 import { companiesService } from "../../services/companiesService";
+import type { CompanySettings, CreateCompanySettingsRequest, UpdateCompanySettingsRequest } from "../../services/companiesService";
 
 export interface Company {
   _id: string;
@@ -40,6 +41,7 @@ export interface UpdateCompanyRequest {
 interface CompaniesState {
   companies: Company[];
   currentCompany: Company | null;
+  companySettings: CompanySettings | null;
   loading: boolean;
   error: string | null;
   isFetched: boolean;
@@ -48,10 +50,48 @@ interface CompaniesState {
 const initialState: CompaniesState = {
   companies: [],
   currentCompany: null,
+  companySettings: null,
   loading: false,
   error: null,
   isFetched: false,
 };
+
+// Company settings thunks
+export const fetchCompanySettings = createAsyncThunk(
+  "companies/fetchSettings",
+  async (companyId: string, { rejectWithValue }) => {
+    try {
+      return await companiesService.getCompanySettingsByCompany(companyId);
+    } catch (error: any) {
+      return rejectWithValue(error.message || "Failed to fetch company settings");
+    }
+  }
+);
+
+export const createCompanySettings = createAsyncThunk(
+  "companies/createSettings",
+  async (payload: CreateCompanySettingsRequest, { rejectWithValue }) => {
+    try {
+      return await companiesService.createCompanySettings(payload);
+    } catch (error: any) {
+      return rejectWithValue(error.message || "Failed to create company settings");
+    }
+  }
+);
+
+export const updateCompanySettings = createAsyncThunk(
+  "companies/updateSettings",
+  async (
+    { id, data }: { id: string; data: UpdateCompanySettingsRequest },
+    { rejectWithValue }
+  ) => {
+    try {
+      return await companiesService.updateCompanySettings(id, data);
+    } catch (error: any) {
+      return rejectWithValue(error.message || "Failed to update company settings");
+    }
+  }
+);
 
 // Async thunks
 export const fetchCompanies = createAsyncThunk(
@@ -155,6 +195,52 @@ const companiesSlice = createSlice({
         }
       )
       .addCase(fetchCompanyById.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      })
+      // company settings
+      .addCase(fetchCompanySettings.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(
+        fetchCompanySettings.fulfilled,
+        (state, action: PayloadAction<CompanySettings | null>) => {
+          state.loading = false;
+          state.companySettings = action.payload;
+        }
+      )
+      .addCase(fetchCompanySettings.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      })
+      .addCase(createCompanySettings.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(
+        createCompanySettings.fulfilled,
+        (state, action: PayloadAction<CompanySettings>) => {
+          state.loading = false;
+          state.companySettings = action.payload;
+        }
+      )
+      .addCase(createCompanySettings.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      })
+      .addCase(updateCompanySettings.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(
+        updateCompanySettings.fulfilled,
+        (state, action: PayloadAction<CompanySettings>) => {
+          state.loading = false;
+          state.companySettings = action.payload;
+        }
+      )
+      .addCase(updateCompanySettings.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload as string;
       })

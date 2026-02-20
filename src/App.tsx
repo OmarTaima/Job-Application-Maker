@@ -1,40 +1,42 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router";
-import SignIn from "./pages/AuthPages/SignIn";
-import SignUp from "./pages/AuthPages/SignUp";
-import NotFound from "./pages/OtherPage/NotFound";
-import UserProfiles from "./pages/UserProfiles";
-import Videos from "./pages/UiElements/Videos";
-import Images from "./pages/UiElements/Images";
-import Alerts from "./pages/UiElements/Alerts";
-import Badges from "./pages/UiElements/Badges";
-import Avatars from "./pages/UiElements/Avatars";
-import Buttons from "./pages/UiElements/Buttons";
-import LineChart from "./pages/Charts/LineChart";
-import BarChart from "./pages/Charts/BarChart";
-import Calendar from "./pages/Calendar";
-import BasicTables from "./pages/Tables/BasicTables";
-import FormElements from "./pages/Forms/FormElements";
-import Blank from "./pages/Blank";
-import AppLayout from "./layout/AppLayout";
+import { Suspense, lazy } from "react";
+const SignIn = lazy(() => import("./pages/AuthPages/SignIn"));
+const SignUp = lazy(() => import("./pages/AuthPages/SignUp"));
+const NotFound = lazy(() => import("./pages/OtherPage/NotFound"));
+const UserProfiles = lazy(() => import("./pages/UserProfiles"));
+const Videos = lazy(() => import("./pages/UiElements/Videos"));
+const Images = lazy(() => import("./pages/UiElements/Images"));
+const Alerts = lazy(() => import("./pages/UiElements/Alerts"));
+const Badges = lazy(() => import("./pages/UiElements/Badges"));
+const Avatars = lazy(() => import("./pages/UiElements/Avatars"));
+const Buttons = lazy(() => import("./pages/UiElements/Buttons"));
+const LineChart = lazy(() => import("./pages/Charts/LineChart"));
+const BarChart = lazy(() => import("./pages/Charts/BarChart"));
+const Calendar = lazy(() => import("./pages/Calendar"));
+const BasicTables = lazy(() => import("./pages/Tables/BasicTables"));
+const FormElements = lazy(() => import("./pages/Forms/FormElements"));
+const Blank = lazy(() => import("./pages/Blank"));
+const AppLayout = lazy(() => import("./layout/AppLayout"));
 import { ScrollToTop } from "./components/common/ScrollToTop";
-import Home from "./pages/Dashboard/Home";
-import RecruitingDashboard from "./pages/Recruiting/companies/createCompany";
-import Companies from "./pages/Recruiting/companies/Companies";
-import PreviewCompany from "./pages/Recruiting/companies/PreviewCompany";
-import Jobs from "./pages/Recruiting/jobs/Jobs";
-import CreateJob from "./pages/Recruiting/jobs/CreateJob";
-import PreviewJob from "./pages/Recruiting/jobs/PreviewJob";
-import Users from "./pages/Recruiting/users/Users";
-import EditUser from "./pages/Recruiting/users/EditUser";
-import Permissions from "./pages/Recruiting/roles/Permissions";
-import PreviewRole from "./pages/Recruiting/roles/PreviewRole";
-import PreviewUser from "./pages/Recruiting/users/PreviewUser";
-import RecommendedFields from "./pages/Recruiting/systemSettings/RecommendedFields";
-import SavedFields from "./pages/Recruiting/savedFields/SavedFields";
-import SavedFieldsPreview from "./pages/Recruiting/savedFields/savedfieldspreview";
-import CreateSavedField from "./pages/Recruiting/savedFields/createSavedfield";
-import Applicants from "./pages/Recruiting/applicants/Applicants";
-import ApplicantData from "./pages/Recruiting/applicants/ApplicantData";
+const Home = lazy(() => import("./pages/Dashboard/Home"));
+const RecruitingDashboard = lazy(() => import("./pages/Recruiting/companies/createCompany"));
+const Companies = lazy(() => import("./pages/Recruiting/companies/Companies"));
+const PreviewCompany = lazy(() => import("./pages/Recruiting/companies/PreviewCompany"));
+const CompanySettingsPage = lazy(() => import("./pages/Recruiting/companies/companysettings"));
+const Jobs = lazy(() => import("./pages/Recruiting/jobs/Jobs"));
+const CreateJob = lazy(() => import("./pages/Recruiting/jobs/CreateJob"));
+const PreviewJob = lazy(() => import("./pages/Recruiting/jobs/PreviewJob"));
+const Users = lazy(() => import("./pages/Recruiting/users/Users"));
+const EditUser = lazy(() => import("./pages/Recruiting/users/EditUser"));
+const Permissions = lazy(() => import("./pages/Recruiting/roles/Permissions"));
+const PreviewRole = lazy(() => import("./pages/Recruiting/roles/PreviewRole"));
+const PreviewUser = lazy(() => import("./pages/Recruiting/users/PreviewUser"));
+const RecommendedFields = lazy(() => import("./pages/Recruiting/systemSettings/RecommendedFields"));
+const SavedFields = lazy(() => import("./pages/Recruiting/savedFields/SavedFields"));
+const SavedFieldsPreview = lazy(() => import("./pages/Recruiting/savedFields/savedfieldspreview"));
+const CreateSavedField = lazy(() => import("./pages/Recruiting/savedFields/createSavedfield"));
+const Applicants = lazy(() => import("./pages/Recruiting/applicants/Applicants"));
+const ApplicantData = lazy(() => import("./pages/Recruiting/applicants/ApplicantData"));
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import PermissionProtectedRoute from "./components/auth/PermissionProtectedRoute";
 
@@ -43,7 +45,8 @@ export default function App() {
     <>
       <Router>
         <ScrollToTop />
-        <Routes>
+        <Suspense fallback={<div className="min-h-screen" />}>
+          <Routes>
           {/* Public Routes */}
           <Route path="/signin" element={<SignIn />} />
           <Route path="/signup" element={<SignUp />} />
@@ -60,6 +63,7 @@ export default function App() {
               <Route path="create-job" element={<CreateJob />} />
               <Route path="job/:jobId" element={<PreviewJob />} />
               <Route path="company/:companyId" element={<PreviewCompany />} />
+              <Route path="recruiting/company-settings" element={<CompanySettingsPage />} />
               <Route
                 path="company/:companyId/create-job"
                 element={<CreateJob />}
@@ -121,7 +125,8 @@ export default function App() {
 
           {/* Fallback Route */}
           <Route path="*" element={<NotFound />} />
-        </Routes>
+          </Routes>
+        </Suspense>
       </Router>
     </>
   );

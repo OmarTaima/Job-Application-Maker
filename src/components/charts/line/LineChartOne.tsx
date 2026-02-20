@@ -1,5 +1,6 @@
-import Chart from "react-apexcharts";
+import { Suspense, lazy } from "react";
 import { ApexOptions } from "apexcharts";
+const Chart = lazy(() => import("react-apexcharts"));
 
 export default function LineChartOne() {
   const options: ApexOptions = {
@@ -113,7 +114,9 @@ export default function LineChartOne() {
   return (
     <div className="max-w-full overflow-x-auto custom-scrollbar">
       <div id="chartEight" className="min-w-[1000px]">
-        <Chart options={options} series={series} type="area" height={310} />
+        <Suspense fallback={<div className="h-[310px] w-full bg-gray-50 dark:bg-gray-800" />}> 
+          <Chart options={options} series={series} type="area" height={310} />
+        </Suspense>
       </div>
     </div>
   );

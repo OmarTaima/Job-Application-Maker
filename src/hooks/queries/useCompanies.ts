@@ -14,6 +14,8 @@ export const companiesKeys = {
   list: (companyId?: string[]) => [...companiesKeys.lists(), { companyId }] as const,
   details: () => [...companiesKeys.all, "detail"] as const,
   detail: (id: string) => [...companiesKeys.details(), id] as const,
+  settings: () => [...companiesKeys.all, "settings"] as const,
+  setting: (companyId: string) => [...companiesKeys.settings(), companyId] as const,
 };
 
 // Get all companies (optionally filtered by company IDs)
@@ -58,6 +60,45 @@ export function useCompany(id: string, options?: { enabled?: boolean }) {
     },
     enabled: options?.enabled !== undefined ? options.enabled : !!id,
     staleTime: 5 * 60 * 1000,
+  });
+}
+
+// Company settings: fetch by company id
+export function useCompanySettings(companyId: string | undefined, options?: { enabled?: boolean }) {
+  return useQuery<any>({
+    queryKey: companiesKeys.setting(companyId ?? ""),
+    queryFn: async () => {
+      if (!companyId) return null;
+      return companiesService.getCompanySettingsByCompany(companyId);
+    },
+    enabled: options?.enabled !== undefined ? options.enabled && !!companyId : !!companyId,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useCreateCompanySettings() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: any) => companiesService.createCompanySettings(data),
+    onSuccess: (data: any) => {
+      if (data && data.company) {
+        queryClient.setQueryData(companiesKeys.setting(data.company), data);
+      }
+    },
+  });
+}
+
+export function useUpdateCompanySettings() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: any }) => companiesService.updateCompanySettings(id, data),
+    onSuccess: (data: any) => {
+      if (data && data.company) {
+        queryClient.setQueryData(companiesKeys.setting(data.company), data);
+      }
+    },
   });
 }
 

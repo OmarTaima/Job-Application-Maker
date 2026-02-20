@@ -345,7 +345,6 @@ export default function Jobs() {
       state: { job }
     });
   };
-  console.log(jobPositions)
   return (
     <div className="space-y-6">
       <PageMeta

@@ -1,6 +1,6 @@
-import Chart from "react-apexcharts";
+import { Suspense, lazy, useState } from "react";
 import { ApexOptions } from "apexcharts";
-import { useState } from "react";
+const Chart = lazy(() => import("react-apexcharts"));
 import { Dropdown } from "../ui/dropdown/Dropdown";
 import { DropdownItem } from "../ui/dropdown/DropdownItem";
 import { MoreDotIcon } from "../../icons";
@@ -101,12 +101,14 @@ export default function MonthlyTarget() {
         </div>
         <div className="relative ">
           <div className="max-h-[330px]" id="chartDarkStyle">
-            <Chart
-              options={options}
-              series={series}
-              type="radialBar"
-              height={330}
-            />
+            <Suspense fallback={<div className="h-[330px] w-full bg-gray-50 dark:bg-gray-800"/>}>
+              <Chart
+                options={options}
+                series={series}
+                type="radialBar"
+                height={330}
+              />
+            </Suspense>
           </div>
 
           <span className="absolute left-1/2 top-full -translate-x-1/2 -translate-y-[95%] rounded-full bg-success-50 px-3 py-1 text-xs font-medium text-success-600 dark:bg-success-500/15 dark:text-success-500">

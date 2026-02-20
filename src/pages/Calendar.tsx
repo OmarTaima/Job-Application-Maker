@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
-import FullCalendar from "@fullcalendar/react";
+import React, { Suspense, lazy } from "react";
+const FullCalendar = lazy(() => import("@fullcalendar/react"));
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
@@ -23,7 +24,7 @@ const Calendar: React.FC = () => {
   const [eventEndDate, setEventEndDate] = useState("");
   const [eventLevel, setEventLevel] = useState("");
   const [events, setEvents] = useState<CalendarEvent[]>([]);
-  const calendarRef = useRef<FullCalendar>(null);
+  const calendarRef = useRef<any>(null);
   const { isOpen, openModal, closeModal } = useModal();
 
   const calendarsEvents = {
@@ -123,7 +124,8 @@ const Calendar: React.FC = () => {
       />
       <div className="rounded-2xl border  border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
         <div className="custom-calendar">
-          <FullCalendar
+          <Suspense fallback={<div className="h-[420px] w-full bg-gray-50 dark:bg-gray-800" />}>
+            <FullCalendar
             ref={calendarRef}
             plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
             initialView="dayGridMonth"
@@ -143,7 +145,8 @@ const Calendar: React.FC = () => {
                 click: openModal,
               },
             }}
-          />
+            />
+          </Suspense>
         </div>
         <Modal
           isOpen={isOpen}

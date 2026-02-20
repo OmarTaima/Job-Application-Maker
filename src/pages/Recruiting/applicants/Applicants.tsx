@@ -1,4 +1,119 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+// simple in-memory cache for compressed thumbnails
+const _thumbnailCache: Map<string, string> = new Map();
+
+async function createCompressedDataUrl(src: string, maxBytes = 5120): Promise<string> {
+  if (!src) return src;
+  if (_thumbnailCache.has(src)) return _thumbnailCache.get(src) as string;
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'Anonymous';
+    let resolved = false;
+
+    const finish = (result: string) => {
+      if (resolved) return;
+      resolved = true;
+      try { _thumbnailCache.set(src, result); } catch (e) {}
+      resolve(result);
+    };
+
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return finish(src);
+        // scale down to a reasonable thumbnail size
+        const MAX_DIM = 160;
+        let { width, height } = img;
+        const ratio = Math.max(width / MAX_DIM, height / MAX_DIM, 1);
+        canvas.width = Math.max(32, Math.round(width / ratio));
+        canvas.height = Math.max(32, Math.round(height / ratio));
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+        const tryQualities = (qualities: number[]) => {
+          for (const q of qualities) {
+            try {
+              const dataUrl = canvas.toDataURL('image/jpeg', q);
+              const b64 = dataUrl.split(',')[1] || '';
+              const bytes = Math.ceil((b64.length * 3) / 4);
+              if (bytes <= maxBytes) return dataUrl;
+            } catch (e) {
+              // toDataURL may throw on cross-origin images
+              return null;
+            }
+          }
+          return null;
+        };
+
+        let dataUrl = tryQualities([0.9,0.8,0.7,0.6,0.5,0.4,0.3,0.2,0.15,0.1]);
+        if (dataUrl) return finish(dataUrl);
+
+        // progressively downscale and retry
+        let w = canvas.width;
+        let h = canvas.height;
+        while ((w > 32 || h > 32) && !dataUrl) {
+          w = Math.max(24, Math.floor(w * 0.75));
+          h = Math.max(24, Math.floor(h * 0.75));
+          canvas.width = w; canvas.height = h;
+          ctx.drawImage(img, 0, 0, w, h);
+          dataUrl = tryQualities([0.6,0.4,0.25,0.15,0.1]);
+        }
+
+        if (dataUrl) return finish(dataUrl);
+        // fallback to original src
+        finish(src);
+      } catch (e) {
+        finish(src);
+      }
+    };
+
+    img.onerror = () => finish(src);
+    // attempt load; if the image is data: or same-origin, this will work. crossOrigin may still fail for some hosts.
+    try { img.src = src; } catch (e) { finish(src); }
+    // safety timeout: resolve with original after 1500ms
+    setTimeout(() => finish(src), 1500);
+  });
+}
+
+function ImageThumbnail({ src, alt }: { src?: string | null; alt?: string }) {
+  const [thumb, setThumb] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    if (!src) {
+      setThumb(null);
+      return () => { mounted = false; };
+    }
+    if (typeof src === 'string' && src.startsWith('data:')) {
+      setThumb(src);
+      return () => { mounted = false; };
+    }
+
+    (async () => {
+      try {
+        const compressed = await createCompressedDataUrl(src as string, 5120);
+        if (mounted) setThumb(compressed || src as string);
+      } catch (e) {
+        if (mounted) setThumb(src as string);
+      }
+    })();
+
+    return () => { mounted = false; };
+  }, [src]);
+
+  if (!thumb) {
+    return (
+      <div className="flex h-full w-full items-center justify-center text-sm font-semibold text-gray-500 dark:text-gray-400">
+        {(alt && alt.charAt(0)) ? alt.charAt(0).toUpperCase() : '-'}
+      </div>
+    );
+  }
+
+  return (
+    <img loading="lazy" src={thumb} alt={alt || ''} className="h-full w-full object-cover" />
+  );
+}
 import Swal from "sweetalert2";
 import { useNavigate } from "react-router";
 import {
@@ -1264,10 +1379,9 @@ const {
             }}
           >
             {row.original.profilePhoto ? (
-              <img
+              <ImageThumbnail
                 src={row.original.profilePhoto}
                 alt={row.original.fullName}
-                className="h-full w-full object-cover"
               />
             ) : (
               <div className="flex h-full w-full items-center justify-center text-sm font-semibold text-gray-500 dark:text-gray-400">
@@ -1284,7 +1398,22 @@ const {
         size: 150,
         enableColumnFilter: true,
         enableSorting: false,
+        Cell: ({ row }: { row: { original: Applicant } }) => {
+          const orig: any = row.original;
+          const seenBy = orig?.seenBy ?? [];
+          const currentUserId = (user as any)?._id || (user as any)?.id || undefined;
+          const isSeen = Array.isArray(seenBy) && seenBy.some((s: any) => {
+            if (!s) return false;
+            if (typeof s === 'string') return s === currentUserId;
+            return (s._id === currentUserId) || (s.id === currentUserId);
+          });
 
+          return (
+            <div className={isSeen ? 'text-gray-400' : 'text-gray-900'}>
+              {orig?.fullName || '-'}
+            </div>
+          );
+        }
       },
       {
         accessorKey: "email",
