@@ -623,9 +623,8 @@ export default function ApplicantsMobilePage(): JSX.Element {
                         })()
                       }
                       <div className="mt-3 flex items-center gap-2">
-                        <a onClick={(e) => e.stopPropagation()} href={`mailto:${a.email}`} className="px-3 py-1 bg-white/90 border border-gray-200 rounded text-xs shadow-sm">✉️ Email</a>
-                        {a.phone ? <a onClick={(e) => e.stopPropagation()} href={`tel:${a.phone}`} className="px-3 py-1 bg-white/90 border border-gray-200 rounded text-xs shadow-sm">📞 Call</a> : null}
-                        <button onClick={(e) => { e.stopPropagation(); if (a && a._id) { queryClient.setQueryData(applicantsKeys.detail(a._id), a as any); navigate(`/applicant/${a._id}`, { state: { applicant: a } }); } }} className="ml-auto px-3 py-1 bg-primary-600 text-white rounded text-xs shadow">View</button>
+                        <a onClick={(e) => e.stopPropagation()} href={`mailto:${a.email}`} className="px-3 py-1 bg-white/90 border border-gray-200 rounded text-xs shadow-sm">Email</a>
+                        {a.phone ? <a onClick={(e) => e.stopPropagation()} href={`tel:${a.phone}`} className="px-3 py-1 bg-white/90 border border-gray-200 rounded text-xs shadow-sm">Call</a> : null}
                       </div>
                     </div>
                   </div>
