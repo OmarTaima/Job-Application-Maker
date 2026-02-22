@@ -13,6 +13,9 @@ import 'quill/dist/quill.snow.css';
 function QuillEditor({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const quillRef = useRef<any>(null);
+  const onChangeRef = useRef<(v: string) => void>(onChange);
+
+  useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
 
   useEffect(() => {
     let mounted = true;
@@ -26,7 +29,8 @@ function QuillEditor({ value, onChange }: { value: string; onChange: (v: string)
         modules: { toolbar: [['bold','italic','underline'], [{ list: 'ordered' }, { list: 'bullet' }], ['link']] },
       });
       quillRef.current.root.innerHTML = value || '';
-      quillRef.current.on('text-change', () => onChange(quillRef.current.root.innerHTML));
+      const handleChange = () => onChangeRef.current(quillRef.current.root.innerHTML);
+      quillRef.current.on('text-change', handleChange);
     })();
 
     return () => {
@@ -184,17 +188,15 @@ const BulkMessageModal = ({
         const seen = new Set<string>();
         availableCandidates.forEach((mitem: any) => {
           let email = '';
-          let name = '';
           if (!mitem) return;
           if (typeof mitem === 'string') email = String(mitem).trim();
           else if (typeof mitem === 'object') {
             email = String(mitem.email || mitem.address || mitem.value || mitem.addressEmail || mitem.contact || '').trim();
-            name = String(mitem.name || mitem.label || mitem.displayName || '').trim();
           }
           if (!email) return;
           if (seen.has(email)) return;
           seen.add(email);
-          deduped.push({ value: email, label: name ? `${name} <${email}>` : email });
+          deduped.push({ value: email, label: email });
         });
 
         // also check nested 'company' wrapper which some responses include (if we normalized earlier this may be unnecessary)
@@ -228,16 +230,9 @@ const BulkMessageModal = ({
 
         // fallback to company contactEmail/defaultMail if present
         const fallbackEmail = normalized?.mailSettings?.defaultMail || normalized?.defaultMail || normalized?.contactEmail || normalized?.email || '';
-        let companyName = '';
-        if (normalized?.name) {
-          if (typeof normalized.name === 'object' && 'en' in normalized.name) {
-            companyName = normalized.name.en;
-          } else if (typeof normalized.name === 'string') {
-            companyName = normalized.name;
-          }
-        }
+        
         if (fallbackEmail && !seen.has(fallbackEmail)) {
-          deduped.push({ value: fallbackEmail, label: `${companyName || 'Company'} <${fallbackEmail}>` });
+          deduped.push({ value: fallbackEmail, label: fallbackEmail });
           seen.add(fallbackEmail);
         }
 
@@ -352,7 +347,7 @@ const BulkMessageModal = ({
       // Build simple HTML email similar to MessageModal
       const batch = recipients.map((to) => ({
         to,
-        from: typeof fromAddress === 'string' && fromAddress.includes('<') ? fromAddress : `<${fromAddress}>`,
+        from: (typeof fromAddress === 'string' && fromAddress.includes('<')) ? fromAddress.replace(/.*<\s*([^>]+)\s*>.*/, '$1') : String(fromAddress).replace(/[<>]/g, ''),
         subject: form.subject,
         html: `<!doctype html><html><body>${form.body}</body></html>`,
       }));

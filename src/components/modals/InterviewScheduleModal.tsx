@@ -26,6 +26,9 @@ function escapeHtml(str: string) {
 function QuillEditor({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const quillRef = useRef<any>(null);
+  const onChangeRef = useRef<(v: string) => void>(onChange);
+
+  useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
 
   useEffect(() => {
     let mounted = true;
@@ -51,7 +54,7 @@ function QuillEditor({ value, onChange }: { value: string; onChange: (v: string)
         modules: { toolbar: [['bold', 'italic', 'underline'], [{ list: 'ordered' }, { list: 'bullet' }], ['link']] },
       });
       quillRef.current.root.innerHTML = value || '';
-      const handleChange = () => onChange(quillRef.current.root.innerHTML);
+      const handleChange = () => onChangeRef.current(quillRef.current.root.innerHTML);
       quillRef.current.on('text-change', handleChange);
     })();
 
@@ -222,26 +225,24 @@ export default function InterviewScheduleModal(props: Props) {
   const seen = new Set<string>(senderOptions.map((s) => s.value));
   availableCandidates.forEach((m: any) => {
     let email = '';
-    let name = '';
     if (!m) return;
     if (typeof m === 'string') {
       email = m;
     } else if (typeof m === 'object') {
       email = m.email || m.address || m.value || m.addressEmail || '';
-      name = m.name || m.label || m.displayName || '';
       if (!email && m.contact) email = m.contact;
     }
     email = String(email || '').trim();
     if (!email) return;
     if (seen.has(email)) return;
     seen.add(email);
-    senderOptions.push({ value: email, label: name ? `${name} <${email}>` : email });
+    senderOptions.push({ value: email, label: email });
   });
 
   // Fallback to company email if not already present
   const fallbackEmail = (companyEntity as any)?.contactEmail || (companyEntity as any)?.email || (companyEntity as any)?.contactEmail || (companyEntity as any)?.contactEmailAddress;
   if (fallbackEmail && !senderOptions.find((s) => s.value === fallbackEmail)) {
-    senderOptions.push({ value: fallbackEmail, label: `${(companyEntity as any)?.name?.en || (companyEntity as any)?.name || 'Company'} <${fallbackEmail}>` });
+    senderOptions.push({ value: fallbackEmail, label: fallbackEmail });
   }
 
   try {

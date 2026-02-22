@@ -14,6 +14,9 @@ import 'quill/dist/quill.snow.css';
 function QuillEditor({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const quillRef = useRef<any>(null);
+  const onChangeRef = useRef<(v: string) => void>(onChange);
+
+  useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
 
   useEffect(() => {
     let mounted = true;
@@ -34,7 +37,8 @@ function QuillEditor({ value, onChange }: { value: string; onChange: (v: string)
         },
       });
       quillRef.current.root.innerHTML = value || '';
-      quillRef.current.on('text-change', () => onChange(quillRef.current.root.innerHTML));
+      const handleChange = () => onChangeRef.current(quillRef.current.root.innerHTML);
+      quillRef.current.on('text-change', handleChange);
     })();
 
     return () => {
@@ -209,17 +213,15 @@ const MessageModal = ({
         const seen = new Set<string>();
         availableCandidates.forEach((mitem: any) => {
           let email = '';
-          let name = '';
           if (!mitem) return;
           if (typeof mitem === 'string') email = String(mitem).trim();
           else if (typeof mitem === 'object') {
             email = String(mitem.email || mitem.address || mitem.value || mitem.addressEmail || mitem.contact || '').trim();
-            name = String(mitem.name || mitem.label || mitem.displayName || '').trim();
           }
           if (!email) return;
           if (seen.has(email)) return;
           seen.add(email);
-          deduped.push({ value: email, label: name ? `${name} <${email}>` : email });
+          deduped.push({ value: email, label: email });
         });
 
         try {
@@ -247,7 +249,7 @@ const MessageModal = ({
           }
         }
         if (fallbackEmail && !seen.has(fallbackEmail)) {
-          deduped.push({ value: fallbackEmail, label: `${companyName || 'Company'} <${fallbackEmail}>` });
+          deduped.push({ value: fallbackEmail, label: fallbackEmail });
           seen.add(fallbackEmail);
         }
 
@@ -392,7 +394,7 @@ const MessageModal = ({
           fromAddr = mailDefault || '';
         }
         // Always use only the email address in the From header (no company name prefix)
-        const companyConfig = typeof fromAddr === 'string' && fromAddr.includes('<') ? fromAddr : `<${fromAddr}>`;
+        const companyConfig = (typeof fromAddr === 'string' && fromAddr.includes('<')) ? fromAddr.replace(/.*<\s*([^>]+)\s*>.*/, '$1') : String(fromAddr).replace(/[<>]/g, '');
 
         // Replace your current emailHtml with this:
         const emailHtml = `

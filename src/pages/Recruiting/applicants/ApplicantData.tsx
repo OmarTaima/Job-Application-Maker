@@ -927,8 +927,8 @@ const ApplicantData = () => {
           };
 
           const toEmail = emailOption === 'custom' ? customEmail || applicant.email : applicant.email;
-          const mailDefault = companyObj?.mailSettings?.defaultMail || companyObj?.email ;
-          const fromEmail = `${companyObj?.name } <${mailDefault}>`;
+          const mailDefault = companyObj?.mailSettings?.defaultMail || companyObj?.email || '';
+          const fromEmail = mailDefault;
           const subject = interviewEmailSubject || `Interview Invitation`;
 
               const sanitizedBody = sanitizeMessageTemplate(messageTemplate || '');
