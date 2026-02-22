@@ -72,7 +72,8 @@ export const createCompanySettings = createAsyncThunk(
   "companies/createSettings",
   async (payload: CreateCompanySettingsRequest, { rejectWithValue }) => {
     try {
-      return await companiesService.createCompanySettings(payload);
+      // Backend exposes update endpoint for settings; use updateCompanySettings to create/update
+      return await companiesService.updateCompanySettings(payload.company, { mailSettings: payload.mailSettings });
     } catch (error: any) {
       return rejectWithValue(error.message || "Failed to create company settings");
     }

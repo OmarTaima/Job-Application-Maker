@@ -177,7 +177,9 @@ class ApplicantsService {
    */
   async getAllApplicants(
     companyId?: string[],
-    jobPositionId?: string | string[]
+    jobPositionId?: string | string[],
+    status?: string | string[],
+    fields?: string | string[]
   ): Promise<Applicant[]> {
     try {
       const paramsBase: any = {};
@@ -186,6 +188,20 @@ class ApplicantsService {
           paramsBase.companyId = companyId[0];
         } else {
           paramsBase.companyId = companyId.join(",");
+        }
+      }
+      if (status) {
+        if (Array.isArray(status)) {
+          paramsBase.status = status.join(",");
+        } else {
+          paramsBase.status = status;
+        }
+      }
+      if (fields) {
+        if (Array.isArray(fields)) {
+          paramsBase.fields = fields.join(",");
+        } else {
+          paramsBase.fields = fields;
         }
       }
       // Always filter out deleted applicants
@@ -455,6 +471,30 @@ class ApplicantsService {
   async deleteApplicant(applicantId: string): Promise<void> {
     try {
       await axios.delete(`/applicants/${applicantId}`);
+    } catch (error: any) {
+      throw new ApiError(
+        getErrorMessage(error),
+        error.response?.status,
+        error.response?.data?.details
+      );
+    }
+  }
+
+  async getApplicantStatuses(companyId?: string[],  status?: string | string[] | string[]): Promise<{ _id: string; status: Applicant['status']; submittedAt?: string; createdAt?: string }[]> {
+    try {
+      const params: any = {};
+      if (companyId && companyId.length > 0) {
+        // Always send company id(s) as a query parameter named `companyID`.
+        // If multiple ids are provided, join with commas.
+        params.companyID = companyId.length === 1 ? companyId[0] : companyId.join(",");
+      }
+
+      if (status) {
+        params.status = status;
+      }
+
+      const response = await axios.get(`/applicants/status-insights`, { params });
+      return response.data.data;
     } catch (error: any) {
       throw new ApiError(
         getErrorMessage(error),

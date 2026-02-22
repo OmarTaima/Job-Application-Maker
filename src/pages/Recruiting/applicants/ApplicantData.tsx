@@ -771,7 +771,13 @@ const ApplicantData = () => {
     setIsSubmittingInterview(true);
     // snapshot interview form before we reset UI state
     const interviewSnapshot = { ...interviewForm };
-    // Close modal immediately when request is sent
+    // Capture notification choices now so resetting UI doesn't clear them before we build payload
+    const notifEmailOption = emailOption || (customEmail ? 'custom' : undefined);
+    const notifCustomEmail = customEmail || undefined;
+    const notifPhoneOption = phoneOption || undefined;
+    const notifCustomPhone = phoneOption === 'custom' ? customPhone || undefined : undefined;
+    const notifChannels = { ...notificationChannels };
+    // Close modal immediately when request is sent (reset UI)
     setInterviewForm({
       date: '',
       time: '',
@@ -807,17 +813,18 @@ const ApplicantData = () => {
         notes: interviewSnapshot.comment || undefined,
         // Include the applicant's company id if resolved so backend can associate notifications/settings
         companyId: companyObj?._id,
-        // Include notifications preferences
+        // Include notifications preferences (use captured values so UI resets don't clear them)
         notifications: {
           channels: {
-            email: notificationChannels.email,
-            sms: notificationChannels.sms,
-            whatsapp: notificationChannels.whatsapp,
+            email: notifChannels.email,
+            sms: notifChannels.sms,
+            whatsapp: notifChannels.whatsapp,
           },
-          emailOption: emailOption || undefined,
-          customEmail: emailOption === 'custom' ? customEmail || undefined : undefined,
-          phoneOption: phoneOption || undefined,
-          customPhone: phoneOption === 'custom' ? customPhone || undefined : undefined,
+          // Prefer explicit captured customEmail if present.
+          emailOption: notifEmailOption,
+          customEmail: notifCustomEmail,
+          phoneOption: notifPhoneOption,
+          customPhone: notifCustomPhone,
         },
       };
 
@@ -920,7 +927,8 @@ const ApplicantData = () => {
           };
 
           const toEmail = emailOption === 'custom' ? customEmail || applicant.email : applicant.email;
-          const fromEmail = companyObj?.email ? `${companyObj?.name || 'Company'} <${companyObj?.email}>` : 'Valora HR <hr@valora-rs.com>';
+          const mailDefault = companyObj?.mailSettings?.defaultMail || companyObj?.email ;
+          const fromEmail = `${companyObj?.name } <${mailDefault}>`;
           const subject = interviewEmailSubject || `Interview Invitation`;
 
               const sanitizedBody = sanitizeMessageTemplate(messageTemplate || '');
@@ -1589,7 +1597,13 @@ const ApplicantData = () => {
           </div>
         </div>
       </Modal>
-      <MessageModal isOpen={showMessageModal} onClose={() => setShowMessageModal(false)} applicant={applicant} id={applicant._id} />
+      <MessageModal
+        isOpen={showMessageModal}
+        onClose={() => setShowMessageModal(false)}
+        applicant={applicant}
+        id={applicant._id}
+        company={fetchedCompany || jobPosCompany || (applicant && (applicant.company || applicant.companyObj))}
+      />
       <CommentModal
         isOpen={showCommentModal}
         onClose={() => {

@@ -10,14 +10,15 @@ export function useSendEmail() {
       html: string;
       metadata?: any;
     }) => {
-      // Ensure the from field is sent as-is without encoding
-      return axiosInstance.post('/applicants/mail', emailData, {
-        // This prevents axios from automatically encoding the data
+      // Sanitize `from` by removing surrounding angle brackets, then send.
+      const payload = {
+        ...emailData,
+        from: typeof emailData.from === 'string' ? emailData.from.replace(/[<>]/g, '') : emailData.from,
+      } as any;
+
+      return axiosInstance.post('/applicants/mail', payload, {
         transformRequest: [
-          (data) => {
-            // Return the data as-is, don't transform
-            return JSON.stringify(data);
-          },
+          (data) => JSON.stringify(data),
         ],
         headers: {
           'Content-Type': 'application/json',

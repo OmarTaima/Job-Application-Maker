@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import 'quill/dist/quill.snow.css';
 import { Modal } from '../ui/modal';
+import { companiesService } from '../../services/companiesService';
 import DatePicker from '../form/date-picker';
 import Label from '../form/Label';
 import Input from '../form/input/InputField';
@@ -33,12 +34,25 @@ function QuillEditor({ value, onChange }: { value: string; onChange: (v: string)
       const QuillModule = await import('quill');
       const Quill = (QuillModule as any).default ?? QuillModule;
       if (!mounted || !containerRef.current) return;
+      // If Quill already initialized, just update content and return
+      if (quillRef.current) {
+        try {
+          if (quillRef.current.root && quillRef.current.root.innerHTML !== value) {
+            quillRef.current.root.innerHTML = value || '';
+          }
+        } catch (e) { /* ignore */ }
+        return;
+      }
+
+      // Ensure container is empty before initializing Quill to avoid duplicate toolbars
+      try { containerRef.current.innerHTML = ''; } catch (e) { /* ignore */ }
       quillRef.current = new Quill(containerRef.current, {
         theme: 'snow',
         modules: { toolbar: [['bold', 'italic', 'underline'], [{ list: 'ordered' }, { list: 'bullet' }], ['link']] },
       });
       quillRef.current.root.innerHTML = value || '';
-      quillRef.current.on('text-change', () => onChange(quillRef.current.root.innerHTML));
+      const handleChange = () => onChange(quillRef.current.root.innerHTML);
+      quillRef.current.on('text-change', handleChange);
     })();
 
     return () => {
@@ -47,6 +61,8 @@ function QuillEditor({ value, onChange }: { value: string; onChange: (v: string)
         try { quillRef.current.off && quillRef.current.off('text-change'); } catch (e) { /* ignore */ }
         quillRef.current = null;
       }
+      // Clear container DOM so re-mount doesn't keep previous toolbar/editor nodes
+      try { if (containerRef.current) containerRef.current.innerHTML = ''; } catch (e) { /* ignore */ }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -95,6 +111,7 @@ export default function InterviewScheduleModal(props: Props) {
     getJobTitle,
     applicant,
   } = props;
+
 
   // Template generation: build a default message depending on chosen notification channel(s)
   const generateMessageTemplate = () => {
@@ -150,10 +167,255 @@ export default function InterviewScheduleModal(props: Props) {
 
     return '';
   };
+
+  const company = (applicant && (applicant.company || applicant.companyObj)) || null;
+  // If company not present directly on applicant, try nested jobPosition/companyId paths
+  const companyEntity = company || (applicant as any)?.jobPositionId?.companyId || (applicant as any)?.jobPositionId?.company || (applicant as any)?.jobPositionId?.companyObj || null;
+
+  // Debug: log company shape when modal opens to help diagnose missing sender entries
+  // Remove this log once the issue is confirmed
+  useEffect(() => {
+    if (isOpen) {
+      try {
+        // eslint-disable-next-line no-console
+        console.debug('InterviewScheduleModal company:', company);
+      } catch (e) { /* ignore */ }
+    }
+  }, [isOpen, company]);
+
+  // Log mail-related fields for easier debugging
+  try {
+    // eslint-disable-next-line no-console
+    console.debug('InterviewScheduleModal mailSettings.availableMails:', company?.mailSettings?.availableMails);
+    // eslint-disable-next-line no-console
+    console.debug('InterviewScheduleModal company.availableMails:', (company as any)?.availableMails);
+    // eslint-disable-next-line no-console
+    console.debug('InterviewScheduleModal mailSettings.other variants:', company?.mailSettings?.available_senders, (company as any)?.available_senders, (company as any)?.mail?.availableMails);
+  } catch (e) { /* ignore */ }
+  const senderOptions: Array<{ value: string; label: string }> = [];
+
+  // Collect potential source arrays for available senders (handle various backend shapes)
+  const availableCandidates: any[] = [];
+  if (companyEntity) {
+    const ms = (companyEntity as any).mailSettings || (companyEntity as any).settings?.mailSettings || (companyEntity as any).settings?.mail || null;
+    // do not pre-add a "Default" labeled entry; availableMails will include defaults
+    if (ms && Array.isArray(ms.availableMails)) availableCandidates.push(...ms.availableMails);
+    if (ms && Array.isArray(ms.available_senders)) availableCandidates.push(...ms.available_senders);
+    if (ms && Array.isArray(ms.availableSenders)) availableCandidates.push(...ms.availableSenders);
+
+    if (Array.isArray((companyEntity as any).availableMails)) availableCandidates.push(...(companyEntity as any).availableMails);
+    if (Array.isArray((companyEntity as any).available_senders)) availableCandidates.push(...(companyEntity as any).available_senders);
+    if (Array.isArray((companyEntity as any).mail?.availableMails)) availableCandidates.push(...(companyEntity as any).mail.availableMails);
+  }
+
+  // Also explicitly check applicant.jobPositionId.companyId.settings.mailSettings (some responses nest there)
+  try {
+    const nested = (applicant as any)?.jobPositionId?.companyId?.settings?.mailSettings;
+    if (nested) {
+      // nested.defaultMail will be included via availableMails normalization
+      if (Array.isArray(nested.availableMails)) availableCandidates.push(...nested.availableMails);
+    }
+  } catch (e) { /* ignore */ }
+
+  // Normalize candidates into {value,label} and dedupe
+  // Start seen with any values already pushed (e.g. defaultMail) to avoid duplicate entries
+  const seen = new Set<string>(senderOptions.map((s) => s.value));
+  availableCandidates.forEach((m: any) => {
+    let email = '';
+    let name = '';
+    if (!m) return;
+    if (typeof m === 'string') {
+      email = m;
+    } else if (typeof m === 'object') {
+      email = m.email || m.address || m.value || m.addressEmail || '';
+      name = m.name || m.label || m.displayName || '';
+      if (!email && m.contact) email = m.contact;
+    }
+    email = String(email || '').trim();
+    if (!email) return;
+    if (seen.has(email)) return;
+    seen.add(email);
+    senderOptions.push({ value: email, label: name ? `${name} <${email}>` : email });
+  });
+
+  // Fallback to company email if not already present
+  const fallbackEmail = (companyEntity as any)?.contactEmail || (companyEntity as any)?.email || (companyEntity as any)?.contactEmail || (companyEntity as any)?.contactEmailAddress;
+  if (fallbackEmail && !senderOptions.find((s) => s.value === fallbackEmail)) {
+    senderOptions.push({ value: fallbackEmail, label: `${(companyEntity as any)?.name?.en || (companyEntity as any)?.name || 'Company'} <${fallbackEmail}>` });
+  }
+
+  try {
+    // eslint-disable-next-line no-console
+    console.debug('InterviewScheduleModal computed senderOptions:', senderOptions);
+  } catch (e) { /* ignore */ }
+  // New-local-email state: user will type only the local part (before the @domain)
+  const [newLocalEmail, setNewLocalEmail] = useState('');
+
+  // Hold fetched company settings so we can read authoritative companyDomain
+  const [companySettings, setCompanySettings] = useState<any | null>(null);
+
+
+  // Fetch latest company settings when modal opens so we can use companyDomain from server
+  useEffect(() => {
+    let mounted = true;
+    const cid = (companyEntity as any)?._id || (companyEntity as any)?.id || (companyEntity as any)?.company || ((companyEntity as any)?.companyId && (typeof (companyEntity as any).companyId === 'string' ? (companyEntity as any).companyId : (companyEntity as any).companyId?._id)) || null;
+    if (!isOpen || !cid) {
+      if (mounted) setCompanySettings(null);
+      return;
+    }
+    (async () => {
+      try {
+        const response = await companiesService.getCompanySettingsByCompany(cid);
+        if (mounted) {
+          try { console.debug('Company settings response:', response); } catch (e) { /* ignore */ }
+          setCompanySettings(response);
+        }
+      } catch (e) {
+        try { console.error('Failed to fetch company settings:', e); } catch (ee) { /* ignore */ }
+        if (mounted) setCompanySettings(null);
+      }
+    })();
+    return () => { mounted = false; };
+  }, [isOpen, companyEntity]);
+
+  // Extract domain from the response structure: company.settings.mailSettings.companyDomain
+  const getCompanyDomain = () => {
+    try { console.debug && console.debug('Extracting domain from:', { companySettings, companyEntity }); } catch (e) { /* ignore */ }
+
+    const domainFromResponse =
+      companySettings?.company?.settings?.mailSettings?.companyDomain ||
+      companySettings?.settings?.mailSettings?.companyDomain ||
+      (companyEntity as any)?.settings?.mailSettings?.companyDomain ||
+      (companyEntity as any)?.mailSettings?.companyDomain ||
+      '';
+
+    if (domainFromResponse) {
+      try { console.debug && console.debug('Found company domain:', domainFromResponse); } catch (e) { /* ignore */ }
+      return domainFromResponse;
+    }
+
+    const defaultMail =
+      companySettings?.company?.settings?.mailSettings?.defaultMail ||
+      companySettings?.settings?.mailSettings?.defaultMail ||
+      (companyEntity as any)?.settings?.mailSettings?.defaultMail ||
+      (companyEntity as any)?.mailSettings?.defaultMail ||
+      (companyEntity as any)?.contactEmail ||
+      (companyEntity as any)?.email ||
+      '';
+
+    if (defaultMail && defaultMail.includes('@')) {
+      const extractedDomain = defaultMail.split('@')[1];
+      try { console.debug && console.debug('Extracted domain from default mail:', extractedDomain); } catch (e) { /* ignore */ }
+      return extractedDomain;
+    }
+
+    const firstAvailableMail =
+      companySettings?.company?.settings?.mailSettings?.availableMails?.[0] ||
+      companySettings?.settings?.mailSettings?.availableMails?.[0] ||
+      (companyEntity as any)?.settings?.mailSettings?.availableMails?.[0] ||
+      (companyEntity as any)?.mailSettings?.availableMails?.[0];
+
+    if (firstAvailableMail && firstAvailableMail.includes('@')) {
+      const extractedDomain = firstAvailableMail.split('@')[1];
+      try { console.debug && console.debug('Extracted domain from available mail:', extractedDomain); } catch (e) { /* ignore */ }
+      return extractedDomain;
+    }
+
+    try { console.debug && console.debug('No domain found'); } catch (e) { /* ignore */ }
+    return '';
+  };
+
+  const companyDomain = getCompanyDomain();
+
+  // For the domain display in UI
+  const domainForDisplay = companyDomain;
+
+  // helper to get a candidate company id string for settings API
+  const getCompanyIdVal = () => {
+    const c = companyEntity as any;
+    return c?._id || c?.id || c?.company || (c?.companyId && (typeof c.companyId === 'string' ? c.companyId : c.companyId._id)) || null;
+  };
+
+  // Intercept submit: if user entered a new local email, add it to company's availableMails first
+  const onSubmit = async (e: any) => {
+    if (e && typeof e.preventDefault === 'function') e.preventDefault();
+
+    if (notificationChannels.email && emailOption === 'new' && newLocalEmail && newLocalEmail.trim()) {
+      const local = newLocalEmail.trim();
+      const domain = domainForDisplay;
+      const newEmail = `${local}@${domain}`;
+
+      const cid = getCompanyIdVal();
+      if (!cid) {
+        setInterviewError('Unable to determine company to add new sender');
+        return;
+      }
+
+      try {
+        // fetch current settings and merge availableMails (keep unique)
+        const settings = await companiesService.getCompanySettingsByCompany(cid);
+        const collectExisting = (obj: any): string[] => {
+          const out: string[] = [];
+          try {
+            if (!obj) return out;
+            const pushIfArray = (a: any) => { if (Array.isArray(a)) out.push(...a.filter(Boolean).map(String)); };
+            pushIfArray(obj?.mailSettings?.availableMails);
+            pushIfArray(obj?.settings?.mailSettings?.availableMails);
+            pushIfArray(obj?.availableMails);
+            pushIfArray(obj?.available_senders);
+            pushIfArray(obj?.availableSenders);
+            pushIfArray(obj?.mail?.availableMails);
+          } catch (e) { /* ignore */ }
+          return Array.from(new Set(out));
+        };
+        const existing = collectExisting(settings);
+        const merged = Array.from(new Set([...(existing || []), newEmail]));
+        // Resolve settings id similar to CompanySettings page logic
+        const findSettingsId = (obj: any): string | undefined => {
+          if (!obj || typeof obj !== 'object') return undefined;
+          if (obj.settings && obj.settings._id) return obj.settings._id;
+          if (obj._id && typeof obj._id === 'string' && obj._id.match(/^[0-9a-fA-F]{24}$/)) return obj._id;
+          if (obj.company && obj.company.settings && obj.company.settings._id) return obj.company.settings._id;
+          if (obj.company && obj.company._id && typeof obj.company._id === 'string' && obj.company._id.match(/^[0-9a-fA-F]{24}$/)) return obj.company._id;
+          if (obj.mailSettings && obj.mailSettings._id) return obj.mailSettings._id;
+          for (const k of Object.keys(obj)) {
+            if (k.endsWith('_id') && typeof obj[k] === 'string' && obj[k].match(/^[0-9a-fA-F]{24}$/)) return obj[k];
+          }
+          return undefined;
+        };
+
+        const companySettingsId = (companyEntity as any)?.settings?._id;
+        const generatedSettingsId = companySettingsId ?? findSettingsId(settings);
+        const idToSend = generatedSettingsId ?? cid; // fall back to company id
+        try { console.debug('InterviewScheduleModal.updateCompanySettings', { idToSend, merged, settings }); } catch (e) { /* ignore */ }
+        await companiesService.updateCompanySettings(idToSend, { mailSettings: { availableMails: merged } });
+        // set selected sender so subsequent send uses it
+        try { setCustomEmail(newEmail); } catch (ignore) {}
+      } catch (err: any) {
+        const msg = (err && err.message) ? err.message : 'Failed to add new sender address';
+        setInterviewError(msg);
+        return;
+      }
+    }
+
+    // finally delegate to parent submit handler
+    try {
+      // Disabled actual send during local testing: log and simulate async success
+      try {
+        // eslint-disable-next-line no-console
+        console.debug('InterviewScheduleModal: Skipping handleInterviewSubmit (dev).', { interviewForm, notificationChannels, customEmail, newLocalEmail });
+        await Promise.resolve();
+      } catch (e) { /* ignore */ }
+      // If you want to call the real handler, uncomment the line below
+      await handleInterviewSubmit(e);
+    } catch (err) {
+      // parent handler will set errors as needed
+    }
+  };
   
   return (
     <Modal isOpen={isOpen} onClose={onClose} className="max-w-[1100px] p-6 lg:p-10" closeOnBackdrop={false}>
-      <form key={`interview-form-${formResetKey}`} onSubmit={handleInterviewSubmit} className="flex flex-col px-2">
+      <form key={`interview-form-${formResetKey}`} onSubmit={onSubmit} className="flex flex-col px-2">
         <div>
           <h5 className="mb-2 font-semibold text-gray-800 text-xl dark:text-white/90 lg:text-2xl">Schedule Interview</h5>
           <p className="text-sm text-gray-500 dark:text-gray-400">Set up an interview and choose notification preferences</p>
@@ -221,6 +483,7 @@ export default function InterviewScheduleModal(props: Props) {
           <div className="rounded-lg border border-gray-200 bg-gray-50/50 p-4 dark:border-gray-700 dark:bg-gray-800/30">
             <h3 className="mb-3 text-base font-medium text-gray-800 dark:text-white/90">Notification Settings</h3>
             <div className="space-y-2">
+                {/* debug removed */}
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-400">Send notification via:</label>
               <div className="flex flex-wrap gap-3">
                 <label className="group relative inline-flex items-center gap-3 cursor-pointer rounded-lg border border-gray-300 bg-white px-4 py-2.5 transition-all hover:border-brand-400 hover:bg-brand-50/50 dark:border-gray-600 dark:bg-gray-800 dark:hover:border-brand-600 dark:hover:bg-brand-900/20">
@@ -244,8 +507,59 @@ export default function InterviewScheduleModal(props: Props) {
                 {notificationChannels.email && (
                   <div className="space-y-2">
                     <Label htmlFor="email-option">Email Address</Label>
-                    <Select options={[{ value: 'company', label: 'Company Email' },{ value: 'user', label: 'My Email' },{ value: 'custom', label: 'Custom Email' }]} value={emailOption} placeholder="Select email option" onChange={(value: any) => setEmailOption(value)} />
-                    {emailOption === 'custom' && <Input id="custom-email" type="email" value={customEmail} onChange={(e: any) => setCustomEmail(e.target.value)} placeholder="Enter custom email address" className="mt-2" />}
+                    <Select options={[{ value: 'company', label: 'Company Email' },{ value: 'new', label: 'New Email' }]} value={emailOption} placeholder="Select email option" onChange={(value: any) => {
+                      setEmailOption(value);
+                      // reset local new email when switching options
+                      if (value !== 'new') setNewLocalEmail('');
+                      if (value === 'company') {
+                        // set selected to company default
+                        const mailDefault = (companyEntity as any)?.mailSettings?.defaultMail || (companyEntity as any)?.email || '';
+                        setCustomEmail(mailDefault || '');
+                      }
+                    }} />
+
+                    {emailOption === 'new' && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <Input id="new-email-local" type="text" value={newLocalEmail} onChange={(e: any) => setNewLocalEmail(e.target.value)} placeholder="your-name" className="mt-0" />
+                        {domainForDisplay ? (
+                          <div className="text-sm text-gray-600">@{domainForDisplay}</div>
+                        ) : (
+                          <div className="text-sm text-amber-600">⚠️ No company domain configured</div>
+                        )}
+                      </div>
+                    )}
+
+                    {emailOption !== 'new' && (
+                      <div className="mt-3">
+                        <Label htmlFor="sender-select">Available Sender Addresses</Label>
+                        <Select
+                          options={senderOptions.length > 0 ? senderOptions : [{ value: '', label: 'No available senders' }]}
+                          value={customEmail || ''}
+                          placeholder="Select sender"
+                          onChange={(value: any) => {
+                            // selecting from available senders picks a company sender
+                            setCustomEmail(value);
+                            setEmailOption('company');
+                          }}
+                        />
+                      </div>
+                    )}
+
+                    <div className="mt-3">
+                      <Label htmlFor="selected-sender">Selected Sender</Label>
+                      <Input
+                        id="selected-sender"
+                        type="text"
+                        value={
+                          emailOption === 'new' && newLocalEmail
+                            ? (domainForDisplay ? `${newLocalEmail}@${domainForDisplay}` : `${newLocalEmail}@[domain missing]`)
+                            : customEmail || (companyEntity as any)?.settings?.mailSettings?.defaultMail || (companyEntity as any)?.mailSettings?.defaultMail || (companyEntity as any)?.contactEmail || ''
+                        }
+                        className={`mt-2 ${!domainForDisplay && emailOption === 'new' && newLocalEmail ? 'border-amber-300' : ''}`}
+                        readOnly
+                        placeholder="No sender selected"
+                      />
+                    </div>
                   </div>
                 )}
 

@@ -83,8 +83,6 @@ const RecommendedFields = () => {
   // Log fetched fields for debugging
   useEffect(() => {
     if (recommendedFields.length > 0) {
-      console.log("Fetched recommended fields:", recommendedFields);
-      console.log("Field IDs:", recommendedFields.map(f => f.fieldId));
     }
   }, [recommendedFields]);
 
@@ -388,12 +386,7 @@ const RecommendedFields = () => {
 
       const generatedFieldId = editFieldId || generateFieldId(form.label);
       
-      console.log("Field creation check:", {
-        editFieldId,
-        formLabel: form.label,
-        generatedFieldId,
-        isEmpty: !generatedFieldId || generatedFieldId.trim() === ''
-      });
+     
       
       if (!generatedFieldId || generatedFieldId.trim() === '') {
         throw new Error("Failed to generate a valid fieldId. Please check the label.");
@@ -498,7 +491,6 @@ const RecommendedFields = () => {
         });
       } else {
         console.debug("Creating recommended field payload:", fieldData);
-        console.log("FULL PAYLOAD BEING SENT:", JSON.stringify(fieldData, null, 2));
         await createFieldMutation.mutateAsync(fieldData);
       }
 
@@ -1268,7 +1260,6 @@ const RecommendedFields = () => {
                                           },
                                           groupFields: extractedGroupFields,
                                         }));
-                                        console.log("Editing field with fieldId:", field.fieldId, "Full field:", field);
                                         setFormError("");
                                         setEditFieldId(field.fieldId);
                                         setShowForm(true);

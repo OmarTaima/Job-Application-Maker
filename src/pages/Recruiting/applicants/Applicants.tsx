@@ -135,6 +135,7 @@ import {
   useUpdateApplicantStatus,
   useCompanies,
 } from "../../../hooks/queries";
+import BulkMessageModal from '../../../components/modals/BulkMessageModal';
 import { Menu, MenuItem, Checkbox, ListItemText } from "@mui/material";
 import  { normalizeLabelSimple, canonicalMap, getCanonicalType, buildFieldToJobIds, isExcludedLabel } from "../../../components/modals/CustomFilterModal";
 import type { Applicant } from "../../../store/slices/applicantsSlice";
@@ -212,6 +213,7 @@ const Applicants = () => {
   const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
   const [bulkAction, setBulkAction] = useState<string>("");
   const [isProcessing, setIsProcessing] = useState(false);
+  const [showBulkModal, setShowBulkModal] = useState(false);
   // MRT will manage pagination internally (page size set in initialState)
   const [rowSelection, setRowSelection] = useState<MRT_RowSelectionState>({});
   const [columnFilters, setColumnFilters] = useState<MRT_ColumnFiltersState>(persistedTableState?.columnFilters ?? []);
@@ -225,6 +227,7 @@ const Applicants = () => {
   const selectedApplicantIds = useMemo(() => {
     return Object.keys(rowSelection);
   }, [rowSelection]);
+
 
   // MRT will reset pagination when filters/sorting change internally
   // Memoize user-derived values
@@ -278,8 +281,53 @@ const {
    isFetching: isApplicantsFetching,
    isFetched: isApplicantsFetched,
  } = useApplicants(companyId as any);
- const updateStatusMutation = useUpdateApplicantStatus();
+ // Load companies early so memos below can reference `allCompaniesRaw`
  const { data: allCompaniesRaw = [], refetch: refetchCompanies, isFetching: isCompaniesFetching, isFetched: isCompaniesFetched } = useCompanies(companyId as any);
+  const selectedApplicantEmails = useMemo(() => {
+    try {
+      const ids = new Set(selectedApplicantIds);
+      return applicants
+        .filter((a: any) => {
+          const id = typeof a._id === 'string' ? a._id : a._id?._id || a.id || a._id;
+          return ids.has(id);
+        })
+        .map((a: any) => a.email)
+        .filter(Boolean);
+    } catch (e) { return []; }
+  }, [selectedApplicantIds, applicants]);
+  // If we already loaded companies, resolve the full company object for the selected applicants
+  // If all selected applicants belong to the same company, provide that company id
+  const selectedApplicantCompanyId = useMemo(() => {
+    try {
+      const ids = new Set(selectedApplicantIds);
+      const companies = applicants
+        .filter((a: any) => {
+          const id = typeof a._id === 'string' ? a._id : a._id?._id || a.id || a._id;
+          return ids.has(id);
+        })
+        .map((a: any) => {
+          // possible company id fields
+          const c = a.company || a.companyObj || (a.jobPositionId && (a.jobPositionId.companyId || a.jobPositionId.company || a.jobPositionId.companyObj));
+          if (!c) return null;
+          return typeof c === 'string' ? c : c._id || c.id || null;
+        })
+        .filter(Boolean) as string[];
+      const unique = Array.from(new Set(companies));
+      return unique.length === 1 ? unique[0] : null;
+    } catch (e) { return null; }
+  }, [selectedApplicantIds, applicants]);
+
+  // If we already loaded companies, resolve the full company object for the selected applicants
+  const selectedApplicantCompany = useMemo(() => {
+    try {
+      if (!selectedApplicantCompanyId) return null;
+      const found = (allCompaniesRaw || []).find((c: any) => c && (c._id === selectedApplicantCompanyId || c.id === selectedApplicantCompanyId));
+      return found || null;
+    } catch (e) {
+      return null;
+    }
+  }, [selectedApplicantCompanyId, allCompaniesRaw]);
+ const updateStatusMutation = useUpdateApplicantStatus();
  const [lastRefetch, setLastRefetch] = useState<Date | null>(null);
  const [elapsed, setElapsed] = useState<string | null>(null);
  const [statusAnchorEl, setStatusAnchorEl] = useState<HTMLElement | null>(null);
@@ -675,8 +723,6 @@ const {
   const filteredApplicants = useMemo(() => {
     if (!customFilters || !customFilters.length) return displayedApplicants;
     return displayedApplicants.filter((a: any) => {
-      const FILTER_DEBUG = true;
-      const log = (...args: any[]) => { if (FILTER_DEBUG && typeof console !== 'undefined' && console.log) console.log('[FilterDebug]', ...args); };
       try {
         for (const f of customFilters) {
           let raw = getCustomResponseValue(a, f);
@@ -750,13 +796,11 @@ const {
                   const hasRespKeyMatch = respKeys.some((rk) => allowedLabels.some((al) => rk === al || rk.includes(al) || al.includes(rk)));
                   if (!hasRespKeyMatch) {
                     if (!applicantJobId || !allowedUnion.has(String(applicantJobId))) {
-                      log(a._id || a.id || '(no id)', 'excluded-by-job', { applicantJobId, allowed: Array.from(allowedUnion), field: keyNorm });
                       return false;
                     }
                   }
                 } catch (e) {
                   if (!applicantJobId || !allowedUnion.has(String(applicantJobId))) {
-                    log(a._id || a.id || '(no id)', 'excluded-by-job', { applicantJobId, allowed: Array.from(allowedUnion), field: keyNorm });
                     return false;
                   }
                 }
@@ -832,7 +876,6 @@ const {
 
             const hasIt = evaluateHas();
             if ((want === true && !hasIt) || (want === false && hasIt)) {
-              log(a._id || a.id || '(no id)', 'has-field-no-match', { want, hasIt, field: f.fieldId || f.label });
               return false;
             }
             continue;
@@ -883,7 +926,6 @@ const {
               num = found;
             } else num = null;
             if (num === null || !Number.isFinite(num)) {
-              log(a._id || a.id || '(no id)', 'range-no-number', { raw, parsed: num, filter: f.value });
               return false;
             }
             const parseFilterNum = (v: any) => {
@@ -895,11 +937,9 @@ const {
             const minFilter = parseFilterNum(f.value?.min);
             const maxFilter = parseFilterNum(f.value?.max);
             if (minFilter !== undefined && num < minFilter) {
-              log(a._id || a.id || '(no id)', 'range-fail-min', { num, minFilter, field: f.label || f.fieldId });
               return false;
             }
             if (maxFilter !== undefined && num > maxFilter) {
-              log(a._id || a.id || '(no id)', 'range-fail-max', { num, maxFilter, field: f.label || f.fieldId });
               return false;
             }
             continue;
@@ -923,31 +963,30 @@ const {
             // ensures we compare the actual stored customResponse value to the
             // selected filter value before falling back to normalized/expanded forms.
             let matched = false;
-            let matchedSource: string | null = null;
             try {
               // primitives
               if (typeof raw === 'string' || typeof raw === 'number' || typeof raw === 'boolean') {
                 const rv = normalizeForCompare(raw);
-                if (rv && valsExpandedSet.has(rv)) { matched = true; matchedSource = 'primitive'; }
+                if (rv && valsExpandedSet.has(rv)) { matched = true; ; }
               }
               // arrays
               if (!matched && Array.isArray(raw)) {
                 for (const el of raw) {
                   const v = normalizeForCompare(el);
-                  if (v && valsExpandedSet.has(v)) { matched = true; matchedSource = 'array-element'; break; }
+                  if (v && valsExpandedSet.has(v)) { matched = true;  break; }
                 }
               }
               // objects: check values first, then check keyed booleans (key name when value truthy)
               if (!matched && raw && typeof raw === 'object') {
                 for (const v of Object.values(raw)) {
                   const nv = normalizeForCompare(v);
-                    if (nv && valsExpandedSet.has(nv)) { matched = true; matchedSource = 'object-value'; break; }
+                    if (nv && valsExpandedSet.has(nv)) { matched = true; break; }
                 }
                 if (!matched) {
                   for (const [k, v] of Object.entries(raw)) {
                     if (v === true || v === 'true' || v === 1 || v === '1') {
                       const nk = normalizeForCompare(k);
-                      if (nk && valsExpandedSet.has(nk)) { matched = true; matchedSource = 'object-key-boolean'; break; }
+                      if (nk && valsExpandedSet.has(nk)) { matched = true; break; }
                     }
                   }
                 }
@@ -956,10 +995,7 @@ const {
               // ignore and fall back to normalized/rawItems matching
             }
 
-            if (!matched) {
-              matched = rawItems.some((rv) => valsExpandedSet.has(rv));
-              if (matched) matchedSource = 'normalized-rawItems';
-            }
+          
 
             if (!matched && Array.isArray(f.choices) && f.choices.length) {
               const choiceNormsForSelected = new Set<string>();
@@ -979,7 +1015,6 @@ const {
             }
 
             if (!matched) {
-              log(a._id || a.id || '(no id)', 'multi-no-match', { field: f.fieldId || f.label, vals: f.value, raw, rawItems, valsExpanded: Array.from(valsExpandedSet), matchedSource });
               return false;
             }
             continue;
@@ -1038,7 +1073,6 @@ const {
               }
             }
             if (!matched) {
-              log(a._id || a.id || '(no id)', 'text-no-match', { field: f.fieldId || f.label, needle, rawItems });
               return false;
             }
             continue;
@@ -1089,7 +1123,6 @@ const {
               return y > selYear;
             });
             if (!matched) {
-              log(a._id || a.id || '(no id)', 'birthyear-no-match', { field: f.fieldId || f.label, filter: { year: selYear, mode }, rawItems });
               return false;
             }
             continue;
@@ -1111,16 +1144,13 @@ const {
               }
             });
             if (!matchFound) {
-              log(a._id || a.id || '(no id)', 'date-no-match', { field: f.fieldId || f.label, target, rawItems });
               return false;
             }
             continue;
           }
         }
-        log(a._id || a.id || '(no id)', 'included', { filters: customFilters.map((ff: any) => ff.fieldId || ff.label) });
         return true;
       } catch (e) {
-        log(a._id || a.id || '(no id)', 'error-eval', e);
         return false;
       }
     });
@@ -2381,6 +2411,13 @@ const {
                     </button>
                   </div>
                   <button
+                    onClick={() => setShowBulkModal(true)}
+                    disabled={isProcessing || selectedApplicantEmails.length === 0}
+                    className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {`Send Mail (${selectedApplicantEmails.length})`}
+                  </button>
+                  <button
                     onClick={handleBulkDelete}
                     disabled={isDeleting}
                     className="inline-flex items-center gap-2 rounded-lg bg-red-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -2398,6 +2435,14 @@ const {
             <ThemeProvider theme={muiTheme}>
               <MaterialReactTable table={table} />
             </ThemeProvider>
+            <BulkMessageModal
+              isOpen={showBulkModal}
+              onClose={() => setShowBulkModal(false)}
+              recipients={selectedApplicantEmails}
+              companyId={selectedApplicantCompanyId}
+              company={selectedApplicantCompany}
+              onSuccess={() => { setRowSelection({}); setShowBulkModal(false); }}
+            />
 
             {/* MRT handles pagination in its bottom toolbar (10 rows per page) */}
           </>

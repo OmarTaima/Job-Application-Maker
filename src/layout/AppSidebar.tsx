@@ -30,7 +30,7 @@ const navItems: NavItem[] = [
     subItems: [
       { name: "Create Company", path: "/recruiting", pro: false },
       { name: "Companies", path: "/companies", pro: false },
-      // { name: "Company Settings", path: "/recruiting/company-settings", pro: false },
+      { name: "Company Settings", path: "/recruiting/company-settings", pro: false },
     ],
   },
   {

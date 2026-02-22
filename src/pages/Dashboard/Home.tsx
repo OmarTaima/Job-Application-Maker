@@ -2,7 +2,7 @@ import { useMemo, useState, useEffect } from "react";
 import PageMeta from "../../components/common/PageMeta";
 import DatePicker from "../../components/form/date-picker";
 import { useAuth } from "../../context/AuthContext";
-import { useApplicants } from "../../hooks/queries";
+import { getApplicantStatuses } from "../../hooks/queries/useApplicantStatuses";
 import type { Applicant } from "../../store/slices/applicantsSlice";
 import {
   PaperPlaneIcon,
@@ -25,8 +25,8 @@ const STATUSES: { key: Applicant['status']; label: string }[] = [
   { key: "trashed", label: "Trashed" },
 ];
 
-function getApplicantDate(a: Applicant) {
-  return a.submittedAt || a.createdAt || "";
+function getApplicantDate(a: any) {
+  return (a && (a.submittedAt || a.createdAt)) || "";
 }
 
 export default function Home() {
@@ -49,8 +49,13 @@ export default function Home() {
     return usercompanyId.length > 0 ? usercompanyId : undefined;
   }, [user]);
 
-  // Use React Query hook - fetch applicants filtered by companyId (undefined => all)
-  const { data: applicants = [], isLoading: loading, refetch, isFetching } = useApplicants(companyId as any);
+  // Use React Query hook - server may return either minimal applicant objects (id, status, dates)
+  // or a counts object { pending, interview, ... , total } from the lightweight endpoint.
+  const { data: applicantsData = [], isLoading: loading, refetch, isFetching } = getApplicantStatuses(companyId as any, undefined);
+
+  // normalize: if server returned counts object, treat accordingly
+  const countsFromServer = applicantsData && !Array.isArray(applicantsData) ? applicantsData : null;
+  const applicants = Array.isArray(applicantsData) ? applicantsData : [];
 
   const [lastRefetch, setLastRefetch] = useState<Date | null>(null);
   const [elapsed, setElapsed] = useState<string | null>(null);
@@ -118,15 +123,25 @@ export default function Home() {
   }, [applicants, range]);
 
   const counts = useMemo(() => {
+    // If server provided aggregated counts, use them (ensure keys exist)
+    if (countsFromServer) {
+      const c: Record<string, number> = {} as any;
+      STATUSES.forEach((s) => (c[s.key] = Number(countsFromServer[s.key] ?? 0)));
+      // keep trashed hidden
+      c['trashed'] = 0;
+      return c;
+    }
+
     const c: Record<string, number> = {};
     STATUSES.forEach((s) => (c[s.key] = 0));
-    filtered.forEach((a) => {
-      c[a.status] = (c[a.status] || 0) + 1;
+    applicants.forEach((a: any) => {
+      if (a.status && a.status !== 'trashed') {
+        c[a.status] = (c[a.status] || 0) + 1;
+      }
     });
-    // Always hide trashed from counts (display as 0)
     c['trashed'] = 0;
     return c;
-  }, [filtered]);
+  }, [applicants, filtered, countsFromServer]);
 
   // Exclude trashed applicants for total calculations
   const filteredNonTrashed = useMemo(() => filtered.filter((a) => a.status !== 'trashed'), [filtered]);
@@ -146,6 +161,19 @@ export default function Home() {
   };
 
   const TotalIcon = STATUS_ICON['total'];
+
+  const STATUS_BG: Record<string, string> = {
+    total: 'bg-indigo-50',
+    applied: 'bg-indigo-50',
+    under_review: 'bg-slate-50',
+    pending: 'bg-yellow-50',
+    interview: 'bg-blue-50',
+    interviewed: 'bg-emerald-50',
+    accepted: 'bg-emerald-50',
+    approved: 'bg-emerald-50',
+    rejected: 'bg-red-50',
+    trashed: 'bg-gray-50',
+  };
 
   function toggleOpen(key: string | 'total') {
     setOpenStatus((prev) => (prev === key ? null : key));
@@ -202,7 +230,7 @@ export default function Home() {
           <div
             role="button"
             onClick={() => toggleOpen('total')}
-            className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] cursor-pointer"
+            className={`rounded-2xl border border-gray-200 ${STATUS_BG['total']} p-5 dark:border-gray-800 dark:bg-white/[0.03] cursor-pointer`}
           >
             <div className="flex items-center justify-between">
               <div className="text-sm text-gray-500">Total Applicants</div>
@@ -212,17 +240,17 @@ export default function Home() {
             </div>
             <div className="mt-2 text-2xl font-bold text-gray-800">{loading ? (
               <span className="inline-block h-6 w-14 rounded bg-gray-200 animate-pulse" />
-            ) : filteredNonTrashed.length}</div>
+            ) : countsFromServer.total}</div>
+              
             {openStatus === 'total' && (
-              <div className="mt-4 border-t pt-3 space-y-2 max-h-56 overflow-auto">
+              <div className={`mt-4 border-t pt-3 space-y-2 max-h-56 overflow-auto`}>
                 {filteredNonTrashed.length === 0 ? (
                   <div className="text-sm text-gray-500">No applicants</div>
                 ) : (
                   filteredNonTrashed.map((a) => (
                     <div key={a._id} className="flex items-center justify-between">
                       <div>
-                        <div className="text-sm font-medium text-gray-800">{a.fullName}</div>
-                        <div className="text-xs text-gray-500">{a.email}</div>
+                        <div className="text-sm font-medium text-gray-800">Applicant ID: {a._id}</div>
                       </div>
                       <div className="text-xs text-gray-400">{new Date(getApplicantDate(a)).toLocaleDateString()}</div>
                     </div>
@@ -236,13 +264,15 @@ export default function Home() {
             const Icon = STATUS_ICON[s.key];
             const key = s.key;
             const applicantsOfStatus = filtered.filter((a) => a.status === key);
+            const bgClass = STATUS_BG[key] || 'bg-gray-50';
+            const expandedBg = bgClass.replace('-50', '-50/60');
 
             return (
               <div key={key}>
                 <div
                   role="button"
                   onClick={() => toggleOpen(key)}
-                  className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] cursor-pointer"
+                  className={`rounded-2xl border border-gray-200 ${bgClass} p-5 dark:border-gray-800 dark:bg-white/[0.03] cursor-pointer`}
                 >
                   <div className="flex items-center justify-between">
                     <div className="text-sm text-gray-500">{s.label}</div>
@@ -255,7 +285,7 @@ export default function Home() {
                 </div>
 
                 {openStatus === key && (
-                  <div className="mt-2 p-3 rounded-lg bg-white/60 border border-gray-100 max-h-56 overflow-auto">
+                  <div className={`mt-2 p-3 rounded-lg ${expandedBg} border border-gray-100 max-h-56 overflow-auto`}>
                     {loading ? (
                       <div className="space-y-2">
                         {Array.from({ length: 4 }).map((_, i) => (
@@ -273,8 +303,7 @@ export default function Home() {
                       applicantsOfStatus.map((a) => (
                         <div key={a._id} className="flex items-center justify-between py-2 border-b last:border-b-0">
                           <div>
-                            <div className="text-sm font-medium text-gray-800">{a.fullName}</div>
-                            <div className="text-xs text-gray-500">{a.email}</div>
+                            <div className="text-sm font-medium text-gray-800">Applicant ID: {a._id}</div>
                           </div>
                           <div className="text-xs text-gray-400">{new Date(getApplicantDate(a)).toLocaleDateString()}</div>
                         </div>

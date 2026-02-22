@@ -15,8 +15,8 @@ import type {
 export const applicantsKeys = {
   all: ["applicants"] as const,
   lists: () => [...applicantsKeys.all, "list"] as const,
-  list: (companyId?: string[],  jobPositionId?: string) =>
-    [...applicantsKeys.lists(), { companyId, jobPositionId }] as const,
+  list: (companyId?: string[], jobPositionId?: string, status?: string | string[], fields?: string | string[]) =>
+    [...applicantsKeys.lists(), { companyId, jobPositionId, status, fields }] as const,
   details: () => [...applicantsKeys.all, "detail"] as const,
   detail: (id: string) => [...applicantsKeys.details(), id] as const,
 };

@@ -31,6 +31,10 @@ export function useCompanies(companyId?: string[]) {
       return companiesService.getAllCompanies(companyId);
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
+    // Avoid refetching when component remounts or window regains focus — selection changes should not re-fetch the whole list
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
   });
 }
 
@@ -76,18 +80,7 @@ export function useCompanySettings(companyId: string | undefined, options?: { en
   });
 }
 
-export function useCreateCompanySettings() {
-  const queryClient = useQueryClient();
 
-  return useMutation({
-    mutationFn: (data: any) => companiesService.createCompanySettings(data),
-    onSuccess: (data: any) => {
-      if (data && data.company) {
-        queryClient.setQueryData(companiesKeys.setting(data.company), data);
-      }
-    },
-  });
-}
 
 export function useUpdateCompanySettings() {
   const queryClient = useQueryClient();
@@ -95,8 +88,37 @@ export function useUpdateCompanySettings() {
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: any }) => companiesService.updateCompanySettings(id, data),
     onSuccess: (data: any) => {
-      if (data && data.company) {
-        queryClient.setQueryData(companiesKeys.setting(data.company), data);
+      // Normalize server response which may be { message, result: { ... } } or { data: ... } or the settings object itself
+      const payload = data?.result ?? data?.data ?? data;
+      const companyId = payload?.company || payload?.companyId || (payload && payload.company && typeof payload.company === 'string' ? payload.company : undefined);
+
+      if (companyId) {
+        // Update the settings cache for this company
+        queryClient.setQueryData(companiesKeys.setting(companyId), payload);
+
+        // Also update any cached company details in list/detail queries to include updated settings
+        queryClient.setQueryData(companiesKeys.list(), (old: any) => {
+          if (!old) return old;
+          if (Array.isArray(old)) {
+            return old.map((c: any) => {
+              if (!c) return c;
+              // handle wrapped shapes
+              if (c._id === companyId) return { ...c, settings: payload, mailSettings: payload.mailSettings ?? payload };
+              if (c.company && c.company._id === companyId) return { ...c, company: { ...c.company, settings: payload, mailSettings: payload.mailSettings ?? payload } };
+              return c;
+            });
+          }
+          if (old && old.data && Array.isArray(old.data)) {
+            return { ...old, data: old.data.map((c: any) => c._id === companyId ? { ...c, settings: payload, mailSettings: payload.mailSettings ?? payload } : c) };
+          }
+          return old;
+        });
+
+        // Update detail cache
+        queryClient.setQueryData(companiesKeys.detail(companyId), (old: any) => {
+          if (!old) return old;
+          return { ...old, settings: payload, mailSettings: payload.mailSettings ?? payload };
+        });
       }
     },
   });

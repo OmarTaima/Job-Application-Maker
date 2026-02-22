@@ -16,6 +16,7 @@ interface InputProps {
   step?: number;
   disabled?: boolean;
   required?: boolean;
+  readOnly?: boolean;
   success?: boolean;
   error?: boolean;
   hint?: string;
@@ -30,6 +31,7 @@ const Input: FC<InputProps> = ({
   onChange,
   onKeyDown,
   onClick,
+  readOnly = false,
   className = "",
   min,
   max,
@@ -63,6 +65,7 @@ const Input: FC<InputProps> = ({
         onChange={onChange}
         onKeyDown={onKeyDown}
         onClick={onClick}
+        readOnly={readOnly}
         min={min}
         max={max}
         step={step}

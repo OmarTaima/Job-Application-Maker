@@ -51,11 +51,35 @@ export interface CompanyResponse {
 export interface CompanySettings {
   _id: string;
   company: string;
+  // Server may return either a dedicated settings object or a full company
+  // object with nested settings. Include common possible fields to make
+  // type-checking in callers more ergonomic.
   mailSettings?: {
     availableMails?: string[];
+    // aliases and variants that backend might use
+    available_senders?: string[];
+    availableSenders?: string[];
     defaultMail?: string | null;
     companyDomain?: string | null;
   };
+  // Some endpoints return the settings wrapped under `settings.mailSettings`
+  settings?: {
+    mailSettings?: {
+      availableMails?: string[];
+      defaultMail?: string | null;
+      companyDomain?: string | null;
+    };
+  };
+  // Company-like fields that may be present when the API returns a full company
+  // object from the settings query.
+  name?: string | { en: string; ar?: string };
+  contactEmail?: string;
+  email?: string;
+  availableMails?: string[];
+  available_senders?: string[];
+  availableSenders?: string[];
+  defaultMail?: string | null;
+  companyDomain?: string | null;
   createdAt?: string;
 }
 
@@ -108,6 +132,8 @@ export const companiesService = {
       const response = await axios.get<CompaniesResponse>("/companies", { params });
       return response.data.data;
     } catch (error: any) {
+      // If server returns 404 for settings, treat as "no settings yet" and return null
+
       throw new ApiError(
         getErrorMessage(error),
         error.response?.status,
@@ -248,13 +274,20 @@ export const companiesService = {
   // Company settings endpoints
   async getCompanySettingsByCompany(companyId: string): Promise<CompanySettings | null> {
     try {
-      const response = await axios.get<any>(`/company`, { params: { company: companyId } });
-      // server may return single settings or array; normalize
-      let data = response.data?.data ?? response.data ?? null;
-      if (Array.isArray(data)) data = data[0] ?? null;
-      if (!data) return null;
-      return data as CompanySettings;
+      if (!companyId) return null;
+
+      // Prefer fetching the authoritative company object by ID instead of
+      // querying `/companies?company=...` which is unreliable / unnecessary.
+      try {
+        const company = await this.getCompanyById(companyId);
+        return company as any;
+      } catch (err: any) {
+        // If company not found, return null; otherwise rethrow
+        if (err instanceof ApiError && err.statusCode === 404) return null;
+        throw err;
+      }
     } catch (error: any) {
+      if (error?.response?.status === 404) return null;
       throw new ApiError(
         getErrorMessage(error),
         error.response?.status,
@@ -263,24 +296,16 @@ export const companiesService = {
     }
   },
 
-  async createCompanySettings(payload: CreateCompanySettingsRequest): Promise<CompanySettings> {
-    try {
-      const response = await axios.post<any>(`/company`, payload);
-      const data = response.data?.data ?? response.data ?? null;
-      return data as CompanySettings;
-    } catch (error: any) {
-      throw new ApiError(
-        getErrorMessage(error),
-        error.response?.status,
-        error.response?.data?.details
-      );
-    }
-  },
-
+  
   async updateCompanySettings(id: string, payload: UpdateCompanySettingsRequest): Promise<CompanySettings> {
     try {
-      const response = await axios.put<any>(`/company/${id}`, payload);
+      const body = payload?.mailSettings ? { mailSettings: payload.mailSettings } : {};
+      const response = await axios.put<any>(`/companies/${id}/settings`, body);
       const data = response.data?.data ?? response.data ?? null;
+      if (!data) return data as CompanySettings;
+      if ((data as any).mailSettings) {
+        return { _id: (data as any)._id, company: (data as any).company ?? (data as any)._id, mailSettings: (data as any).mailSettings } as CompanySettings;
+      }
       return data as CompanySettings;
     } catch (error: any) {
       throw new ApiError(
@@ -290,4 +315,6 @@ export const companiesService = {
       );
     }
   },
+
+ 
 };
