@@ -240,11 +240,7 @@ export default function Users() {
     e.preventDefault();
     setFormError("");
 
-    // Validate companies
-    if (!userForm.companies || userForm.companies.length === 0) {
-      setFormError("Please select at least one company");
-      return;
-    }
+   
 
     setIsCreating(true);
     try {

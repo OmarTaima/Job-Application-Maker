@@ -41,11 +41,22 @@ export default function CompanySettingsPage({ companyId, onSaved, onChange }: Pr
 
   // fetch companies for selector when needed
   const { data: companies = [] } = useCompanies();
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
+
+  const canViewMailManagement = !!hasPermission && hasPermission('Mail Management', 'read');
+  if (!canViewMailManagement) {
+    return (
+      <div className="p-6 max-w-md mx-auto text-center text-gray-600">
+        You do not have permission to view Mail Management.
+      </div>
+    );
+  }
 
   const isSuperAdmin = !!user?.roleId?.name?.toString().toLowerCase().includes("admin");
   const userCompaniesIds = (user?.companies ?? []).map((c: any) => (typeof c.companyId === "string" ? c.companyId : c.companyId?._id)).filter(Boolean) as string[];
   const showSelector = isSuperAdmin || (userCompaniesIds.length > 1);
+
+  const canEdit = !!hasPermission && (hasPermission('Mail Management', 'write') && hasPermission('Mail Management', 'create'));
 
   useEffect(() => {
     // priority: prop `companyId` -> if user has single assigned company -> that -> otherwise first company from list
@@ -290,6 +301,7 @@ export default function CompanySettingsPage({ companyId, onSaved, onChange }: Pr
               <select
                 value={selectedCompanyId}
                 onChange={(e) => setSelectedCompanyId(e.target.value)}
+                disabled={!canEdit}
                 className="h-10 w-full rounded border border-gray-300 px-3 py-2 text-sm"
               >
                 <option value="">Select company...</option>
@@ -314,32 +326,32 @@ export default function CompanySettingsPage({ companyId, onSaved, onChange }: Pr
                   const dom = parts[1] || companyDomain || '';
                   return (
                     <div key={idx} className="flex gap-2 items-center">
-                      <Input value={local} onChange={(e) => handleMailChange(idx, e.target.value, dom)} placeholder={`mail ${idx + 1}`} />
+                      <Input value={local} onChange={(e) => handleMailChange(idx, e.target.value, dom)} placeholder={`mail ${idx + 1}`} disabled={!canEdit} readOnly={!canEdit} />
                       <div className="text-sm text-gray-600">
                         {dom ? `@${dom}` : <span className="text-amber-600">⚠️ No domain</span>}
                       </div>
-                      <button type="button" onClick={() => handleRemoveMail(idx)} className="text-red-600">Remove</button>
+                      <button type="button" onClick={() => handleRemoveMail(idx)} disabled={!canEdit} className="text-red-600" aria-disabled={!canEdit}>Remove</button>
                     </div>
                   );
                 })
               )}
             </div>
-            <button type="button" onClick={handleAddMail} className="mt-2 text-sm text-brand-600">+ Add mail</button>
+            <button type="button" onClick={handleAddMail} disabled={!canEdit} className="mt-2 text-sm text-brand-600" aria-disabled={!canEdit}>+ Add mail</button>
           </div>
 
           <div>
             <Label>Default Mail</Label>
-            <Input value={defaultMail} onChange={(e) => setDefaultMail(e.target.value)} placeholder="default@mail.com" />
+            <Input value={defaultMail} onChange={(e) => setDefaultMail(e.target.value)} placeholder="default@mail.com" disabled={!canEdit} readOnly={!canEdit} />
           </div>
 
           <div>
             <Label>Company Domain</Label>
-            <Input value={companyDomain} onChange={(e) => setCompanyDomain(e.target.value)} placeholder="example.com" />
+            <Input value={companyDomain} onChange={(e) => setCompanyDomain(e.target.value)} placeholder="example.com" disabled={!canEdit} readOnly={!canEdit} />
           </div>
 
           <div className="flex items-center gap-3">
             {(selectedCompanyId || companyId) ? (
-              <button onClick={handleSave} disabled={isSaving} className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white">
+              <button onClick={canEdit ? handleSave : undefined} disabled={!canEdit || isSaving} className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold ${(!canEdit || isSaving) ? 'bg-gray-300 text-gray-600 cursor-not-allowed' : 'bg-brand-500 text-white'}`} title={!canEdit ? 'You need write/create permission to edit' : undefined}>
                 {isSaving ? "Saving..." : "Save Settings"}
               </button>
             ) : (

@@ -177,11 +177,7 @@ export default function EditUser() {
 
     if (!originalUser || !id) return;
 
-    // Validate companies
-    if (!userForm.companies || userForm.companies.length === 0) {
-      setFormError("Please select at least one company");
-      return;
-    }
+   
 
     setIsSaving(true);
     try {
