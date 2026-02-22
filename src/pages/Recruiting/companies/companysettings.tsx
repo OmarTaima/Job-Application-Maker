@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import Swal from 'sweetalert2';
 import { useAuth } from "../../../context/AuthContext";
 import ComponentCard from "../../../components/common/ComponentCard";
 import Label from "../../../components/form/Label";
@@ -177,6 +178,8 @@ export default function CompanySettingsPage({ companyId, onSaved, onChange }: Pr
   }, [availableMails, defaultMail, companyDomain, onChange]);
 
   const handleAddMail = () => setAvailableMails((s) => [...s, ""]);
+  
+ 
   const handleRemoveMail = (idx: number) => setAvailableMails((s) => s.filter((_, i) => i !== idx));
   const normalizeMail = (raw: string) => {
     const v = String(raw || "").trim();
@@ -261,9 +264,14 @@ export default function CompanySettingsPage({ companyId, onSaved, onChange }: Pr
           const returnedDomain = (mailSettingsFromPayload && mailSettingsFromPayload.companyDomain) || payload?.companyDomain || '';
           if (returnedDomain) setCompanyDomain(returnedDomain);
         } catch (e) { /* ignore */ }
+        try { Swal.fire('Saved', 'Settings saved successfully', 'success'); } catch (e) { /* ignore */ }
       onSaved?.(res);
     } catch (err) {
       console.error('handleSave: save error', err);
+      try {
+        const msg = (err && ((err as any).message || (err as any).toString())) || 'Failed to save settings';
+        Swal.fire('Save failed', msg, 'error');
+      } catch (e) { /* ignore */ }
     } finally {
       setIsSaving(false);
     }
