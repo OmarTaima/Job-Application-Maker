@@ -174,6 +174,69 @@ export type Applicant = {
 };
 
 class JobPositionsService {
+  // Normalize job position shapes so callers always get `jobSpecsWithDetails`
+  normalizeJobPosition(maybe: any): any {
+    if (!maybe || typeof maybe !== 'object') return maybe;
+
+    // If already has jobSpecsWithDetails, ensure answers are boolean
+    if (Array.isArray(maybe.jobSpecsWithDetails)) {
+      maybe.jobSpecsWithDetails = maybe.jobSpecsWithDetails.map((d: any, idx: number) => ({
+        jobSpecId: d.jobSpecId ?? d._id ?? d.id ?? `spec_${idx}`,
+        spec: d.spec ?? d.spec?.en ?? d.spec?.value ?? '',
+        weight: typeof d.weight === 'number' ? d.weight : (d.weight ? Number(d.weight) : 0),
+        answer: typeof d.answer === 'boolean' ? d.answer : Boolean(d.answer),
+      }));
+      return maybe;
+    }
+
+    // Collect raw specs and responses from various possible properties
+    const rawSpecs: any[] = Array.isArray(maybe.jobSpecs) ? maybe.jobSpecs.slice() : [];
+    const responses: any[] = Array.isArray(maybe.jobSpecsResponses) ? maybe.jobSpecsResponses.slice() : [];
+
+    // If server returned something like jobSpecsWithDetails under another key, try common variants
+    if (Array.isArray(maybe.job_specs_with_details)) rawSpecs.push(...maybe.job_specs_with_details);
+    if (Array.isArray(maybe.jobSpecsWithDetail)) rawSpecs.push(...maybe.jobSpecsWithDetail);
+
+    // Normalize specs into canonical entries
+    const specs = rawSpecs.map((s: any, idx: number) => {
+      if (!s) return { jobSpecId: `spec_${idx}`, spec: '', weight: 0 };
+      if (typeof s === 'string') return { jobSpecId: s, spec: s, weight: 0 };
+      const jobSpecId = s.jobSpecId ?? s._id ?? s.id ?? s.specId ?? `spec_${idx}`;
+      const specVal = s.spec ?? (s.spec && typeof s.spec === 'object' ? (s.spec.en ?? '') : s.spec) ?? '';
+      const weight = typeof s.weight === 'number' ? s.weight : (s.weight ? Number(s.weight) : 0);
+      return { jobSpecId, spec: specVal, weight };
+    });
+
+    // Map responses by id
+    const respMap = new Map<string, boolean>();
+    responses.forEach((r: any) => {
+      if (!r) return;
+      const id = r.jobSpecId ?? r._id ?? r.id ?? r.specId;
+      if (!id) return;
+      respMap.set(id, typeof r.answer === 'boolean' ? r.answer : Boolean(r.answer));
+    });
+
+    // Build final details merging specs and responses
+    let details = specs.map((s: any) => ({
+      jobSpecId: s.jobSpecId,
+      spec: s.spec,
+      weight: s.weight,
+      answer: respMap.has(s.jobSpecId) ? respMap.get(s.jobSpecId) : false,
+    }));
+
+    // If no specs but responses exist, construct from responses
+    if (details.length === 0 && responses.length > 0) {
+      details = responses.map((r: any, idx: number) => ({
+        jobSpecId: r.jobSpecId ?? r._id ?? r.id ?? `rsp_${idx}`,
+        spec: r.spec ?? r.label ?? '',
+        weight: typeof r.weight === 'number' ? r.weight : 0,
+        answer: typeof r.answer === 'boolean' ? r.answer : Boolean(r.answer),
+      }));
+    }
+
+    maybe.jobSpecsWithDetails = details;
+    return maybe;
+  }
   /**
    * Get all job positions
    */
@@ -222,7 +285,9 @@ class JobPositionsService {
       params.deleted = deleted ? "true" : "false";
 
       const response = await axios.get("/job-positions", { params });
-      return response.data.data;
+      const data = response.data.data;
+      if (Array.isArray(data)) return data.map((d: any) => this.normalizeJobPosition(d));
+      return data;
     } catch (error: any) {
       throw new ApiError(
         getErrorMessage(error),
@@ -238,7 +303,8 @@ class JobPositionsService {
   async getJobPositionById(jobPositionId: string): Promise<JobPosition> {
     try {
       const response = await axios.get(`/job-positions/${jobPositionId}`);
-      return response.data.data;
+      const data = response.data.data;
+      return this.normalizeJobPosition(data);
     } catch (error: any) {
       throw new ApiError(
         getErrorMessage(error),
@@ -302,7 +368,7 @@ class JobPositionsService {
         throw new ApiError(getErrorMessage(response as any), response.status ?? undefined, response as any);
       }
 
-      return maybe as any;
+      return this.normalizeJobPosition(maybe) as any;
     } catch (error: any) {
       throw new ApiError(
         getErrorMessage(error),
@@ -350,7 +416,8 @@ class JobPositionsService {
         `/job-positions/${jobPositionId}`,
         payload
       );
-      return response.data.data;
+      const jobPositionData = response.data.data;
+      return this.normalizeJobPosition(jobPositionData);
     } catch (error: any) {
       throw new ApiError(
         getErrorMessage(error),

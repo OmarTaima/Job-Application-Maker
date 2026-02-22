@@ -1,5 +1,6 @@
 import axios from "../config/axios";
 import { getErrorMessage } from "../utils/errorHandler";
+import { jobPositionsService } from "./jobPositionsService";
 
 export class ApiError extends Error {
   constructor(
@@ -299,6 +300,19 @@ class ApplicantsService {
       if (!maybe) {
         console.warn('applicantsService.getApplicantById: unexpected response shape', response.data);
         throw new ApiError(getErrorMessage(response as any), response.status ?? undefined, response as any);
+      }
+
+      // Normalize any job-specs data so callers can rely on `jobSpecsWithDetails`
+      try {
+        if (maybe.jobPositionId && typeof maybe.jobPositionId === 'object') {
+          jobPositionsService.normalizeJobPosition(maybe.jobPositionId);
+        }
+        // If applicant itself carries jobSpecsResponses or jobSpecs, normalize into jobSpecsWithDetails
+        if (maybe.jobSpecsResponses || maybe.jobSpecs || maybe.jobSpecsWithDetails) {
+          jobPositionsService.normalizeJobPosition(maybe as any);
+        }
+      } catch (e) {
+        // ignore normalization errors
       }
 
       return maybe as Applicant;

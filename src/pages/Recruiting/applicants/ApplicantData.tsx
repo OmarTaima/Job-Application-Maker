@@ -1497,6 +1497,70 @@ const ApplicantData = () => {
   </div>
 </div>
 
+        {/* Job Specs With Details (from applicant or populated jobPosition) */}
+        {(() => {
+          const specs: any[] = (applicant && Array.isArray((applicant as any).jobSpecsWithDetails))
+            ? (applicant as any).jobSpecsWithDetails
+            : (applicant && applicant.jobPositionId && Array.isArray((applicant.jobPositionId as any).jobSpecsWithDetails))
+              ? (applicant.jobPositionId as any).jobSpecsWithDetails
+              : [];
+          if (!specs || specs.length === 0) return null;
+          return (
+            <div className="mt-6 mb-6">
+              <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">Job Specs</h3>
+              <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                {specs.map((s: any, idx: number) => {
+                  const specText = typeof s.spec === 'string' ? s.spec : (s.spec && (s.spec.en || s.spec.value)) || '';
+                  const weight = typeof s.weight === 'number' ? s.weight : (s.weight ? Number(s.weight) : 0);
+                  const answered = typeof s.answer === 'boolean' ? s.answer : Boolean(s.answer);
+                  return (
+                    <div
+                      key={s.jobSpecId || s._id || idx}
+                      className="p-3 border rounded-lg bg-white dark:bg-gray-800 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
+                    >
+                      <div className="flex-1">
+                        <p className={`text-sm font-medium ${isArabic(specText) ? 'text-right' : 'text-left'} text-gray-800 dark:text-white`}>
+                          {specText || '(no spec)'}
+                        </p>
+                        {s.description ? (
+                          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{String(s.description)}</p>
+                        ) : null}
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <div className="inline-flex items-center px-2 py-0.5 rounded-full bg-gradient-to-r from-indigo-100 to-indigo-50 dark:from-indigo-700/30 dark:to-indigo-800/20 text-xs font-semibold text-indigo-700 dark:text-indigo-200">
+                          <svg className="w-3 h-3 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                            <circle cx="12" cy="12" r="9" />
+                          </svg>
+                          <span>Weight: {weight}</span>
+                        </div>
+
+                        <div className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${answered ? 'bg-green-100 text-green-800 dark:bg-green-800/30 dark:text-green-200' : 'bg-gray-100 text-gray-700 dark:bg-gray-700/30 dark:text-gray-300'}`}>
+                          {answered ? (
+                            <>
+                              <svg className="w-3 h-3 mr-1 text-green-600 dark:text-green-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                              </svg>
+                              <span>Met</span>
+                            </>
+                          ) : (
+                            <>
+                              <svg className="w-3 h-3 mr-1 text-gray-500 dark:text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                              <span>Not met</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+
         <CustomResponses applicant={applicant} />
 
         

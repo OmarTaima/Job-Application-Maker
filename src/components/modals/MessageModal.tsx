@@ -240,14 +240,7 @@ const MessageModal = ({
         } catch (e) { /* ignore */ }
 
         const fallbackEmail = normalized?.mailSettings?.defaultMail || normalized?.defaultMail || normalized?.contactEmail || normalized?.email || '';
-        let companyName = '';
-        if (normalized?.name) {
-          if (typeof normalized.name === 'object' && 'en' in normalized.name) {
-            companyName = normalized.name.en;
-          } else if (typeof normalized.name === 'string') {
-            companyName = normalized.name;
-          }
-        }
+        
         if (fallbackEmail && !seen.has(fallbackEmail)) {
           deduped.push({ value: fallbackEmail, label: fallbackEmail });
           seen.add(fallbackEmail);
