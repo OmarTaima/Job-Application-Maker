@@ -44,8 +44,9 @@ export function useApplicant(id: string, options?: { initialData?: any }) {
     queryFn: () => applicantsService.getApplicantById(id),
     enabled: !!id,
     staleTime: 30 * 1000, // 30s - keep relatively fresh
-    // Always refetch on mount to ensure interviews are up-to-date on page load
-    refetchOnMount: 'always',
+    // If caller supplied initialData (e.g. from list cache or navigation), avoid forcing a refetch on mount.
+    // Otherwise preserve existing behavior of refreshing details on mount.
+    refetchOnMount: options?.initialData ? false : 'always',
     initialData: options?.initialData,
   });
 }

@@ -201,6 +201,29 @@ a svg path {
   [role="button"]:not(:disabled) {
     cursor: pointer;
   }
+  html, body, #root {
+    max-width: 100%;
+    margin: 0;
+    overflow-x: hidden !important;
+    overscroll-behavior-x: none !important;
+    touch-action: pan-y !important;
+    position: relative;
+    left: 0;
+    right: 0;
+  }
+
+    /* Make sure all elements obey box-sizing and don't unintentionally overflow */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      max-width: 100%;
+    }
+
+    img, svg, video {
+      max-width: 100%;
+      height: auto;
+      display: block;
+    }
+
   body {
     @apply relative font-normal font-outfit z-1 bg-gray-50;
     /* Ensure default sans font remains for LTR; Arabic/RTL will use Cairo below */

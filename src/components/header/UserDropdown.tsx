@@ -4,7 +4,7 @@ import { Dropdown } from "../ui/dropdown/Dropdown";
 import { Link } from "react-router";
 import { useAuth } from "../../context/AuthContext";
 
-export default function UserDropdown() {
+export default function UserDropdown({ compact }: { compact?: boolean } = {}) {
   const [isOpen, setIsOpen] = useState(false);
   const { user } = useAuth();
 
@@ -19,9 +19,9 @@ export default function UserDropdown() {
     <div className="relative">
       <button
         onClick={toggleDropdown}
-        className="flex items-center h-full text-gray-700 dropdown-toggle dark:text-gray-400"
+        className="flex items-center lg:mr-12 h-full text-gray-700 dropdown-toggle dark:text-gray-400"
       >
-        <span className="mr-3 overflow-hidden rounded-full h-11 w-11 flex items-center justify-center bg-gray-100 dark:bg-gray-800 self-center">
+        <span className={`${compact ? 'mr-2' : 'mr-3'} overflow-hidden rounded-full flex items-center justify-center bg-gray-100 dark:bg-gray-800 self-center ${compact ? 'h-8 w-8' : 'h-11 w-11'}`}>
           <svg
             width="40"
             height="40"
@@ -34,9 +34,11 @@ export default function UserDropdown() {
           </svg>
         </span>
 
-        <span className="block mr-1 font-medium text-theme-sm">
-          {user?.fullName?.split(' ')[0] || user?.email?.split('@')[0] || 'User'}
-        </span>
+        {!compact && (
+          <span className="block mr-1 font-medium text-theme-sm">
+            {user?.fullName?.split(' ')[0] || user?.email?.split('@')[0] || 'User'}
+          </span>
+        )}
         <svg
           className={`stroke-gray-500 dark:stroke-gray-400 transition-transform duration-200 ${
             isOpen ? "rotate-180" : ""

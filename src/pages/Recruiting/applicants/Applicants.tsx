@@ -115,6 +115,7 @@ function ImageThumbnail({ src, alt }: { src?: string | null; alt?: string }) {
   );
 }
 import Swal from "sweetalert2";
+import ApplicantsMobilePage from "./ApplicantsMobilePage";
 import { useNavigate } from "react-router";
 import {
   MaterialReactTable,
@@ -2531,6 +2532,7 @@ const {
         jobPositions={jobPositions}
         applicants={applicants}
         jobPositionMap={jobPositionMap}
+        companies={allCompaniesRaw}
         customFilters={customFilters}
         setCustomFilters={setCustomFilters}
         columnFilters={columnFilters}
@@ -2541,4 +2543,18 @@ const {
   );
 };
 
-export default Applicants;
+export default function ApplicantsWrapper() {
+  const [isMobile, setIsMobile] = useState<boolean>(() => typeof window !== 'undefined' ? window.innerWidth <= 425 : false);
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth <= 425);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  if (isMobile) return <ApplicantsMobilePage />;
+  return <Applicants />;
+}
+
+ 
+

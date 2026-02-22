@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { Dialog, DialogTitle, DialogContent, DialogActions, TextField, Button, FormControlLabel, Checkbox } from "@mui/material";
+import { Dialog, DialogTitle, DialogContent, DialogActions, TextField, Button, FormControlLabel, Checkbox, useMediaQuery } from "@mui/material";
+import { useTheme } from '@mui/material/styles';
+import { useAuth } from '../../context/AuthContext';
 
 type Props = {
   open: boolean;
   onClose: () => void;
   jobPositions: any[];
   applicants?: any[];
+  companies?: any[];
   jobPositionMap?: Record<string, any>;
   customFilters: any[];
   setCustomFilters: React.Dispatch<React.SetStateAction<any[]>>;
@@ -86,37 +89,23 @@ export const getCustomResponseValue = (a: any, f: any) => {
         // ignore
       }
     }
-    return '';
   }
 
-  for (const [k, v] of Object.entries({ ...(responses || {}), ...(top || {}) })) {
-    const nk = norm(k);
-    if (targetSet.has(nk)) return v;
-    if (targetSet.has(nk.replace(/\s+/g, '_'))) return v;
-    if (targetSet.has(nk.replace(/_/g, ' '))) return v;
-  }
-
-  const matchesSalaryLabel = (/salary|expected salary|الراتب|الراتب المتوقع|راتب/).test(((f.label?.en || '') + ' ' + (f.label?.ar || '')).toString().toLowerCase());
-  if (f.type === 'range' || matchesSalaryLabel) {
-    for (const v of Object.values({ ...(responses || {}), ...(top || {}) })) {
-      if (typeof v === 'number') return v;
-      if (typeof v === 'string' && /\d|[\u0660-\u0669\u06F0-\u06F9]/.test(v)) return v;
-      if (Array.isArray(v)) {
-        const found = v.find((it: any) => (typeof it === 'number') || (typeof it === 'string' && /\d/.test(it)));
-        if (found !== undefined) return found;
-      }
-      if (typeof v === 'object' && v !== null) {
-        const candidateKeys = ['value','val','amount','salary','expectedSalary','min','max','amountValue','numeric','0'];
-        for (const ck of candidateKeys) {
-          if (Object.prototype.hasOwnProperty.call(v, ck)) {
-            const cand = (v as any)[ck];
-            if (cand !== undefined && cand !== null && (typeof cand === 'number' || (typeof cand === 'string' && /\d/.test(cand)))) return cand;
-          }
-        }
+  // Fallback: try to match any response key by normalized label
+  try {
+    for (const [k, v] of Object.entries(responses || {})) {
+      try {
+        const nk = normalizeLabelSimple(k);
+        if (!nk) continue;
+        if (targetSet.has(nk) || targetSet.has(nk.replace(/_/g, ' ')) || targetSet.has(nk.replace(/\s+/g, '_'))) return v;
+      } catch (e) {
+        // ignore
       }
     }
+  } catch (e) {
+    // ignore
   }
-
+  // If nothing matched, return empty string and close helper
   return '';
 };
 
@@ -226,16 +215,68 @@ export const isExcludedLabel = (rawLabel: any) => {
 };
 
  
-const CustomFilterModal: React.FC<Props> = ({ open, onClose, jobPositions = [], customFilters = [], setCustomFilters, columnFilters = [], setColumnFilters, genderOptions = [] }) => {
+const CustomFilterModal: React.FC<Props> = ({ open, onClose, jobPositions = [], customFilters = [], setCustomFilters, columnFilters = [], setColumnFilters, genderOptions = [], companies = [] }) => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const isVerySmall = useMediaQuery('(max-width:425px)');
+  const { user } = useAuth();
   const [modalSelectedJobIds, setModalSelectedJobIds] = useState<string[]>([]);
-  const [modalJobQuery, setModalJobQuery] = useState<string>('');
+  const [modalSelectedCompanyIds, setModalSelectedCompanyIds] = useState<string[]>([]);
+
+  const userAssignedCompanyIds = (user?.companies?.map((c: any) => (typeof c.companyId === 'string' ? c.companyId : c.companyId?._id)).filter(Boolean)) || [];
+  const isSingleAssignedCompany = Array.isArray(userAssignedCompanyIds) && userAssignedCompanyIds.length === 1;
   const isExcludedLabel = (_: string) => false;
+
+  // Robustly derive companies array from the `companies` prop which may be
+  // either an array or a wrapper object (e.g. { data: [...] }). Keep this
+  // logic local to the modal so callers don't need to change.
+  const deriveCompaniesList = (c: any): any[] => {
+    if (!c) return [];
+    if (Array.isArray(c)) return c;
+    if (Array.isArray(c.data)) return c.data;
+    if (Array.isArray(c.items)) return c.items;
+    if (Array.isArray(c.rows)) return c.rows;
+    if (Array.isArray(c.companies)) return c.companies;
+    return [];
+  };
+  const companiesList = deriveCompaniesList(companies);
+
+  // Safely convert possible i18n objects like { en, ar } or nested name objects
+  // into a display string. Prefer English then Arabic, fallback to any string.
+  const getDisplayText = (v: any): string => {
+    if (v === undefined || v === null) return '';
+    if (typeof v === 'string') return v;
+    if (typeof v === 'number') return String(v);
+    if (typeof v === 'object') {
+      if (typeof v.en === 'string' && v.en.trim()) return v.en;
+      if (typeof v.ar === 'string' && v.ar.trim()) return v.ar;
+      if (typeof v.name === 'string' && v.name.trim()) return v.name;
+      if (typeof v.companyName === 'string' && v.companyName.trim()) return v.companyName;
+      // fallback: try to stringify safe fields
+      if (v.title && typeof v.title === 'string') return v.title;
+      return String(v.en ?? v.ar ?? v.name ?? v.companyName ?? v.title ?? JSON.stringify(v));
+    }
+    return String(v);
+  };
 
   useEffect(() => {
     // initialize selected jobs from existing columnFilters if present
     try {
       const jf = Array.isArray(columnFilters) ? columnFilters.find((c: any) => c.id === 'jobPositionId') : undefined;
       if (jf && Array.isArray(jf.value)) setModalSelectedJobIds(jf.value.map(String));
+      const cf = Array.isArray(columnFilters) ? columnFilters.find((c: any) => c.id === 'companyId') : undefined;
+      if (cf && Array.isArray(cf.value)) setModalSelectedCompanyIds(cf.value.map(String));
+      else {
+        // If no company filter is present and the logged-in user is assigned exactly one company,
+        // auto-select that company so users assigned to one company don't need to pick it.
+        try {
+          if (isSingleAssignedCompany) {
+            setModalSelectedCompanyIds([String(userAssignedCompanyIds[0])]);
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
     } catch (e) {
       // ignore
     }
@@ -262,49 +303,105 @@ const CustomFilterModal: React.FC<Props> = ({ open, onClose, jobPositions = [], 
     <>
      {/* Custom Filter Modal */}
   
-      {/* Declare modalJobQuery state */}
-      {(() => {
-        // Declare modalJobQuery state
-        // Attach to window for debugging if needed
-        // (window as any).modalJobQuery = modalJobQuery;
-        return null;
-      })()}
-      <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-        <DialogTitle>Custom Filter Settings</DialogTitle>
-        <DialogContent>
-          <div className="bg-white dark:bg-gray-800 rounded p-4">
+      {/* Jobs list (no search) */}
+      <Dialog
+        open={open}
+        onClose={onClose}
+        maxWidth="md"
+        fullWidth
+        fullScreen={isMobile && !isVerySmall}
+        PaperProps={
+          isVerySmall
+            ? { style: { maxWidth: '90vw', width: '90vw', borderRadius: 12, maxHeight: '75vh', margin: 'auto' } }
+            : isMobile
+              ? { style: { margin: 0, width: '100%', height: '100%', borderRadius: 0 } }
+              : undefined
+        }
+      >
+        <DialogTitle sx={{ position: 'sticky', top: 0, zIndex: 2, background: 'inherit' }}>Custom Filter Settings</DialogTitle>
+        <DialogContent sx={{ px: isVerySmall ? 2 : (isMobile ? 2 : 3), py: isVerySmall ? 1 : (isMobile ? 1 : 3), maxHeight: isVerySmall ? 'calc(75vh - 96px)' : (isMobile ? 'calc(100vh - 112px)' : '60vh'), overflowY: 'auto' }}>
+          <div className="bg-white dark:bg-gray-800 rounded" style={{ padding: isVerySmall ? 6 : (isMobile ? 8 : 16) }}>
             <div className="space-y-4">
+              {/* Companies selector: hidden entirely when user is assigned to a single company */}
+              {!isSingleAssignedCompany && (
+                <div className="pt-0">
+                  <div className="text-sm font-medium mb-2">Companies</div>
+                  <div className="flex gap-2 flex-wrap">
+                    {companiesList.map((comp: any) => {
+                      const cid = (comp._id || comp.id) || '';
+                      const title = getDisplayText(comp?.name || comp?.companyName || comp?.title || comp?.title?.en || cid) || cid;
+                      return (
+                        <FormControlLabel key={cid} control={<Checkbox size="small" checked={modalSelectedCompanyIds.includes(String(cid))} onChange={(e) => {
+                          const checked = e.target.checked;
+                          setModalSelectedCompanyIds(prev => {
+                            if (checked) return Array.from(new Set([...prev, String(cid)]));
+                            return prev.filter((x) => x !== String(cid));
+                          });
+                        }} />} label={<span className="text-sm">{title}</span>} />
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               <div>
                 <div className="text-sm font-medium mb-2">Jobs</div>
-                {/* Job search input */}
-                <TextField
-                  size="small"
-                  placeholder="Search jobs..."
-                  value={modalJobQuery}
-                  onChange={e => setModalJobQuery(e.target.value)}
-                  className="mb-2"
-                />
-                <div className="flex gap-2 flex-wrap">
-                  {(jobPositions || []).filter((job: any) => {
-                    const jid = (typeof job._id === 'string' ? job._id : job._id?._id || job.id || '') || '';
-                    const title = (job.title && (typeof job.title === 'string' ? job.title : job.title?.en)) || job.name || jid;
-                    if (!modalJobQuery || !String(modalJobQuery).trim()) return true;
-                    const q = String(modalJobQuery).toLowerCase().trim();
-                    return String(title || '').toLowerCase().includes(q) || String(jid || '').toLowerCase().includes(q);
-                  }).map((job: any) => {
-                    const jid = (typeof job._id === 'string' ? job._id : job._id?._id || job.id || '') || '';
-                    const title = (job.title && (typeof job.title === 'string' ? job.title : job.title?.en)) || job.name || jid;
-                    return (
-                      <FormControlLabel key={jid} control={<Checkbox size="small" checked={modalSelectedJobIds.includes(String(jid))} onChange={(e) => {
-                        const checked = e.target.checked;
-                        setModalSelectedJobIds(prev => {
-                          if (checked) return Array.from(new Set([...prev, String(jid)]));
-                          return prev.filter((x) => x !== String(jid));
-                        });
-                      }} />} label={<span className="text-sm">{title}</span>} />
-                    );
-                  })}
-                </div>
+                {modalSelectedCompanyIds.length === 0 ? (
+                  <div className="text-sm text-gray-500">Select one or more companies to display their jobs.</div>
+                ) : (
+                  <>
+                    {(() => {
+                      // Build a map of companyId -> jobs
+                      const jobsByCompany: Record<string, any[]> = {};
+                      const getCid = (job: any) => {
+                        const rawCid = job.companyId || job.company || job.companyObj;
+                        if (!rawCid) return '';
+                        if (typeof rawCid === 'string') return rawCid;
+                        return rawCid._id || rawCid.id || '';
+                      };
+                      const getJid = (job: any) => (typeof job._id === 'string' ? job._id : (job._id?._id || job._id?.id || job.id || '')) || '';
+                      (jobPositions || []).forEach((job: any) => {
+                        const cid = String(getCid(job) || '');
+                        if (!cid) return;
+                        if (!jobsByCompany[cid]) jobsByCompany[cid] = [];
+                        jobsByCompany[cid].push(job);
+                      });
+
+                      return (
+                        <div className="space-y-3">
+                          {modalSelectedCompanyIds.map((selCid) => {
+                            const jobs = jobsByCompany[String(selCid)] || [];
+                            const comp = companiesList.find((c: any) => String(c._id || c.id) === String(selCid));
+                            const compTitle = comp ? getDisplayText(comp.name || comp.companyName || comp.title || comp.title?.en || selCid) : selCid;
+                            return (
+                              <div key={selCid} className="border rounded p-2">
+                                <div className="text-sm font-medium mb-2">{compTitle}</div>
+                                {jobs.length === 0 ? (
+                                  <div className="text-sm text-gray-500">No jobs for this company.</div>
+                                ) : (
+                                  <div className="flex gap-2 flex-wrap">
+                                    {jobs.map((job: any) => {
+                                      const jid = String(getJid(job));
+                                      const title = getDisplayText(job.title || job.name || jid) || jid;
+                                      return (
+                                        <FormControlLabel key={jid} control={<Checkbox size="small" checked={modalSelectedJobIds.includes(String(jid))} onChange={(e) => {
+                                          const checked = e.target.checked;
+                                          setModalSelectedJobIds(prev => {
+                                            if (checked) return Array.from(new Set([...prev, String(jid)]));
+                                            return prev.filter((x) => x !== String(jid));
+                                          });
+                                        }} />} label={<span className="text-sm">{title}</span>} />
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+                  </>
+                )}
               </div>
 
               {/* Hardcoded Personal Information filters (not from job custom fields) */}
@@ -382,16 +479,35 @@ const CustomFilterModal: React.FC<Props> = ({ open, onClose, jobPositions = [], 
                     <div className="flex gap-2">
                       {(() => {
                         const existing = customFilters.find((cf: any) => cf.fieldId === '__has_cv') || {};
-                        const val = existing.value ?? 'any';
+                        const isHas = existing.value === true;
+                        const isNo = existing.value === false;
                         return (
                           <>
-                            <Button variant={val === true ? 'contained' : 'outlined'} size="small" onClick={() => { setCustomFilters(prev => { const next = prev.filter((p: any) => p.fieldId !== '__has_cv'); next.push({ fieldId: '__has_cv', labelEn: 'Has CV', labelAr: 'لديه سيرة ذاتية', type: 'hasCV', value: true }); return next; }); }}>Has</Button>
-                            <Button variant={val === false ? 'contained' : 'outlined'} size="small" onClick={() => { setCustomFilters(prev => { const next = prev.filter((p: any) => p.fieldId !== '__has_cv'); next.push({ fieldId: '__has_cv', labelEn: 'Has CV', labelAr: 'لديه سيرة ذاتية', type: 'hasCV', value: false }); return next; }); }}>No</Button>
+                            <Button variant={isHas ? 'contained' : 'outlined'} size="small" onClick={() => {
+                              setCustomFilters(prev => {
+                                if (isHas) return prev.filter((p: any) => p.fieldId !== '__has_cv');
+                                const next = prev.filter((p: any) => p.fieldId !== '__has_cv');
+                                next.push({ fieldId: '__has_cv', labelEn: 'Has CV', labelAr: 'لديه سيرة ذاتية', type: 'hasCV', value: true });
+                                return next;
+                              });
+                            }}>Has</Button>
+                            <Button variant={isNo ? 'contained' : 'outlined'} size="small" onClick={() => {
+                              setCustomFilters(prev => {
+                                if (isNo) return prev.filter((p: any) => p.fieldId !== '__has_cv');
+                                const next = prev.filter((p: any) => p.fieldId !== '__has_cv');
+                                next.push({ fieldId: '__has_cv', labelEn: 'Has CV', labelAr: 'لديه سيرة ذاتية', type: 'hasCV', value: false });
+                                return next;
+                              });
+                            }}>No</Button>
                           </>
                         );
                       })()}
                     </div>
                   </div>
+
+                  {/* (Companies selector moved to top) */}
+
+                 
                 </div>
               </div>
 
@@ -479,8 +595,30 @@ const CustomFilterModal: React.FC<Props> = ({ open, onClose, jobPositions = [], 
                         <div key={fieldKey} className="flex items-center gap-3">
                           <div className="sm:w-1/3 text-sm font-medium">{f.label?.en || 'Work Experience'}</div>
                           <div className="flex gap-2">
-                            <Button variant={val === true ? 'contained' : 'outlined'} size="small" onClick={() => { setCustomFilters(prev => { const next = prev.filter((p: any) => p.fieldId !== saveFieldId); next.push({ fieldId: saveFieldId, labelEn: f.label?.en, labelAr: f.label?.ar, type: 'hasWorkExperience', value: true }); return next; }); }}>Has</Button>
-                            <Button variant={val === false ? 'contained' : 'outlined'} size="small" onClick={() => { setCustomFilters(prev => { const next = prev.filter((p: any) => p.fieldId !== saveFieldId); next.push({ fieldId: saveFieldId, labelEn: f.label?.en, labelAr: f.label?.ar, type: 'hasWorkExperience', value: false }); return next; }); }}>No</Button>
+                            <Button variant={val === true ? 'contained' : 'outlined'} size="small" onClick={() => {
+                              setCustomFilters(prev => {
+                                const next = prev.filter((p: any) => p.fieldId !== saveFieldId);
+                                const existingNow = (prev || []).find((p: any) => String(p.fieldId) === String(saveFieldId));
+                                if (existingNow && existingNow.value === true) {
+                                  // clicking active 'Has' should remove the filter
+                                  return next;
+                                }
+                                next.push({ fieldId: saveFieldId, labelEn: f.label?.en, labelAr: f.label?.ar, type: 'hasWorkExperience', value: true });
+                                return next;
+                              });
+                            }}>Has</Button>
+                            <Button variant={val === false ? 'contained' : 'outlined'} size="small" onClick={() => {
+                              setCustomFilters(prev => {
+                                const next = prev.filter((p: any) => p.fieldId !== saveFieldId);
+                                const existingNow = (prev || []).find((p: any) => String(p.fieldId) === String(saveFieldId));
+                                if (existingNow && existingNow.value === false) {
+                                  // clicking active 'No' should remove the filter
+                                  return next;
+                                }
+                                next.push({ fieldId: saveFieldId, labelEn: f.label?.en, labelAr: f.label?.ar, type: 'hasWorkExperience', value: false });
+                                return next;
+                              });
+                            }}>No</Button>
                           </div>
                         </div>
                       );
@@ -493,8 +631,24 @@ const CustomFilterModal: React.FC<Props> = ({ open, onClose, jobPositions = [], 
                         <div key={fieldKey} className="flex items-center gap-3">
                           <div className="sm:w-1/3 text-sm font-medium">{labelText}</div>
                           <div className="flex gap-2">
-                            <Button variant={val === true ? 'contained' : 'outlined'} size="small" onClick={() => { setCustomFilters(prev => { const next = prev.filter((p: any) => p.fieldId !== saveFieldId); next.push({ fieldId: saveFieldId, labelEn: f.label?.en, labelAr: f.label?.ar, type: 'hasField', value: true }); return next; }); }}>Has</Button>
-                            <Button variant={val === false ? 'contained' : 'outlined'} size="small" onClick={() => { setCustomFilters(prev => { const next = prev.filter((p: any) => p.fieldId !== saveFieldId); next.push({ fieldId: saveFieldId, labelEn: f.label?.en, labelAr: f.label?.ar, type: 'hasField', value: false }); return next; }); }}>No</Button>
+                            <Button variant={val === true ? 'contained' : 'outlined'} size="small" onClick={() => {
+                              setCustomFilters(prev => {
+                                const next = prev.filter((p: any) => p.fieldId !== saveFieldId);
+                                const existingNow = (prev || []).find((p: any) => String(p.fieldId) === String(saveFieldId));
+                                if (existingNow && existingNow.value === true) return next;
+                                next.push({ fieldId: saveFieldId, labelEn: f.label?.en, labelAr: f.label?.ar, type: 'hasField', value: true });
+                                return next;
+                              });
+                            }}>Has</Button>
+                            <Button variant={val === false ? 'contained' : 'outlined'} size="small" onClick={() => {
+                              setCustomFilters(prev => {
+                                const next = prev.filter((p: any) => p.fieldId !== saveFieldId);
+                                const existingNow = (prev || []).find((p: any) => String(p.fieldId) === String(saveFieldId));
+                                if (existingNow && existingNow.value === false) return next;
+                                next.push({ fieldId: saveFieldId, labelEn: f.label?.en, labelAr: f.label?.ar, type: 'hasField', value: false });
+                                return next;
+                              });
+                            }}>No</Button>
                           </div>
                         </div>
                       );
@@ -508,8 +662,24 @@ const CustomFilterModal: React.FC<Props> = ({ open, onClose, jobPositions = [], 
                         <div key={fieldKey} className="flex items-center gap-3">
                           <div className="sm:w-1/3 text-sm font-medium">{labelText}</div>
                           <div className="flex gap-2">
-                            <Button variant={val === true ? 'contained' : 'outlined'} size="small" onClick={() => { setCustomFilters(prev => { const next = prev.filter((p: any) => p.fieldId !== saveFieldId); next.push({ fieldId: saveFieldId, labelEn: f.label?.en, labelAr: f.label?.ar, type: 'hasField', value: true }); return next; }); }}>Has</Button>
-                            <Button variant={val === false ? 'contained' : 'outlined'} size="small" onClick={() => { setCustomFilters(prev => { const next = prev.filter((p: any) => p.fieldId !== saveFieldId); next.push({ fieldId: saveFieldId, labelEn: f.label?.en, labelAr: f.label?.ar, type: 'hasField', value: false }); return next; }); }}>No</Button>
+                            <Button variant={val === true ? 'contained' : 'outlined'} size="small" onClick={() => {
+                              setCustomFilters(prev => {
+                                const next = prev.filter((p: any) => p.fieldId !== saveFieldId);
+                                const existingNow = (prev || []).find((p: any) => String(p.fieldId) === String(saveFieldId));
+                                if (existingNow && existingNow.value === true) return next;
+                                next.push({ fieldId: saveFieldId, labelEn: f.label?.en, labelAr: f.label?.ar, type: 'hasField', value: true });
+                                return next;
+                              });
+                            }}>Has</Button>
+                            <Button variant={val === false ? 'contained' : 'outlined'} size="small" onClick={() => {
+                              setCustomFilters(prev => {
+                                const next = prev.filter((p: any) => p.fieldId !== saveFieldId);
+                                const existingNow = (prev || []).find((p: any) => String(p.fieldId) === String(saveFieldId));
+                                if (existingNow && existingNow.value === false) return next;
+                                next.push({ fieldId: saveFieldId, labelEn: f.label?.en, labelAr: f.label?.ar, type: 'hasField', value: false });
+                                return next;
+                              });
+                            }}>No</Button>
                           </div>
                         </div>
                       );
@@ -657,13 +827,14 @@ const CustomFilterModal: React.FC<Props> = ({ open, onClose, jobPositions = [], 
             </div>
             </div>
           </DialogContent>
-        <DialogActions>
-          <Button onClick={() => {
+        <DialogActions sx={{ flexDirection: isMobile ? 'column' : 'row', gap: 1, px: isMobile ? 2 : undefined }}>
+          <Button size={isVerySmall ? 'small' : 'medium'} sx={{ width: isMobile ? '100%' : 'auto', py: isVerySmall ? 0.5 : undefined }} onClick={() => {
             // clear modal selections and remove jobPositionId filter
             setCustomFilters([]);
             setModalSelectedJobIds([]);
+            setModalSelectedCompanyIds([]);
             setColumnFilters(prev => {
-              const next = Array.isArray(prev) ? prev.filter((p: any) => p.id !== 'jobPositionId') : prev;
+              const next = Array.isArray(prev) ? prev.filter((p: any) => p.id !== 'jobPositionId' && p.id !== 'companyId') : prev;
               try {
                 const raw = sessionStorage.getItem('applicants_table_state');
                 const parsed = raw ? JSON.parse(raw) : {};
@@ -679,12 +850,116 @@ const CustomFilterModal: React.FC<Props> = ({ open, onClose, jobPositions = [], 
             });
             onClose();
           }}>Clear</Button>
-          <Button onClick={() => {
+          <Button size={isVerySmall ? 'small' : 'medium'} sx={{ width: isMobile ? '100%' : 'auto', py: isVerySmall ? 0.5 : undefined }} onClick={() => {
+            // Revert all presence-type filters (Has/No semantics).
+            setCustomFilters(prev => {
+              const prevArr = Array.isArray(prev) ? [...prev] : [];
+
+              // Build presence field ids from jobPositions (same logic as fields builder)
+              const presenceIds = new Set<string>();
+              // Always include explicit Has CV
+              presenceIds.add('__has_cv');
+
+              const getId = (v: any) => (typeof v === 'string' ? v : v?._id ?? v?.id ?? '');
+              const map: Record<string, any> = {};
+              (jobPositions || []).forEach((job: any) => {
+                const jid = getId(job._id) || getId(job.id);
+                if (!jid) return;
+                if (!Array.isArray(job.customFields)) return;
+                job.customFields.forEach((cf: any) => {
+                  const labelOnly = (cf.label?.en || cf.label?.ar || cf.label || '').toString();
+                  const key = normalizeLabelSimple(labelOnly) || String(cf.fieldId || '');
+                  if (!key) return;
+                  if (!map[key]) map[key] = { ...(cf || {}), jobs: new Set<string>([String(jid)]) };
+                  else {
+                    const existing = map[key];
+                    if (Array.isArray(existing.choices) && Array.isArray(cf.choices)) {
+                      const merged = Array.from(new Set([...(existing.choices || []).map(JSON.stringify), ...cf.choices.map(JSON.stringify)])).map((s) => JSON.parse(s));
+                      existing.choices = merged;
+                    } else if (!existing.choices && Array.isArray(cf.choices)) {
+                      existing.choices = cf.choices;
+                    }
+                    existing.jobs.add(String(jid));
+                  }
+                });
+              });
+              const fields = Object.values(map).map((v: any) => ({ ...v, jobs: Array.from(v.jobs) }));
+
+              // Determine which of these fields are presence-type (has/no)
+              fields.forEach((f: any) => {
+                const rawLabel = `${f.label?.en || ''} ${f.label?.ar || ''}`;
+                const fieldKeyNormalized = normalizeLabelSimple(rawLabel) || String(f.fieldId || '');
+                const isWorkExp = /work experience|work_experience|workexperience|الخبرة|خبرة/.test(normalizeForCompare(rawLabel));
+                const isCourses = /courses|certifications|الدورات|شهادات|الشهادات/.test(normalizeForCompare(rawLabel));
+                const isPersonalSkills = /personal skills|skills|المهارات الشخصية|المهارات/.test(normalizeForCompare(rawLabel));
+                const isEducation = /education|education level|المؤهل|المؤهل الدراسي/.test(normalizeForCompare(rawLabel));
+                const isEngineering = /engineering|speciali|specialization|التخصص|التخصص الهندسي|التخصص_الهندسي/.test(normalizeForCompare(rawLabel));
+                if (isWorkExp || isCourses || isPersonalSkills || isEducation || isEngineering) {
+                  const saveFieldId = f.fieldId ?? fieldKeyNormalized;
+                  presenceIds.add(String(saveFieldId));
+                }
+              });
+
+              // Also include any existing custom filter whose type starts with 'has'
+              prevArr.forEach((p: any) => {
+                try {
+                  if (p && typeof p.type === 'string' && p.type.toLowerCase().startsWith('has')) presenceIds.add(String(p.fieldId));
+                } catch (e) { /* ignore */ }
+              });
+
+              // Collect birthdate-like fields so Revert can flip After/Before modes
+              const birthFieldIds = new Set<string>();
+              fields.forEach((f: any) => {
+                try {
+                  const rawLabel = `${f.label?.en || ''} ${f.label?.ar || ''}`;
+                  const fieldKeyNormalized = normalizeLabelSimple(rawLabel) || String(f.fieldId || '');
+                  const isBirthdate = /birthdate|date of birth|تarih|تاريخ الميلاد/.test(normalizeForCompare(rawLabel));
+                  if (isBirthdate) birthFieldIds.add(String(f.fieldId ?? fieldKeyNormalized));
+                } catch (e) { /* ignore */ }
+              });
+
+              // Toggle presence filters that are present in prevArr, and flip birth date modes
+              const next = prevArr.map((p: any) => {
+                try {
+                  if (!p) return p;
+                  const fid = String(p.fieldId || '');
+                  // If this is a birthYear filter (or detected birth field), flip its mode
+                  if (p.type === 'birthYear' || birthFieldIds.has(fid)) {
+                    const cur = p.value || {};
+                    const curMode = cur.mode || 'after';
+                    const newMode = curMode === 'after' ? 'before' : 'after';
+                    const newVal = { ...(cur || {}), mode: newMode };
+                    return { ...p, value: newVal };
+                  }
+                  if (presenceIds.has(fid)) {
+                    const newVal = p.value === true ? false : (p.value === false ? true : true);
+                    return { ...p, value: newVal };
+                  }
+                } catch (e) { /* ignore */ }
+                return p;
+              }).filter(Boolean);
+
+              try {
+                const raw = sessionStorage.getItem('applicants_table_state');
+                const parsed = raw ? JSON.parse(raw) : {};
+                parsed.customFilters = next;
+                const str = JSON.stringify(parsed);
+                sessionStorage.setItem('applicants_table_state', str);
+                try { localStorage.setItem('applicants_table_state', str); } catch (e) { /* ignore */ }
+              } catch (e) { /* ignore */ }
+
+              return next;
+            });
+          }} variant="outlined">Revert</Button>
+          <Button size={isVerySmall ? 'small' : 'medium'} sx={{ width: isMobile ? '100%' : 'auto', py: isVerySmall ? 0.5 : undefined }} onClick={() => {
             // Save custom filters and apply selected jobs as a column filter
             onClose();
             setColumnFilters(prev => {
-              const base = Array.isArray(prev) ? prev.filter((p: any) => p.id !== 'jobPositionId') : [];
+              const base = Array.isArray(prev) ? prev.filter((p: any) => p.id !== 'jobPositionId' && p.id !== 'companyId') : [];
               const next = Array.isArray(base) ? [...base] : [];
+              if (modalSelectedCompanyIds && modalSelectedCompanyIds.length > 0) {
+                next.push({ id: 'companyId', value: modalSelectedCompanyIds });
+              }
               if (modalSelectedJobIds && modalSelectedJobIds.length > 0) {
                 next.push({ id: 'jobPositionId', value: modalSelectedJobIds });
               }
