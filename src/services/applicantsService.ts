@@ -214,7 +214,7 @@ class ApplicantsService {
         let totalPages = 1;
 
         do {
-          const params = { ...paramsBase, page: currentPage, PageCount: 1000 } as any;
+          const params = { ...paramsBase, page: currentPage, PageCount: 'all' } as any;
           if (jpId) params.jobPositionId = jpId;
           const response = await axios.get("/applicants", { params });
           const payload = response.data;
@@ -233,13 +233,18 @@ class ApplicantsService {
 
           result.push(...pageData);
 
-          // Determine total pages
-          if (payload && payload.TotalCount && payload.PageCount) {
-            totalPages = Math.ceil(payload.TotalCount / payload.PageCount);
-          } else if (payload && payload.page && typeof payload.page === 'string') {
-            const match = payload.page.match(/\d+\s+of\s+(\d+)/);
-            if (match) {
-              totalPages = parseInt(match[1], 10);
+          // If we requested 'all', assume single-page response and stop after first fetch
+          if (params.PageCount === 'all') {
+            totalPages = 1;
+          } else {
+            // Determine total pages from response when using paged API
+            if (payload && payload.TotalCount && payload.PageCount) {
+              totalPages = Math.ceil(payload.TotalCount / payload.PageCount);
+            } else if (payload && payload.page && typeof payload.page === 'string') {
+              const match = payload.page.match(/\d+\s+of\s+(\d+)/);
+              if (match) {
+                totalPages = parseInt(match[1], 10);
+              }
             }
           }
 

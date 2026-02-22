@@ -20,7 +20,10 @@ export default function ApplicantsMobilePage(): JSX.Element {
   // Lazy image loader for profile photos to avoid loading all images at once
   function LazyImage({ src, alt, className }: { src?: string | null; alt?: string; className?: string }) {
     const imgRef = useRef<HTMLImageElement | null>(null);
-    const [visible, setVisible] = useState(false);
+    // remember images that were previously made visible to avoid flashing
+    const seenImagesRef = useRef<Set<string>>((globalThis as any).__seenApplicantImages || new Set<string>());
+    if (!(globalThis as any).__seenApplicantImages) (globalThis as any).__seenApplicantImages = seenImagesRef.current;
+    const [visible, setVisible] = useState<boolean>(() => !!src && seenImagesRef.current.has(String(src)));
 
     useEffect(() => {
       if (!src) return;
@@ -36,6 +39,7 @@ export default function ApplicantsMobilePage(): JSX.Element {
           entries.forEach((entry) => {
             if (entry.isIntersecting) {
               setVisible(true);
+              try { if (src) seenImagesRef.current.add(String(src)); } catch (e) {}
               try { obs.disconnect(); } catch (e) {}
             }
           });
