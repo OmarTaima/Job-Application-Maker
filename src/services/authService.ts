@@ -14,6 +14,12 @@ export interface RegisterRequest {
   name?: string;
 }
 
+export interface TableLayout {
+  columnVisibility: Record<string, boolean>;
+  columnSizing: Record<string, number>;
+  columnOrder: string[];
+}
+
 export interface User {
   _id?: string;
   id?: string;
@@ -31,7 +37,7 @@ export interface User {
       access?: string[];
     }>;
   };
-  role?: "admin" | "company_user";
+  role?: 'admin' | 'company_user';
   assignedcompanyId?: string[];
   companies?: Array<{
     _id?: string;
@@ -56,6 +62,7 @@ export interface User {
   state?: string;
   postalCode?: string;
   taxId?: string;
+  tablePreferences: Record<string, TableLayout>;
 }
 
 export interface AuthResponse {

@@ -1,8 +1,11 @@
-import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 // simple in-memory cache for compressed thumbnails
 const _thumbnailCache: Map<string, string> = new Map();
 
-async function createCompressedDataUrl(src: string, maxBytes = 5120): Promise<string> {
+async function createCompressedDataUrl(
+  src: string,
+  maxBytes = 5120
+): Promise<string> {
   if (!src) return src;
   if (_thumbnailCache.has(src)) return _thumbnailCache.get(src) as string;
 
@@ -14,7 +17,9 @@ async function createCompressedDataUrl(src: string, maxBytes = 5120): Promise<st
     const finish = (result: string) => {
       if (resolved) return;
       resolved = true;
-      try { _thumbnailCache.set(src, result); } catch (e) {}
+      try {
+        _thumbnailCache.set(src, result);
+      } catch (e) {}
       resolve(result);
     };
 
@@ -46,7 +51,9 @@ async function createCompressedDataUrl(src: string, maxBytes = 5120): Promise<st
           return null;
         };
 
-        let dataUrl = tryQualities([0.9,0.8,0.7,0.6,0.5,0.4,0.3,0.2,0.15,0.1]);
+        let dataUrl = tryQualities([
+          0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.15, 0.1,
+        ]);
         if (dataUrl) return finish(dataUrl);
 
         // progressively downscale and retry
@@ -55,9 +62,10 @@ async function createCompressedDataUrl(src: string, maxBytes = 5120): Promise<st
         while ((w > 32 || h > 32) && !dataUrl) {
           w = Math.max(24, Math.floor(w * 0.75));
           h = Math.max(24, Math.floor(h * 0.75));
-          canvas.width = w; canvas.height = h;
+          canvas.width = w;
+          canvas.height = h;
           ctx.drawImage(img, 0, 0, w, h);
-          dataUrl = tryQualities([0.6,0.4,0.25,0.15,0.1]);
+          dataUrl = tryQualities([0.6, 0.4, 0.25, 0.15, 0.1]);
         }
 
         if (dataUrl) return finish(dataUrl);
@@ -70,7 +78,11 @@ async function createCompressedDataUrl(src: string, maxBytes = 5120): Promise<st
 
     img.onerror = () => finish(src);
     // attempt load; if the image is data: or same-origin, this will work. crossOrigin may still fail for some hosts.
-    try { img.src = src; } catch (e) { finish(src); }
+    try {
+      img.src = src;
+    } catch (e) {
+      finish(src);
+    }
     // safety timeout: resolve with original after 1500ms
     setTimeout(() => finish(src), 1500);
   });
@@ -83,73 +95,104 @@ function ImageThumbnail({ src, alt }: { src?: string | null; alt?: string }) {
     let mounted = true;
     if (!src) {
       setThumb(null);
-      return () => { mounted = false; };
+      return () => {
+        mounted = false;
+      };
     }
     if (typeof src === 'string' && src.startsWith('data:')) {
       setThumb(src);
-      return () => { mounted = false; };
+      return () => {
+        mounted = false;
+      };
     }
 
     (async () => {
       try {
         const compressed = await createCompressedDataUrl(src as string, 5120);
-        if (mounted) setThumb(compressed || src as string);
+        if (mounted) setThumb(compressed || (src as string));
       } catch (e) {
         if (mounted) setThumb(src as string);
       }
     })();
 
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, [src]);
 
   if (!thumb) {
     return (
       <div className="flex h-full w-full items-center justify-center text-sm font-semibold text-gray-500 dark:text-gray-400">
-        {(alt && alt.charAt(0)) ? alt.charAt(0).toUpperCase() : '-'}
+        {alt && alt.charAt(0) ? alt.charAt(0).toUpperCase() : '-'}
       </div>
     );
   }
 
   return (
-    <img loading="lazy" src={thumb} alt={alt || ''} className="h-full w-full object-cover" />
+    <img
+      loading="lazy"
+      src={thumb}
+      alt={alt || ''}
+      className="h-full w-full object-cover"
+    />
   );
 }
-import Swal from "sweetalert2";
-import ApplicantsMobilePage from "./ApplicantsMobilePage";
-import { useNavigate } from "react-router";
+import Swal from 'sweetalert2';
+import ApplicantsMobilePage from './ApplicantsMobilePage';
+import { useNavigate } from 'react-router';
 import {
   MaterialReactTable,
   useMaterialReactTable,
   type MRT_ColumnDef,
   type MRT_RowSelectionState,
   type MRT_ColumnFiltersState,
-} from "material-react-table";
-import { ThemeProvider, createTheme } from "@mui/material";
-import ComponentCard from "../../../components/common/ComponentCard";
-import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
-import PageMeta from "../../../components/common/PageMeta";
-import { TrashBinIcon } from "../../../icons";
-import { useAuth } from "../../../context/AuthContext";
+} from 'material-react-table';
+import { ThemeProvider, createTheme } from '@mui/material';
+import ComponentCard from '../../../components/common/ComponentCard';
+import PageBreadcrumb from '../../../components/common/PageBreadCrumb';
+import PageMeta from '../../../components/common/PageMeta';
+import { TrashBinIcon } from '../../../icons';
+import { useAuth } from '../../../context/AuthContext';
 import {
   useApplicants,
   useJobPositions,
   useUpdateApplicantStatus,
   useCompanies,
-} from "../../../hooks/queries";
+} from '../../../hooks/queries';
 import BulkMessageModal from '../../../components/modals/BulkMessageModal';
-import { Menu, MenuItem, Checkbox, ListItemText } from "@mui/material";
-import  { normalizeLabelSimple, canonicalMap, getCanonicalType, buildFieldToJobIds, isExcludedLabel } from "../../../components/modals/CustomFilterModal";
-import type { Applicant } from "../../../store/slices/applicantsSlice";
-import { toPlainString } from "../../../utils/strings";
-import CustomFilterModal from "../../../components/modals/CustomFilterModal";
+import { Menu, MenuItem, Checkbox, ListItemText } from '@mui/material';
+import {
+  normalizeLabelSimple,
+  canonicalMap,
+  getCanonicalType,
+  buildFieldToJobIds,
+  isExcludedLabel,
+} from '../../../components/modals/CustomFilterModal';
+import type { Applicant } from '../../../store/slices/applicantsSlice';
+import { toPlainString } from '../../../utils/strings';
+import CustomFilterModal from '../../../components/modals/CustomFilterModal';
+import { TableLayout } from '../../../services/authService';
+import { useTableLayout } from '../../../hooks/queries/useTableLayout';
+
+const APPLICANTS_DEFAULT_LAYOUT: TableLayout = {
+  columnVisibility: {},
+  columnSizing: {},
+  columnOrder: [],
+};
 
 const Applicants = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { layout, saveLayout, isLoaded } = useTableLayout(
+    'applicants_table',
+    APPLICANTS_DEFAULT_LAYOUT
+  );
 
   const isSuperAdmin = useMemo(() => {
     const roleName = user?.roleId?.name;
-    return typeof roleName === 'string' && roleName.toLowerCase() === 'super admin';
+    return (
+      typeof roleName === 'string' && roleName.toLowerCase() === 'super admin'
+    );
   }, [user?.roleId?.name]);
 
   // Restore persisted table state (pagination, sorting, filters) from sessionStorage
@@ -202,7 +245,11 @@ const Applicants = () => {
       } catch {}
       const str = JSON.stringify(toSave);
       sessionStorage.setItem('applicants_table_state', str);
-      try { localStorage.setItem('applicants_table_state', str); } catch (e) { /* ignore */ }
+      try {
+        localStorage.setItem('applicants_table_state', str);
+      } catch (e) {
+        /* ignore */
+      }
     } catch (e) {
       // ignore
     }
@@ -212,16 +259,22 @@ const Applicants = () => {
 
   const [isDeleting, setIsDeleting] = useState(false);
   const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
-  const [bulkAction, setBulkAction] = useState<string>("");
+  const [bulkAction, setBulkAction] = useState<string>('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [showBulkModal, setShowBulkModal] = useState(false);
   // MRT will manage pagination internally (page size set in initialState)
   const [rowSelection, setRowSelection] = useState<MRT_RowSelectionState>({});
-  const [columnFilters, setColumnFilters] = useState<MRT_ColumnFiltersState>(persistedTableState?.columnFilters ?? []);
+  const [columnFilters, setColumnFilters] = useState<MRT_ColumnFiltersState>(
+    persistedTableState?.columnFilters ?? []
+  );
   // MRT sorting state (control sorting externally so we can offer only asc/desc for Submitted)
-  const [sorting, setSorting] = useState<Array<any>>(persistedTableState?.sorting ?? [{ id: 'submittedAt', desc: true }]);
+  const [sorting, setSorting] = useState<Array<any>>(
+    persistedTableState?.sorting ?? [{ id: 'submittedAt', desc: true }]
+  );
   // Pagination state persisted
-  const [pagination, setPagination] = useState(() => persistedTableState?.pagination ?? { pageIndex: 0, pageSize: 10 });
+  const [pagination, setPagination] = useState(
+    () => persistedTableState?.pagination ?? { pageIndex: 0, pageSize: 10 }
+  );
   // Sorting will be managed by MRT (default newest-first)
 
   // Get selected applicant IDs from row selection
@@ -229,21 +282,20 @@ const Applicants = () => {
     return Object.keys(rowSelection);
   }, [rowSelection]);
 
-
   // MRT will reset pagination when filters/sorting change internally
   // Memoize user-derived values
   const companyId = useMemo(() => {
     if (!user) return undefined;
 
     const roleName = user?.roleId?.name?.toLowerCase();
-    const isSuperAdmin = roleName === "super admin";
+    const isSuperAdmin = roleName === 'super admin';
     const usercompanyId = user?.companies?.map((c) =>
-      typeof c.companyId === "string" ? c.companyId : c.companyId._id
+      typeof c.companyId === 'string' ? c.companyId : c.companyId._id
     );
 
     // Super Admin gets all companies (undefined means no filter)
     if (isSuperAdmin) return undefined;
-    
+
     // Regular users get their assigned companies only
     return usercompanyId?.length ? usercompanyId : undefined;
   }, [user?._id, user?.roleId?.name, user?.companies]);
@@ -260,7 +312,9 @@ const Applicants = () => {
   // If the Company column has an active filter, prefer that companyId(s)
   const selectedCompanyFilter = useMemo(() => {
     try {
-      const cf = Array.isArray(columnFilters) ? columnFilters.find((c: any) => c.id === 'companyId') : undefined;
+      const cf = Array.isArray(columnFilters)
+        ? columnFilters.find((c: any) => c.id === 'companyId')
+        : undefined;
       if (!cf) return undefined;
       const v = cf.value;
       if (!v) return undefined;
@@ -272,29 +326,42 @@ const Applicants = () => {
   }, [columnFilters]);
 
   const jobPositionCompanyParam = selectedCompanyFilter ?? companyId;
-const { data: jobPositions = [], isLoading: jobPositionsLoading, refetch: refetchJobPositions, isFetching: isJobPositionsFetching, isFetched: isJobPositionsFetched } =
-   useJobPositions(jobPositionCompanyParam);
-const {
-   data: applicants = [],
-   isLoading: applicantsLoading,
-   error,
-   refetch: refetchApplicants,
-   isFetching: isApplicantsFetching,
-   isFetched: isApplicantsFetched,
- } = useApplicants(companyId as any);
- // Load companies early so memos below can reference `allCompaniesRaw`
- const { data: allCompaniesRaw = [], refetch: refetchCompanies, isFetching: isCompaniesFetching, isFetched: isCompaniesFetched } = useCompanies(companyId as any);
+  const {
+    data: jobPositions = [],
+    isLoading: jobPositionsLoading,
+    refetch: refetchJobPositions,
+    isFetching: isJobPositionsFetching,
+    isFetched: isJobPositionsFetched,
+  } = useJobPositions(jobPositionCompanyParam);
+  const {
+    data: applicants = [],
+    isLoading: applicantsLoading,
+    error,
+    refetch: refetchApplicants,
+    isFetching: isApplicantsFetching,
+    isFetched: isApplicantsFetched,
+  } = useApplicants(companyId as any);
+  // Load companies early so memos below can reference `allCompaniesRaw`
+  const {
+    data: allCompaniesRaw = [],
+    refetch: refetchCompanies,
+    isFetching: isCompaniesFetching,
+    isFetched: isCompaniesFetched,
+  } = useCompanies(companyId as any);
   const selectedApplicantEmails = useMemo(() => {
     try {
       const ids = new Set(selectedApplicantIds);
       return applicants
         .filter((a: any) => {
-          const id = typeof a._id === 'string' ? a._id : a._id?._id || a.id || a._id;
+          const id =
+            typeof a._id === 'string' ? a._id : a._id?._id || a.id || a._id;
           return ids.has(id);
         })
         .map((a: any) => a.email)
         .filter(Boolean);
-    } catch (e) { return []; }
+    } catch (e) {
+      return [];
+    }
   }, [selectedApplicantIds, applicants]);
   // If we already loaded companies, resolve the full company object for the selected applicants
   // If all selected applicants belong to the same company, provide that company id
@@ -303,44 +370,60 @@ const {
       const ids = new Set(selectedApplicantIds);
       const companies = applicants
         .filter((a: any) => {
-          const id = typeof a._id === 'string' ? a._id : a._id?._id || a.id || a._id;
+          const id =
+            typeof a._id === 'string' ? a._id : a._id?._id || a.id || a._id;
           return ids.has(id);
         })
         .map((a: any) => {
           // possible company id fields
-          const c = a.company || a.companyObj || (a.jobPositionId && (a.jobPositionId.companyId || a.jobPositionId.company || a.jobPositionId.companyObj));
+          const c =
+            a.company ||
+            a.companyObj ||
+            (a.jobPositionId &&
+              (a.jobPositionId.companyId ||
+                a.jobPositionId.company ||
+                a.jobPositionId.companyObj));
           if (!c) return null;
           return typeof c === 'string' ? c : c._id || c.id || null;
         })
         .filter(Boolean) as string[];
       const unique = Array.from(new Set(companies));
       return unique.length === 1 ? unique[0] : null;
-    } catch (e) { return null; }
+    } catch (e) {
+      return null;
+    }
   }, [selectedApplicantIds, applicants]);
 
   // If we already loaded companies, resolve the full company object for the selected applicants
   const selectedApplicantCompany = useMemo(() => {
     try {
       if (!selectedApplicantCompanyId) return null;
-      const found = (allCompaniesRaw || []).find((c: any) => c && (c._id === selectedApplicantCompanyId || c.id === selectedApplicantCompanyId));
+      const found = (allCompaniesRaw || []).find(
+        (c: any) =>
+          c &&
+          (c._id === selectedApplicantCompanyId ||
+            c.id === selectedApplicantCompanyId)
+      );
       return found || null;
     } catch (e) {
       return null;
     }
   }, [selectedApplicantCompanyId, allCompaniesRaw]);
- const updateStatusMutation = useUpdateApplicantStatus();
- const [lastRefetch, setLastRefetch] = useState<Date | null>(null);
- const [elapsed, setElapsed] = useState<string | null>(null);
- const [statusAnchorEl, setStatusAnchorEl] = useState<HTMLElement | null>(null);
- const [jobAnchorEl, setJobAnchorEl] = useState<HTMLElement | null>(null);
- const [bulkStatusError, setBulkStatusError] = useState("");
- const [bulkDeleteError, setBulkDeleteError] = useState("");
- 
+  const updateStatusMutation = useUpdateApplicantStatus();
+  const [lastRefetch, setLastRefetch] = useState<Date | null>(null);
+  const [elapsed, setElapsed] = useState<string | null>(null);
+  const [statusAnchorEl, setStatusAnchorEl] = useState<HTMLElement | null>(
+    null
+  );
+  const [jobAnchorEl, setJobAnchorEl] = useState<HTMLElement | null>(null);
+  const [bulkStatusError, setBulkStatusError] = useState('');
+  const [bulkDeleteError, setBulkDeleteError] = useState('');
 
-
- 
   useEffect(() => {
-    if (!lastRefetch && (isJobPositionsFetched || isApplicantsFetched || isCompaniesFetched)) {
+    if (
+      !lastRefetch &&
+      (isJobPositionsFetched || isApplicantsFetched || isCompaniesFetched)
+    ) {
       setLastRefetch(new Date());
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -353,13 +436,13 @@ const {
     }
     const formatRelative = (d: Date) => {
       const diffSec = Math.floor((Date.now() - d.getTime()) / 1000);
-      if (diffSec < 60) return "now";
+      if (diffSec < 60) return 'now';
       const mins = Math.floor(diffSec / 60);
       if (mins < 60) return `${mins} min ago`;
       const hours = Math.floor(mins / 60);
       if (hours < 24) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
       const days = Math.floor(hours / 24);
-      if (days === 1) return "yesterday";
+      if (days === 1) return 'yesterday';
       if (days < 7) return `${days} days ago`;
       return d.toLocaleDateString();
     };
@@ -370,11 +453,7 @@ const {
     return () => clearInterval(id);
   }, [lastRefetch]);
 
-  
   // Synchronously measure the button and set dropdown position when opening
-
-
-  
 
   // Helper function to extract detailed error messages
   const getErrorMessage = (err: any): string => {
@@ -384,26 +463,26 @@ const {
     ) {
       return err.response.data.details
         .map((detail: any) => {
-          const field = detail.path?.[0] || "";
-          const message = detail.message || "";
+          const field = detail.path?.[0] || '';
+          const message = detail.message || '';
           return field ? `${field}: ${message}` : message;
         })
-        .join(", ");
+        .join(', ');
     }
     if (err.response?.data?.errors) {
       const errors = err.response.data.errors;
       if (Array.isArray(errors)) {
-        return errors.map((e: any) => e.msg || e.message).join(", ");
+        return errors.map((e: any) => e.msg || e.message).join(', ');
       }
-      if (typeof errors === "object") {
+      if (typeof errors === 'object') {
         return Object.entries(errors)
           .map(([field, msg]) => `${field}: ${msg}`)
-          .join(", ");
+          .join(', ');
       }
     }
     if (err.response?.data?.message) return err.response.data.message;
     if (err.message) return err.message;
-    return "An unexpected error occurred";
+    return 'An unexpected error occurred';
   };
 
   // Helpers to resolve and download CVs for applicants (copied logic from ApplicantData)
@@ -429,7 +508,7 @@ const {
       const a = document.createElement('a');
       const blobUrl = URL.createObjectURL(blob);
       a.href = blobUrl;
-      a.download = filename || (u.split('/').pop() || 'download');
+      a.download = filename || u.split('/').pop() || 'download';
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -444,7 +523,21 @@ const {
     try {
       if (!a) return null;
       // Common fields that may contain a CV or resume path
-      const keys = ['cvFilePath','cvUrl','resume','cv','attachments','resumeUrl','cvFilePath','cvFile','resumeFilePath','resumeFile','cv_file_path','cv_file','cv_path'];
+      const keys = [
+        'cvFilePath',
+        'cvUrl',
+        'resume',
+        'cv',
+        'attachments',
+        'resumeUrl',
+        'cvFilePath',
+        'cvFile',
+        'resumeFilePath',
+        'resumeFile',
+        'cv_file_path',
+        'cv_file',
+        'cv_path',
+      ];
       for (const k of keys) {
         const v = (a as any)[k];
         if (!v) continue;
@@ -458,14 +551,24 @@ const {
       const resp = a?.customResponses || a?.customFieldResponses || {};
       for (const [k, v] of Object.entries(resp || {})) {
         const lk = String(k || '').toLowerCase();
-        if (lk.includes('cv') || lk.includes('resume') || lk.includes('cvfile') || lk.includes('cv_file') || lk.includes('cvfilepath')) {
+        if (
+          lk.includes('cv') ||
+          lk.includes('resume') ||
+          lk.includes('cvfile') ||
+          lk.includes('cv_file') ||
+          lk.includes('cvfilepath')
+        ) {
           if (typeof v === 'string' && v.trim()) return v as string;
           if (Array.isArray(v) && v.length) {
             const f = v.find((it) => typeof it === 'string' && it.trim());
             if (f) return f as string;
           }
         }
-        if (typeof v === 'string' && /https?:\/\/.+\.(pdf|docx?|rtf|txt|zip)$/i.test(v)) return v as string;
+        if (
+          typeof v === 'string' &&
+          /https?:\/\/.+\.(pdf|docx?|rtf|txt|zip)$/i.test(v)
+        )
+          return v as string;
       }
       return null;
     } catch (e) {
@@ -474,18 +577,35 @@ const {
   };
 
   const downloadCvForApplicant = async (a: any) => {
-    if (!a) return Swal.fire('No CV', 'No CV file available for this applicant', 'info');
+    if (!a)
+      return Swal.fire(
+        'No CV',
+        'No CV file available for this applicant',
+        'info'
+      );
     const path = resolveCvPath(a);
-    if (!path) return Swal.fire('No CV', 'No CV file available for this applicant', 'info');
+    if (!path)
+      return Swal.fire(
+        'No CV',
+        'No CV file available for this applicant',
+        'info'
+      );
 
     const url = (() => {
       if (!path) return null;
-      if (typeof path === 'string' && (path.startsWith('http') || path.startsWith('data:'))) return path;
+      if (
+        typeof path === 'string' &&
+        (path.startsWith('http') || path.startsWith('data:'))
+      )
+        return path;
       const base = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
       return base ? `${base}/${String(path).replace(/^\//, '')}` : String(path);
     })();
 
-    const cloudUrl = buildCloudinaryDownloadUrl(url || '', (a?.applicantNo || a?._id || '').toString());
+    const cloudUrl = buildCloudinaryDownloadUrl(
+      url || '',
+      (a?.applicantNo || a?._id || '').toString()
+    );
     if (cloudUrl) {
       window.open(cloudUrl, '_blank');
       return;
@@ -501,7 +621,7 @@ const {
     if (!companyId || companyId.length === 0) {
       return allCompaniesRaw;
     }
-    return allCompaniesRaw.filter((company: any) => 
+    return allCompaniesRaw.filter((company: any) =>
       companyId.includes(company._id)
     );
   }, [allCompaniesRaw, companyId]);
@@ -509,14 +629,17 @@ const {
   // Create job lookup map
   const jobPositionMap = useMemo(() => {
     const map: Record<string, any> = {};
-    const getIdValue = (v: any) => (typeof v === 'string' ? v : v?._id ?? v?.id);
+    const getIdValue = (v: any) =>
+      typeof v === 'string' ? v : (v?._id ?? v?.id);
     jobPositions.forEach((job: any) => {
       const ids = new Set<string>();
       const primary = getIdValue(job._id) || getIdValue(job.id);
       if (primary) ids.add(primary);
       // also add nested forms if present
-      if (job._id && typeof job._id === 'object' && job._id._id) ids.add(job._id._id);
-      if (job.id && typeof job.id === 'object' && job.id._id) ids.add(job.id._id);
+      if (job._id && typeof job._id === 'object' && job._id._id)
+        ids.add(job._id._id);
+      if (job.id && typeof job.id === 'object' && job.id._id)
+        ids.add(job.id._id);
       // index by all discovered ids
       ids.forEach((id) => {
         if (id) map[id] = job;
@@ -529,14 +652,14 @@ const {
   // via named exports. See src/components/modals/CustomFilterModal.tsx
 
   // Which job positions are currently selected in the Job Position column filter
- 
 
   // Map normalized field keys -> set of jobPosition ids that declare that field
-  const fieldToJobIds = useMemo(() => buildFieldToJobIds(jobPositions), [jobPositions]);
-  
+  const fieldToJobIds = useMemo(
+    () => buildFieldToJobIds(jobPositions),
+    [jobPositions]
+  );
 
   // Final deduped list by normalized label (merge fields that differ by id but share the same label)
- 
 
   // Normalize gender values: map Arabic variants to English buckets
   const normalizeGender = (raw: any) => {
@@ -547,7 +670,8 @@ const {
     const arabicMale = ['ذكر', 'ذكرً', 'ذَكر'];
     const arabicFemale = ['انثى', 'أنثى', 'انثي', 'انسه', 'أنسه', 'انثا'];
     if (arabicMale.includes(s) || arabicMale.includes(lower)) return 'Male';
-    if (arabicFemale.includes(s) || arabicFemale.includes(lower)) return 'Female';
+    if (arabicFemale.includes(s) || arabicFemale.includes(lower))
+      return 'Female';
     if (lower === 'male' || lower === 'm') return 'Male';
     if (lower === 'female' || lower === 'f') return 'Female';
     // fallback: title-case the original
@@ -556,7 +680,14 @@ const {
 
   // Build filter options
   const statusOptions = useMemo(() => {
-    const defaultStatuses = ['pending','approved','interview','interviewed','rejected','trashed'];
+    const defaultStatuses = [
+      'pending',
+      'approved',
+      'interview',
+      'interviewed',
+      'rejected',
+      'trashed',
+    ];
     const s = new Set<string>();
     applicants.forEach((a: any) => a?.status && s.add(a.status));
     // include default statuses always (in this order), then any additional dynamic statuses
@@ -565,11 +696,13 @@ const {
   }, [applicants]);
 
   const jobOptions = useMemo(() => {
-    const getIdValue = (v: any) => (typeof v === 'string' ? v : v?._id ?? v?.id);
+    const getIdValue = (v: any) =>
+      typeof v === 'string' ? v : (v?._id ?? v?.id);
     return jobPositions
       .map((j: any) => {
         const id = getIdValue(j._id) || getIdValue(j.id) || '';
-        const title = typeof j.title === 'string' ? j.title : j?.title?.en || '';
+        const title =
+          typeof j.title === 'string' ? j.title : j?.title?.en || '';
         return { id, title };
       })
       .filter((x) => x.id && x.title);
@@ -578,9 +711,13 @@ const {
   // availableCustomFields was replaced by dedupedCustomFields; keep jobPositions dependency above
 
   // Custom filters configured via the modal (rehydrate from persisted table state)
-  const [customFilters, setCustomFilters] = useState<Array<any>>(persistedTableState?.customFilters ?? []);
+  const [customFilters, setCustomFilters] = useState<Array<any>>(
+    persistedTableState?.customFilters ?? []
+  );
   useEffect(() => {
-    try { (window as any).__app_customFilters = customFilters; } catch { }
+    try {
+      (window as any).__app_customFilters = customFilters;
+    } catch {}
   }, [customFilters]);
 
   // On mount, hydrate any persisted customFilters (covers SPA back-navigation)
@@ -605,7 +742,11 @@ const {
       parsed.customFilters = customFilters || [];
       const str = JSON.stringify(parsed);
       sessionStorage.setItem('applicants_table_state', str);
-      try { localStorage.setItem('applicants_table_state', str); } catch (e) { /* ignore */ }
+      try {
+        localStorage.setItem('applicants_table_state', str);
+      } catch (e) {
+        /* ignore */
+      }
     } catch (e) {
       // ignore
     }
@@ -618,10 +759,19 @@ const {
       setTimeout(() => {
         try {
           const p = window.location.pathname || '';
-          const inApplicantsPages = p.startsWith('/applicant') || p.startsWith('/applicants');
+          const inApplicantsPages =
+            p.startsWith('/applicant') || p.startsWith('/applicants');
           if (!inApplicantsPages) {
-            try { localStorage.removeItem('applicants_table_state'); } catch (e) { /* ignore */ }
-            try { sessionStorage.removeItem('applicants_table_state'); } catch (e) { /* ignore */ }
+            try {
+              localStorage.removeItem('applicants_table_state');
+            } catch (e) {
+              /* ignore */
+            }
+            try {
+              sessionStorage.removeItem('applicants_table_state');
+            } catch (e) {
+              /* ignore */
+            }
           }
         } catch (e) {
           // ignore
@@ -632,7 +782,6 @@ const {
   const [customFilterOpen, setCustomFilterOpen] = useState(false);
   // Modal-local selected jobs for composing custom filters
 
-
   const companyOptions = useMemo(() => {
     return allCompanies
       .map((c: any) => {
@@ -642,7 +791,6 @@ const {
       })
       .filter((x) => x.id && x.title);
   }, [allCompanies]);
-
 
   // Determine dataset to pass to MRT: by default exclude trashed applicants unless
   // the user explicitly filters for status === 'trashed'. This makes "All Statuses"
@@ -655,7 +803,9 @@ const {
     if (isSuperAdmin) {
       if (statusVal === 'trashed') return applicants;
       if (Array.isArray(statusVal) && statusVal.length > 0) {
-        return applicants.filter((a: Applicant) => statusVal.includes(a.status));
+        return applicants.filter((a: Applicant) =>
+          statusVal.includes(a.status)
+        );
       }
       return applicants.filter((a: Applicant) => a.status !== 'trashed');
     }
@@ -663,8 +813,11 @@ const {
     // Non-super-admin: never show trashed applicants regardless of filters
     if (Array.isArray(statusVal) && statusVal.length > 0) {
       const allowed = statusVal.filter((s: any) => s !== 'trashed');
-      if (allowed.length === 0) return applicants.filter((a: Applicant) => a.status !== 'trashed');
-      return applicants.filter((a: Applicant) => allowed.includes(a.status) && a.status !== 'trashed');
+      if (allowed.length === 0)
+        return applicants.filter((a: Applicant) => a.status !== 'trashed');
+      return applicants.filter(
+        (a: Applicant) => allowed.includes(a.status) && a.status !== 'trashed'
+      );
     }
 
     return applicants.filter((a: Applicant) => a.status !== 'trashed');
@@ -677,13 +830,15 @@ const {
     const responses = a.customResponses || a.customFieldResponses || {};
     // also consider top-level applicant properties (many imports store some fields at root)
     const top = a || {};
-    
+
     const tryKey = (k: any) => {
       if (k === undefined || k === null) return undefined;
       if (typeof k !== 'string' && typeof k !== 'number') return undefined;
       const key = String(k);
-      if (responses && Object.prototype.hasOwnProperty.call(responses, key)) return responses[key];
-      if (top && Object.prototype.hasOwnProperty.call(top, key)) return top[key];
+      if (responses && Object.prototype.hasOwnProperty.call(responses, key))
+        return responses[key];
+      if (top && Object.prototype.hasOwnProperty.call(top, key))
+        return top[key];
       return undefined;
     };
 
@@ -703,7 +858,14 @@ const {
 
     // 4) fallback: search keys by normalized match (handles localized keys).
     // Also compare underscore/space variants so keys like "الحالة_العسكرية" match "الحالة العسكرية".
-    const norm = (s: any) => (s || '').toString().replace(/\u200E|\u200F/g, '').replace(/[^\w\u0600-\u06FF\s]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+    const norm = (s: any) =>
+      (s || '')
+        .toString()
+        .replace(/\u200E|\u200F/g, '')
+        .replace(/[^\w\u0600-\u06FF\s]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase();
     const rawTargets = [f.labelEn, f.labelAr, f.fieldId].filter(Boolean);
     const targetSet = new Set<string>();
     rawTargets.map(norm).forEach((t) => {
@@ -715,11 +877,17 @@ const {
     // If this filter maps to a canonical type, prefer matching only the allowed response keys
     const canonical = getCanonicalType(f);
     if (canonical && canonicalMap[canonical]) {
-      const allowed = canonicalMap[canonical].map((s) => normalizeLabelSimple(s));
+      const allowed = canonicalMap[canonical].map((s) =>
+        normalizeLabelSimple(s)
+      );
       for (const [k, v] of Object.entries(responses || {})) {
         try {
           const nk = normalizeLabelSimple(k);
-          if (allowed.includes(nk) || allowed.some((al) => nk.includes(al) || al.includes(nk))) return v;
+          if (
+            allowed.includes(nk) ||
+            allowed.some((al) => nk.includes(al) || al.includes(nk))
+          )
+            return v;
         } catch (e) {
           // ignore
         }
@@ -728,7 +896,10 @@ const {
       return '';
     }
     // search both responses map and top-level applicant fields
-    for (const [k, v] of Object.entries({ ...(responses || {}), ...(top || {}) })) {
+    for (const [k, v] of Object.entries({
+      ...(responses || {}),
+      ...(top || {}),
+    })) {
       const nk = norm(k);
       if (targetSet.has(nk)) return v;
       // also try underscore/space variants of the key
@@ -737,23 +908,50 @@ const {
     }
 
     // 5) Heuristics for numeric/range fields: try to find a numeric candidate
-    const matchesSalaryLabel = (/salary|expected salary|الراتب|الراتب المتوقع|راتب/).test(((f.label?.en || '') + ' ' + (f.label?.ar || '')).toString().toLowerCase());
+    const matchesSalaryLabel =
+      /salary|expected salary|الراتب|الراتب المتوقع|راتب/.test(
+        ((f.label?.en || '') + ' ' + (f.label?.ar || ''))
+          .toString()
+          .toLowerCase()
+      );
     if (f.type === 'range' || matchesSalaryLabel) {
       for (const v of Object.values({ ...(responses || {}), ...(top || {}) })) {
         // primitive number
         if (typeof v === 'number') return v;
         // string with digits (e.g., "5,000 SAR")
-        if (typeof v === 'string' && /\d|[\u0660-\u0669\u06F0-\u06F9]/.test(v)) return v;
+        if (typeof v === 'string' && /\d|[\u0660-\u0669\u06F0-\u06F9]/.test(v))
+          return v;
         if (Array.isArray(v)) {
-          const found = v.find((it) => (typeof it === 'number') || (typeof it === 'string' && /\d/.test(it)));
+          const found = v.find(
+            (it) =>
+              typeof it === 'number' ||
+              (typeof it === 'string' && /\d/.test(it))
+          );
           if (found !== undefined) return found;
         }
         if (typeof v === 'object' && v !== null) {
-          const candidateKeys = ['value','val','amount','salary','expectedSalary','min','max','amountValue','numeric','0'];
+          const candidateKeys = [
+            'value',
+            'val',
+            'amount',
+            'salary',
+            'expectedSalary',
+            'min',
+            'max',
+            'amountValue',
+            'numeric',
+            '0',
+          ];
           for (const ck of candidateKeys) {
             if (Object.prototype.hasOwnProperty.call(v, ck)) {
               const cand = (v as any)[ck];
-              if (cand !== undefined && cand !== null && (typeof cand === 'number' || (typeof cand === 'string' && /\d/.test(cand)))) return cand;
+              if (
+                cand !== undefined &&
+                cand !== null &&
+                (typeof cand === 'number' ||
+                  (typeof cand === 'string' && /\d/.test(cand)))
+              )
+                return cand;
             }
           }
         }
@@ -771,10 +969,21 @@ const {
       if (typeof o === 'number') return String(o);
       if (typeof o === 'string') return o;
       // common object shapes
-      return (o.id ?? o._id ?? o.value ?? o.val ?? o.en ?? o.ar ?? o.label ?? o.name ?? '') + '';
+      return (
+        (o.id ??
+          o._id ??
+          o.value ??
+          o.val ??
+          o.en ??
+          o.ar ??
+          o.label ??
+          o.name ??
+          '') + ''
+      );
     };
 
-    if (Array.isArray(raw)) return raw.map(pickFromObject).filter((s) => s !== '');
+    if (Array.isArray(raw))
+      return raw.map(pickFromObject).filter((s) => s !== '');
     if (typeof raw === 'object') {
       // If object is a map of keys -> values, try to return meaningful values
       // e.g., { value: '123' } or { id: 'x', label: 'Label' }
@@ -800,7 +1009,12 @@ const {
     return [String(raw)];
   };
 
-  const normalizeForCompare = (s: any) => (s || '').toString().replace(/\u200E|\u200F/g, '').trim().toLowerCase();
+  const normalizeForCompare = (s: any) =>
+    (s || '')
+      .toString()
+      .replace(/\u200E|\u200F/g, '')
+      .trim()
+      .toLowerCase();
 
   const expandForms = (s: string) => {
     const out = new Set<string>();
@@ -821,22 +1035,57 @@ const {
           // as job custom fields.
           try {
             if (f.fieldId === '__gender') {
-              raw = a?.gender || a?.customResponses?.gender || a?.customResponses?.['النوع'] || (a as any)['النوع'] || raw || '';
+              raw =
+                a?.gender ||
+                a?.customResponses?.gender ||
+                a?.customResponses?.['النوع'] ||
+                (a as any)['النوع'] ||
+                raw ||
+                '';
             }
             if (f.fieldId === '__birthdate') {
-              raw = a?.birthdate || a?.dateOfBirth || a?.dob || a?.customResponses?.birthdate || a?.customResponses?.['تarih'] || a?.customResponses?.['تاريخ الميلاد'] || raw || '';
+              raw =
+                a?.birthdate ||
+                a?.dateOfBirth ||
+                a?.dob ||
+                a?.customResponses?.birthdate ||
+                a?.customResponses?.['تarih'] ||
+                a?.customResponses?.['تاريخ الميلاد'] ||
+                raw ||
+                '';
             }
             if (f.fieldId === '__has_cv') {
               const hasTop = Boolean(
-                a?.resume || a?.cv || a?.attachments || a?.resumeUrl || a?.cvFilePath || a?.cvFile || a?.cvUrl || a?.resumeFilePath || a?.resumeFile || a?.cv_file_path || a?.cv_file || a?.cv_path
+                a?.resume ||
+                a?.cv ||
+                a?.attachments ||
+                a?.resumeUrl ||
+                a?.cvFilePath ||
+                a?.cvFile ||
+                a?.cvUrl ||
+                a?.resumeFilePath ||
+                a?.resumeFile ||
+                a?.cv_file_path ||
+                a?.cv_file ||
+                a?.cv_path
               );
               let has = hasTop;
               try {
-                const resp = a?.customResponses || a?.customFieldResponses || {};
+                const resp =
+                  a?.customResponses || a?.customFieldResponses || {};
                 for (const [k, v] of Object.entries(resp || {})) {
                   const lk = String(k || '').toLowerCase();
-                  if (lk.includes('cv') || lk.includes('resume') || lk.includes('cvfile') || lk.includes('cv_file') || lk.includes('cvfilepath')) {
-                    if (v) { has = true; break; }
+                  if (
+                    lk.includes('cv') ||
+                    lk.includes('resume') ||
+                    lk.includes('cvfile') ||
+                    lk.includes('cv_file') ||
+                    lk.includes('cvfilepath')
+                  ) {
+                    if (v) {
+                      has = true;
+                      break;
+                    }
                   }
                 }
               } catch (e) {
@@ -855,9 +1104,13 @@ const {
             const canonical = getCanonicalType(f);
             if (canonical === 'engineering_specialization') {
               const rawLabel = `${f.labelEn || f.label?.en || ''} ${f.labelAr || f.label?.ar || ''} ${f.fieldId || ''}`;
-              const keyNorm = normalizeLabelSimple(rawLabel) || String(f.fieldId || '');
+              const keyNorm =
+                normalizeLabelSimple(rawLabel) || String(f.fieldId || '');
               const allowedUnion = new Set<string>();
-              const addSet = (s?: Set<string>) => { if (!s) return; s.forEach((x) => allowedUnion.add(String(x))); };
+              const addSet = (s?: Set<string>) => {
+                if (!s) return;
+                s.forEach((x) => allowedUnion.add(String(x)));
+              };
               addSet(fieldToJobIds[keyNorm]);
               addSet(fieldToJobIds[String(f.fieldId || '')]);
               try {
@@ -874,24 +1127,51 @@ const {
               // whose jobPositionId isn't that job unless the applicant already
               // contains a matching canonical response key.
               if (allowedUnion.size === 1) {
-                const getId = (v: any) => (typeof v === 'string' ? v : v?._id ?? v?.id ?? '');
+                const getId = (v: any) =>
+                  typeof v === 'string' ? v : (v?._id ?? v?.id ?? '');
                 const applicantJobId = getId(a.jobPositionId);
                 try {
-                  const topLevelKeys = Object.keys(a || {}).filter((k) => k !== 'customResponses' && k !== 'customFieldResponses' && k !== 'customFields');
+                  const topLevelKeys = Object.keys(a || {}).filter(
+                    (k) =>
+                      k !== 'customResponses' &&
+                      k !== 'customFieldResponses' &&
+                      k !== 'customFields'
+                  );
                   const customRespKeys = Object.keys(a?.customResponses || {});
-                  const customFieldRespKeys = Object.keys(a?.customFieldResponses || {});
+                  const customFieldRespKeys = Object.keys(
+                    a?.customFieldResponses || {}
+                  );
                   const cfKeys = Object.keys(a?.customFields || {});
-                  const allKeys = Array.from(new Set([...topLevelKeys, ...customRespKeys, ...customFieldRespKeys, ...cfKeys]));
+                  const allKeys = Array.from(
+                    new Set([
+                      ...topLevelKeys,
+                      ...customRespKeys,
+                      ...customFieldRespKeys,
+                      ...cfKeys,
+                    ])
+                  );
                   const respKeys = allKeys.map((k) => normalizeLabelSimple(k));
-                  const allowedLabels = canonicalMap[canonical].map((s) => normalizeLabelSimple(s));
-                  const hasRespKeyMatch = respKeys.some((rk) => allowedLabels.some((al) => rk === al || rk.includes(al) || al.includes(rk)));
+                  const allowedLabels = canonicalMap[canonical].map((s) =>
+                    normalizeLabelSimple(s)
+                  );
+                  const hasRespKeyMatch = respKeys.some((rk) =>
+                    allowedLabels.some(
+                      (al) => rk === al || rk.includes(al) || al.includes(rk)
+                    )
+                  );
                   if (!hasRespKeyMatch) {
-                    if (!applicantJobId || !allowedUnion.has(String(applicantJobId))) {
+                    if (
+                      !applicantJobId ||
+                      !allowedUnion.has(String(applicantJobId))
+                    ) {
                       return false;
                     }
                   }
                 } catch (e) {
-                  if (!applicantJobId || !allowedUnion.has(String(applicantJobId))) {
+                  if (
+                    !applicantJobId ||
+                    !allowedUnion.has(String(applicantJobId))
+                  ) {
                     return false;
                   }
                 }
@@ -902,24 +1182,42 @@ const {
           }
 
           // Special: boolean presence filters (work experience, courses, personal skills)
-          if (f.type === 'hasWorkExperience' || f.type === 'hasField' || f.type === 'hasCV' || f.fieldId === '__has_cv') {
+          if (
+            f.type === 'hasWorkExperience' ||
+            f.type === 'hasField' ||
+            f.type === 'hasCV' ||
+            f.fieldId === '__has_cv'
+          ) {
             const want = f.value; // true/false/'any'
             if (want === 'any' || want === undefined) continue;
 
             const evaluateHas = () => {
               try {
                 if (f.type === 'hasWorkExperience') {
-                  if (Array.isArray(a.workExperiences) && a.workExperiences.length) return true;
-                  if (Array.isArray(a.experiences) && a.experiences.length) return true;
-                  const resp = a?.customResponses || a?.customFieldResponses || {};
-                  const keys = ['work_experience','workExperience','workexperience','الخبرة','خبرة'];
+                  if (
+                    Array.isArray(a.workExperiences) &&
+                    a.workExperiences.length
+                  )
+                    return true;
+                  if (Array.isArray(a.experiences) && a.experiences.length)
+                    return true;
+                  const resp =
+                    a?.customResponses || a?.customFieldResponses || {};
+                  const keys = [
+                    'work_experience',
+                    'workExperience',
+                    'workexperience',
+                    'الخبرة',
+                    'خبرة',
+                  ];
                   for (const k of keys) {
                     if (Object.prototype.hasOwnProperty.call(resp, k)) {
                       const v = resp[k];
                       if (v === true) return true;
                       if (Array.isArray(v) && v.length) return true;
                       if (typeof v === 'string' && v.trim()) return true;
-                      if (typeof v === 'object' && Object.keys(v).length) return true;
+                      if (typeof v === 'object' && Object.keys(v).length)
+                        return true;
                     }
                   }
                   for (const v of Object.values(resp)) {
@@ -931,18 +1229,40 @@ const {
                 // hardcoded CV presence filter
                 if (f.fieldId === '__has_cv' || f.type === 'hasCV') {
                   const hasTop = Boolean(
-                    a?.resume || a?.cv || a?.attachments || a?.resumeUrl || a?.cvFilePath || a?.cvFile || a?.cvUrl || a?.resumeFilePath || a?.resumeFile || a?.cv_file_path || a?.cv_file || a?.cv_path
+                    a?.resume ||
+                    a?.cv ||
+                    a?.attachments ||
+                    a?.resumeUrl ||
+                    a?.cvFilePath ||
+                    a?.cvFile ||
+                    a?.cvUrl ||
+                    a?.resumeFilePath ||
+                    a?.resumeFile ||
+                    a?.cv_file_path ||
+                    a?.cv_file ||
+                    a?.cv_path
                   );
                   if (hasTop) return true;
                   try {
-                    const resp = a?.customResponses || a?.customFieldResponses || {};
+                    const resp =
+                      a?.customResponses || a?.customFieldResponses || {};
                     for (const [k, v] of Object.entries(resp || {})) {
                       const lk = String(k || '').toLowerCase();
-                      if (lk.includes('cv') || lk.includes('resume') || lk.includes('cvfile') || lk.includes('cv_file') || lk.includes('cvfilepath')) {
+                      if (
+                        lk.includes('cv') ||
+                        lk.includes('resume') ||
+                        lk.includes('cvfile') ||
+                        lk.includes('cv_file') ||
+                        lk.includes('cvfilepath')
+                      ) {
                         if (v) return true;
                       }
                       // also consider string values containing a file URL
-                      if (typeof v === 'string' && /https?:\/\/.+\.(pdf|docx?|rtf|txt|zip)$/i.test(v)) return true;
+                      if (
+                        typeof v === 'string' &&
+                        /https?:\/\/.+\.(pdf|docx?|rtf|txt|zip)$/i.test(v)
+                      )
+                        return true;
                     }
                   } catch (e) {
                     // ignore
@@ -955,7 +1275,8 @@ const {
                 if (rawVal === undefined || rawVal === null) return false;
                 if (rawVal === '') return false;
                 if (Array.isArray(rawVal)) return rawVal.length > 0;
-                if (typeof rawVal === 'object') return Object.keys(rawVal).length > 0;
+                if (typeof rawVal === 'object')
+                  return Object.keys(rawVal).length > 0;
                 if (typeof rawVal === 'string') return rawVal.trim().length > 0;
                 if (typeof rawVal === 'number') return true;
                 if (typeof rawVal === 'boolean') return rawVal === true;
@@ -982,11 +1303,32 @@ const {
               const rawS = String(v);
               // normalize Arabic-Indic and Extended-Indic digits to ASCII
               const conv = (str: string) => {
-                const map: Record<string,string> = {
-                  '\u0660':'0','\u0661':'1','\u0662':'2','\u0663':'3','\u0664':'4','\u0665':'5','\u0666':'6','\u0667':'7','\u0668':'8','\u0669':'9',
-                  '\u06F0':'0','\u06F1':'1','\u06F2':'2','\u06F3':'3','\u06F4':'4','\u06F5':'5','\u06F6':'6','\u06F7':'7','\u06F8':'8','\u06F9':'9'
+                const map: Record<string, string> = {
+                  '\u0660': '0',
+                  '\u0661': '1',
+                  '\u0662': '2',
+                  '\u0663': '3',
+                  '\u0664': '4',
+                  '\u0665': '5',
+                  '\u0666': '6',
+                  '\u0667': '7',
+                  '\u0668': '8',
+                  '\u0669': '9',
+                  '\u06F0': '0',
+                  '\u06F1': '1',
+                  '\u06F2': '2',
+                  '\u06F3': '3',
+                  '\u06F4': '4',
+                  '\u06F5': '5',
+                  '\u06F6': '6',
+                  '\u06F7': '7',
+                  '\u06F8': '8',
+                  '\u06F9': '9',
                 };
-                return str.replace(/[\u0660-\u0669\u06F0-\u06F9]/g, (ch) => map[ch] || ch);
+                return str.replace(
+                  /[\u0660-\u0669\u06F0-\u06F9]/g,
+                  (ch) => map[ch] || ch
+                );
               };
               const s = conv(rawS).replace(/[^0-9.\-]/g, '');
               const p = Number(s);
@@ -998,20 +1340,36 @@ const {
               num = Number.isNaN(parsed) ? null : parsed;
             } else if (Array.isArray(raw)) {
               const nums = raw.map(toNum).filter((n) => Number.isFinite(n));
-              if (nums.length) num = Math.max(...nums); else num = null;
+              if (nums.length) num = Math.max(...nums);
+              else num = null;
             } else if (typeof raw === 'object') {
               // prefer explicit numeric keys (max/min/amount/value), otherwise try to extract any numeric child
-              const candKeys = ['max','value','val','amount','salary','expectedSalary','min','amountValue','numeric','0'];
+              const candKeys = [
+                'max',
+                'value',
+                'val',
+                'amount',
+                'salary',
+                'expectedSalary',
+                'min',
+                'amountValue',
+                'numeric',
+                '0',
+              ];
               let found: number | null = null;
               for (const ck of candKeys) {
                 if (Object.prototype.hasOwnProperty.call(raw, ck)) {
                   const c = toNum((raw as any)[ck]);
-                  if (Number.isFinite(c)) { found = (found === null ? c : Math.max(found, c)); }
+                  if (Number.isFinite(c)) {
+                    found = found === null ? c : Math.max(found, c);
+                  }
                 }
               }
               if (found === null) {
                 // inspect object children
-                const children = Object.values(raw).map(toNum).filter((n) => Number.isFinite(n));
+                const children = Object.values(raw)
+                  .map(toNum)
+                  .filter((n) => Number.isFinite(n));
                 if (children.length) found = Math.max(...children);
               }
               num = found;
@@ -1038,14 +1396,26 @@ const {
 
           // MULTI / CHOICES
           if (f.type === 'multi') {
-            const valsRaw = Array.isArray(f.value) ? f.value : (f.value !== undefined && f.value !== null ? [f.value] : []);
+            const valsRaw = Array.isArray(f.value)
+              ? f.value
+              : f.value !== undefined && f.value !== null
+                ? [f.value]
+                : [];
             const valsNormalized = valsRaw
-              .map((v: any) => normalizeForCompare((v && (v.id || v._id || v.en || v.ar)) ? (v.id || v._id || v.en || v.ar) : v))
+              .map((v: any) =>
+                normalizeForCompare(
+                  v && (v.id || v._id || v.en || v.ar)
+                    ? v.id || v._id || v.en || v.ar
+                    : v
+                )
+              )
               .filter((x: string) => x);
             if (!valsNormalized.length) continue;
 
             const valsExpandedSet = new Set<string>();
-            valsNormalized.forEach((v: string) => expandForms(v).forEach((x) => valsExpandedSet.add(x)));
+            valsNormalized.forEach((v: string) =>
+              expandForms(v).forEach((x) => valsExpandedSet.add(x))
+            );
 
             const rawItems = extractResponseItems(raw).map(normalizeForCompare);
 
@@ -1056,28 +1426,43 @@ const {
             let matched = false;
             try {
               // primitives
-              if (typeof raw === 'string' || typeof raw === 'number' || typeof raw === 'boolean') {
+              if (
+                typeof raw === 'string' ||
+                typeof raw === 'number' ||
+                typeof raw === 'boolean'
+              ) {
                 const rv = normalizeForCompare(raw);
-                if (rv && valsExpandedSet.has(rv)) { matched = true; ; }
+                if (rv && valsExpandedSet.has(rv)) {
+                  matched = true;
+                }
               }
               // arrays
               if (!matched && Array.isArray(raw)) {
                 for (const el of raw) {
                   const v = normalizeForCompare(el);
-                  if (v && valsExpandedSet.has(v)) { matched = true;  break; }
+                  if (v && valsExpandedSet.has(v)) {
+                    matched = true;
+                    break;
+                  }
                 }
               }
               // objects: check values first, then check keyed booleans (key name when value truthy)
               if (!matched && raw && typeof raw === 'object') {
                 for (const v of Object.values(raw)) {
                   const nv = normalizeForCompare(v);
-                    if (nv && valsExpandedSet.has(nv)) { matched = true; break; }
+                  if (nv && valsExpandedSet.has(nv)) {
+                    matched = true;
+                    break;
+                  }
                 }
                 if (!matched) {
                   for (const [k, v] of Object.entries(raw)) {
                     if (v === true || v === 'true' || v === 1 || v === '1') {
                       const nk = normalizeForCompare(k);
-                      if (nk && valsExpandedSet.has(nk)) { matched = true; break; }
+                      if (nk && valsExpandedSet.has(nk)) {
+                        matched = true;
+                        break;
+                      }
                     }
                   }
                 }
@@ -1086,23 +1471,41 @@ const {
               // ignore and fall back to normalized/rawItems matching
             }
 
-          
-
             if (!matched && Array.isArray(f.choices) && f.choices.length) {
               const choiceNormsForSelected = new Set<string>();
               f.choices.forEach((c: any) => {
-                const forms = [c.id ?? c._id ?? c.en ?? c.ar ?? c.value ?? c.val ?? c.label ?? ''];
+                const forms = [
+                  c.id ??
+                    c._id ??
+                    c.en ??
+                    c.ar ??
+                    c.value ??
+                    c.val ??
+                    c.label ??
+                    '',
+                ];
                 if (c.en) forms.push(c.en);
                 if (c.ar) forms.push(c.ar);
                 if (c.value) forms.push(c.value);
-                const formsNorm = Array.from(new Set(forms.map((fm: any) => normalizeForCompare(fm)).filter(Boolean)));
-                const expanded = formsNorm.flatMap((fn: string) => expandForms(fn));
+                const formsNorm = Array.from(
+                  new Set(
+                    forms
+                      .map((fm: any) => normalizeForCompare(fm))
+                      .filter(Boolean)
+                  )
+                );
+                const expanded = formsNorm.flatMap((fn: string) =>
+                  expandForms(fn)
+                );
                 if (expanded.some((fn: string) => valsExpandedSet.has(fn))) {
-                  expanded.forEach((fn: string) => choiceNormsForSelected.add(fn));
+                  expanded.forEach((fn: string) =>
+                    choiceNormsForSelected.add(fn)
+                  );
                 }
               });
 
-              if (choiceNormsForSelected.size) matched = rawItems.some((rv) => choiceNormsForSelected.has(rv));
+              if (choiceNormsForSelected.size)
+                matched = rawItems.some((rv) => choiceNormsForSelected.has(rv));
             }
 
             if (!matched) {
@@ -1122,14 +1525,27 @@ const {
             if (!matched) {
               try {
                 const canonical = getCanonicalType(f);
-                const allResp = a?.customResponses || a?.customFieldResponses || {};
-                if (canonical === 'engineering_specialization' && canonicalMap[canonical]) {
-                  const allowed = canonicalMap[canonical].map((s) => normalizeLabelSimple(s));
+                const allResp =
+                  a?.customResponses || a?.customFieldResponses || {};
+                if (
+                  canonical === 'engineering_specialization' &&
+                  canonicalMap[canonical]
+                ) {
+                  const allowed = canonicalMap[canonical].map((s) =>
+                    normalizeLabelSimple(s)
+                  );
                   for (const [k, v] of Object.entries(allResp)) {
                     const nk = normalizeLabelSimple(k);
                     if (!nk) continue;
-                    if (!(allowed.includes(nk) || allowed.some((al) => nk.includes(al) || al.includes(nk)))) continue;
-                    const items = extractResponseItems(v).map(normalizeForCompare);
+                    if (
+                      !(
+                        allowed.includes(nk) ||
+                        allowed.some((al) => nk.includes(al) || al.includes(nk))
+                      )
+                    )
+                      continue;
+                    const items =
+                      extractResponseItems(v).map(normalizeForCompare);
                     if (items.some((it) => it.includes(needle))) {
                       matched = true;
                       break;
@@ -1138,12 +1554,23 @@ const {
                 } else {
                   // Non-engineering canonical fields: preserve previous behavior
                   if (canonical && canonicalMap[canonical]) {
-                    const allowed = canonicalMap[canonical].map((s) => normalizeLabelSimple(s));
+                    const allowed = canonicalMap[canonical].map((s) =>
+                      normalizeLabelSimple(s)
+                    );
                     for (const [k, v] of Object.entries(allResp)) {
                       const nk = normalizeLabelSimple(k);
                       if (!nk) continue;
-                      if (!(allowed.includes(nk) || allowed.some((al) => nk.includes(al) || al.includes(nk)))) continue;
-                      const items = extractResponseItems(v).map(normalizeForCompare);
+                      if (
+                        !(
+                          allowed.includes(nk) ||
+                          allowed.some(
+                            (al) => nk.includes(al) || al.includes(nk)
+                          )
+                        )
+                      )
+                        continue;
+                      const items =
+                        extractResponseItems(v).map(normalizeForCompare);
                       if (items.some((it) => it.includes(needle))) {
                         matched = true;
                         break;
@@ -1151,7 +1578,8 @@ const {
                     }
                   } else {
                     for (const v of Object.values(allResp)) {
-                      const items = extractResponseItems(v).map(normalizeForCompare);
+                      const items =
+                        extractResponseItems(v).map(normalizeForCompare);
                       if (items.some((it) => it.includes(needle))) {
                         matched = true;
                         break;
@@ -1177,11 +1605,32 @@ const {
             const mode = v.mode === 'before' ? 'before' : 'after';
             const rawItems = extractResponseItems(raw);
             const convDigits = (str: string) => {
-              const map: Record<string,string> = {
-                '\u0660':'0','\u0661':'1','\u0662':'2','\u0663':'3','\u0664':'4','\u0665':'5','\u0666':'6','\u0667':'7','\u0668':'8','\u0669':'9',
-                '\u06F0':'0','\u06F1':'1','\u06F2':'2','\u06F3':'3','\u06F4':'4','\u06F5':'5','\u06F6':'6','\u06F7':'7','\u06F8':'8','\u06F9':'9'
+              const map: Record<string, string> = {
+                '\u0660': '0',
+                '\u0661': '1',
+                '\u0662': '2',
+                '\u0663': '3',
+                '\u0664': '4',
+                '\u0665': '5',
+                '\u0666': '6',
+                '\u0667': '7',
+                '\u0668': '8',
+                '\u0669': '9',
+                '\u06F0': '0',
+                '\u06F1': '1',
+                '\u06F2': '2',
+                '\u06F3': '3',
+                '\u06F4': '4',
+                '\u06F5': '5',
+                '\u06F6': '6',
+                '\u06F7': '7',
+                '\u06F8': '8',
+                '\u06F9': '9',
               };
-              return str.replace(/[\u0660-\u0669\u06F0-\u06F9]/g, (ch) => map[ch] || ch);
+              return str.replace(
+                /[\u0660-\u0669\u06F0-\u06F9]/g,
+                (ch) => map[ch] || ch
+              );
             };
 
             const extractYear = (r: any) => {
@@ -1256,7 +1705,11 @@ const {
     rows.forEach((a: any) => {
       // Respect trashed visibility for non-super-admins
       if (!isSuperAdmin && a?.status === 'trashed') return;
-      const raw = a?.gender || a?.customResponses?.gender || a?.customResponses?.['النوع'] || (a as any)['النوع'];
+      const raw =
+        a?.gender ||
+        a?.customResponses?.gender ||
+        a?.customResponses?.['النوع'] ||
+        (a as any)['النوع'];
       const g = normalizeGender(raw);
       if (g) s.add(g);
     });
@@ -1282,10 +1735,16 @@ const {
   // the gender filter so the filter menu shows proper options after reload.
   useEffect(() => {
     try {
-      const genderFilterIndex = columnFilters.findIndex((f: any) => f.id === 'gender');
+      const genderFilterIndex = columnFilters.findIndex(
+        (f: any) => f.id === 'gender'
+      );
       if (genderFilterIndex === -1) return;
       const current = columnFilters[genderFilterIndex];
-      const vals = Array.isArray(current.value) ? current.value : (current.value ? [current.value] : []);
+      const vals = Array.isArray(current.value)
+        ? current.value
+        : current.value
+          ? [current.value]
+          : [];
       if (!vals.length) return;
       const optionIds = new Set(genderOptions.map((g) => g.id));
       const intersection = vals.filter((v: string) => optionIds.has(v));
@@ -1295,7 +1754,10 @@ const {
       if (intersection.length === 0) {
         next.splice(genderFilterIndex, 1);
       } else {
-        next[genderFilterIndex] = { ...next[genderFilterIndex], value: intersection };
+        next[genderFilterIndex] = {
+          ...next[genderFilterIndex],
+          value: intersection,
+        };
       }
       setColumnFilters(next);
       // persist cleaned state immediately so page reloads start clean
@@ -1303,7 +1765,10 @@ const {
         const raw = sessionStorage.getItem('applicants_table_state');
         const parsed = raw ? JSON.parse(raw) : {};
         parsed.columnFilters = next;
-        sessionStorage.setItem('applicants_table_state', JSON.stringify(parsed));
+        sessionStorage.setItem(
+          'applicants_table_state',
+          JSON.stringify(parsed)
+        );
       } catch (e) {
         // ignore persistence errors
       }
@@ -1313,13 +1778,13 @@ const {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [genderOptions]);
 
-  
   // Create company lookup map
   const companyMap = useMemo(() => {
     const map: Record<string, any> = {};
     allCompanies.forEach((company: any) => {
       // Store by both possible ID formats
-      const stringId = typeof company._id === "string" ? company._id : company._id?._id;
+      const stringId =
+        typeof company._id === 'string' ? company._id : company._id?._id;
       if (stringId) {
         map[stringId] = company;
       }
@@ -1331,39 +1796,36 @@ const {
     return map;
   }, [allCompanies]);
 
-
-
   // Determine dataset to pass to MRT: by default exclude trashed applicants unless
   // the user explicitly filters for status === 'trashed'. This makes "All Statuses"
   // hide trashed rows while still allowing an explicit trashed view.
-  
 
   // MRT will handle pagination (we pass full dataset to the table)
 
   const getStatusColor = useCallback((status: string) => {
     switch (status) {
-      case "pending":
-        return { bg: "#FEF3C7", color: "#92400E" };
-      case "approved":
-        return { bg: "#D1FAE5", color: "#065F46" };
-      case "interview":
-        return { bg: "#DBEAFE", color: "#1E40AF" };
-        case "interviewed":
-        return { bg: "#DBEAFE", color: "#065F46" };
-      case "rejected":
-        return { bg: "#FEE2E2", color: "#991B1B" };
-      case "trashed":
-        return { bg: "#6B7280", color: "#FFFFFF" };
+      case 'pending':
+        return { bg: '#FEF3C7', color: '#92400E' };
+      case 'approved':
+        return { bg: '#D1FAE5', color: '#065F46' };
+      case 'interview':
+        return { bg: '#DBEAFE', color: '#1E40AF' };
+      case 'interviewed':
+        return { bg: '#DBEAFE', color: '#065F46' };
+      case 'rejected':
+        return { bg: '#FEE2E2', color: '#991B1B' };
+      case 'trashed':
+        return { bg: '#6B7280', color: '#FFFFFF' };
       default:
-        return { bg: "#F3F4F6", color: "#1F2937" };
+        return { bg: '#F3F4F6', color: '#1F2937' };
     }
   }, []);
 
   const formatDate = useCallback((dateString: string) => {
-    return new Date(dateString).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
     });
   }, []);
 
@@ -1371,13 +1833,13 @@ const {
     if (selectedApplicantIds.length === 0 || !bulkAction) return;
 
     const result = await Swal.fire({
-      title: "Change Status?",
+      title: 'Change Status?',
       text: `Are you sure you want to change the status of ${selectedApplicantIds.length} applicant(s) to ${bulkAction}?`,
-      icon: "question",
+      icon: 'question',
       showCancelButton: true,
-      confirmButtonColor: "#3085d6",
-      cancelButtonColor: "#d33",
-      confirmButtonText: "Yes, change it!",
+      confirmButtonColor: '#3085d6',
+      cancelButtonColor: '#d33',
+      confirmButtonText: 'Yes, change it!',
     });
 
     if (!result.isConfirmed) return;
@@ -1396,18 +1858,18 @@ const {
       );
 
       await Swal.fire({
-        title: "Success!",
+        title: 'Success!',
         text: `Status updated for ${selectedApplicantIds.length} applicant(s).`,
-        icon: "success",
-        position: "center",
+        icon: 'success',
+        position: 'center',
         timer: 2000,
         showConfirmButton: false,
       });
 
       setRowSelection({});
-      setBulkAction("");
+      setBulkAction('');
     } catch (err: any) {
-      console.error("Error changing status:", err);
+      console.error('Error changing status:', err);
       const errorMsg = getErrorMessage(err);
       setBulkStatusError(errorMsg);
     } finally {
@@ -1419,13 +1881,13 @@ const {
     if (selectedApplicantIds.length === 0) return;
 
     const result = await Swal.fire({
-      title: "Delete Applicants?",
+      title: 'Delete Applicants?',
       text: `Are you sure you want to delete ${selectedApplicantIds.length} applicant(s)? They will be moved to trash.`,
-      icon: "warning",
+      icon: 'warning',
       showCancelButton: true,
-      confirmButtonColor: "#3085d6",
-      cancelButtonColor: "#d33",
-      confirmButtonText: "Yes, delete them!",
+      confirmButtonColor: '#3085d6',
+      cancelButtonColor: '#d33',
+      confirmButtonText: 'Yes, delete them!',
     });
 
     if (!result.isConfirmed) return;
@@ -1437,24 +1899,24 @@ const {
         updateStatusMutation.mutate({
           id: aid,
           data: {
-            status: "trashed",
+            status: 'trashed',
             notes: `Moved to trash on ${new Date().toLocaleDateString()}`,
           },
         })
       );
 
       await Swal.fire({
-        title: "Success!",
+        title: 'Success!',
         text: `${selectedApplicantIds.length} applicant(s) moved to trash.`,
-        icon: "success",
-        position: "center",
+        icon: 'success',
+        position: 'center',
         timer: 2000,
         showConfirmButton: false,
       });
 
       setRowSelection({});
     } catch (err: any) {
-      console.error("Error deleting applicants:", err);
+      console.error('Error deleting applicants:', err);
       const errorMsg = getErrorMessage(err);
       setBulkDeleteError(errorMsg);
     } finally {
@@ -1465,27 +1927,33 @@ const {
   // Define table columns
   const columns = useMemo<MRT_ColumnDef<Applicant>[]>(
     () => [
-         {
-        accessorKey: "applicantNo",
-        header: "ApplicantNo",
+      {
+        accessorKey: 'applicantNo',
+        header: 'ApplicantNo',
         size: 100,
         enableColumnFilter: false,
         enableSorting: false,
         Cell: ({ row, table }) => {
           const orig: any = row.original as any;
-          const possible = orig?.applicantNo || orig?.applicantNumber || orig?.applicationNo || orig?.applicationId;
+          const possible =
+            orig?.applicantNo ||
+            orig?.applicantNumber ||
+            orig?.applicationNo ||
+            orig?.applicationId;
           if (possible) return String(possible);
           // fallback to visible index + 1 for human-friendly numbering
-          const idx = (row.index ?? table.getRowModel().rows.findIndex(r => r.id === row.id));
+          const idx =
+            row.index ??
+            table.getRowModel().rows.findIndex((r) => r.id === row.id);
           if (typeof idx === 'number' && idx >= 0) return String(idx + 1);
           // last resort: shortened id
-          const id = orig?._id || orig?.id || "";
-          return id ? String(id).slice(0, 8) : "-";
+          const id = orig?._id || orig?.id || '';
+          return id ? String(id).slice(0, 8) : '-';
         },
       },
       {
-        accessorKey: "profilePhoto",
-        header: "Photo",
+        accessorKey: 'profilePhoto',
+        header: 'Photo',
         size: 80,
         enableSorting: false,
         enableColumnFilter: false,
@@ -1512,49 +1980,57 @@ const {
           </div>
         ),
       },
-   
+
       {
-        accessorKey: "fullName",
-        header: "Name",
+        accessorKey: 'fullName',
+        header: 'Name',
         size: 150,
         enableColumnFilter: true,
         enableSorting: false,
         Cell: ({ row }: { row: { original: Applicant } }) => {
           const orig: any = row.original;
           const seenBy = orig?.seenBy ?? [];
-          const currentUserId = (user as any)?._id || (user as any)?.id || undefined;
-          const isSeen = Array.isArray(seenBy) && seenBy.some((s: any) => {
-            if (!s) return false;
-            if (typeof s === 'string') return s === currentUserId;
-            return (s._id === currentUserId) || (s.id === currentUserId);
-          });
+          const currentUserId =
+            (user as any)?._id || (user as any)?.id || undefined;
+          const isSeen =
+            Array.isArray(seenBy) &&
+            seenBy.some((s: any) => {
+              if (!s) return false;
+              if (typeof s === 'string') return s === currentUserId;
+              return s._id === currentUserId || s.id === currentUserId;
+            });
 
           return (
             <div className={isSeen ? 'text-gray-400' : 'text-gray-900'}>
               {orig?.fullName || '-'}
             </div>
           );
-        }
+        },
       },
       {
-        accessorKey: "email",
-        header: "Email",
+        accessorKey: 'email',
+        header: 'Email',
         size: 200,
         enableColumnFilter: true,
         enableSorting: false,
-
       },
       {
-        accessorKey: "phone",
-        header: "Phone",
+        accessorKey: 'phone',
+        header: 'Phone',
         size: 130,
         enableColumnFilter: true,
         enableSorting: false,
-
       },
       {
         id: 'gender',
-        accessorFn: (row: any) => normalizeGender(row.gender || row.customResponses?.gender || row.customResponses?.['النوع'] || (row as any)['النوع'] || ''),
+        accessorFn: (row: any) =>
+          normalizeGender(
+            row.gender ||
+              row.customResponses?.gender ||
+              row.customResponses?.['النوع'] ||
+              (row as any)['النوع'] ||
+              ''
+          ),
         header: 'Gender',
         size: 110,
         enableColumnFilter: true,
@@ -1566,8 +2042,8 @@ const {
           const selected: string[] = Array.isArray(current)
             ? current
             : current
-            ? [current]
-            : [];
+              ? [current]
+              : [];
 
           const toggle = (val: string) => {
             const next = new Set(selected);
@@ -1577,7 +2053,10 @@ const {
             column.setFilterValue(arr.length ? arr : undefined);
           };
 
-          const clear = () => { column.setFilterValue(undefined); setAnchorEl(null); };
+          const clear = () => {
+            column.setFilterValue(undefined);
+            setAnchorEl(null);
+          };
 
           const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
             event.preventDefault();
@@ -1597,9 +2076,15 @@ const {
                     onClick={handleClick}
                     className="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-1 text-xs text-gray-700 dark:bg-gray-700 dark:text-gray-200"
                   >
-                    {selected.length ? `${selected.length}` : "Filter"}
+                    {selected.length ? `${selected.length}` : 'Filter'}
                     <svg className="h-3 w-3" viewBox="0 0 20 20" fill="none">
-                      <path d="M6 8l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                      <path
+                        d="M6 8l4 4 4-4"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
                     </svg>
                   </button>
 
@@ -1610,10 +2095,23 @@ const {
                     onClick={(e) => e.stopPropagation()}
                     PaperProps={{ style: { maxHeight: 240, width: 200 } }}
                   >
-                    <MenuItem onClick={clear} dense>Clear</MenuItem>
+                    <MenuItem onClick={clear} dense>
+                      Clear
+                    </MenuItem>
                     {(genderOptionsRef.current || []).map((g) => (
-                      <MenuItem key={g.id} dense onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggle(g.id); }}>
-                        <Checkbox checked={selected.includes(g.id)} size="small" />
+                      <MenuItem
+                        key={g.id}
+                        dense
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          toggle(g.id);
+                        }}
+                      >
+                        <Checkbox
+                          checked={selected.includes(g.id)}
+                          size="small"
+                        />
                         <ListItemText primary={g.title} />
                       </MenuItem>
                     ))}
@@ -1627,45 +2125,190 @@ const {
           if (!filterValue) return true;
           const vals = Array.isArray(filterValue) ? filterValue : [filterValue];
           if (!vals.length) return true;
-          const cell = String(row.getValue(columnId) ?? "");
+          const cell = String(row.getValue(columnId) ?? '');
           return vals.includes(cell);
         },
         Cell: ({ row }: { row: { original: any } }) => {
-          const raw = row.original.gender || row.original.customResponses?.gender || row.original.customResponses?.['النوع'] || (row.original as any)['النوع'] || '';
+          const raw =
+            row.original.gender ||
+            row.original.customResponses?.gender ||
+            row.original.customResponses?.['النوع'] ||
+            (row.original as any)['النوع'] ||
+            '';
           const g = normalizeGender(raw);
           return g || '-';
         },
       },
-      ... (showCompanyColumn
-  ? [
+      ...(showCompanyColumn
+        ? [
+            {
+              id: 'companyId',
+              header: 'Company',
+              size: 150,
+              enableColumnFilter: true,
+              enableSorting: false,
+              accessorFn: (row: any) => {
+                const raw = row?.jobPositionId;
+                const getId = (v: any) =>
+                  typeof v === 'string' ? v : (v?._id ?? v?.id ?? '');
+                const jobId = getId(raw);
+                const job = jobPositionMap[jobId];
+                const comp = job?.companyId ? getId(job.companyId) : '';
+                return comp;
+              },
+              Header: ({ column }: { column: any }) => {
+                const current = column.getFilterValue();
+                const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(
+                  null
+                );
+
+                const selected: string[] = Array.isArray(current)
+                  ? current
+                  : current
+                    ? [current]
+                    : [];
+
+                const toggle = (id: string) => {
+                  const next = new Set(selected);
+                  if (next.has(id)) next.delete(id);
+                  else next.add(id);
+                  const arr = Array.from(next);
+                  column.setFilterValue(arr.length ? arr : undefined);
+                };
+
+                const clear = () => {
+                  column.setFilterValue(undefined);
+                  setAnchorEl(null);
+                };
+
+                const handleClick = (
+                  event: React.MouseEvent<HTMLButtonElement>
+                ) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setAnchorEl(event.currentTarget);
+                };
+
+                const handleClose = () => {
+                  setAnchorEl(null);
+                };
+
+                return (
+                  <div onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center gap-2 -mt-1">
+                      <span className="text-sm font-medium">Company</span>
+                      <div>
+                        <button
+                          type="button"
+                          onClick={handleClick}
+                          className="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-1 text-xs text-gray-700 dark:bg-gray-700 dark:text-gray-200"
+                        >
+                          {selected.length ? `${selected.length}` : 'Filter'}
+                          <svg
+                            className="h-3 w-3"
+                            viewBox="0 0 20 20"
+                            fill="none"
+                          >
+                            <path
+                              d="M6 8l4 4 4-4"
+                              stroke="currentColor"
+                              strokeWidth="1.5"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                        </button>
+
+                        <Menu
+                          anchorEl={anchorEl}
+                          open={Boolean(anchorEl)}
+                          onClose={handleClose}
+                          onClick={(e) => e.stopPropagation()}
+                          PaperProps={{ style: { maxHeight: 300, width: 240 } }}
+                        >
+                          <MenuItem onClick={clear} dense>
+                            Clear
+                          </MenuItem>
+                          {companyOptions.map((c) => (
+                            <MenuItem
+                              key={c.id}
+                              dense
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                toggle(c.id);
+                              }}
+                            >
+                              <Checkbox
+                                checked={selected.includes(c.id)}
+                                size="small"
+                              />
+                              <ListItemText primary={c.title} />
+                            </MenuItem>
+                          ))}
+                        </Menu>
+                      </div>
+                    </div>
+                  </div>
+                );
+              },
+              filterFn: (row: any, columnId: string, filterValue: any) => {
+                if (!filterValue) return true;
+                const vals = Array.isArray(filterValue)
+                  ? filterValue
+                  : [filterValue];
+                if (!vals.length) return true;
+                const cell = String(row.getValue(columnId) ?? '');
+                return vals.includes(cell);
+              },
+              Cell: ({ row }: { row: { original: Applicant } }) => {
+                // display company name via job position
+                const jobPositionId = row.original.jobPositionId;
+                const getId = (v: any) =>
+                  typeof v === 'string' ? v : (v?._id ?? v?.id ?? '');
+                const jobPosition = jobPositionMap[getId(jobPositionId)];
+                if (jobPosition?.companyId) {
+                  const companyId =
+                    typeof jobPosition.companyId === 'string'
+                      ? jobPosition.companyId
+                      : jobPosition.companyId._id || '';
+                  const company = companyMap[companyId];
+                  return (
+                    toPlainString(company?.name) || company?.title || 'N/A'
+                  );
+                }
+                return 'N/A';
+              },
+            },
+          ]
+        : []),
       {
-        id: "companyId",
-        header: "Company",
-        size: 150,
-        enableColumnFilter: true,
+        id: 'jobPositionId',
+        header: 'Job Position',
         enableSorting: false,
+
         accessorFn: (row: any) => {
           const raw = row?.jobPositionId;
-          const getId = (v: any) => (typeof v === 'string' ? v : v?._id ?? v?.id ?? '');
-          const jobId = getId(raw);
-          const job = jobPositionMap[jobId];
-          const comp = job?.companyId ? getId(job.companyId) : '';
-          return comp;
+          const getId = (v: any) =>
+            typeof v === 'string' ? v : (v?._id ?? v?.id ?? '');
+          return getId(raw);
         },
+
         Header: ({ column }: { column: any }) => {
           const current = column.getFilterValue();
           const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
-          
+
           const selected: string[] = Array.isArray(current)
             ? current
             : current
-            ? [current]
-            : [];
+              ? [current]
+              : [];
 
-          const toggle = (id: string) => {
+          const toggle = (jobId: string) => {
             const next = new Set(selected);
-            if (next.has(id)) next.delete(id);
-            else next.add(id);
+            if (next.has(jobId)) next.delete(jobId);
+            else next.add(jobId);
+
             const arr = Array.from(next);
             column.setFilterValue(arr.length ? arr : undefined);
           };
@@ -1688,338 +2331,230 @@ const {
           return (
             <div onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center gap-2 -mt-1">
-                <span className="text-sm font-medium">Company</span>
-                <div>
-                  <button
-                    type="button"
-                    onClick={handleClick}
-                    className="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-1 text-xs text-gray-700 dark:bg-gray-700 dark:text-gray-200"
-                  >
-                    {selected.length ? `${selected.length}` : "Filter"}
-                    <svg className="h-3 w-3" viewBox="0 0 20 20" fill="none">
-                      <path d="M6 8l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </button>
+                <span className="text-sm font-medium">Job Position</span>
 
-                  <Menu
-                    anchorEl={anchorEl}
-                    open={Boolean(anchorEl)}
-                    onClose={handleClose}
-                    onClick={(e) => e.stopPropagation()}
-                    PaperProps={{ style: { maxHeight: 300, width: 240 } }}
-                  >
-                    <MenuItem onClick={clear} dense>Clear</MenuItem>
-                    {companyOptions.map((c) => (
-                      <MenuItem 
-                        key={c.id} 
-                        dense 
-                        onClick={(e) => { 
-                          e.preventDefault(); 
-                          e.stopPropagation(); 
-                          toggle(c.id); 
-                        }}
-                      >
-                        <Checkbox checked={selected.includes(c.id)} size="small" />
-                        <ListItemText primary={c.title} />
-                      </MenuItem>
-                    ))}
-                  </Menu>
-                </div>
+                <button
+                  type="button"
+                  onClick={handleClick}
+                  className="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-1 text-xs text-gray-700 dark:bg-gray-700 dark:text-gray-200"
+                >
+                  {selected.length ? `${selected.length}` : 'Filter'}
+                  <svg className="h-3 w-3" viewBox="0 0 20 20" fill="none">
+                    <path
+                      d="M6 8l4 4 4-4"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
+
+                <Menu
+                  anchorEl={anchorEl}
+                  open={Boolean(anchorEl)}
+                  onClose={handleClose}
+                  onClick={(e) => e.stopPropagation()}
+                  PaperProps={{
+                    style: { maxHeight: 280, width: 260 },
+                  }}
+                >
+                  <MenuItem onClick={clear} dense>
+                    Clear
+                  </MenuItem>
+
+                  {jobOptions.map((j) => (
+                    <MenuItem
+                      key={j.id}
+                      dense
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        toggle(j.id);
+                        // Don't close the menu after selection to allow multiple selections
+                      }}
+                    >
+                      <Checkbox
+                        checked={selected.includes(j.id)}
+                        size="small"
+                      />
+                      <ListItemText primary={j.title} />
+                    </MenuItem>
+                  ))}
+                </Menu>
               </div>
             </div>
           );
         },
+
         filterFn: (row: any, columnId: string, filterValue: any) => {
           if (!filterValue) return true;
           const vals = Array.isArray(filterValue) ? filterValue : [filterValue];
           if (!vals.length) return true;
-          const cell = String(row.getValue(columnId) ?? "");
+
+          const cell = String(row.getValue(columnId) ?? '');
           return vals.includes(cell);
         },
+
+        size: 200,
+        enableColumnFilter: true,
+
         Cell: ({ row }: { row: { original: Applicant } }) => {
-          // display company name via job position
-          const jobPositionId = row.original.jobPositionId;
-          const getId = (v: any) => (typeof v === 'string' ? v : v?._id ?? v?.id ?? '');
-          const jobPosition = jobPositionMap[getId(jobPositionId)];
-          if (jobPosition?.companyId) {
-            const companyId = typeof jobPosition.companyId === 'string' ? jobPosition.companyId : jobPosition.companyId._id || '';
-            const company = companyMap[companyId];
-            return toPlainString(company?.name) || company?.title || 'N/A';
-          }
-          return 'N/A';
+          const raw = row.original.jobPositionId;
+
+          const getId = (v: any) => {
+            if (!v) return '';
+            if (typeof v === 'string') return v;
+            return v._id ?? v.id ?? '';
+          };
+
+          const jobId = getId(raw);
+          const job = jobPositionMap[jobId];
+
+          const title =
+            typeof job?.title === 'string'
+              ? job.title
+              : (job?.title?.en ??
+                jobOptions.find((o) => o.id === jobId)?.title ??
+                'N/A');
+
+          return <span className="text-sm font-medium">{title}</span>;
         },
       },
-    ]
-  : []),
- {
-  id: "jobPositionId",
-  header: "Job Position",
-  enableSorting: false,
-
-  accessorFn: (row: any) => {
-    const raw = row?.jobPositionId;
-    const getId = (v: any) =>
-      typeof v === "string" ? v : v?._id ?? v?.id ?? "";
-    return getId(raw);
-  },
-
-  Header: ({ column }: { column: any }) => {
-    const current = column.getFilterValue();
-    const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
-    
-    const selected: string[] = Array.isArray(current)
-      ? current
-      : current
-      ? [current]
-      : [];
-
-    const toggle = (jobId: string) => {
-      const next = new Set(selected);
-      if (next.has(jobId)) next.delete(jobId);
-      else next.add(jobId);
-
-      const arr = Array.from(next);
-      column.setFilterValue(arr.length ? arr : undefined);
-    };
-
-    const clear = () => {
-      column.setFilterValue(undefined);
-      setAnchorEl(null);
-    };
-
-    const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
-      event.preventDefault();
-      event.stopPropagation();
-      setAnchorEl(event.currentTarget);
-    };
-
-    const handleClose = () => {
-      setAnchorEl(null);
-    };
-
-    return (
-      <div onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center gap-2 -mt-1">
-          <span className="text-sm font-medium">Job Position</span>
-
-          <button
-            type="button"
-            onClick={handleClick}
-            className="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-1 text-xs text-gray-700 dark:bg-gray-700 dark:text-gray-200"
-          >
-            {selected.length ? `${selected.length}` : "Filter"}
-            <svg className="h-3 w-3" viewBox="0 0 20 20" fill="none">
-              <path
-                d="M6 8l4 4 4-4"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </button>
-
-          <Menu
-            anchorEl={anchorEl}
-            open={Boolean(anchorEl)}
-            onClose={handleClose}
-            onClick={(e) => e.stopPropagation()}
-            PaperProps={{
-              style: { maxHeight: 280, width: 260 },
-            }}
-          >
-            <MenuItem onClick={clear} dense>
-              Clear
-            </MenuItem>
-
-            {jobOptions.map((j) => (
-              <MenuItem
-                key={j.id}
-                dense
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  toggle(j.id);
-                  // Don't close the menu after selection to allow multiple selections
-                }}
-              >
-                <Checkbox checked={selected.includes(j.id)} size="small" />
-                <ListItemText primary={j.title} />
-              </MenuItem>
-            ))}
-          </Menu>
-        </div>
-      </div>
-    );
-  },
-
-  filterFn: (row: any, columnId: string, filterValue: any) => {
-    if (!filterValue) return true;
-    const vals = Array.isArray(filterValue) ? filterValue : [filterValue];
-    if (!vals.length) return true;
-
-    const cell = String(row.getValue(columnId) ?? "");
-    return vals.includes(cell);
-  },
-
-  size: 200,
-  enableColumnFilter: true,
-
-  Cell: ({ row }: { row: { original: Applicant } }) => {
-    const raw = row.original.jobPositionId;
-
-    const getId = (v: any) => {
-      if (!v) return "";
-      if (typeof v === "string") return v;
-      return v._id ?? v.id ?? "";
-    };
-
-    const jobId = getId(raw);
-    const job = jobPositionMap[jobId];
-
-    const title =
-      typeof job?.title === "string"
-        ? job.title
-        : job?.title?.en ??
-          jobOptions.find((o) => o.id === jobId)?.title ??
-          "N/A";
-
-    return <span className="text-sm font-medium">{title}</span>;
-  },
-},
-         {
-  accessorKey: "status",
-  header: "Status",
-  enableSorting: false,
-
-  Header: ({ column }) => {
-    const current = column.getFilterValue();
-
-    const selected: string[] = Array.isArray(current)
-      ? current
-      : current
-      ? [current]
-      : [];
-
-    const toggle = (s: string) => {
-      const next = new Set(selected);
-      if (next.has(s)) next.delete(s);
-      else next.add(s);
-
-      const arr = Array.from(next);
-      column.setFilterValue(arr.length ? arr : undefined);
-    };
-
-    const clear = () => {
-      column.setFilterValue(undefined);
-      setStatusAnchorEl(null);
-    };
-
-    return (
-      <div onMouseDown={(e) => e.stopPropagation()}>
-        <div className="flex items-center gap-2 -mt-1">
-          <span className="text-sm font-medium">Status</span>
-
-          <button
-            type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-
-              // IMPORTANT: close job if open
-              setJobAnchorEl(null);
-
-              const target = e.currentTarget as HTMLElement;
-              if (statusAnchorEl === target) setStatusAnchorEl(null);
-              else setStatusAnchorEl(target);
-            }}
-            className="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-1 text-xs text-gray-700 dark:bg-gray-700 dark:text-gray-200"
-          >
-            {selected.length ? `${selected.length}` : "Filter"}
-            <svg className="h-3 w-3" viewBox="0 0 20 20" fill="none">
-              <path
-                d="M6 8l4 4 4-4"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </button>
-
-          <Menu
-            anchorEl={statusAnchorEl}
-            open={Boolean(statusAnchorEl)}
-            onClose={() => setStatusAnchorEl(null)}
-            PaperProps={{
-              style: { maxHeight: 240, width: 220 },
-              onMouseDown: (e: any) => e.stopPropagation(),
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <MenuItem onClick={clear} dense>
-              Clear
-            </MenuItem>
-
-            {statusOptions.map((s) => (
-              <MenuItem
-                key={s}
-                dense
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  toggle(s);
-                }}
-              >
-                <Checkbox checked={selected.includes(s)} size="small" />
-                <ListItemText
-                  primary={s.charAt(0).toUpperCase() + s.slice(1)}
-                />
-              </MenuItem>
-            ))}
-          </Menu>
-        </div>
-      </div>
-    );
-  },
-
-  filterFn: (row: any, columnId: string, filterValue: any) => {
-    if (!filterValue) return true;
-    const vals = Array.isArray(filterValue) ? filterValue : [filterValue];
-    if (!vals.length) return true;
-
-    const cell = String(row.getValue(columnId) ?? "");
-    return vals.includes(cell);
-  },
-
-  size: 120,
-  enableColumnFilter: true,
-
-  Cell: ({ row }: { row: { original: Applicant } }) => {
-    const colors = getStatusColor(row.original.status);
-
-    return (
-      <span
-        style={{
-          backgroundColor: colors.bg,
-          color: colors.color,
-        }}
-        className="inline-block rounded-full px-3 py-1 text-xs font-semibold"
-      >
-        {row.original.status.charAt(0).toUpperCase() +
-          row.original.status.slice(1)}
-      </span>
-    );
-  },
-}
-,
       {
-        accessorKey: "submittedAt",
-        header: "Submitted",
+        accessorKey: 'status',
+        header: 'Status',
+        enableSorting: false,
+
+        Header: ({ column }) => {
+          const current = column.getFilterValue();
+
+          const selected: string[] = Array.isArray(current)
+            ? current
+            : current
+              ? [current]
+              : [];
+
+          const toggle = (s: string) => {
+            const next = new Set(selected);
+            if (next.has(s)) next.delete(s);
+            else next.add(s);
+
+            const arr = Array.from(next);
+            column.setFilterValue(arr.length ? arr : undefined);
+          };
+
+          const clear = () => {
+            column.setFilterValue(undefined);
+            setStatusAnchorEl(null);
+          };
+
+          return (
+            <div onMouseDown={(e) => e.stopPropagation()}>
+              <div className="flex items-center gap-2 -mt-1">
+                <span className="text-sm font-medium">Status</span>
+
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    // IMPORTANT: close job if open
+                    setJobAnchorEl(null);
+
+                    const target = e.currentTarget as HTMLElement;
+                    if (statusAnchorEl === target) setStatusAnchorEl(null);
+                    else setStatusAnchorEl(target);
+                  }}
+                  className="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-1 text-xs text-gray-700 dark:bg-gray-700 dark:text-gray-200"
+                >
+                  {selected.length ? `${selected.length}` : 'Filter'}
+                  <svg className="h-3 w-3" viewBox="0 0 20 20" fill="none">
+                    <path
+                      d="M6 8l4 4 4-4"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
+
+                <Menu
+                  anchorEl={statusAnchorEl}
+                  open={Boolean(statusAnchorEl)}
+                  onClose={() => setStatusAnchorEl(null)}
+                  PaperProps={{
+                    style: { maxHeight: 240, width: 220 },
+                    onMouseDown: (e: any) => e.stopPropagation(),
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <MenuItem onClick={clear} dense>
+                    Clear
+                  </MenuItem>
+
+                  {statusOptions.map((s) => (
+                    <MenuItem
+                      key={s}
+                      dense
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        toggle(s);
+                      }}
+                    >
+                      <Checkbox checked={selected.includes(s)} size="small" />
+                      <ListItemText
+                        primary={s.charAt(0).toUpperCase() + s.slice(1)}
+                      />
+                    </MenuItem>
+                  ))}
+                </Menu>
+              </div>
+            </div>
+          );
+        },
+
+        filterFn: (row: any, columnId: string, filterValue: any) => {
+          if (!filterValue) return true;
+          const vals = Array.isArray(filterValue) ? filterValue : [filterValue];
+          if (!vals.length) return true;
+
+          const cell = String(row.getValue(columnId) ?? '');
+          return vals.includes(cell);
+        },
+
+        size: 120,
+        enableColumnFilter: true,
+
+        Cell: ({ row }: { row: { original: Applicant } }) => {
+          const colors = getStatusColor(row.original.status);
+
+          return (
+            <span
+              style={{
+                backgroundColor: colors.bg,
+                color: colors.color,
+              }}
+              className="inline-block rounded-full px-3 py-1 text-xs font-semibold"
+            >
+              {row.original.status.charAt(0).toUpperCase() +
+                row.original.status.slice(1)}
+            </span>
+          );
+        },
+      },
+      {
+        accessorKey: 'submittedAt',
+        header: 'Submitted',
         // Custom header shows a two-state control (Newest / Oldest)
         Header: ({ column, table }: { column: any; table: any }) => {
           const sortingState = table.getState().sorting;
-          const submittedSort = sortingState.find((s: any) => s.id === column.id);
+          const submittedSort = sortingState.find(
+            (s: any) => s.id === column.id
+          );
           const desc = submittedSort ? submittedSort.desc : true;
 
           const toggle = (e: any) => {
@@ -2070,21 +2605,42 @@ const {
           const orig = row.original as any;
           const hasCv = Boolean(resolveCvPath(orig));
           return (
-            <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-2">
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="flex items-center gap-2"
+            >
               {hasCv ? (
                 <button
                   type="button"
                   aria-label="Download CV"
                   title="Download CV"
                   onClick={async (e) => {
-                    try { e.stopPropagation(); } catch {}
-                    try { await downloadCvForApplicant(orig); } catch (err) { /* ignore */ }
+                    try {
+                      e.stopPropagation();
+                    } catch {}
+                    try {
+                      await downloadCvForApplicant(orig);
+                    } catch (err) {
+                      /* ignore */
+                    }
                   }}
                   className="inline-flex items-center justify-center rounded bg-brand-500 p-1 text-white hover:bg-brand-600"
                 >
                   <span className="sr-only">Download CV</span>
-                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 3v12m0 0l-4-4m4 4l4-4M21 21H3" />
+                  <svg
+                    className="w-4 h-4"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    xmlns="http://www.w3.org/2000/svg"
+                    aria-hidden="true"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M12 3v12m0 0l-4-4m4 4l4-4M21 21H3"
+                    />
                   </svg>
                 </button>
               ) : (
@@ -2095,7 +2651,15 @@ const {
         },
       },
     ],
-    [companyMap, jobPositionMap, jobOptions, getStatusColor, formatDate, statusAnchorEl, jobAnchorEl]
+    [
+      companyMap,
+      jobPositionMap,
+      jobOptions,
+      getStatusColor,
+      formatDate,
+      statusAnchorEl,
+      jobAnchorEl,
+    ]
   );
 
   // Create custom MUI theme that matches the app's dark mode
@@ -2261,7 +2825,8 @@ const {
     muiTableProps: {
       sx: {
         backgroundColor: isDarkMode ? '#24303F' : '#FFFFFF',
-        fontFamily: "'Cairo', Outfit, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans'",
+        fontFamily:
+          "'Cairo', Outfit, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans'",
       },
     },
     muiTableBodyProps: {
@@ -2279,7 +2844,8 @@ const {
         backgroundColor: isDarkMode ? '#24303F' : '#FFFFFF',
         color: isDarkMode ? '#E4E7EC' : '#101828',
         borderColor: isDarkMode ? '#344054' : '#E4E7EC',
-        fontFamily: "'Cairo', Outfit, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans'",
+        fontFamily:
+          "'Cairo', Outfit, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans'",
       },
     },
     muiTableHeadCellProps: {
@@ -2288,15 +2854,17 @@ const {
         color: isDarkMode ? '#E4E7EC' : '#344054',
         borderColor: isDarkMode ? '#344054' : '#E4E7EC',
         fontWeight: 600,
-        fontFamily: "'Cairo', Outfit, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans'",
+        fontFamily:
+          "'Cairo', Outfit, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans'",
         // Hide the default unsorted double-arrow icon; show icon only when active (sorted)
         '& .MuiTableSortLabel-icon': {
           opacity: 0,
           transition: 'opacity 150ms ease',
         },
-        '& .MuiTableSortLabel-root.MuiTableSortLabel-active .MuiTableSortLabel-icon': {
-          opacity: 1,
-        },
+        '& .MuiTableSortLabel-root.MuiTableSortLabel-active .MuiTableSortLabel-icon':
+          {
+            opacity: 1,
+          },
         '& .MuiIconButton-root': {
           display: 'none !important',
         },
@@ -2322,16 +2890,38 @@ const {
       columnFilters,
       sorting,
       pagination,
-      isLoading: applicantsLoading || jobPositionsLoading,
+      isLoading: applicantsLoading || jobPositionsLoading || !isLoaded,
       showSkeletons: applicantsLoading || jobPositionsLoading,
       showAlertBanner: false,
+      columnVisibility: layout.columnVisibility,
+      columnSizing: layout.columnSizing,
+      ...(layout.columnOrder.length > 0 && {
+        columnOrder: layout.columnOrder,
+      }),
+    },
+    onColumnVisibilityChange: (updater) => {
+      const next =
+        typeof updater === 'function'
+          ? updater(layout.columnVisibility)
+          : updater;
+      saveLayout({ columnVisibility: next });
+    },
+    onColumnSizingChange: (updater) => {
+      const next =
+        typeof updater === 'function' ? updater(layout.columnSizing) : updater;
+      saveLayout({ columnSizing: next });
+    },
+    onColumnOrderChange: (updater) => {
+      const next =
+        typeof updater === 'function' ? updater(layout.columnOrder) : updater;
+      saveLayout({ columnOrder: next });
     },
     onPaginationChange: setPagination,
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onRowSelectionChange: setRowSelection,
     getRowId: (row) => row._id,
-        renderTopToolbarCustomActions: () => {
+    renderTopToolbarCustomActions: () => {
       return (
         <div
           style={{ backgroundColor: isDarkMode ? '#1C2434' : '#FFFFFF' }}
@@ -2342,16 +2932,25 @@ const {
             <button
               type="button"
               onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
-                try { (e.currentTarget as HTMLButtonElement).blur(); } catch {}
+                try {
+                  (e.currentTarget as HTMLButtonElement).blur();
+                } catch {}
                 // remove any existing customFilters that target excluded fields
                 try {
-                  setCustomFilters((prev) => prev.filter((cf: any) => {
-                      const rawCandidates = [`${cf.labelEn || ''} ${cf.labelAr || ''}`, cf.labelEn || '', cf.labelAr || '', cf.fieldId || ''];
+                  setCustomFilters((prev) =>
+                    prev.filter((cf: any) => {
+                      const rawCandidates = [
+                        `${cf.labelEn || ''} ${cf.labelAr || ''}`,
+                        cf.labelEn || '',
+                        cf.labelAr || '',
+                        cf.fieldId || '',
+                      ];
                       for (const rc of rawCandidates) {
                         if (isExcludedLabel(rc)) return false;
                       }
                       return true;
-                    }));
+                    })
+                  );
                 } catch (e) {
                   // ignore
                 }
@@ -2361,7 +2960,6 @@ const {
             >
               Filter Settings
             </button>
-            
           </div>
         </div>
       );
@@ -2370,11 +2968,14 @@ const {
       onClick: () => {
         try {
           const state = table.getState();
-          sessionStorage.setItem('applicants_table_state', JSON.stringify({
-            pagination: state.pagination,
-            sorting: state.sorting,
-            columnFilters: state.columnFilters,
-          }));
+          sessionStorage.setItem(
+            'applicants_table_state',
+            JSON.stringify({
+              pagination: state.pagination,
+              sorting: state.sorting,
+              columnFilters: state.columnFilters,
+            })
+          );
         } catch (e) {
           // ignore
         }
@@ -2419,7 +3020,8 @@ const {
       setContextMenu((c) => (c.open ? { ...c, open: false } : c));
     };
     const onEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setContextMenu((c) => (c.open ? { ...c, open: false } : c));
+      if (e.key === 'Escape')
+        setContextMenu((c) => (c.open ? { ...c, open: false } : c));
     };
     document.addEventListener('click', onDocClick);
     document.addEventListener('keydown', onEsc);
@@ -2445,9 +3047,12 @@ const {
                 onClick={async () => {
                   try {
                     const promises: Promise<any>[] = [];
-                    if (isJobPositionsFetched && refetchJobPositions) promises.push(refetchJobPositions());
-                    if (isApplicantsFetched && refetchApplicants) promises.push(refetchApplicants());
-                    if (isCompaniesFetched && refetchCompanies) promises.push(refetchCompanies());
+                    if (isJobPositionsFetched && refetchJobPositions)
+                      promises.push(refetchJobPositions());
+                    if (isApplicantsFetched && refetchApplicants)
+                      promises.push(refetchApplicants());
+                    if (isCompaniesFetched && refetchCompanies)
+                      promises.push(refetchCompanies());
                     if (promises.length === 0) return;
                     await Promise.all(promises);
                     setLastRefetch(new Date());
@@ -2455,12 +3060,22 @@ const {
                     // ignore
                   }
                 }}
-                disabled={isJobPositionsFetching || isApplicantsFetching || isCompaniesFetching}
+                disabled={
+                  isJobPositionsFetching ||
+                  isApplicantsFetching ||
+                  isCompaniesFetching
+                }
                 className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-3 py-1 text-sm font-semibold text-white shadow-sm hover:bg-brand-600 disabled:opacity-50"
               >
-                {(isJobPositionsFetching || isApplicantsFetching || isCompaniesFetching) ? 'Updating Data' : 'Update Data'}
+                {isJobPositionsFetching ||
+                isApplicantsFetching ||
+                isCompaniesFetching
+                  ? 'Updating Data'
+                  : 'Update Data'}
               </button>
-              <div className="text-sm text-gray-500">{elapsed ? `Last Update: ${elapsed}` : 'Not updated yet'}</div>
+              <div className="text-sm text-gray-500">
+                {elapsed ? `Last Update: ${elapsed}` : 'Not updated yet'}
+              </div>
             </div>
           }
         >
@@ -2474,7 +3089,7 @@ const {
                   </p>
                   <button
                     type="button"
-                    onClick={() => setBulkStatusError("")}
+                    onClick={() => setBulkStatusError('')}
                     className="ml-3 text-red-400 hover:text-red-600 dark:hover:text-red-300"
                   >
                     ✕
@@ -2487,12 +3102,12 @@ const {
               <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
                 <div className="flex items-start justify-between">
                   <p className="text-sm text-red-600 dark:text-red-400">
-                    <strong>Error deleting applicants:</strong>{" "}
+                    <strong>Error deleting applicants:</strong>{' '}
                     {bulkDeleteError}
                   </p>
                   <button
                     type="button"
-                    onClick={() => setBulkDeleteError("")}
+                    onClick={() => setBulkDeleteError('')}
                     className="ml-3 text-red-400 hover:text-red-600 dark:hover:text-red-300"
                   >
                     ✕
@@ -2500,8 +3115,8 @@ const {
                 </div>
               </div>
             )}
- {/* Filter Settings button above the table */}
-                {/* removed in-body toolbar button; moved to ComponentCard header actions */}
+            {/* Filter Settings button above the table */}
+            {/* removed in-body toolbar button; moved to ComponentCard header actions */}
             {error && (
               <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg">
                 {String(error)}
@@ -2533,12 +3148,14 @@ const {
                       disabled={isProcessing || !bulkAction}
                       className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {isProcessing ? "Changing..." : "Change Status"}
+                      {isProcessing ? 'Changing...' : 'Change Status'}
                     </button>
                   </div>
                   <button
                     onClick={() => setShowBulkModal(true)}
-                    disabled={isProcessing || selectedApplicantEmails.length === 0}
+                    disabled={
+                      isProcessing || selectedApplicantEmails.length === 0
+                    }
                     className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {`Send Mail (${selectedApplicantEmails.length})`}
@@ -2549,7 +3166,7 @@ const {
                     className="inline-flex items-center gap-2 rounded-lg bg-red-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <TrashBinIcon className="h-4 w-4" />
-                    {isDeleting ? "Deleting..." : "Delete"}
+                    {isDeleting ? 'Deleting...' : 'Delete'}
                   </button>
                 </div>
               </div>
@@ -2567,7 +3184,10 @@ const {
               recipients={selectedApplicantEmails}
               companyId={selectedApplicantCompanyId}
               company={selectedApplicantCompany}
-              onSuccess={() => { setRowSelection({}); setShowBulkModal(false); }}
+              onSuccess={() => {
+                setRowSelection({});
+                setShowBulkModal(false);
+              }}
             />
 
             {/* MRT handles pagination in its bottom toolbar (10 rows per page) */}
@@ -2578,7 +3198,12 @@ const {
       {/* Custom context menu for applicant rows */}
       {contextMenu.open && (
         <div
-          style={{ position: 'fixed', left: menuPos.x, top: menuPos.y, zIndex: 11000 }}
+          style={{
+            position: 'fixed',
+            left: menuPos.x,
+            top: menuPos.y,
+            zIndex: 11000,
+          }}
           onClick={(e) => {
             e.stopPropagation();
           }}
@@ -2592,7 +3217,9 @@ const {
                   const url = `${window.location.origin}/applicant/${contextMenu.row.id}`;
                   window.open(url, '_blank');
                 } catch (err) {
-                  navigate(`/applicant/${contextMenu.row.id}`, { state: { applicant: contextMenu.row.original } });
+                  navigate(`/applicant/${contextMenu.row.id}`, {
+                    state: { applicant: contextMenu.row.original },
+                  });
                 }
                 setContextMenu((c) => ({ ...c, open: false }));
               }}
@@ -2603,7 +3230,9 @@ const {
               className="w-full text-left px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
               onClick={() => {
                 saveTableState();
-                navigate(`/applicant/${contextMenu.row.id}`, { state: { applicant: contextMenu.row.original } });
+                navigate(`/applicant/${contextMenu.row.id}`, {
+                  state: { applicant: contextMenu.row.original },
+                });
                 setContextMenu((c) => ({ ...c, open: false }));
               }}
             >
@@ -2642,7 +3271,6 @@ const {
         </div>
       )}
 
-    
       {/* Photo Preview Modal */}
       {previewPhoto && (
         <div
@@ -2684,7 +3312,9 @@ const {
 };
 
 export default function ApplicantsWrapper() {
-  const [isMobile, setIsMobile] = useState<boolean>(() => typeof window !== 'undefined' ? window.innerWidth <= 425 : false);
+  const [isMobile, setIsMobile] = useState<boolean>(() =>
+    typeof window !== 'undefined' ? window.innerWidth <= 425 : false
+  );
 
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth <= 425);
@@ -2695,6 +3325,3 @@ export default function ApplicantsWrapper() {
   if (isMobile) return <ApplicantsMobilePage />;
   return <Applicants />;
 }
-
- 
-
