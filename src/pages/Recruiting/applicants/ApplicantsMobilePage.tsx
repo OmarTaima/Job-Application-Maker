@@ -13,56 +13,94 @@ import Swal from 'sweetalert2';
 import BulkMessageModal from '../../../components/modals/BulkMessageModal';
 import { useDeleteApplicant, useUpdateApplicantStatus } from '../../../hooks/queries/useApplicants';
 
+// Icons (using emoji as fallback, but in production use proper icon library)
+import { 
+  Search, 
+  RefreshCw, 
+  ChevronDown, 
+  ChevronUp,
+  Mail,
+  Phone,
+  Calendar,
+  Briefcase,
+  Building2,
+  Users,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  AlertCircle,
+  ChevronLeft,
+  ChevronRight,
+  X,
+Trash2,
+  Send,
+  ArrowUpDown,
+  SlidersHorizontal,
+  Download
+} from 'lucide-react';
+
 export default function ApplicantsMobilePage(): JSX.Element {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  // Lazy image loader for profile photos to avoid loading all images at once
-  function LazyImage({ src, alt, className }: { src?: string | null; alt?: string; className?: string }) {
+  // Lazy image loader with enhanced features
+  function LazyImage({ src, alt, className, fallback }: { src?: string | null; alt?: string; className?: string; fallback?: string }) {
     const imgRef = useRef<HTMLImageElement | null>(null);
-    // remember images that were previously made visible to avoid flashing
     const seenImagesRef = useRef<Set<string>>((globalThis as any).__seenApplicantImages || new Set<string>());
-    if (!(globalThis as any).__seenApplicantImages) (globalThis as any).__seenApplicantImages = seenImagesRef.current;
     const [visible, setVisible] = useState<boolean>(() => !!src && seenImagesRef.current.has(String(src)));
+    const [error, setError] = useState(false);
+
+    if (!(globalThis as any).__seenApplicantImages) (globalThis as any).__seenApplicantImages = seenImagesRef.current;
 
     useEffect(() => {
-      if (!src) return;
+      if (!src || error) return;
       if (visible) return;
-      try {
-        const el = imgRef.current;
-        if (!el) return;
-        if (typeof IntersectionObserver === 'undefined') {
-          setVisible(true);
-          return;
-        }
-        const obs = new IntersectionObserver((entries) => {
+      
+      const observer = new IntersectionObserver(
+        (entries) => {
           entries.forEach((entry) => {
             if (entry.isIntersecting) {
               setVisible(true);
-              try { if (src) seenImagesRef.current.add(String(src)); } catch (e) {}
-              try { obs.disconnect(); } catch (e) {}
+              if (src) seenImagesRef.current.add(String(src));
+              observer.disconnect();
             }
           });
-        });
-        obs.observe(el);
-        return () => { try { obs.disconnect(); } catch (e) {} };
-      } catch (e) {
-        setVisible(true);
-      }
-    }, [src, visible]);
+        },
+        { rootMargin: "50px", threshold: 0.1 }
+      );
 
-    if (!src) return null;
+      if (imgRef.current) observer.observe(imgRef.current);
+      return () => observer.disconnect();
+    }, [src, visible, error]);
+
+    if (!src || error) {
+      return (
+        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200 text-gray-400">
+          <span className="text-2xl font-bold">{fallback || '?'}</span>
+        </div>
+      );
+    }
+
     return (
-      // eslint-disable-next-line jsx-a11y/img-redundant-alt
-      <img ref={imgRef} src={visible ? src : undefined} data-src={src} alt={alt || ''} loading="lazy" className={className} />
+      <img
+        ref={imgRef}
+        src={visible ? src : undefined}
+        data-src={src}
+        alt={alt || ''}
+        loading="lazy"
+        className={className}
+        onError={() => setError(true)}
+      />
     );
   }
+
   const [query, setQuery] = useState("");
   const [companyFilter, setCompanyFilter] = useState<string | undefined>(undefined);
   const [jobFilter, setJobFilter] = useState<string | undefined>(undefined);
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
   const [genderFilter, setGenderFilter] = useState<string | undefined>(undefined);
   const [customFilterOpen, setCustomFilterOpen] = useState(false);
+  const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
   const [customFilters, setCustomFilters] = useState<Array<any>>(() => {
     try {
       const raw = sessionStorage.getItem('applicants_table_state');
@@ -79,6 +117,7 @@ export default function ApplicantsMobilePage(): JSX.Element {
   const [pageIndex, setPageIndex] = useState<number>(0);
   const [pageSize, setPageSize] = useState<number>(10);
   const [submittedDesc, setSubmittedDesc] = useState<boolean>(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   const { data: companies = [], refetch: refetchCompanies, isFetching: isCompaniesFetching } = useCompanies();
   const { user } = useAuth();
@@ -97,9 +136,6 @@ export default function ApplicantsMobilePage(): JSX.Element {
     return usercompanyId?.length ? usercompanyId : undefined;
   }, [user?._id, user?.roleId?.name, user?.companies]);
 
-  // Decide whether we need to fetch for a specific company (when user selects a company
-  // that's not part of the already-fetched `companies` list). For companies already
-  // present in `companies`, we avoid refetch and filter client-side.
   const availableCompanyIds = useMemo(() => (companies || []).map((c: any) => c._id || c.id).filter(Boolean), [companies]);
 
   const needServerFetchForCompany = companyFilter ? !availableCompanyIds.includes(companyFilter) : false;
@@ -203,7 +239,7 @@ export default function ApplicantsMobilePage(): JSX.Element {
       });
     }
     return list;
-  }, [applicants, companyFilter, jobFilter]);
+  }, [applicants, companyFilter, jobFilter, jobPositionMap]);
 
 
   // persist custom filters immediately (so back navigation restores state)
@@ -276,6 +312,94 @@ export default function ApplicantsMobilePage(): JSX.Element {
     }
     return '';
   };
+
+    // Helpers to resolve and download CVs for applicants (copied from Applicants.tsx)
+    const buildCloudinaryDownloadUrl = (u: string, idHint?: string) => {
+      try {
+        if (!u) return null;
+        const urlParts = u.split('/upload/');
+        if (urlParts.length !== 2) return null;
+        const fileName = `CV_${idHint || 'cv'}`;
+        const transformations = `f_auto/fl_attachment:${fileName}`;
+        const downloadUrl = `${urlParts[0]}/upload/${transformations}/${urlParts[1]}`;
+        return downloadUrl;
+      } catch (e) {
+        return null;
+      }
+    };
+
+    const downloadViaFetch = async (u: string, filename?: string) => {
+      try {
+        const res = await fetch(u, { mode: 'cors' });
+        if (!res.ok) throw new Error('Network response not ok');
+        const blob = await res.blob();
+        const a = document.createElement('a');
+        const blobUrl = URL.createObjectURL(blob);
+        a.href = blobUrl;
+        a.download = filename || (u.split('/').pop() || 'download');
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+        return true;
+      } catch (err) {
+        return false;
+      }
+    };
+
+    const resolveCvPath = (a: any): string | null => {
+      try {
+        if (!a) return null;
+        const keys = ['cvFilePath','cvUrl','resume','cv','attachments','resumeUrl','cvFilePath','cvFile','resumeFilePath','resumeFile','cv_file_path','cv_file','cv_path'];
+        for (const k of keys) {
+          const v = (a as any)[k];
+          if (!v) continue;
+          if (typeof v === 'string' && v.trim()) return v;
+          if (Array.isArray(v) && v.length) {
+            const first = v.find((it) => typeof it === 'string' && it.trim());
+            if (first) return first;
+          }
+        }
+        const resp = a?.customResponses || a?.customFieldResponses || {};
+        for (const [k, v] of Object.entries(resp || {})) {
+          const lk = String(k || '').toLowerCase();
+          if (lk.includes('cv') || lk.includes('resume') || lk.includes('cvfile') || lk.includes('cv_file') || lk.includes('cvfilepath')) {
+            if (typeof v === 'string' && v.trim()) return v as string;
+            if (Array.isArray(v) && v.length) {
+              const f = v.find((it) => typeof it === 'string' && it.trim());
+              if (f) return f as string;
+            }
+          }
+          if (typeof v === 'string' && /https?:\/\/.+\.(pdf|docx?|rtf|txt|zip)$/i.test(v)) return v as string;
+        }
+        return null;
+      } catch (e) {
+        return null;
+      }
+    };
+
+    const downloadCvForApplicant = async (a: any) => {
+      if (!a) return Swal.fire('No CV', 'No CV file available for this applicant', 'info');
+      const path = resolveCvPath(a);
+      if (!path) return Swal.fire('No CV', 'No CV file available for this applicant', 'info');
+
+      const url = (() => {
+        if (!path) return null;
+        if (typeof path === 'string' && (path.startsWith('http') || path.startsWith('data:'))) return path;
+        const base = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+        return base ? `${base}/${String(path).replace(/^\//, '')}` : String(path);
+      })();
+
+      const cloudUrl = buildCloudinaryDownloadUrl(url || '', (a?.applicantNo || a?._id || '').toString());
+      if (cloudUrl) {
+        window.open(cloudUrl, '_blank');
+        return;
+      }
+
+      const ok = await downloadViaFetch(url || String(path), undefined);
+      if (ok) return;
+      window.open(url || String(path), '_blank');
+    };
 
   const filtered = (displayedApplicants || []).filter((a) => {
     // status + trashed visibility
@@ -379,7 +503,11 @@ export default function ApplicantsMobilePage(): JSX.Element {
       return next;
     });
   };
+  
+
+  
   const clearSelection = () => setSelectedMap({});
+  
   const selectedApplicantIds = useMemo(() => Object.keys(selectedMap), [selectedMap]);
   const deleteMutation = useDeleteApplicant();
   const updateStatusMutation = useUpdateApplicantStatus();
@@ -440,10 +568,10 @@ export default function ApplicantsMobilePage(): JSX.Element {
     if (items.includes('Female')) ordered.push('Female');
     items.forEach((it) => { if (it !== 'Male' && it !== 'Female') ordered.push(it); });
     return ordered.map((g) => ({ id: g, title: g }));
-  }, [applicants]);
+  }, [applicants, isSuperAdmin]);
 
   // Update Data button
-  const updating = Boolean(isJobPositionsFetching || isCompaniesFetching || isLoading);
+  const updating = Boolean(isJobPositionsFetching || isCompaniesFetching || isLoading || refreshing);
 
   // Pagination logic (apply to sortedFiltered)
   const totalPages = Math.max(1, Math.ceil(sortedFiltered.length / pageSize));
@@ -452,215 +580,588 @@ export default function ApplicantsMobilePage(): JSX.Element {
   }, [pageIndex, totalPages]);
   const paginated = sortedFiltered.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize);
 
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      const promises: Promise<any>[] = [];
+      if (refetchJobPositions) promises.push(refetchJobPositions());
+      if (refetch) promises.push(refetch());
+      if (refetchCompanies) promises.push(refetchCompanies());
+      await Promise.all(promises);
+    } catch (e) {
+      console.error('Refresh failed', e);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const getStatusBadge = (status: string) => {
+    const statusConfig: Record<string, { color: string; bg: string; icon: JSX.Element }> = {
+      pending: { 
+        color: 'text-yellow-700', 
+        bg: 'bg-yellow-50 border-yellow-200',
+        icon: <Clock size={12} className="text-yellow-600" />
+      },
+      interview: { 
+        color: 'text-blue-700', 
+        bg: 'bg-blue-50 border-blue-200',
+        icon: <Users size={12} className="text-blue-600" />
+      },
+      interviewed: { 
+        color: 'text-purple-700', 
+        bg: 'bg-purple-50 border-purple-200',
+        icon: <CheckCircle2 size={12} className="text-purple-600" />
+      },
+      approved: { 
+        color: 'text-green-700', 
+        bg: 'bg-green-50 border-green-200',
+        icon: <CheckCircle2 size={12} className="text-green-600" />
+      },
+      rejected: { 
+        color: 'text-red-700', 
+        bg: 'bg-red-50 border-red-200',
+        icon: <XCircle size={12} className="text-red-600" />
+      },
+      trashed: { 
+        color: 'text-gray-700', 
+        bg: 'bg-gray-50 border-gray-200',
+        icon: <Trash2 size={12} className="text-gray-600" />
+      },
+    };
+    return statusConfig[status] || statusConfig.pending;
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-white to-slate-50 overflow-x-hidden sm:px-0">
-      <div className="sticky top-0 z-40 bg-white/60 backdrop-blur-sm border-b border-gray-100">
-        <div className="max-w-md mx-auto px-6 sm:px-4 py-3 flex items-center justify-between flex-wrap gap-2">
-          <div className="min-w-0">
-            <h2 className="text-lg font-semibold text-primary-700">Applicants (Mobile)</h2>
-            <p className="text-xs text-gray-500">Showing {sortedFiltered.length} of {(applicants || []).length}</p>
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
+      {/* Header */}
+      <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-lg border-b border-gray-200/60 shadow-sm">
+        <div className="px-4 py-3">
+          <div className="flex items-center justify-between mb-2">
+            <div>
+              <h1 className="text-xl font-bold bg-gradient-to-r from-brand-600 to-brand-700 bg-clip-text text-transparent">
+                Applicants
+              </h1>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {sortedFiltered.length} of {applicants?.length || 0} applicants
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setFilterDrawerOpen(true)}
+                className="p-2 rounded-xl bg-white border border-gray-200 shadow-sm hover:bg-gray-50 active:scale-95 transition-all"
+              >
+                <SlidersHorizontal size={18} className="text-gray-600" />
+              </button>
+              <button
+                onClick={handleRefresh}
+                disabled={updating}
+                className="p-2 rounded-xl bg-white border border-gray-200 shadow-sm hover:bg-gray-50 active:scale-95 transition-all disabled:opacity-50"
+              >
+                <RefreshCw size={18} className={`text-gray-600 ${refreshing ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
           </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <button onClick={() => setSubmittedDesc((s) => !s)} title={submittedDesc ? 'Newest' : 'Oldest'} className="px-2 py-1 text-sm bg-white border border-gray-200 rounded">
-              <span className="mr-1">Submitted</span>
-              <span className="text-xs">{submittedDesc ? '▼' : '▲'}</span>
-            </button>
-            <button
-              onClick={async () => {
-                try {
-                  const promises: Promise<any>[] = [];
-                  if (refetchJobPositions) promises.push(refetchJobPositions());
-                  if (refetch) promises.push(refetch());
-                  if (refetchCompanies) promises.push(refetchCompanies());
-                  if (promises.length === 0) return;
-                  await Promise.all(promises);
-                } catch (e) {}
-              }}
-              disabled={updating}
-              className="px-2 py-1 text-sm bg-white border border-gray-200 rounded hover:shadow-sm"
-            >
-              {updating ? 'Updating Data' : 'Update Data'}
-            </button>
-            <button onClick={async () => { try { if (refetchCompanies) await refetchCompanies(); } catch (e) {} setCustomFilterOpen(true); }} className="px-2 py-1 text-sm bg-white border border-gray-200 rounded">Filter Settings</button>
-          </div>
-        </div>
-        <div className="px-4 pb-3">
-          <div className="flex flex-col sm:flex-row gap-2">
+
+          {/* Search Bar */}
+          <div className="relative">
+            <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search name, email or phone"
-              className="flex-1 px-2 py-1 text-sm rounded-md border border-gray-200 bg-white/70 placeholder-gray-400 focus:ring focus:ring-primary-100"
+              placeholder="Search by name, email, or phone..."
+              className="w-full pl-10 pr-4 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
             />
-            <div className="w-full sm:w-auto">
-              <button onClick={() => { setCompanyFilter(undefined); setJobFilter(undefined); setStatusFilter(undefined); setGenderFilter(undefined); setQuery(""); setCustomFilters([]); }} className="w-full sm:w-auto px-2 py-1 text-sm bg-white border border-gray-200 rounded hover:bg-gray-50">Clear</button>
-            </div>
+            {query && (
+              <button
+                onClick={() => setQuery("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-gray-100"
+              >
+                <XCircle size={14} className="text-gray-400" />
+              </button>
+            )}
           </div>
         </div>
-      </div>
+      </header>
 
-      <div className="max-w-md mx-auto px-6 sm:px-4 py-3 space-y-3">
-        <div className="flex gap-2 overflow-x-auto pb-2">
-          <select value={companyFilter ?? ""} onChange={(e) => { setCompanyFilter(e.target.value || undefined); setJobFilter(undefined); }} className="px-2 py-1 text-sm rounded-md border border-gray-200 bg-white/80 shadow-sm">
-            <option value="">All companies</option>
-            {companies.map((c: any) => (
-              <option key={c._id || c.id} value={c._id || c.id}>{toPlainString(c?.name) || toPlainString(c?.companyName) || toPlainString(c?.title)}</option>
-            ))}
-          </select>
-          <select value={jobFilter ?? ""} onChange={(e) => setJobFilter(e.target.value || undefined)} className="px-2 py-1 text-sm rounded-md border border-gray-200 bg-white/80 shadow-sm">
-            <option value="">All jobs</option>
-            {displayedJobPositions.map((j: any) => (
-              <option key={j._id || j.id} value={j._id || j.id}>{(jobMap[j._id || j.id] || '')}</option>
-            ))}
-          </select>
-          <select value={statusFilter ?? ""} onChange={(e) => setStatusFilter(e.target.value || undefined)} className="px-2 py-1 text-sm rounded-md border border-gray-200 bg-white/80 shadow-sm">
-            <option value="">All statuses</option>
-            <option value="pending">Pending</option>
-            <option value="interview">Interview</option>
-            <option value="interviewed">Interviewed</option>
-            <option value="approved">Approved</option>
-            <option value="rejected">Rejected</option>
-            <option value="trashed">Trashed</option>
-          </select>
-          <select value={genderFilter ?? ""} onChange={(e) => setGenderFilter(e.target.value || undefined)} className="px-2 py-1 text-sm rounded-md border border-gray-200 bg-white/80 shadow-sm">
-            <option value="">All genders</option>
-            {genderOptions.map((g) => <option key={g.id} value={g.id}>{g.title}</option>)}
-          </select>
-        </div>
-
+      {/* Main Content */}
+      <main className="px-4 py-4 pb-24">
         {isLoading ? (
-          <div className="py-10 flex justify-center"><LoadingSpinner /></div>
+          <div className="flex flex-col items-center justify-center py-16">
+            <LoadingSpinner />
+            <p className="text-sm text-gray-500 mt-4">Loading applicants...</p>
+          </div>
         ) : error ? (
-          <div className="text-center text-red-600">{String(error)}</div>
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-center">
+            <AlertCircle size={32} className="text-red-500 mx-auto mb-2" />
+            <p className="text-red-700 text-sm">{String(error)}</p>
+            <button
+              onClick={handleRefresh}
+              className="mt-3 px-4 py-2 bg-white border border-red-200 rounded-lg text-sm text-red-600 hover:bg-red-50"
+            >
+              Try Again
+            </button>
+          </div>
         ) : sortedFiltered.length === 0 ? (
-          <div className="text-center text-gray-500 py-10">No applicants found</div>
+          <div className="flex flex-col items-center justify-center py-16">
+            <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+              <Users size={32} className="text-gray-400" />
+            </div>
+            <h3 className="text-lg font-semibold text-gray-700 mb-1">No applicants found</h3>
+            <p className="text-sm text-gray-500 text-center max-w-xs">
+              Try adjusting your filters or search query to find what you're looking for.
+            </p>
+          </div>
         ) : (
-          <div className="space-y-3">
+          <>
+            {/* Selection Bar */}
             {selectedApplicantIds.length > 0 && (
-              <div className="flex items-center justify-between gap-2 mb-2">
-                <div className="text-sm text-gray-700">{selectedApplicantIds.length} selected</div>
-                <div className="flex items-center gap-2">
-                  <button onClick={() => setShowBulkModal(true)} className="px-3 py-1 bg-white border border-gray-200 rounded text-xs shadow-sm">✉️ Mail</button>
-                  <button onClick={async () => {
-                    const { value: status } = await Swal.fire({
-                      title: `Change status for ${selectedApplicantIds.length} applicant(s)`,
-                      input: 'select',
-                      inputOptions: { pending: 'pending', interview: 'interview', interviewed: 'interviewed', approved: 'approved', rejected: 'rejected', trashed: 'trashed' },
-                      inputPlaceholder: 'Select status',
-                      showCancelButton: true,
-                    });
-                    if (!status) return;
-                    const confirmed = await Swal.fire({ title: 'Confirm', text: `Change status to ${status}?`, showCancelButton: true, confirmButtonText: 'Yes' });
-                    if (!confirmed.isConfirmed) return;
-                    try {
-                      await Promise.all(selectedApplicantIds.map((id) => updateStatusMutation.mutateAsync({ id, data: { status } } as any)));
-                      Swal.fire('Updated', `${selectedApplicantIds.length} applicants updated.`, 'success');
-                      clearSelection();
-                    } catch (e) { Swal.fire('Error', 'Failed to update status', 'error'); }
-                  }} className="px-3 py-1 bg-white border border-gray-200 rounded text-xs shadow-sm">🔁 Status</button>
-                  <button onClick={async () => {
-                    const ok = await Swal.fire({ title: 'Delete applicants', text: `Are you sure you want to delete ${selectedApplicantIds.length} applicant(s)?`, icon: 'warning', showCancelButton: true });
-                    if (!ok.isConfirmed) return;
-                    try {
-                      await Promise.all(selectedApplicantIds.map((id) => deleteMutation.mutateAsync(id)));
-                      Swal.fire('Deleted', `${selectedApplicantIds.length} applicants deleted.`, 'success');
-                      clearSelection();
-                    } catch (e) { Swal.fire('Error', 'Failed to delete', 'error'); }
-                  }} className="px-3 py-1 bg-white border border-red-200 text-red-700 rounded text-xs shadow-sm">🗑️ Delete</button>
+              <div className="fixed bottom-20 left-4 right-4 z-30 animate-slide-up">
+                <div className="bg-white rounded-2xl shadow-lg border border-blue-100 p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-blue-600">
+                      {selectedApplicantIds.length} selected
+                    </span>
+                    <button
+                      onClick={clearSelection}
+                      className="text-xs text-gray-500 hover:text-gray-700"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                  <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+                    <button
+                      onClick={() => setShowBulkModal(true)}
+                      className="flex items-center gap-1.5 px-3 py-2 bg-blue-50 rounded-xl text-blue-700 text-sm whitespace-nowrap"
+                    >
+                      <Send size={16} />
+                      <span>Send Mail</span>
+                    </button>
+                    <button
+                      onClick={async () => {
+                        const { value: status } = await Swal.fire({
+                          title: 'Change Status',
+                          text: `Update status for ${selectedApplicantIds.length} applicant(s)`,
+                          input: 'select',
+                          inputOptions: {
+                            pending: 'Pending',
+                            interview: 'Interview',
+                            interviewed: 'Interviewed',
+                            approved: 'Approved',
+                            rejected: 'Rejected',
+                            trashed: 'Trashed'
+                          },
+                          showCancelButton: true,
+                          confirmButtonText: 'Update',
+                        });
+                        if (!status) return;
+                        
+                        try {
+                          await Promise.all(selectedApplicantIds.map((id) => 
+                            updateStatusMutation.mutateAsync({ id, data: { status } } as any)
+                          ));
+                          Swal.fire('Success', `${selectedApplicantIds.length} applicants updated.`, 'success');
+                          clearSelection();
+                        } catch (e) {
+                          Swal.fire('Error', 'Failed to update status', 'error');
+                        }
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-2 bg-purple-50 rounded-xl text-purple-700 text-sm whitespace-nowrap"
+                    >
+                      <RefreshCw size={16} />
+                      <span>Status</span>
+                    </button>
+                    <button
+                      onClick={async () => {
+                        const result = await Swal.fire({
+                          title: 'Delete Applicants',
+                          text: `Are you sure you want to delete ${selectedApplicantIds.length} applicant(s)?`,
+                          icon: 'warning',
+                          showCancelButton: true,
+                          confirmButtonColor: '#ef4444',
+                        });
+                        if (!result.isConfirmed) return;
+                        
+                        try {
+                          await Promise.all(selectedApplicantIds.map((id) => 
+                            deleteMutation.mutateAsync(id)
+                          ));
+                          Swal.fire('Deleted', `${selectedApplicantIds.length} applicants deleted.`, 'success');
+                          clearSelection();
+                        } catch (e) {
+                          Swal.fire('Error', 'Failed to delete', 'error');
+                        }
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-2 bg-red-50 rounded-xl text-red-700 text-sm whitespace-nowrap"
+                    >
+                      <Trash2 size={16} />
+                      <span>Delete</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
-        
-            {paginated.map((a) => {
-              const id = normalizeIdGlobal(a._id) || normalizeIdGlobal((a as any).id) || '';
-              const isSelected = !!selectedMap[id];
-              return (
-                <article key={id || String(Math.random())} className={`bg-white/60 backdrop-blur-sm border ${isSelected ? 'border-primary-300 ring-1 ring-primary-100' : 'border-gray-100'} rounded-2xl p-3 shadow-sm hover:shadow-md transition relative`} onClick={() => {
-                  if (a && (a._id || (a as any).id)) {
-                    const navId = normalizeIdGlobal(a._id) || normalizeIdGlobal((a as any).id);
-                    if (navId) queryClient.setQueryData(applicantsKeys.detail(navId), a as any);
-                    navigate(`/applicant/${navId}`, { state: { applicant: a } });
-                  }
-                }}>
-                  <div className="flex items-start gap-3">
-                    <div className="flex-shrink-0">
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={(e) => { e.stopPropagation(); toggleSelect(id); }}
-                        onClick={(e) => e.stopPropagation()}
-                        className="w-4 h-4 mt-1 ml-0 text-primary-600 bg-white border-gray-300 rounded focus:ring-primary-500"
-                      />
-                    </div>
-                    <div className="w-14 h-14 rounded-full bg-gray-200 overflow-hidden flex-shrink-0 flex items-center justify-center text-xl font-semibold text-gray-700 ring-1 ring-primary-100 cursor-pointer" onClick={(e) => { e.stopPropagation(); if (a.profilePhoto) setPreviewPhoto(a.profilePhoto); }}>
-                      {a.profilePhoto ? <LazyImage src={a.profilePhoto} alt={a.fullName} className="w-full h-full object-cover" /> : (a.firstName || a.fullName || '').charAt(0).toUpperCase()}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
-                        {
-                          (() => {
-                            const seenBy = (a as any)?.seenBy ?? [];
-                            const currentUserId = (user as any)?._id || (user as any)?.id || undefined;
-                            const isSeen = Array.isArray(seenBy) && seenBy.some((s: any) => {
-                              if (!s) return false;
-                              if (typeof s === 'string') return s === currentUserId;
-                              return (s._id === currentUserId) || (s.id === currentUserId);
-                            });
-                            return (
-                              <h3 className={`text-sm font-semibold truncate ${isSeen ? 'text-gray-400' : 'text-slate-800'}`}>{a.fullName}</h3>
-                            );
-                          })()
-                        }
-                        <span className={`text-xs px-2 py-1 rounded-full ${a.status==='rejected' || a.status==='trashed' ? 'bg-red-50 text-red-700 ring-1 ring-red-100' : a.status==='accepted' || a.status==='approved' ? 'bg-green-50 text-green-700 ring-1 ring-green-100' : 'bg-yellow-50 text-yellow-800 ring-1 ring-yellow-100'}`}>{a.status.replace('_',' ')}</span>
-                      </div>
-                      <p className="text-xs text-gray-500 mt-1 truncate overflow-hidden whitespace-nowrap">{a.email || ''}{a.email && a.phone ? ' • ' : ''}{a.phone || ''}</p>
-                      {
-                        (() => {
-                          const rawCompany = (a as any).companyId || (a as any).company || (a as any).companyObj;
-                          const rawJob = (a as any).jobPositionId || (a as any).job;
-                          const displayCompany = companyMap[normalizeIdGlobal(rawCompany) || ''] || '';
-                          const displayJob = jobMap[normalizeIdGlobal(rawJob) || ''] || '';
-                          if (!displayCompany && !displayJob) return null;
-                          return (
-                            <p className="text-xs text-gray-400 mt-1 truncate overflow-hidden whitespace-nowrap">{displayCompany}{displayCompany && displayJob ? ' • ' : ''}{displayJob}</p>
-                          );
-                        })()
+
+            {/* Applicant Cards */}
+            <div className="space-y-3">
+              {paginated.map((a, index) => {
+                const id = normalizeIdGlobal(a._id) || normalizeIdGlobal((a as any).id) || '';
+                const isSelected = !!selectedMap[id];
+                const statusBadge = getStatusBadge(a.status || 'pending');
+                const seenBy = (a as any)?.seenBy ?? [];
+                const currentUserId = (user as any)?._id || (user as any)?.id;
+                const isSeen = Array.isArray(seenBy) && seenBy.some((s: any) => {
+                  if (!s) return false;
+                  if (typeof s === 'string') return s === currentUserId;
+                  return (s._id === currentUserId) || (s.id === currentUserId);
+                });
+
+                return (
+                  <div
+                    key={id || index}
+                    className={`bg-white rounded-2xl border-2 transition-all duration-200 hover:shadow-md active:scale-[0.98] ${
+                      isSelected 
+                        ? 'border-brand-500 shadow-lg shadow-blue-100' 
+                        : 'border-gray-100 hover:border-gray-200'
+                    }`}
+                    onClick={() => {
+                      if (a && (a._id || (a as any).id)) {
+                        const navId = normalizeIdGlobal(a._id) || normalizeIdGlobal((a as any).id);
+                        if (navId) queryClient.setQueryData(applicantsKeys.detail(navId), a as any);
+                        navigate(`/applicant/${navId}`, { state: { applicant: a } });
                       }
-                      <div className="mt-3 flex items-center gap-2">
-                        <a onClick={(e) => e.stopPropagation()} href={`mailto:${a.email}`} className="px-3 py-1 bg-white/90 border border-gray-200 rounded text-xs shadow-sm">Email</a>
-                        {a.phone ? <a onClick={(e) => e.stopPropagation()} href={`tel:${a.phone}`} className="px-3 py-1 bg-white/90 border border-gray-200 rounded text-xs shadow-sm">Call</a> : null}
+                    }}
+                  >
+                    <div className="p-4">
+                      {/* Header */}
+                      <div className="flex items-start gap-3 mb-3">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={(e) => { e.stopPropagation(); toggleSelect(id); }}
+                          onClick={(e) => e.stopPropagation()}
+                          className="w-5 h-5 mt-1 rounded-lg border-2 border-gray-300 text-blue-600 focus:ring-brand-500 focus:ring-offset-0"
+                        />
+                        
+                        <div 
+                          className="relative w-14 h-14 rounded-2xl overflow-hidden bg-gradient-to-br from-gray-100 to-gray-200 ring-2 ring-white shadow-md cursor-pointer flex-shrink-0"
+                          onClick={(e) => { e.stopPropagation(); if (a.profilePhoto) setPreviewPhoto(a.profilePhoto); }}
+                        >
+                          {a.profilePhoto ? (
+                            <LazyImage 
+                              src={a.profilePhoto} 
+                              alt={a.fullName} 
+                              className="w-full h-full object-cover"
+                              fallback={(a.firstName || a.fullName || '').charAt(0).toUpperCase()}
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-xl font-bold text-gray-500">
+                              {(a.firstName || a.fullName || '').charAt(0).toUpperCase()}
+                            </div>
+                          )}
+                          
+                          {/* Seen indicator */}
+                          {isSeen && (
+                            <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white" />
+                          )}
+                        </div>
+
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-2">
+                            <h3 className={`text-base font-semibold truncate ${isSeen ? 'text-gray-500' : 'text-gray-900'}`}>
+                              {a.fullName}
+                            </h3>
+                            <div className={`px-2 py-1 rounded-full text-xs font-medium border flex items-center gap-1 ${statusBadge.bg} ${statusBadge.color}`}>
+                              {statusBadge.icon}
+                              <span>{a.status?.replace('_', ' ')}</span>
+                            </div>
+                          </div>
+
+                          <p className="text-sm text-gray-600 mt-1 flex items-center gap-2">
+                            <Mail size={14} className="text-gray-400 flex-shrink-0" />
+                            <span className="truncate">{a.email || 'No email'}</span>
+                          </p>
+                          
+                          {a.phone && (
+                            <p className="text-sm text-gray-600 flex items-center gap-2 mt-1">
+                              <Phone size={14} className="text-gray-400 flex-shrink-0" />
+                              <span className="truncate">{a.phone}</span>
+                            </p>
+                          )}
+                        </div>
                       </div>
+
+                      {/* Company & Job Info */}
+                      {(() => {
+                        const rawCompany = (a as any).companyId || (a as any).company || (a as any).companyObj;
+                        const rawJob = (a as any).jobPositionId || (a as any).job;
+                        const displayCompany = companyMap[normalizeIdGlobal(rawCompany) || ''] || '';
+                        const displayJob = jobMap[normalizeIdGlobal(rawJob) || ''] || '';
+                        
+                        if (!displayCompany && !displayJob) return null;
+                        
+                        return (
+                          <div className="bg-gray-50 rounded-xl p-3 mb-3 border border-gray-100">
+                            {displayCompany && (
+                              <div className="flex items-center gap-2 text-sm text-gray-700">
+                                <Building2 size={14} className="text-gray-400 flex-shrink-0" />
+                                <span className="truncate">{displayCompany}</span>
+                              </div>
+                            )}
+                            {displayJob && (
+                              <div className="flex items-center gap-2 text-sm text-gray-700 mt-1">
+                                <Briefcase size={14} className="text-gray-400 flex-shrink-0" />
+                                <span className="truncate">{displayJob}</span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+
+                      {/* Action Buttons */}
+                      <div className="flex items-center gap-2">
+                        {/* <a
+                          href={`mailto:${a.email}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-blue-50 rounded-xl text-blue-700 text-sm font-medium hover:bg-blue-100 transition-colors"
+                        >
+                          <Mail size={16} />
+                          <span>Email</span>
+                        </a> */}
+                        {a.cvFilePath && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); void downloadCvForApplicant(a); }}
+                            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-brand-50 rounded-xl text-brand-700 text-sm font-medium hover:bg-green-100 transition-colors"
+                          >
+                            <Download size={16} />
+                            <span>Download CV</span>
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Submitted Date */}
+                      {a.submittedAt && (
+                        <div className="mt-2 flex items-center justify-end gap-1 text-xs text-gray-400">
+                          <Calendar size={12} />
+                          <span>Applied {new Date(a.submittedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
-                </article>
-              );
-            })}
+                );
+              })}
+            </div>
 
-            {/* Pagination controls */}
-            <div className="flex items-center justify-between mt-2 gap-2">
-              <div className="text-xs text-gray-500">Showing {(sortedFiltered.length === 0) ? 0 : (pageIndex * pageSize) + 1}-{Math.min((pageIndex + 1) * pageSize, sortedFiltered.length)} of {sortedFiltered.length}</div>
-              <div className="flex items-center gap-2">
-                <button disabled={pageIndex <= 0} onClick={() => setPageIndex((p) => Math.max(0, p - 1))} className="px-2 py-1 bg-white border border-gray-200 rounded disabled:opacity-50">Prev</button>
-                <button disabled={pageIndex >= totalPages - 1} onClick={() => setPageIndex((p) => Math.min(totalPages - 1, p + 1))} className="px-2 py-1 bg-white border border-gray-200 rounded disabled:opacity-50">Next</button>
-                <select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPageIndex(0); }} className="px-2 py-1 text-sm rounded-md border border-gray-200 bg-white">
+            {/* Pagination */}
+            <div className="mt-6 bg-white rounded-2xl border border-gray-200 p-4">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-sm text-gray-600">
+                  Showing {sortedFiltered.length === 0 ? 0 : (pageIndex * pageSize) + 1}-
+                  {Math.min((pageIndex + 1) * pageSize, sortedFiltered.length)} of {sortedFiltered.length}
+                </span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => { setPageSize(Number(e.target.value)); setPageIndex(0); }}
+                  className="px-3 py-1.5 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                >
                   <option value={10}>10 / page</option>
                   <option value={25}>25 / page</option>
                   <option value={50}>50 / page</option>
                   <option value={100}>100 / page</option>
                 </select>
               </div>
+              
+              <div className="flex items-center justify-between gap-3">
+                <button
+                  disabled={pageIndex <= 0}
+                  onClick={() => setPageIndex((p) => Math.max(0, p - 1))}
+                  className="flex-1 flex items-center justify-center gap-1 px-3 py-2 bg-gray-50 rounded-xl text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 transition-colors"
+                >
+                  <ChevronLeft size={16} />
+                  <span>Previous</span>
+                </button>
+                <span className="text-sm font-medium text-gray-700">
+                  Page {pageIndex + 1} of {totalPages}
+                </span>
+                <button
+                  disabled={pageIndex >= totalPages - 1}
+                  onClick={() => setPageIndex((p) => Math.min(totalPages - 1, p + 1))}
+                  className="flex-1 flex items-center justify-center gap-1 px-3 py-2 bg-gray-50 rounded-xl text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 transition-colors"
+                >
+                  <span>Next</span>
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+            </div>
+
+            {/* Sort Bar */}
+            <div className="fixed bottom-4 left-4 right-4 z-20">
+              <button
+                onClick={() => setSubmittedDesc((s) => !s)}
+                className="w-full bg-white rounded-2xl shadow-lg border border-gray-200 px-4 py-3 flex items-center justify-between text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                <span className="flex items-center gap-2">
+                  <ArrowUpDown size={16} className="text-brand-500" />
+                  Sort by submission date
+                </span>
+                <span className="flex items-center gap-1 text-brand-600">
+                  {submittedDesc ? 'Newest first' : 'Oldest first'}
+                  {submittedDesc ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                </span>
+              </button>
+            </div>
+          </>
+        )}
+      </main>
+
+      {/* Filter Drawer */}
+      <div
+        className={`fixed inset-0 z-50 transition-all duration-300 ${
+          filterDrawerOpen ? 'visible' : 'invisible'
+        }`}
+      >
+        {/* Backdrop */}
+        <div
+          className={`absolute inset-0 bg-black/50 transition-opacity duration-300 ${
+            filterDrawerOpen ? 'opacity-100' : 'opacity-0'
+          }`}
+          onClick={() => setFilterDrawerOpen(false)}
+        />
+        
+        {/* Drawer */}
+        <div
+          className={`absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-2xl transition-transform duration-300 transform ${
+            filterDrawerOpen ? 'translate-y-0' : 'translate-y-full'
+          }`}
+        >
+          <div className="p-4 border-b border-gray-200">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900">Filters</h3>
+              <button
+                onClick={() => setFilterDrawerOpen(false)}
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+              >
+                <X size={20} className="text-gray-500" />
+              </button>
             </div>
           </div>
-        )}
+
+          <div className="p-4 space-y-4 max-h-[70vh] overflow-y-auto">
+            {/* Company Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Company</label>
+              <select
+                value={companyFilter ?? ""}
+                onChange={(e) => { setCompanyFilter(e.target.value || undefined); setJobFilter(undefined); }}
+                className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
+              >
+                <option value="">All companies</option>
+                {companies.map((c: any) => (
+                  <option key={c._id || c.id} value={c._id || c.id}>
+                    {toPlainString(c?.name) || toPlainString(c?.companyName) || toPlainString(c?.title)}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Job Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Job Position</label>
+              <select
+                value={jobFilter ?? ""}
+                onChange={(e) => setJobFilter(e.target.value || undefined)}
+                className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
+              >
+                <option value="">All jobs</option>
+                {displayedJobPositions.map((j: any) => (
+                  <option key={j._id || j.id} value={j._id || j.id}>
+                    {jobMap[j._id || j.id] || ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Status Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+              <select
+                value={statusFilter ?? ""}
+                onChange={(e) => setStatusFilter(e.target.value || undefined)}
+                className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
+              >
+                <option value="">All statuses</option>
+                <option value="pending">Pending</option>
+                <option value="interview">Interview</option>
+                <option value="interviewed">Interviewed</option>
+                <option value="approved">Approved</option>
+                <option value="rejected">Rejected</option>
+                {isSuperAdmin && <option value="trashed">Trashed</option>}
+              </select>
+            </div>
+
+            {/* Gender Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Gender</label>
+              <select
+                value={genderFilter ?? ""}
+                onChange={(e) => setGenderFilter(e.target.value || undefined)}
+                className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
+              >
+                <option value="">All genders</option>
+                {genderOptions.map((g) => (
+                  <option key={g.id} value={g.id}>{g.title}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Clear Filters Button */}
+            <button
+              onClick={() => {
+                setCompanyFilter(undefined);
+                setJobFilter(undefined);
+                setStatusFilter(undefined);
+                setGenderFilter(undefined);
+                setQuery("");
+                setCustomFilters([]);
+                setFilterDrawerOpen(false);
+              }}
+              className="w-full px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-700 font-medium hover:bg-red-100 transition-colors"
+            >
+              Clear All Filters
+            </button>
+
+            {/* Custom Filter Settings Button */}
+            <button
+              onClick={() => {
+                setFilterDrawerOpen(false);
+                setCustomFilterOpen(true);
+              }}
+              className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-700 font-medium hover:bg-gray-100 transition-colors flex items-center justify-center gap-2"
+            >
+              <SlidersHorizontal size={16} />
+              <span>Custom Filter Settings</span>
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Photo Preview Modal */}
       {previewPhoto && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setPreviewPhoto(null)}>
-              <div className="relative w-full h-full max-w-full max-h-full p-4 sm:rounded-lg sm:p-6 flex items-center justify-center">
-                <button onClick={() => setPreviewPhoto(null)} className="absolute top-3 right-3 flex h-10 w-10 items-center justify-center rounded-full bg-white text-gray-700 shadow-lg hover:bg-gray-100">✕</button>
-                <img src={previewPhoto} alt="Applicant photo preview" style={{ maxHeight: 'calc(100vh - 120px)', maxWidth: '100%' }} className="object-contain rounded-lg shadow-2xl" onClick={(e) => e.stopPropagation()} />
-              </div>
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90 backdrop-blur-lg"
+          onClick={() => setPreviewPhoto(null)}
+        >
+          <button
+            onClick={() => setPreviewPhoto(null)}
+            className="absolute top-4 right-4 p-2 bg-white/10 backdrop-blur-sm rounded-full hover:bg-white/20 transition-colors"
+          >
+            <X size={24} className="text-white" />
+          </button>
+          <img
+            src={previewPhoto}
+            alt="Applicant photo preview"
+            className="max-h-[90vh] max-w-[90vw] object-contain rounded-2xl shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
         </div>
       )}
 
@@ -677,13 +1178,25 @@ export default function ApplicantsMobilePage(): JSX.Element {
         columnFilters={columnFilters}
         setColumnFilters={setColumnFilters as any}
       />
+
+      {/* Bulk Message Modal */}
       <BulkMessageModal
         isOpen={showBulkModal}
         onClose={() => setShowBulkModal(false)}
         recipients={selectedApplicantEmails}
         companyId={selectedApplicantCompanyId || undefined}
         company={selectedApplicantCompany}
-        onSuccess={() => { setShowBulkModal(false); clearSelection(); Swal.fire('Sent', 'Bulk message sent', 'success'); }}
+        onSuccess={() => {
+          setShowBulkModal(false);
+          clearSelection();
+          Swal.fire({
+            icon: 'success',
+            title: 'Success!',
+            text: 'Bulk message sent successfully',
+            timer: 2000,
+            showConfirmButton: false
+          });
+        }}
       />
     </div>
   );

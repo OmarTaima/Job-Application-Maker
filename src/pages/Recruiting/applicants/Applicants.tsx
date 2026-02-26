@@ -406,6 +406,96 @@ const {
     return "An unexpected error occurred";
   };
 
+  // Helpers to resolve and download CVs for applicants (copied logic from ApplicantData)
+  const buildCloudinaryDownloadUrl = (u: string, idHint?: string) => {
+    try {
+      if (!u) return null;
+      const urlParts = u.split('/upload/');
+      if (urlParts.length !== 2) return null;
+      const fileName = `CV_${idHint || 'cv'}`;
+      const transformations = `f_auto/fl_attachment:${fileName}`;
+      const downloadUrl = `${urlParts[0]}/upload/${transformations}/${urlParts[1]}`;
+      return downloadUrl;
+    } catch (e) {
+      return null;
+    }
+  };
+
+  const downloadViaFetch = async (u: string, filename?: string) => {
+    try {
+      const res = await fetch(u, { mode: 'cors' });
+      if (!res.ok) throw new Error('Network response not ok');
+      const blob = await res.blob();
+      const a = document.createElement('a');
+      const blobUrl = URL.createObjectURL(blob);
+      a.href = blobUrl;
+      a.download = filename || (u.split('/').pop() || 'download');
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+      return true;
+    } catch (err) {
+      return false;
+    }
+  };
+
+  const resolveCvPath = (a: any): string | null => {
+    try {
+      if (!a) return null;
+      // Common fields that may contain a CV or resume path
+      const keys = ['cvFilePath','cvUrl','resume','cv','attachments','resumeUrl','cvFilePath','cvFile','resumeFilePath','resumeFile','cv_file_path','cv_file','cv_path'];
+      for (const k of keys) {
+        const v = (a as any)[k];
+        if (!v) continue;
+        if (typeof v === 'string' && v.trim()) return v;
+        if (Array.isArray(v) && v.length) {
+          const first = v.find((it) => typeof it === 'string' && it.trim());
+          if (first) return first;
+        }
+      }
+      // search custom responses for keys mentioning cv/resume
+      const resp = a?.customResponses || a?.customFieldResponses || {};
+      for (const [k, v] of Object.entries(resp || {})) {
+        const lk = String(k || '').toLowerCase();
+        if (lk.includes('cv') || lk.includes('resume') || lk.includes('cvfile') || lk.includes('cv_file') || lk.includes('cvfilepath')) {
+          if (typeof v === 'string' && v.trim()) return v as string;
+          if (Array.isArray(v) && v.length) {
+            const f = v.find((it) => typeof it === 'string' && it.trim());
+            if (f) return f as string;
+          }
+        }
+        if (typeof v === 'string' && /https?:\/\/.+\.(pdf|docx?|rtf|txt|zip)$/i.test(v)) return v as string;
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  };
+
+  const downloadCvForApplicant = async (a: any) => {
+    if (!a) return Swal.fire('No CV', 'No CV file available for this applicant', 'info');
+    const path = resolveCvPath(a);
+    if (!path) return Swal.fire('No CV', 'No CV file available for this applicant', 'info');
+
+    const url = (() => {
+      if (!path) return null;
+      if (typeof path === 'string' && (path.startsWith('http') || path.startsWith('data:'))) return path;
+      const base = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+      return base ? `${base}/${String(path).replace(/^\//, '')}` : String(path);
+    })();
+
+    const cloudUrl = buildCloudinaryDownloadUrl(url || '', (a?.applicantNo || a?._id || '').toString());
+    if (cloudUrl) {
+      window.open(cloudUrl, '_blank');
+      return;
+    }
+
+    const ok = await downloadViaFetch(url || String(path), undefined);
+    if (ok) return;
+    window.open(url || String(path), '_blank');
+  };
+
   // Filter companies on the frontend
   const allCompanies = useMemo(() => {
     if (!companyId || companyId.length === 0) {
@@ -1970,6 +2060,40 @@ const {
         },
         Cell: ({ row }: any) => formatDate(row.original.submittedAt),
       },
+      {
+        id: 'actions',
+        header: 'Actions',
+        size: 120,
+        enableColumnFilter: false,
+        enableSorting: false,
+        Cell: ({ row }: any) => {
+          const orig = row.original as any;
+          const hasCv = Boolean(resolveCvPath(orig));
+          return (
+            <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-2">
+              {hasCv ? (
+                <button
+                  type="button"
+                  aria-label="Download CV"
+                  title="Download CV"
+                  onClick={async (e) => {
+                    try { e.stopPropagation(); } catch {}
+                    try { await downloadCvForApplicant(orig); } catch (err) { /* ignore */ }
+                  }}
+                  className="inline-flex items-center justify-center rounded bg-brand-500 p-1 text-white hover:bg-brand-600"
+                >
+                  <span className="sr-only">Download CV</span>
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 3v12m0 0l-4-4m4 4l4-4M21 21H3" />
+                  </svg>
+                </button>
+              ) : (
+                <span className="text-xs text-gray-500">-</span>
+              )}
+            </div>
+          );
+        },
+      },
     ],
     [companyMap, jobPositionMap, jobOptions, getStatusColor, formatDate, statusAnchorEl, jobAnchorEl]
   );
@@ -2207,10 +2331,7 @@ const {
     onColumnFiltersChange: setColumnFilters,
     onRowSelectionChange: setRowSelection,
     getRowId: (row) => row._id,
-    renderTopToolbarCustomActions: () => {
-      
-      
-
+        renderTopToolbarCustomActions: () => {
       return (
         <div
           style={{ backgroundColor: isDarkMode ? '#1C2434' : '#FFFFFF' }}
@@ -2218,26 +2339,6 @@ const {
         >
           <div className="flex-1" />
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={async () => {
-                try {
-                  const promises: Promise<any>[] = [];
-                  if (isJobPositionsFetched && refetchJobPositions) promises.push(refetchJobPositions());
-                  if (isApplicantsFetched && refetchApplicants) promises.push(refetchApplicants());
-                  if (isCompaniesFetched && refetchCompanies) promises.push(refetchCompanies());
-                  if (promises.length === 0) return;
-                  await Promise.all(promises);
-                  setLastRefetch(new Date());
-                } catch (e) {
-                  // ignore
-                }
-              }}
-              disabled={isJobPositionsFetching || isApplicantsFetching || isCompaniesFetching}
-              className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-3 py-1 text-sm font-semibold text-white shadow-sm hover:bg-brand-600 disabled:opacity-50"
-            >
-              {(isJobPositionsFetching || isApplicantsFetching || isCompaniesFetching) ? 'Updating Data' : 'Update Data'}
-            </button>
             <button
               type="button"
               onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
@@ -2261,7 +2362,6 @@ const {
               Filter Settings
             </button>
             
-            <div className="text-sm text-gray-500">{elapsed ? `Last Update: ${elapsed}` : 'Not updated yet'}</div>
           </div>
         </div>
       );
@@ -2338,6 +2438,31 @@ const {
         <ComponentCard
           title="Job Applicants"
           desc="View and manage all applicants"
+          actions={
+            <div className="flex items-center mr-30 gap-2">
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    const promises: Promise<any>[] = [];
+                    if (isJobPositionsFetched && refetchJobPositions) promises.push(refetchJobPositions());
+                    if (isApplicantsFetched && refetchApplicants) promises.push(refetchApplicants());
+                    if (isCompaniesFetched && refetchCompanies) promises.push(refetchCompanies());
+                    if (promises.length === 0) return;
+                    await Promise.all(promises);
+                    setLastRefetch(new Date());
+                  } catch (e) {
+                    // ignore
+                  }
+                }}
+                disabled={isJobPositionsFetching || isApplicantsFetching || isCompaniesFetching}
+                className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-3 py-1 text-sm font-semibold text-white shadow-sm hover:bg-brand-600 disabled:opacity-50"
+              >
+                {(isJobPositionsFetching || isApplicantsFetching || isCompaniesFetching) ? 'Updating Data' : 'Update Data'}
+              </button>
+              <div className="text-sm text-gray-500">{elapsed ? `Last Update: ${elapsed}` : 'Not updated yet'}</div>
+            </div>
+          }
         >
           <>
             {/* Error Messages */}
@@ -2498,6 +2623,21 @@ const {
             >
               Copy link
             </button>
+            {resolveCvPath(contextMenu.row.original) && (
+              <button
+                className="w-full text-left px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
+                onClick={async () => {
+                  try {
+                    await downloadCvForApplicant(contextMenu.row.original);
+                  } catch (e) {
+                    // ignore
+                  }
+                  setContextMenu((c) => ({ ...c, open: false }));
+                }}
+              >
+                Download CV
+              </button>
+            )}
           </div>
         </div>
       )}
