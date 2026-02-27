@@ -87,6 +87,7 @@ type JobForm = {
   descriptionAr: string;
   salary: number;
   salaryVisible: boolean;
+  salaryFieldVisible: boolean;
   bilingual: boolean;
   openPositions: number;
   registrationStart: string;
@@ -194,6 +195,7 @@ export default function CreateJob() {
     descriptionAr: "",
     salary: 0,
     salaryVisible: true,
+    salaryFieldVisible: false,
     bilingual: false,
     openPositions: 1,
     registrationStart: "",
@@ -342,6 +344,7 @@ export default function CreateJob() {
         descriptionAr: "",
         salary: 0,
         salaryVisible: true,
+        salaryFieldVisible: false,
         bilingual: false,
         openPositions: 1,
         registrationStart: "",
@@ -361,7 +364,7 @@ export default function CreateJob() {
       // Extract company and department IDs
       const companyId = typeof selectedJob.companyId === 'string' ? selectedJob.companyId : (selectedJob.companyId as any)?._id;
       const departmentId = typeof selectedJob.departmentId === 'string' ? selectedJob.departmentId : (selectedJob.departmentId as any)?._id;
-      
+
       // Populate form with selected job data (with "Copy" suffix)
       setJobForm({
         companyId: companyId || "",
@@ -373,6 +376,7 @@ export default function CreateJob() {
         descriptionAr: typeof selectedJob.description === 'object' ? selectedJob.description.ar || '' : '',
         salary: selectedJob.salary || 0,
         salaryVisible: selectedJob.salaryVisible ?? true,
+        salaryFieldVisible: selectedJob.salaryFieldVisible ?? false,
         bilingual: selectedJob.bilingual ?? false,
         openPositions: selectedJob.openPositions || 1,
         registrationStart: selectedJob.registrationStart ? new Date(selectedJob.registrationStart).toISOString().split("T")[0] : "",
@@ -480,6 +484,7 @@ export default function CreateJob() {
               (job.salary && typeof job.salary === "object" && (job.salary as any).min) ||
               (typeof job.salary === "number" ? job.salary : 0),
             salaryVisible: job.salaryVisible ?? true,
+            salaryFieldVisible: (job as any).salaryFieldVisible ?? false,
             bilingual: job.bilingual ?? false,
             openPositions: job.openPositions || 1,
             registrationStart: formatDateForInput(job.registrationStart),
@@ -1213,6 +1218,7 @@ export default function CreateJob() {
         .map((t, idx) => ({ en: t, ar: jobForm.bilingual ? (jobForm.termsAndConditionsAr[idx] || t) : "" }));
       payload.salary = isNaN(salaryValue) ? undefined : salaryValue;
       payload.salaryVisible = jobForm.salaryVisible;
+      payload.salaryFieldVisible = jobForm.salaryFieldVisible;
       payload.openPositions = jobForm.openPositions;
       payload.registrationStart = jobForm.registrationStart;
       payload.registrationEnd = jobForm.registrationEnd;
@@ -1572,6 +1578,15 @@ export default function CreateJob() {
                       handleInputChange("salaryVisible", checked)
                     }
                   />
+                  <div className="mt-2 ml-4">
+                    <Switch
+                      label="Salary Field Visible"
+                      checked={jobForm.salaryFieldVisible}
+                      onChange={(checked) =>
+                        handleInputChange("salaryFieldVisible", checked)
+                      }
+                    />
+                  </div>
                 </div>
               </div>
 

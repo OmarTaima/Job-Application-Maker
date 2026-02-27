@@ -51,7 +51,6 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CheckBoxOutlineBlankIcon from '@mui/icons-material/CheckBoxOutlineBlank';
 import CheckBoxIcon from '@mui/icons-material/CheckBox';
 import DateRangeIcon from '@mui/icons-material/DateRange';
-import TextFieldsIcon from '@mui/icons-material/TextFields';
 
 type Props = {
   open: boolean;
@@ -406,22 +405,37 @@ const CustomFilterModal: React.FC<Props> = ({
     applicants: any[];
     saveFieldId: string;
   }> = ({ f, existing, applicants, saveFieldId }) => {
-    const toNum = (raw: any) => {
-      if (raw === null || raw === undefined) return NaN;
-      if (typeof raw === 'number') return raw;
+    const extractNumbers = (raw: any): number[] => {
+      if (raw === null || raw === undefined) return [];
+      if (typeof raw === 'number') return [raw];
       let s = String(raw).trim();
-      if (!s) return NaN;
-      const conv = (str: string) => {
+      if (!s) return [];
+
+      const convDigits = (str: string) => {
         const map: Record<string,string> = {
           '\u0660':'0','\u0661':'1','\u0662':'2','\u0663':'3','\u0664':'4','\u0665':'5','\u0666':'6','\u0667':'7','\u0668':'8','\u0669':'9',
           '\u06F0':'0','\u06F1':'1','\u06F2':'2','\u06F3':'3','\u06F4':'4','\u06F5':'5','\u06F6':'6','\u06F7':'7','\u06F8':'8','\u06F9':'9'
         };
         return str.replace(/[\u0660-\u0669\u06F0-\u06F9]/g, (ch) => map[ch] || ch);
       };
-      s = conv(s);
-      s = s.replace(/[^0-9.\-]/g, '');
-      const p = Number(s);
-      return Number.isFinite(p) ? p : NaN;
+
+      s = convDigits(s);
+      // Try to find all numeric substrings (handles ranges like "6000:9000", "6,000 - 9,000", "6000 to 9000")
+      const matches = s.match(/-?\d[\d,\.]*|\d+/g);
+      if (matches && matches.length > 0) {
+        const nums: number[] = [];
+        for (const m of matches) {
+          const cleaned = m.replace(/,/g, '');
+          const v = Number(cleaned);
+          if (Number.isFinite(v)) nums.push(v);
+        }
+        return nums;
+      }
+
+      // Fallback: strip non-numeric and parse
+      const cleanedAll = s.replace(/[^0-9.\-]/g, '');
+      const p = Number(cleanedAll);
+      return Number.isFinite(p) ? [p] : [];
     };
 
     const nums: number[] = [];
@@ -430,20 +444,21 @@ const CustomFilterModal: React.FC<Props> = ({
         const rv = getCustomResponseValue(a, f);
         const items = extractResponseItems(rv);
         for (const it of items) {
-          const n = toNum(it);
-          if (Number.isFinite(n)) nums.push(n);
+          const found = extractNumbers(it);
+          for (const n of found) if (Number.isFinite(n)) nums.push(n);
         }
         const topVals = [a?.expectedSalary, a?.expected_salary, a?.expected];
         for (const tv of topVals) {
-          const tn = toNum(tv);
-          if (Number.isFinite(tn)) nums.push(tn);
+          const found = extractNumbers(tv);
+          for (const tn of found) if (Number.isFinite(tn)) nums.push(tn);
         }
       } catch (e) { /* ignore */ }
     });
 
     const valid = nums.filter(Number.isFinite).sort((a,b)=>a-b);
-    let observedMin = valid.length ? valid[0] : 0;
-    let observedMax = valid.length ? valid[valid.length - 1] : observedMin + 1000;
+    // Ensure observed range is non-negative (salaries shouldn't be negative)
+    let observedMin = valid.length ? Math.max(0, valid[0]) : 0;
+    let observedMax = valid.length ? Math.max(observedMin, valid[valid.length - 1]) : observedMin + 1000;
     if (observedMax <= observedMin) observedMax = observedMin + Math.max(100, Math.abs(observedMin || 1000));
 
     const rawSelMin = (existing.value && (existing.value.min !== undefined && existing.value.min !== '')) ? Number(existing.value.min) : observedMin;
@@ -584,16 +599,16 @@ const CustomFilterModal: React.FC<Props> = ({
       const fields = Object.values(map).map((v: any) => ({ ...v, jobs: Array.from(v.jobs) }));
 
       fields.forEach((f: any) => {
-        const rawLabel = `${f.label?.en || ''} ${f.label?.ar || ''}`;
-        const fieldKeyNormalized = normalizeLabelSimple(rawLabel) || String(f.fieldId || '');
-        const isWorkExp = /work experience|work_experience|workexperience|الخبرة|خبرة/.test(normalizeForCompare(rawLabel));
-        const isCourses = /courses|certifications|الدورات|شهادات|الشهادات/.test(normalizeForCompare(rawLabel));
-        const isPersonalSkills = /personal skills|skills|المهارات الشخصية|المهارات/.test(normalizeForCompare(rawLabel));
-        const isEducation = /education|education level|المؤهل|المؤهل الدراسي/.test(normalizeForCompare(rawLabel));
-        const isEngineering = /engineering|speciali|specialization|التخصص|التخصص الهندسي|التخصص_الهندسي/.test(normalizeForCompare(rawLabel));
-        if (isWorkExp || isCourses || isPersonalSkills || isEducation || isEngineering) {
+        try {
+          const rawLabel = `${f.label?.en || ''} ${f.label?.ar || ''}`;
+          const fieldKeyNormalized = normalizeLabelSimple(rawLabel) || String(f.fieldId || '');
           const saveFieldId = f.fieldId ?? fieldKeyNormalized;
+          // Skip salary/expected salary fields (now available on top-level applicant.expectedSalary)
+          const canon = getCanonicalType(f) || getCanonicalType({ label: f.label, fieldId: f.fieldId });
+          if (canon === 'salary') return;
           presenceIds.add(String(saveFieldId));
+        } catch (e) {
+          // ignore
         }
       });
 
@@ -1066,7 +1081,24 @@ const CustomFilterModal: React.FC<Props> = ({
                       );
                     })()}
                   </Box>
-                </Box>
+                  </Box>
+
+                  {/* Expected Salary (always present) */}
+                  <Box>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <DescriptionIcon fontSize="small" color="primary" />
+                      Expected Salary
+                    </Typography>
+                    <Box>
+                      {(() => {
+                        const existing = customFilters.find((cf: any) => cf.fieldId === '__expectedSalary') || {};
+                        const fakeField = { label: { en: 'Expected Salary' }, fieldId: '__expectedSalary' } as any;
+                        return (
+                          <SalaryRangeControl f={fakeField} existing={existing} applicants={applicants || []} saveFieldId={'__expectedSalary'} />
+                        );
+                      })()}
+                    </Box>
+                  </Box>
               </Stack>
             </Collapse>
           </FilterSection>
@@ -1135,286 +1167,107 @@ const CustomFilterModal: React.FC<Props> = ({
                     return (
                       <Stack spacing={3}>
                         {fields.map((f: any) => {
-                          const rawLabel = `${f.label?.en || ''} ${f.label?.ar || ''}`;
-                          if (isExcludedLabel(rawLabel)) return null;
-                          const fieldKeyNormalized = normalizeLabelSimple(rawLabel) || String(f.fieldId || '');
-                          const existing = customFilters.find((cf: any) => {
-                            try {
-                              if (cf.fieldId && String(cf.fieldId) === String(f.fieldId)) return true;
-                              const cfLabelNorm = normalizeLabelSimple(cf.labelEn || cf.label || cf.labelAr || '');
-                              if (cfLabelNorm && cfLabelNorm === fieldKeyNormalized) return true;
-                            } catch (e) {
-                              // ignore
-                            }
-                            return false;
-                          }) || {};
-                          const saveFieldId = f.fieldId ?? fieldKeyNormalized;
-                          const normLabel = normalizeForCompare(rawLabel);
-                          const isSalaryField = /salary|expected salary|الراتب|الراتب المتوقع|راتب/.test(normLabel);
-                          const isWorkExp = /work experience|work_experience|workexperience|الخبرة|خبرة/.test(normLabel);
-                          const isEducation = /education|education level|المؤهل|المؤهل الدراسي/.test(normLabel);
-                          const isEngineering = /engineering|speciali|specialization|التخصص|التخصص الهندسي|التخصص_الهندسي/.test(normLabel);
-                          const isCourses = /courses|certifications|الدورات|شهادات|الشهادات/.test(normLabel);
-                          const isPersonalSkills = /personal skills|skills|المهارات الشخصية|المهارات/.test(normLabel);
+                          try {
+                            const rawLabel = `${f.label?.en || ''} ${f.label?.ar || ''}`;
+                            if (isExcludedLabel(rawLabel)) return null;
+                            const fieldKeyNormalized = normalizeLabelSimple(rawLabel) || String(f.fieldId || '');
+                            const existing = customFilters.find((cf: any) => {
+                              try {
+                                if (cf.fieldId && String(cf.fieldId) === String(f.fieldId)) return true;
+                                const cfLabelNorm = normalizeLabelSimple(cf.labelEn || cf.label || cf.labelAr || '');
+                                if (cfLabelNorm && cfLabelNorm === fieldKeyNormalized) return true;
+                              } catch (e) {
+                                // ignore
+                              }
+                              return false;
+                            }) || {};
+                            const saveFieldId = f.fieldId ?? fieldKeyNormalized;
 
-                          return (
-                            <Paper key={saveFieldId} variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
-                              <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 2, color: brandMain }}>
-                                {f.label?.en || f.label?.ar || 'Custom Field'}
-                              </Typography>
+                            // Skip canonical salary fields — those are now top-level `applicant.expectedSalary`
+                            const canon = getCanonicalType(f) || getCanonicalType({ label: f.label, fieldId: f.fieldId });
+                            if (canon === 'salary') return null;
 
-                              {/* Work Experience */}
-                              {isWorkExp && (
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                                  <Typography variant="body2" sx={{ minWidth: 120 }}>Work Experience:</Typography>
-                                  <ToggleButtonGroup
-                                    value={existing.value === true ? 'has' : existing.value === false ? 'no' : null}
-                                    exclusive
-                                    size="small"
-                                  >
-                                    <StyledToggleButton
-                                      value="has"
-                                      onClick={() => {
-                                        setCustomFilters(prev => {
-                                          const next = prev.filter((p: any) => p.fieldId !== saveFieldId);
-                                          if (existing.value !== true) {
-                                            next.push({ 
-                                              fieldId: saveFieldId, 
-                                              labelEn: f.label?.en, 
-                                              labelAr: f.label?.ar, 
-                                              type: 'hasWorkExperience', 
-                                              value: true 
-                                            });
-                                          }
-                                          return next;
-                                        });
-                                      }}
-                                    >
-                                      Has
-                                    </StyledToggleButton>
-                                    <StyledToggleButton
-                                      value="no"
-                                      onClick={() => {
-                                        setCustomFilters(prev => {
-                                          const next = prev.filter((p: any) => p.fieldId !== saveFieldId);
-                                          if (existing.value !== false) {
-                                            next.push({ 
-                                              fieldId: saveFieldId, 
-                                              labelEn: f.label?.en, 
-                                              labelAr: f.label?.ar, 
-                                              type: 'hasWorkExperience', 
-                                              value: false 
-                                            });
-                                          }
-                                          return next;
-                                        });
-                                      }}
-                                    >
-                                      No
-                                    </StyledToggleButton>
-                                  </ToggleButtonGroup>
-                                </Box>
-                              )}
+                            return (
+                              <Paper key={saveFieldId} variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+                                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 2, color: brandMain }}>
+                                  {f.label?.en || f.label?.ar || 'Custom Field'}
+                                </Typography>
 
-                              {/* Courses / Personal Skills */}
-                              {(isCourses || isPersonalSkills) && (
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                                  <Typography variant="body2" sx={{ minWidth: 120 }}>
-                                    {isCourses ? 'Courses:' : 'Skills:'}
-                                  </Typography>
-                                  <ToggleButtonGroup
-                                    value={existing.value === true ? 'has' : existing.value === false ? 'no' : null}
-                                    exclusive
-                                    size="small"
-                                  >
-                                    <StyledToggleButton
-                                      value="has"
-                                      onClick={() => {
-                                        setCustomFilters(prev => {
-                                          const next = prev.filter((p: any) => p.fieldId !== saveFieldId);
-                                          if (existing.value !== true) {
-                                            next.push({ 
-                                              fieldId: saveFieldId, 
-                                              labelEn: f.label?.en, 
-                                              labelAr: f.label?.ar, 
-                                              type: 'hasField', 
-                                              value: true 
-                                            });
-                                          }
-                                          return next;
-                                        });
-                                      }}
-                                    >
-                                      Has
-                                    </StyledToggleButton>
-                                    <StyledToggleButton
-                                      value="no"
-                                      onClick={() => {
-                                        setCustomFilters(prev => {
-                                          const next = prev.filter((p: any) => p.fieldId !== saveFieldId);
-                                          if (existing.value !== false) {
-                                            next.push({ 
-                                              fieldId: saveFieldId, 
-                                              labelEn: f.label?.en, 
-                                              labelAr: f.label?.ar, 
-                                              type: 'hasField', 
-                                              value: false 
-                                            });
-                                          }
-                                          return next;
-                                        });
-                                      }}
-                                    >
-                                      No
-                                    </StyledToggleButton>
-                                  </ToggleButtonGroup>
-                                </Box>
-                              )}
-
-                              {/* Education / Engineering */}
-                              {(isEducation || isEngineering) && (
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                                  <Typography variant="body2" sx={{ minWidth: 120 }}>
-                                    {isEducation ? 'Education:' : 'Engineering:'}
-                                  </Typography>
-                                  <ToggleButtonGroup
-                                    value={existing.value === true ? 'has' : existing.value === false ? 'no' : null}
-                                    exclusive
-                                    size="small"
-                                  >
-                                    <StyledToggleButton
-                                      value="has"
-                                      onClick={() => {
-                                        setCustomFilters(prev => {
-                                          const next = prev.filter((p: any) => p.fieldId !== saveFieldId);
-                                          if (existing.value !== true) {
-                                            next.push({ 
-                                              fieldId: saveFieldId, 
-                                              labelEn: f.label?.en, 
-                                              labelAr: f.label?.ar, 
-                                              type: 'hasField', 
-                                              value: true 
-                                            });
-                                          }
-                                          return next;
-                                        });
-                                      }}
-                                    >
-                                      Has
-                                    </StyledToggleButton>
-                                    <StyledToggleButton
-                                      value="no"
-                                      onClick={() => {
-                                        setCustomFilters(prev => {
-                                          const next = prev.filter((p: any) => p.fieldId !== saveFieldId);
-                                          if (existing.value !== false) {
-                                            next.push({ 
-                                              fieldId: saveFieldId, 
-                                              labelEn: f.label?.en, 
-                                              labelAr: f.label?.ar, 
-                                              type: 'hasField', 
-                                              value: false 
-                                            });
-                                          }
-                                          return next;
-                                        });
-                                      }}
-                                    >
-                                      No
-                                    </StyledToggleButton>
-                                  </ToggleButtonGroup>
-                                </Box>
-                              )}
-
-                              {/* Salary Range */}
-                              {isSalaryField && (
-                                <Box>
-                                  <Typography variant="body2" sx={{ mb: 2 }}>Salary Range:</Typography>
-                                    <SalaryRangeControl f={f} existing={existing} applicants={applicants} saveFieldId={saveFieldId} />
-                                </Box>
-                              )}
-
-                              {/* Choices / Select */}
-                              {Array.isArray(f.choices) && f.choices.length > 0 && !isSalaryField && !isWorkExp && !isCourses && !isPersonalSkills && !isEducation && !isEngineering && (
-                                <Box>
-                                  <Typography variant="body2" sx={{ mb: 1 }}>Select options:</Typography>
-                                  <FormGroup sx={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: 1 }}>
-                                    {f.choices
-                                      .map((c: any) => ({ id: c.en || c.ar, title: `${c.en || ''}${c.ar ? ' / ' + c.ar : ''}` }))
-                                      .filter((ch: any, index: number, self: any[]) => 
-                                        index === self.findIndex((t) => t.id === ch.id)
-                                      )
-                                      .map((ch: any) => {
-                                        const sel = Array.isArray(existing.value) ? existing.value : [];
-                                        const isSelected = sel.includes(ch.id);
-                                        return (
-                                          <FilterChip
-                                            key={ch.id}
-                                            label={ch.title}
-                                            onClick={() => {
-                                              setCustomFilters(prev => {
-                                                const next = prev.filter((p: any) => p.fieldId !== saveFieldId);
-                                                let vals = Array.isArray(existing.value) ? [...existing.value] : [];
-                                                if (isSelected) vals = vals.filter((v: any) => v !== ch.id);
-                                                else vals = [...new Set([...vals, ch.id])];
-                                                if (vals.length) {
-                                                  next.push({ 
-                                                    fieldId: saveFieldId, 
-                                                    labelEn: f.label?.en, 
-                                                    labelAr: f.label?.ar, 
-                                                    type: 'multi', 
-                                                    value: vals, 
-                                                    choices: f.choices 
-                                                  });
-                                                }
-                                                return next;
-                                              });
-                                            }}
-                                            color={isSelected ? 'primary' : 'default'}
-                                            variant={isSelected ? 'filled' : 'outlined'}
-                                            size="small"
-                                          />
-                                        );
-                                      })}
-                                  </FormGroup>
-                                </Box>
-                              )}
-
-                              {/* Text Search */}
-                              {!isSalaryField && !isWorkExp && !isCourses && !isPersonalSkills && !isEducation && !isEngineering && !Array.isArray(f.choices) && (
-                                <TextField
-                                  fullWidth
-                                  size="small"
-                                  label="Contains"
-                                  value={existing.value || ''}
-                                  onChange={(e) => {
-                                    const nv = e.target.value;
-                                    setCustomFilters(prev => {
-                                      const next = prev.filter((p: any) => p.fieldId !== saveFieldId);
-                                      if (nv) {
-                                        next.push({ 
-                                          fieldId: saveFieldId, 
-                                          labelEn: f.label?.en, 
-                                          labelAr: f.label?.ar, 
-                                          type: 'text', 
-                                          value: nv, 
-                                          choices: f.choices 
-                                        });
-                                      }
-                                      return next;
-                                    });
-                                  }}
-                                  InputProps={{
-                                    startAdornment: (
-                                      <InputAdornment position="start">
-                                        <TextFieldsIcon fontSize="small" color="action" />
-                                      </InputAdornment>
-                                    ),
-                                  }}
-                                />
-                              )}
-                            </Paper>
-                          );
+                                {/* If field has explicit choices, render them as selectable chips (multi-select) */}
+                                {Array.isArray(f.choices) && f.choices.length > 0 ? (
+                                  <Box>
+                                    <Typography variant="body2" sx={{ mb: 1 }}>Select options:</Typography>
+                                    <FormGroup sx={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: 1 }}>
+                                      {f.choices
+                                        .map((c: any) => ({ id: c.en || c.ar || String(c), title: `${c.en || ''}${c.ar ? ' / ' + c.ar : ''}` }))
+                                        .filter((ch: any, index: number, self: any[]) => index === self.findIndex((t) => t.id === ch.id))
+                                        .map((ch: any) => {
+                                          const sel = Array.isArray(existing.value) ? existing.value : [];
+                                          const isSelected = sel.includes(ch.id);
+                                          return (
+                                            <FilterChip
+                                              key={ch.id}
+                                              label={ch.title}
+                                              onClick={() => {
+                                                setCustomFilters(prev => {
+                                                  const next = prev.filter((p: any) => p.fieldId !== saveFieldId);
+                                                  let vals = Array.isArray(existing.value) ? [...existing.value] : [];
+                                                  if (isSelected) vals = vals.filter((v: any) => v !== ch.id);
+                                                  else vals = [...new Set([...vals, ch.id])];
+                                                  if (vals.length) {
+                                                    next.push({ fieldId: saveFieldId, labelEn: f.label?.en, labelAr: f.label?.ar, type: 'multi', value: vals, choices: f.choices });
+                                                  }
+                                                  return next;
+                                                });
+                                              }}
+                                              color={isSelected ? 'primary' : 'default'}
+                                              variant={isSelected ? 'filled' : 'outlined'}
+                                              size="small"
+                                            />
+                                          );
+                                        })}
+                                    </FormGroup>
+                                  </Box>
+                                ) : (
+                                  // Default: Has / No presence toggle for any custom field without explicit choices
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                    <ToggleButtonGroup value={existing.value === true ? 'has' : existing.value === false ? 'no' : null} exclusive size="small">
+                                      <StyledToggleButton
+                                        value="has"
+                                        onClick={() => {
+                                          setCustomFilters(prev => {
+                                            const next = prev.filter((p: any) => p.fieldId !== saveFieldId);
+                                            if (existing.value !== true) {
+                                              next.push({ fieldId: saveFieldId, labelEn: f.label?.en, labelAr: f.label?.ar, type: 'hasField', value: true });
+                                            }
+                                            return next;
+                                          });
+                                        }}
+                                      >
+                                        Has
+                                      </StyledToggleButton>
+                                      <StyledToggleButton
+                                        value="no"
+                                        onClick={() => {
+                                          setCustomFilters(prev => {
+                                            const next = prev.filter((p: any) => p.fieldId !== saveFieldId);
+                                            if (existing.value !== false) {
+                                              next.push({ fieldId: saveFieldId, labelEn: f.label?.en, labelAr: f.label?.ar, type: 'hasField', value: false });
+                                            }
+                                            return next;
+                                          });
+                                        }}
+                                      >
+                                        No
+                                      </StyledToggleButton>
+                                    </ToggleButtonGroup>
+                                  </Box>
+                                )}
+                              </Paper>
+                            );
+                          } catch (e) {
+                            return null;
+                          }
                         })}
                       </Stack>
                     );

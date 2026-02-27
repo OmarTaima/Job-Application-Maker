@@ -1383,6 +1383,24 @@ const ApplicantData = () => {
             </div>
           </div>
 
+              {/* Expected Salary: applicant expected salary or custom response */}
+              <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-gray-500 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
+                <div className="flex items-baseline gap-4">
+                  <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-gray-100 dark:bg-gray-900/30 rounded-lg group-hover:scale-110 transition-transform">
+                    <svg className="w-6 h-6 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 1.343-3 3s1.343 3 3 3 3 1.343 3 3-1.343 3-3 3" />
+                    </svg>
+                  </div>
+                  <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Expected Salary</Label>
+                  <p dir={isArabic(String(applicant?.expectedSalary ?? '')) ? 'rtl' : undefined} className={`text-sm text-gray-900 dark:text-white break-words ${isArabic(String(applicant?.expectedSalary ?? '')) ? 'text-right' : ''}`}>
+                    {(() => {
+                      const val = applicant?.expectedSalary;
+                      return val !== undefined && val !== null ? toPlainString(val) : '-';
+                    })()}
+                  </p>
+                </div>
+              </div>
+
           {/* Job Position: resolved title from job position or lookup */}
         <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-purple-500 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
           <div className="flex items-baseline gap-4">

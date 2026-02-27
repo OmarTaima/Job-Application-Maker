@@ -26,6 +26,7 @@ export type JobPosition = {
   employmentType: 'full-time' | 'part-time' | 'contract' | 'internship';
   workArrangement: 'on-site' | 'remote' | 'hybrid';
   salary?: number;
+  salaryFieldVisible?: boolean;
   salaryVisible?: boolean;
   openPositions?: number;
   registrationStart?: string;
@@ -78,7 +79,7 @@ export type CreateJobPositionRequest = {
   registrationStart: string;
   registrationEnd: string;
   termsAndConditions?: LocalizedString[];
-  // who created the job (backend requires this)
+  salaryFieldVisible?: boolean;
   createdBy?: string;
   // optional legacy/extra fields
   requirements?: string[];
@@ -125,6 +126,7 @@ export type UpdateJobPositionRequest = {
   registrationStart?: string;
   registrationEnd?: string;
   termsAndConditions?: LocalizedString[];
+  salaryFieldVisible?: boolean;
   // allow updating these optional fields as well
   companyId?: string;
   jobCode?: string;
@@ -337,6 +339,8 @@ class JobPositionsService {
       if (data.termsAndConditions && data.termsAndConditions.length > 0)
         payload.termsAndConditions = data.termsAndConditions;
       if (data.salary !== undefined) payload.salary = data.salary;
+      if (data.salaryFieldVisible !== undefined)
+        payload.salaryFieldVisible = data.salaryFieldVisible;
       if (data.salaryVisible !== undefined)
         payload.salaryVisible = data.salaryVisible;
       if (data.bilingual !== undefined) payload.bilingual = data.bilingual;
@@ -398,6 +402,8 @@ class JobPositionsService {
       if (data.termsAndConditions)
         payload.termsAndConditions = data.termsAndConditions;
       if (data.salary) payload.salary = data.salary;
+      if (data.salaryFieldVisible !== undefined)
+        payload.salaryFieldVisible = data.salaryFieldVisible;
       if (data.salaryVisible !== undefined)
         payload.salaryVisible = data.salaryVisible;
       if (data.bilingual !== undefined) payload.bilingual = data.bilingual;

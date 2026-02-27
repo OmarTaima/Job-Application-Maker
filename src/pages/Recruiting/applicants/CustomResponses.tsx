@@ -68,6 +68,18 @@ export default function CustomResponses({ applicant }: Props) {
       <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-5">
         {Object.entries(applicant.customResponses).map(
           ([key, value]) => {
+            // If backend now exposes expected salary as a top-level field, skip
+            // rendering any customResponses entry that represents expected salary
+            // to avoid duplicate display in Personal Information.
+            try {
+              const norm = (k: string) => (k || '').toString().replace(/\s|_|-/g, '').toLowerCase();
+              const isExpectedKey = ['expectedsalary', 'expected_salary', 'expected salary', 'expectedsalary', 'expected_salary', 'expected_salary', 'expected', 'الراتبالمتوقع', 'الراتب_المتوقع', 'راتب'].includes(norm(key));
+              if (isExpectedKey && (applicant && (applicant.expectedSalary !== undefined && applicant.expectedSalary !== null && String(applicant.expectedSalary) !== ''))) {
+                return null;
+              }
+            } catch (e) {
+              // ignore
+            }
             const toggleExpand = (index: number) => {
               setExpandedResponses(prev => {
                 const newState = { ...prev };
