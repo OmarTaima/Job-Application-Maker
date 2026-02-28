@@ -438,27 +438,36 @@ const CustomFilterModal: React.FC<Props> = ({
       return Number.isFinite(p) ? [p] : [];
     };
 
-    const nums: number[] = [];
+    const numsWithId: Array<{n:number,id:string}> = [];
     (applicants || []).forEach((a: any) => {
       try {
+        const aid = String(a?._id || a?.id || '') || '';
         const rv = getCustomResponseValue(a, f);
         const items = extractResponseItems(rv);
         for (const it of items) {
           const found = extractNumbers(it);
-          for (const n of found) if (Number.isFinite(n)) nums.push(n);
+          for (const n of found) if (Number.isFinite(n)) numsWithId.push({ n, id: aid });
         }
         const topVals = [a?.expectedSalary, a?.expected_salary, a?.expected];
         for (const tv of topVals) {
           const found = extractNumbers(tv);
-          for (const tn of found) if (Number.isFinite(tn)) nums.push(tn);
+          for (const tn of found) if (Number.isFinite(tn)) numsWithId.push({ n: tn, id: aid });
         }
       } catch (e) { /* ignore */ }
     });
 
-    const valid = nums.filter(Number.isFinite).sort((a,b)=>a-b);
+    // Exclude zero values from observed salaries (ignore 0 entries) and keep ids
+    const validEntries = numsWithId.filter((entry) => Number.isFinite(entry.n) && entry.n > 0).sort((a,b)=>a.n-b.n);
     // Ensure observed range is non-negative (salaries shouldn't be negative)
-    let observedMin = valid.length ? Math.max(0, valid[0]) : 0;
-    let observedMax = valid.length ? Math.max(observedMin, valid[valid.length - 1]) : observedMin + 1000;
+    let observedMin = validEntries.length ? validEntries[0].n : 0;
+    let observedMax = validEntries.length ? Math.max(observedMin, validEntries[validEntries.length - 1].n) : observedMin + 1000;
+    // Log lowest value and its applicant id for debugging
+    if (validEntries.length) {
+      try {
+        const minEntry = validEntries[0];
+        console.log('SalaryRangeControl lowest observed expected salary:', minEntry.n, 'applicantId:', minEntry.id);
+      } catch (e) { /* ignore */ }
+    }
     if (observedMax <= observedMin) observedMax = observedMin + Math.max(100, Math.abs(observedMin || 1000));
 
     const rawSelMin = (existing.value && (existing.value.min !== undefined && existing.value.min !== '')) ? Number(existing.value.min) : observedMin;
@@ -478,42 +487,110 @@ const CustomFilterModal: React.FC<Props> = ({
       setRange([a, b]);
     }, [selMin, selMax, observedMin, observedMax]);
 
+    const commitRange = (v: [number, number]) => {
+      setCustomFilters((prev: any) => {
+        const next = prev.filter((p: any) => p.fieldId !== saveFieldId);
+        const fullMin = observedMin;
+        const fullMax = observedMax;
+        if (v[0] <= fullMin && v[1] >= fullMax) {
+          return next;
+        }
+        next.push({
+          fieldId: saveFieldId,
+          labelEn: f.label?.en,
+          labelAr: f.label?.ar,
+          type: 'range',
+          value: { min: v[0], max: v[1] },
+          choices: f.choices,
+        });
+        return next;
+      });
+    };
+
+    const clampValue = (v: number) => Math.min(Math.max(Number.isFinite(v) ? v : 0, observedMin), observedMax);
+
     return (
       <Box>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-          <Typography variant="caption" color="text.secondary">
-            Min: {Math.floor(range[0]).toLocaleString()}
-          </Typography>
-          <Typography variant="caption" color="text.secondary">
-            Max: {Math.ceil(range[1]).toLocaleString()}
-          </Typography>
+        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 1, flexWrap: 'wrap' }}>
+            <TextField
+            size="small"
+            type="number"
+            label="Min"
+            value={Number.isFinite(range[0]) ? range[0] : ''}
+            onChange={(e) => {
+              const v = e.target.value === '' ? observedMin : Number(e.target.value);
+              setRange(([_, r1]) => [isNaN(v) ? observedMin : clampValue(v), r1]);
+            }}
+            onBlur={() => {
+              const newMin = clampValue(range[0]);
+              const newMax = clampValue(range[1]);
+              const a = Math.min(newMin, newMax);
+              const b = Math.max(newMin, newMax);
+              setRange([a, b]);
+              commitRange([a, b]);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                const newMin = clampValue(range[0]);
+                const newMax = clampValue(range[1]);
+                const a = Math.min(newMin, newMax);
+                const b = Math.max(newMin, newMax);
+                setRange([a, b]);
+                commitRange([a, b]);
+              }
+            }}
+            sx={{ width: 140 }}
+            InputProps={{ inputProps: { min: observedMin, max: observedMax, step: 'any' } }}
+          />
+
+          <TextField
+            size="small"
+            type="number"
+            label="Max"
+            value={Number.isFinite(range[1]) ? range[1] : ''}
+            onChange={(e) => {
+              const v = e.target.value === '' ? observedMax : Number(e.target.value);
+              setRange(([r0, _]) => [r0, isNaN(v) ? observedMax : clampValue(v)]);
+            }}
+            onBlur={() => {
+              const newMin = clampValue(range[0]);
+              const newMax = clampValue(range[1]);
+              const a = Math.min(newMin, newMax);
+              const b = Math.max(newMin, newMax);
+              setRange([a, b]);
+              commitRange([a, b]);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                const newMin = clampValue(range[0]);
+                const newMax = clampValue(range[1]);
+                const a = Math.min(newMin, newMax);
+                const b = Math.max(newMin, newMax);
+                setRange([a, b]);
+                commitRange([a, b]);
+              }
+            }}
+            sx={{ width: 140 }}
+            InputProps={{ inputProps: { min: observedMin, max: observedMax, step: 'any' } }}
+          />
+
+          <Box sx={{ flex: 1 }}>
+            <Typography variant="caption" color="text.secondary">
+              Range: {Number(range[0]).toLocaleString()} — {Number(range[1]).toLocaleString()}
+            </Typography>
+          </Box>
         </Box>
+
         <Slider
+          step={null}
           value={range}
           onChange={(_, val) => setRange(val as [number,number])}
           onChangeCommitted={(_, val) => {
             const v = val as [number,number];
-            setCustomFilters((prev: any) => {
-              const next = prev.filter((p: any) => p.fieldId !== saveFieldId);
-              // If selection covers full observed range, don't add a filter (treat as cleared)
-              const fullMin = Math.floor(observedMin);
-              const fullMax = Math.ceil(observedMax);
-              if (v[0] <= fullMin && v[1] >= fullMax) {
-                return next;
-              }
-              next.push({ 
-                fieldId: saveFieldId, 
-                labelEn: f.label?.en, 
-                labelAr: f.label?.ar, 
-                type: 'range', 
-                value: { min: v[0], max: v[1] }, 
-                choices: f.choices 
-              });
-              return next;
-            });
+            commitRange(v);
           }}
-          min={Math.floor(observedMin)}
-          max={Math.ceil(observedMax)}
+          min={observedMin}
+          max={observedMax}
           valueLabelDisplay="off"
           valueLabelFormat={(v) => Number(v).toLocaleString()}
           disableSwap
