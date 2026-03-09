@@ -285,6 +285,9 @@ class JobPositionsService {
       }
 
       params.deleted = deleted ? "true" : "false";
+      // Request all items by default to avoid backend default page size (usually 10)
+      // Callers can override by providing `PageCount` in the options.
+      params.PageCount = params.PageCount ?? "all";
 
       const response = await axios.get("/job-positions", { params });
       const data = response.data.data;

@@ -1,12 +1,12 @@
 import { useState, useMemo, useEffect } from "react";
-import { useDepartment } from "../../../hooks/queries";
+import { useDepartment, useCompanies } from "../../../hooks/queries";
 import Swal from "sweetalert2";
 import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
 import PageMeta from "../../../components/common/PageMeta";
 import ComponentCard from "../../../components/common/ComponentCard";
 import LoadingSpinner from "../../../components/common/LoadingSpinner";
 import { Link, useNavigate } from "react-router";
-import { PlusIcon, PencilIcon, TrashBinIcon } from "../../../icons";
+import { PlusIcon, PencilIcon, TrashBinIcon, AngleLeftIcon, AngleRightIcon } from "../../../icons";
 import { useAuth } from "../../../context/AuthContext";
 import Switch from "../../../components/form/switch/Switch";
 import {
@@ -40,6 +40,9 @@ export default function Jobs() {
   const canWrite = hasPermission("Job Position Management", "write");
 
   const [searchTerm, setSearchTerm] = useState("");
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [uiPageSize, setUiPageSize] = useState<number>(10);
 
   // Memoize user-derived values
   const { isAdmin, companyId } = useMemo(() => {
@@ -56,7 +59,21 @@ export default function Jobs() {
     return { isAdmin, companyId };
   }, [user?._id, user?.roleId?.name, user?.companies?.length]);
 
-  // Use React Query hooks
+  // Company selector for super admins
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string | "all" | undefined>(
+    isAdmin ? "all" : undefined
+  );
+
+  const { data: companies = [] } = useCompanies();
+
+  // Compute company param for the job positions query
+  const jobQueryCompanyParam = isAdmin
+    ? selectedCompanyId && selectedCompanyId !== "all"
+      ? [selectedCompanyId]
+      : undefined
+    : companyId;
+
+  // Use React Query hooks for job positions (now responds to company filter)
   const {
     data: jobPositions = [],
     isLoading: jobsLoading,
@@ -64,7 +81,7 @@ export default function Jobs() {
     refetch: refetchJobPositions,
     isFetching: isJobPositionsFetching,
     isFetched: isJobPositionsFetched,
-  } = useJobPositions(companyId);
+  } = useJobPositions(jobQueryCompanyParam as any);
   const deleteJobMutation = useDeleteJobPosition();
   const updateJobMutation = useUpdateJobPosition();
 
@@ -187,6 +204,18 @@ export default function Jobs() {
         departmentName.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
+  );
+
+  // Reset to first page when filters/search change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, jobs.length]);
+
+  const totalCount = filteredJobs.length;
+  const pageCount = Math.max(1, Math.ceil(totalCount / uiPageSize));
+  const paginatedJobs = filteredJobs.slice(
+    (currentPage - 1) * uiPageSize,
+    currentPage * uiPageSize
   );
 
   const handleToggleActive = async (jobId: string, currentIsActive: boolean) => {
@@ -408,6 +437,27 @@ export default function Jobs() {
                 className="h-11 w-full max-w-md rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/20 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800"
               />
             </div>
+              {isAdmin && (
+                <div className="ml-4 flex items-center gap-2">
+                  <label className="text-sm text-gray-600">Company:</label>
+                  <select
+                    value={selectedCompanyId ?? "all"}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setSelectedCompanyId(v === "all" ? "all" : v);
+                      setCurrentPage(1);
+                    }}
+                    className="h-9 rounded-lg border border-gray-200 bg-transparent px-3 py-2 text-sm shadow-theme-xs focus:border-brand-300 focus:ring-2 focus:ring-brand-500/20"
+                  >
+                    <option value="all">All companies</option>
+                    {companies.map((c: any) => (
+                      <option key={c._id ?? c.company?._id ?? c.companyId} value={c._id ?? c.company?._id ?? c.companyId}>
+                        {typeof c.name === 'string' ? c.name : (c.name?.en ?? c.company?.name?.en ?? c.company?.name ?? 'Unnamed')}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
             <button
               type="button"
               onClick={async () => {
@@ -523,7 +573,7 @@ export default function Jobs() {
                   </TableHeader>
 
                   <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
-                    {filteredJobs.map((job: any) => (
+                    {paginatedJobs.map((job: any) => (
                       <TableRow
                         key={job._id}
                         onClick={() => navigate(`/job/${job._id}`, { state: { job } })}
@@ -621,6 +671,55 @@ export default function Jobs() {
               </div>
             </div>
           )}
+            {/* Pagination controls */}
+            <div className="flex items-center justify-between gap-4 px-4 py-3">
+              <div className="flex items-center gap-4">
+                <div className="text-sm text-gray-600">
+                  Showing {totalCount === 0 ? 0 : (currentPage - 1) * uiPageSize + 1} - {Math.min(currentPage * uiPageSize, totalCount)} of {totalCount}
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <label className="text-sm text-gray-600">Rows:</label>
+                  <select
+                    value={uiPageSize}
+                    onChange={(e) => { setUiPageSize(Number(e.target.value)); setCurrentPage(1); }}
+                    className="h-9 rounded-lg border border-gray-200 bg-transparent px-3 py-2 text-sm shadow-theme-xs focus:border-brand-300 focus:ring-2 focus:ring-brand-500/20"
+                  >
+                    <option value={5}>5</option>
+                    <option value={10}>10</option>
+                    <option value={20}>20</option>
+                    <option value={50}>50</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition ${currentPage === 1 ? 'bg-gray-100 text-gray-400 dark:bg-transparent dark:text-gray-500 cursor-not-allowed' : 'bg-white text-gray-700 hover:bg-brand-50 dark:bg-white/5'} border border-gray-200`}
+                    title="Previous page"
+                  >
+                    <AngleLeftIcon className="size-4" />
+                    Prev
+                  </button>
+
+                  <div className="px-3 py-2 text-sm text-gray-700 bg-white rounded-lg border border-gray-100 shadow-theme-xs">
+                    {currentPage} / {pageCount}
+                  </div>
+
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.min(pageCount, p + 1))}
+                    disabled={currentPage === pageCount}
+                    className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition ${currentPage === pageCount ? 'bg-gray-100 text-gray-400 dark:bg-transparent dark:text-gray-500 cursor-not-allowed' : 'bg-brand-500 text-white hover:bg-brand-600'} border border-transparent`}
+                    title="Next page"
+                  >
+                    Next
+                    <AngleRightIcon className="size-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          
         </div>
       </ComponentCard>
     </div>
