@@ -1203,19 +1203,22 @@ export default function CreateJob() {
 
       const salaryValue = Number(jobForm.salary);
 
+      const makeBilingualObject = (en: any, ar?: any) =>
+        jobForm.bilingual ? { en: en ?? "", ar: ar ?? en ?? "" } : { en: en ?? "" };
+
       const payload: any = {};
       // Only include companyId and jobCode when creating (not updating)
       if (!isEditMode) {
         payload.companyId = jobForm.companyId;
         if (jobForm.jobCode) payload.jobCode = jobForm.jobCode;
       }
-      payload.title = jobForm.bilingual ? { en: jobForm.title || "", ar: jobForm.titleAr || "" } : { en: jobForm.title || "", ar: "" };
-      payload.description = jobForm.bilingual ? { en: jobForm.description || "", ar: jobForm.descriptionAr || "" } : { en: jobForm.description || "", ar: "" };
+      payload.title = makeBilingualObject(jobForm.title, jobForm.titleAr);
+      payload.description = makeBilingualObject(jobForm.description, jobForm.descriptionAr);
       // Send departmentId as empty string if not selected
       payload.departmentId = jobForm.departmentId || "";
       payload.termsAndConditions = jobForm.termsAndConditions
         .filter((term, idx) => term.trim() || (jobForm.bilingual && jobForm.termsAndConditionsAr[idx]?.trim()))
-        .map((t, idx) => ({ en: t, ar: jobForm.bilingual ? (jobForm.termsAndConditionsAr[idx] || t) : "" }));
+        .map((t, idx) => makeBilingualObject(t, jobForm.termsAndConditionsAr[idx] || t));
       payload.salary = isNaN(salaryValue) ? undefined : salaryValue;
       payload.salaryVisible = jobForm.salaryVisible;
       payload.salaryFieldVisible = jobForm.salaryFieldVisible;
@@ -1225,31 +1228,27 @@ export default function CreateJob() {
       payload.jobSpecs = jobForm.jobSpecs
         .filter((spec) => spec.spec.trim() || (jobForm.bilingual && spec.specAr?.trim()))
         .map((spec) => ({
-          spec: jobForm.bilingual ? { en: spec.spec || "", ar: spec.specAr || spec.spec || "" } : { en: spec.spec || "", ar: "" },
+          spec: makeBilingualObject(spec.spec, spec.specAr || spec.spec),
           weight: spec.weight,
         }));
       payload.customFields = jobForm.customFields.map((cf) => ({
         fieldId: cf.fieldId,
-        label: jobForm.bilingual ? { en: cf.label || "", ar: cf.labelAr || cf.label || "" } : { en: cf.label || "", ar: "" },
+        label: makeBilingualObject(cf.label, cf.labelAr || cf.label),
         inputType: cf.inputType,
         isRequired: cf.isRequired,
         minValue: cf.minValue,
         maxValue: cf.maxValue,
         choices: Array.isArray(cf.choices)
-          ? jobForm.bilingual
-            ? cf.choices.map((c, i) => ({ en: c, ar: cf.choicesAr?.[i] || c }))
-            : cf.choices.map((c) => ({ en: c, ar: "" }))
+          ? cf.choices.map((c, i) => (jobForm.bilingual ? { en: c, ar: cf.choicesAr?.[i] || c } : { en: c }))
           : [],
         groupFields: Array.isArray(cf.subFields)
           ? cf.subFields.map((sf) => ({
               fieldId: sf.fieldId,
-              label: jobForm.bilingual ? { en: sf.label || "", ar: sf.labelAr || sf.label || "" } : { en: sf.label || "", ar: "" },
+              label: makeBilingualObject(sf.label, sf.labelAr || sf.label),
               inputType: sf.inputType,
               isRequired: sf.isRequired,
               choices: Array.isArray(sf.choices)
-                ? jobForm.bilingual
-                  ? sf.choices.map((c, i) => ({ en: c, ar: sf.choicesAr?.[i] || c }))
-                  : sf.choices.map((c) => ({ en: c, ar: "" }))
+                ? sf.choices.map((c, i) => (jobForm.bilingual ? { en: c, ar: sf.choicesAr?.[i] || c } : { en: c }))
                 : [],
             }))
           : [],
