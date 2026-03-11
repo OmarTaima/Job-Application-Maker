@@ -231,7 +231,7 @@ export default function CreateJob() {
   // Fetch jobs for duplication dropdown. Always fetch only active jobs.
   // Super Admin: companyId is undefined -> fetches active jobs across all companies
   // Regular users: companyId contains their assigned company IDs -> fetches active jobs for those companies
-  const { data: allJobs = [], isLoading: jobsLoading } = useJobPositions(companyIdForJobQuery, true);
+  const { data: allJobs = [], isLoading: jobsLoading } = useJobPositions(companyIdForJobQuery, false);
   const createJobMutation = useCreateJobPosition();
   const updateJobMutation = useUpdateJobPosition();
   
@@ -1206,6 +1206,23 @@ export default function CreateJob() {
       const makeBilingualObject = (en: any, ar?: any) =>
         jobForm.bilingual ? { en: en ?? "", ar: ar ?? en ?? "" } : { en: en ?? "" };
 
+      const buildChoices = (choices: any, choicesAr?: any) => {
+        const out: any[] = [];
+        if (!Array.isArray(choices)) return out;
+        choices.forEach((c: any, i: number) => {
+          const enVal = (typeof c === "string" ? c : (c?.en || "") + "").toString().trim();
+          const arVal = (Array.isArray(choicesAr) ? (choicesAr[i] || "") : (typeof c === "object" && c?.ar ? c.ar : "")).toString().trim();
+          if (jobForm.bilingual) {
+            if (!enVal && !arVal) return;
+            out.push({ en: enVal || arVal, ar: arVal || enVal });
+          } else {
+            if (!enVal) return;
+            out.push({ en: enVal });
+          }
+        });
+        return out;
+      };
+
       const payload: any = {};
       // Only include companyId and jobCode when creating (not updating)
       if (!isEditMode) {
@@ -1238,18 +1255,14 @@ export default function CreateJob() {
         isRequired: cf.isRequired,
         minValue: cf.minValue,
         maxValue: cf.maxValue,
-        choices: Array.isArray(cf.choices)
-          ? cf.choices.map((c, i) => (jobForm.bilingual ? { en: c, ar: cf.choicesAr?.[i] || c } : { en: c }))
-          : [],
+        choices: buildChoices(cf.choices, cf.choicesAr),
         groupFields: Array.isArray(cf.subFields)
           ? cf.subFields.map((sf) => ({
               fieldId: sf.fieldId,
               label: makeBilingualObject(sf.label, sf.labelAr || sf.label),
               inputType: sf.inputType,
               isRequired: sf.isRequired,
-              choices: Array.isArray(sf.choices)
-                ? sf.choices.map((c, i) => (jobForm.bilingual ? { en: c, ar: sf.choicesAr?.[i] || c } : { en: c }))
-                : [],
+              choices: buildChoices(sf.choices, sf.choicesAr),
             }))
           : [],
         displayOrder: cf.displayOrder,
