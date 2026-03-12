@@ -426,14 +426,16 @@ const MessageModal = ({
 `;
 
         // Send email via new service
-        // NOTE: disabled temporarily while verifying settings update behavior — re-enable after confirmation
+        // include company id per backend schema
+        const companyToSend = (company && (company._id || (company as any).id)) || companyIdForQuery || undefined;
         await sendEmailMutation.mutateAsync({
+          company: companyToSend,
           to: applicant.email,
           from: companyConfig,
           subject: messageForm.subject,
           html: emailHtml,
         });
-        console.debug('MessageModal: sendEmail skipped (testing). email payload would be:', { to: applicant.email, from: companyConfig, subject: messageForm.subject });
+        console.debug('MessageModal: sendEmail payload:', { company: companyToSend, to: applicant.email, from: companyConfig, subject: messageForm.subject });
       }
 
       // 3. Save to messages (old functionality)

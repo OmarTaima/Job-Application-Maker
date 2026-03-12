@@ -352,8 +352,9 @@ const BulkMessageModal = ({
         html: `<!doctype html><html><body>${form.body}</body></html>`,
       }));
 
-      // Send the batch payload as an array to the server (server expects an array, not a wrapper).
-      await sendBatch.mutateAsync(batch);
+      // Send the batch payload wrapped with company id as required by backend schema
+      const companyToSend = companyId ?? (company && (company._id || (company as any).id)) ?? undefined;
+      await sendBatch.mutateAsync({ company: companyToSend, batch });
 
       await Swal.fire({ title: 'Success', text: `Email queued for ${recipients.length} recipient(s)`, icon: 'success', timer: 2000, showConfirmButton: false });
       onClose();

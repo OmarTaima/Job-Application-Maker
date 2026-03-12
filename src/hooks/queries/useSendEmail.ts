@@ -4,10 +4,12 @@ import axiosInstance from '../../config/axios';
 export function useSendEmail() {
   return useMutation({
     mutationFn: (emailData: {
+      company?: string;
       to: string;
       from: string;
       subject: string;
       html: string;
+      attachments?: any[];
       metadata?: any;
     }) => {
       // Sanitize `from` by removing surrounding angle brackets, then send.

@@ -957,8 +957,9 @@ const ApplicantData = () => {
 </html>
 `;
 
-          // Send email via mutation
+          // Send email via mutation; include company id per backend schema
           await sendEmailMutation.mutateAsync({
+            company: companyObj?._id,
             to: toEmail,
             from: fromEmail,
             subject,

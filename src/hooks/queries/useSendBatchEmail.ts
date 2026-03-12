@@ -3,7 +3,7 @@ import axiosInstance from '../../config/axios';
 
 export function useSendBatchEmail() {
   return useMutation({
-    mutationFn: (payload: any) => {
+    mutationFn: (payload: { company?: string; batch?: any } | any) => {
       // Normalize payload to { batch: [...] }.
       let body: any;
       if (payload && typeof payload === 'object' && Array.isArray(payload.batch)) {
