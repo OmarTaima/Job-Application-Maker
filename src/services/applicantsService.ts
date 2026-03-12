@@ -183,14 +183,11 @@ class ApplicantsService {
     fields?: string | string[]
   ): Promise<Applicant[]> {
     try {
+      const normalizedCompanyIds = Array.isArray(companyId)
+        ? Array.from(new Set(companyId.map((id) => String(id || "").trim()).filter(Boolean)))
+        : [];
+
       const paramsBase: any = {};
-      if (companyId && companyId.length > 0) {
-        if (companyId.length === 1) {
-          paramsBase.companyId = companyId[0];
-        } else {
-          paramsBase.companyId = companyId.join(",");
-        }
-      }
       if (status) {
         if (Array.isArray(status)) {
           paramsBase.status = status.join(",");
@@ -208,14 +205,15 @@ class ApplicantsService {
       // Always filter out deleted applicants
       paramsBase.deleted = false;
 
-      const collectFromOne = async (jpId?: string) => {
+      const collectFromOne = async (opts?: { companyId?: string; jobPositionId?: string }) => {
         const result: Applicant[] = [];
         let currentPage = 1;
         let totalPages = 1;
 
         do {
           const params = { ...paramsBase, page: currentPage, PageCount: 'all' } as any;
-          if (jpId) params.jobPositionId = jpId;
+          if (opts?.companyId) params.companyId = opts.companyId;
+          if (opts?.jobPositionId) params.jobPositionId = opts.jobPositionId;
           const response = await axios.get("/applicants", { params });
           const payload = response.data;
 
@@ -264,9 +262,31 @@ class ApplicantsService {
       }
 
       let allApplicants: Applicant[] = [];
-      if (jobIds && jobIds.length > 0) {
+      if (normalizedCompanyIds.length > 0 && jobIds && jobIds.length > 0) {
+        // Fetch per company + per job and aggregate, deduplicating by applicant _id
+        const sets = await Promise.all(
+          normalizedCompanyIds.flatMap((cid) =>
+            jobIds.map((jid) => collectFromOne({ companyId: cid, jobPositionId: jid }))
+          )
+        );
+        const combined = sets.flat();
+        const uniqueMap: Record<string, Applicant> = {};
+        combined.forEach((a) => {
+          if (a && a._id) uniqueMap[a._id] = a;
+        });
+        allApplicants = Object.values(uniqueMap);
+      } else if (normalizedCompanyIds.length > 0) {
+        // Fetch per company and aggregate, deduplicating by applicant _id
+        const sets = await Promise.all(normalizedCompanyIds.map((cid) => collectFromOne({ companyId: cid })));
+        const combined = sets.flat();
+        const uniqueMap: Record<string, Applicant> = {};
+        combined.forEach((a) => {
+          if (a && a._id) uniqueMap[a._id] = a;
+        });
+        allApplicants = Object.values(uniqueMap);
+      } else if (jobIds && jobIds.length > 0) {
         // Fetch per job id and aggregate, deduplicating by applicant _id
-        const sets = await Promise.all(jobIds.map((jid) => collectFromOne(jid)));
+        const sets = await Promise.all(jobIds.map((jid) => collectFromOne({ jobPositionId: jid })));
         const combined = sets.flat();
         const uniqueMap: Record<string, Applicant> = {};
         combined.forEach((a) => {
@@ -499,21 +519,46 @@ class ApplicantsService {
     }
   }
 
-  async getApplicantStatuses(companyId?: string[],  status?: string | string[] | string[]): Promise<{ _id: string; status: Applicant['status']; submittedAt?: string; createdAt?: string }[]> {
+  async getApplicantStatuses(companyId?: string[],  status?: string | string[] | string[]): Promise<any> {
     try {
-      const params: any = {};
-      if (companyId && companyId.length > 0) {
-        // Always send company id(s) as a query parameter named `companyID`.
-        // If multiple ids are provided, join with commas.
-        params.companyID = companyId.length === 1 ? companyId[0] : companyId.join(",");
+      const normalizedCompanyIds = Array.isArray(companyId)
+        ? Array.from(new Set(companyId.map((id) => String(id || "").trim()).filter(Boolean)))
+        : [];
+
+      const fetchOne = async (singleCompanyId?: string): Promise<any> => {
+        const params: any = {};
+        if (singleCompanyId) params.companyId = singleCompanyId;
+        if (status) params.status = status;
+        const response = await axios.get(`/applicants/status-insights`, { params });
+        return response.data?.data ?? response.data;
+      };
+
+      if (normalizedCompanyIds.length <= 1) {
+        return fetchOne(normalizedCompanyIds[0]);
       }
 
-      if (status) {
-        params.status = status;
+      const results = await Promise.all(normalizedCompanyIds.map((id) => fetchOne(id)));
+
+      // If endpoint returns arrays, merge/dedupe applicants.
+      if (results.every((r) => Array.isArray(r))) {
+        const unique = new Map<string, any>();
+        results.flat().forEach((item: any) => {
+          if (item && item._id) unique.set(item._id, item);
+        });
+        return Array.from(unique.values());
       }
 
-      const response = await axios.get(`/applicants/status-insights`, { params });
-      return response.data.data;
+      // If endpoint returns aggregate objects, sum numeric keys.
+      const aggregate: Record<string, number> = {};
+      results.forEach((obj: any) => {
+        if (!obj || typeof obj !== "object") return;
+        Object.entries(obj).forEach(([key, value]) => {
+          if (typeof value === "number") {
+            aggregate[key] = (aggregate[key] || 0) + value;
+          }
+        });
+      });
+      return aggregate;
     } catch (error: any) {
       throw new ApiError(
         getErrorMessage(error),

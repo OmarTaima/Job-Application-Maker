@@ -74,16 +74,38 @@ export class ApiError extends Error {
 // Departments API service
 export const departmentsService = {
   // Get all departments (optionally filtered by companyId)
-  async getAllDepartments(companyId?: string): Promise<Department[]> {
+  async getAllDepartments(companyId?: string | string[]): Promise<Department[]> {
     try {
-      const params: any = companyId ? { companyId } : {};
-      // Request only non-deleted departments by default
-      // Always request only non-deleted departments
-      params.deleted = "false";
-      const response = await axios.get<DepartmentsResponse>("/departments", {
-        params,
+      const normalizedCompanyIds = Array.isArray(companyId)
+        ? Array.from(new Set(companyId.map((id) => String(id || "").trim()).filter(Boolean)))
+        : companyId
+          ? [String(companyId).trim()]
+          : [];
+
+      const extractDepartments = (payload: any): Department[] => {
+        if (Array.isArray(payload)) return payload as Department[];
+        if (payload && Array.isArray(payload.data)) return payload.data as Department[];
+        if (payload && payload.data && Array.isArray(payload.data.data)) return payload.data.data as Department[];
+        return [];
+      };
+
+      const fetchOne = async (singleCompanyId?: string): Promise<Department[]> => {
+        const params: any = { deleted: "false" };
+        if (singleCompanyId) params.companyId = singleCompanyId;
+        const response = await axios.get<DepartmentsResponse>("/departments", { params });
+        return extractDepartments(response.data);
+      };
+
+      if (normalizedCompanyIds.length <= 1) {
+        return fetchOne(normalizedCompanyIds[0]);
+      }
+
+      const departmentLists = await Promise.all(normalizedCompanyIds.map((id) => fetchOne(id)));
+      const unique = new Map<string, Department>();
+      departmentLists.flat().forEach((department) => {
+        if (department && department._id) unique.set(department._id, department);
       });
-      return response.data.data;
+      return Array.from(unique.values());
     } catch (error: any) {
       throw new ApiError(
         getErrorMessage(error),

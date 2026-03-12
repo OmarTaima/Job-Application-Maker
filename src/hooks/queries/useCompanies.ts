@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { companiesService } from "../../services/companiesService";
+import { useAppSelector } from "../../store/hooks";
 import type {
   CreateCompanyRequest,
   UpdateCompanyRequest,
@@ -20,15 +21,34 @@ export const companiesKeys = {
 
 // Get all companies (optionally filtered by company IDs)
 export function useCompanies(companyId?: string[]) {
+  const authUser = useAppSelector((s: any) => s.auth.user);
+
+  const userCompanyIds = (() => {
+    const roleName = authUser?.roleId?.name?.toLowerCase?.();
+    if (roleName === "admin" || roleName === "super admin") return undefined;
+    const fromCompanies = Array.isArray(authUser?.companies)
+      ? authUser.companies
+          .map((c: any) => (typeof c?.companyId === "string" ? c.companyId : c?.companyId?._id))
+          .filter(Boolean)
+      : [];
+    const fromAssigned = Array.isArray(authUser?.assignedcompanyId)
+      ? authUser.assignedcompanyId.filter(Boolean)
+      : [];
+    const merged = Array.from(new Set([...fromCompanies, ...fromAssigned]));
+    return merged.length > 0 ? merged : undefined;
+  })();
+
+  const effectiveCompanyId = companyId && companyId.length > 0 ? companyId : userCompanyIds;
+
   return useQuery<Company[]>({
-    queryKey: companiesKeys.list(companyId),
+    queryKey: companiesKeys.list(effectiveCompanyId),
     queryFn: async () => {
       // If caller passed a single companyId, prefer the single-company endpoint
-      if (companyId && companyId.length === 1) {
-        const comp = await companiesService.getCompanyById(companyId[0]);
+      if (effectiveCompanyId && effectiveCompanyId.length === 1) {
+        const comp = await companiesService.getCompanyById(effectiveCompanyId[0]);
         return [comp];
       }
-      return companiesService.getAllCompanies(companyId);
+      return companiesService.getAllCompanies(effectiveCompanyId);
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
     // Avoid refetching when component remounts or window regains focus — selection changes should not re-fetch the whole list

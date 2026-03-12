@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { usersService } from "../../services/usersService";
+import { useAppSelector } from "../../store/hooks";
 import type {
   CreateUserRequest,
   UpdateUserRequest,
@@ -18,11 +19,33 @@ export const usersKeys = {
 
 // Get all users
 export function useUsers(params: any = {}) {
+  const authUser = useAppSelector((s: any) => s.auth.user);
+
+  const userCompanyIds = (() => {
+    const roleName = authUser?.roleId?.name?.toLowerCase?.();
+    if (roleName === "admin" || roleName === "super admin") return undefined;
+    const fromCompanies = Array.isArray(authUser?.companies)
+      ? authUser.companies
+          .map((c: any) => (typeof c?.companyId === "string" ? c.companyId : c?.companyId?._id))
+          .filter(Boolean)
+      : [];
+    const fromAssigned = Array.isArray(authUser?.assignedcompanyId)
+      ? authUser.assignedcompanyId.filter(Boolean)
+      : [];
+    const merged = Array.from(new Set([...fromCompanies, ...fromAssigned]));
+    return merged.length > 0 ? merged : undefined;
+  })();
+
+  const paramsWithCompany = {
+    ...params,
+    companyId: params?.companyId ?? userCompanyIds,
+  };
+
   // Ensure page is a number
-  const pageParam = typeof params.page === "string" ? parseInt(params.page, 10) : params.page;
+  const pageParam = typeof paramsWithCompany.page === "string" ? parseInt(paramsWithCompany.page, 10) : paramsWithCompany.page;
   return useQuery({
-    queryKey: [...usersKeys.list(params.companyId), { page: pageParam }],
-    queryFn: () => usersService.getAllUsers({ ...params, page: pageParam }),
+    queryKey: [...usersKeys.list(paramsWithCompany.companyId), { page: pageParam }],
+    queryFn: () => usersService.getAllUsers({ ...paramsWithCompany, page: pageParam }),
     staleTime: 5 * 60 * 1000,
     // Keep previous page data while fetching next page to avoid empty loading states
     keepPreviousData: true,

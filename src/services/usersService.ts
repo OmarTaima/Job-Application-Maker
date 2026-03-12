@@ -97,14 +97,62 @@ export const usersService = {
   // Get all users (with pagination)
   async getAllUsers(params: any = {}): Promise<UsersResponse> {
     try {
-      // Always request only non-deleted users
-      params.deleted = "false";
-      // Force page and pageCount for pagination
-      // Use provided page and PageCount, default to 1 and 10
-      params.page = params.page || 1;
-      params.PageCount = params.PageCount || 100;
-      const response = await axios.get<UsersResponse>("/users", { params });
-      return response.data;
+      const normalizedCompanyIds: string[] = Array.isArray(params.companyId)
+        ? Array.from(new Set(params.companyId.map((id: any) => String(id || "").trim()).filter(Boolean))) as string[]
+        : typeof params.companyId === "string" && params.companyId.includes(",")
+          ? (Array.from(new Set(params.companyId.split(",").map((id: string) => id.trim()).filter(Boolean))) as string[])
+          : params.companyId
+            ? [String(params.companyId).trim()]
+            : [];
+
+      const extractUsers = (payload: any): User[] => {
+        if (Array.isArray(payload)) return payload as User[];
+        if (payload && Array.isArray(payload.data)) return payload.data as User[];
+        if (payload && payload.data && Array.isArray(payload.data.data)) return payload.data.data as User[];
+        return [];
+      };
+
+      const fetchOne = async (singleCompanyId?: string, overridePage?: number, overridePageCount?: string | number) => {
+        const requestParams: any = { ...params };
+        requestParams.deleted = "false";
+        requestParams.page = overridePage ?? requestParams.page ?? 1;
+        requestParams.PageCount = overridePageCount ?? requestParams.PageCount ?? 100;
+        if (singleCompanyId) requestParams.companyId = singleCompanyId;
+        const response = await axios.get<UsersResponse>("/users", { params: requestParams });
+        return response.data;
+      };
+
+      if (normalizedCompanyIds.length <= 1) {
+        return fetchOne(normalizedCompanyIds[0]);
+      }
+
+      // For multi-company users, fetch each company separately and paginate locally.
+      const requestedPage = Number(params.page || 1);
+      const requestedPageCount = Number(params.PageCount || 100);
+      const responses = await Promise.all(
+        normalizedCompanyIds.map((id) => fetchOne(id, 1, "all"))
+      );
+
+      const unique = new Map<string, User>();
+      responses.forEach((res) => {
+        extractUsers(res).forEach((user) => {
+          if (user && user._id) unique.set(user._id, user);
+        });
+      });
+
+      const allUsers = Array.from(unique.values());
+      const totalCount = allUsers.length;
+      const start = Math.max(0, (requestedPage - 1) * requestedPageCount);
+      const end = start + requestedPageCount;
+      const pagedUsers = allUsers.slice(start, end);
+
+      return {
+        success: true,
+        data: pagedUsers,
+        page: requestedPage,
+        pageCount: requestedPageCount,
+        totalCount,
+      };
     } catch (error: any) {
       throw new ApiError(
         getErrorMessage(error),

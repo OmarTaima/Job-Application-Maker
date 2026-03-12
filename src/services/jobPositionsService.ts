@@ -249,8 +249,6 @@ class JobPositionsService {
       | { companyId?: string[] | string; deleted?: boolean }
   ): Promise<JobPosition[]> {
     try {
-      const params: any = {};
-
       // Determine shape: either an array/string of ids, or an options object
       let ids: string[] | undefined;
       let deleted = false;
@@ -279,20 +277,38 @@ class JobPositionsService {
           .filter(Boolean);
       }
 
-      if (ids && ids.length > 0) {
-        if (ids.length === 1) params.companyId = ids[0];
-        else params.companyIds = ids;
+      const normalizedCompanyIds = ids && ids.length > 0
+        ? Array.from(new Set(ids.map((id) => String(id || "").trim()).filter(Boolean)))
+        : [];
+
+      const fetchOne = async (singleCompanyId?: string): Promise<JobPosition[]> => {
+        const params: any = {
+          deleted: deleted ? "true" : "false",
+          PageCount: "all",
+        };
+        if (singleCompanyId) params.companyId = singleCompanyId;
+        const response = await axios.get("/job-positions", { params });
+        const payload = response.data;
+        const data = Array.isArray(payload)
+          ? payload
+          : Array.isArray(payload?.data)
+            ? payload.data
+            : Array.isArray(payload?.data?.data)
+              ? payload.data.data
+              : [];
+        return (data as any[]).map((d: any) => this.normalizeJobPosition(d));
+      };
+
+      if (normalizedCompanyIds.length <= 1) {
+        return fetchOne(normalizedCompanyIds[0]);
       }
 
-      params.deleted = deleted ? "true" : "false";
-      // Request all items by default to avoid backend default page size (usually 10)
-      // Callers can override by providing `PageCount` in the options.
-      params.PageCount = params.PageCount ?? "all";
-
-      const response = await axios.get("/job-positions", { params });
-      const data = response.data.data;
-      if (Array.isArray(data)) return data.map((d: any) => this.normalizeJobPosition(d));
-      return data;
+      const positionLists = await Promise.all(normalizedCompanyIds.map((id) => fetchOne(id)));
+      const unique = new Map<string, JobPosition>();
+      positionLists.flat().forEach((position) => {
+        if (position && position._id) unique.set(position._id, position);
+      });
+      return Array.from(unique.values());
     } catch (error: any) {
       throw new ApiError(
         getErrorMessage(error),

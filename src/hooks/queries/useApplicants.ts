@@ -27,11 +27,30 @@ export function useApplicants(
   jobPositionId?: string
 ) {
   const reduxApplicants = useAppSelector((s) => s.applicants.applicants);
+  const authUser = useAppSelector((s: any) => s.auth.user);
+
+  const userCompanyIds = (() => {
+    const roleName = authUser?.roleId?.name?.toLowerCase?.();
+    if (roleName === "admin" || roleName === "super admin") return undefined;
+    const fromCompanies = Array.isArray(authUser?.companies)
+      ? authUser.companies
+          .map((c: any) => (typeof c?.companyId === "string" ? c.companyId : c?.companyId?._id))
+          .filter(Boolean)
+      : [];
+    const fromAssigned = Array.isArray(authUser?.assignedcompanyId)
+      ? authUser.assignedcompanyId.filter(Boolean)
+      : [];
+    const merged = Array.from(new Set([...fromCompanies, ...fromAssigned]));
+    return merged.length > 0 ? merged : undefined;
+  })();
+
+  // Prefer explicit caller filter, otherwise use all companies available to logged-in non-admin user.
+  const effectiveCompanyId = companyId && companyId.length > 0 ? companyId : userCompanyIds;
 
   return useQuery<import("../../services/applicantsService").Applicant[]>({
-    queryKey: applicantsKeys.list(companyId,  jobPositionId),
+    queryKey: applicantsKeys.list(effectiveCompanyId,  jobPositionId),
     // cast second arg to any to satisfy service signature when types differ
-    queryFn: () => applicantsService.getAllApplicants(companyId, jobPositionId as any),
+    queryFn: () => applicantsService.getAllApplicants(effectiveCompanyId, jobPositionId as any),
     staleTime: 2 * 60 * 1000, // 2 minutes
     initialData: reduxApplicants && reduxApplicants.length > 0 ? reduxApplicants : undefined,
   });

@@ -117,20 +117,34 @@ export const companiesService = {
   // Get all companies, optionally filtered by companyId (server expects either companyId or companyId query)
   async getAllCompanies(companyId?: string[]): Promise<Company[]> {
     try {
-      const params: any = {};
-      if (companyId && companyId.length > 0) {
-        if (companyId.length === 1) {
-          params.companyId = companyId[0];
-        } else {
-          params.companyId = companyId.join(",");
-        }
+      const normalizedCompanyIds = Array.isArray(companyId)
+        ? Array.from(new Set(companyId.map((id) => String(id || "").trim()).filter(Boolean)))
+        : [];
+
+      const extractCompanies = (payload: any): Company[] => {
+        if (Array.isArray(payload)) return payload as Company[];
+        if (payload && Array.isArray(payload.data)) return payload.data as Company[];
+        if (payload && payload.data && Array.isArray(payload.data.data)) return payload.data.data as Company[];
+        return [];
+      };
+
+      const fetchOne = async (singleCompanyId?: string): Promise<Company[]> => {
+        const params: any = { deleted: "false" };
+        if (singleCompanyId) params.companyId = singleCompanyId;
+        const response = await axios.get<CompaniesResponse>("/companies", { params });
+        return extractCompanies(response.data);
+      };
+
+      if (normalizedCompanyIds.length <= 1) {
+        return fetchOne(normalizedCompanyIds[0]);
       }
 
-      // Always request only non-deleted companies (use string to ensure server-side parsing)
-      params.deleted = "false";
-
-      const response = await axios.get<CompaniesResponse>("/companies", { params });
-      return response.data.data;
+      const companyLists = await Promise.all(normalizedCompanyIds.map((id) => fetchOne(id)));
+      const unique = new Map<string, Company>();
+      companyLists.flat().forEach((company) => {
+        if (company && company._id) unique.set(company._id, company);
+      });
+      return Array.from(unique.values());
     } catch (error: any) {
       // If server returns 404 for settings, treat as "no settings yet" and return null
 

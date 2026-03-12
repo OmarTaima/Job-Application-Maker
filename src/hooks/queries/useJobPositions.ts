@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { jobPositionsService } from "../../services/jobPositionsService";
+import { useAppSelector } from "../../store/hooks";
 import type {
   CreateJobPositionRequest,
   UpdateJobPositionRequest,
@@ -19,16 +20,35 @@ export const jobPositionsKeys = {
 
 // Get all job positions
 export function useJobPositions(companyId?: string[], deleted: boolean = false) {
+  const authUser = useAppSelector((s: any) => s.auth.user);
+
+  const userCompanyIds = (() => {
+    const roleName = authUser?.roleId?.name?.toLowerCase?.();
+    if (roleName === "admin" || roleName === "super admin") return undefined;
+    const fromCompanies = Array.isArray(authUser?.companies)
+      ? authUser.companies
+          .map((c: any) => (typeof c?.companyId === "string" ? c.companyId : c?.companyId?._id))
+          .filter(Boolean)
+      : [];
+    const fromAssigned = Array.isArray(authUser?.assignedcompanyId)
+      ? authUser.assignedcompanyId.filter(Boolean)
+      : [];
+    const merged = Array.from(new Set([...fromCompanies, ...fromAssigned]));
+    return merged.length > 0 ? merged : undefined;
+  })();
+
+  const effectiveCompanyId = companyId && companyId.length > 0 ? companyId : userCompanyIds;
+
   return useQuery<import("../../services/jobPositionsService").JobPosition[]>({
-    queryKey: jobPositionsKeys.list(companyId),
+    queryKey: jobPositionsKeys.list(effectiveCompanyId),
     queryFn: () => {
       // Special sentinel to indicate "no companies assigned" -> return empty list
-      if (companyId && companyId.length === 1 && companyId[0] === '__NO_COMPANY__') {
+      if (effectiveCompanyId && effectiveCompanyId.length === 1 && effectiveCompanyId[0] === '__NO_COMPANY__') {
         return Promise.resolve([] as any);
       }
       // service now accepts a single options object
       // cast to any to satisfy current service typing (may expect a string[] overload)
-      return jobPositionsService.getAllJobPositions({ companyId, deleted } as any);
+      return jobPositionsService.getAllJobPositions({ companyId: effectiveCompanyId, deleted } as any);
     },
     staleTime: 5 * 60 * 1000,
   });

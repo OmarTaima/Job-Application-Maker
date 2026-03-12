@@ -77,7 +77,7 @@ const ApplicantData = () => {
 
   // Related data hooks (job positions, company details)
   // Declared here to preserve hook order for React
-  const { data: jobPositions = [],  isFetched: isJobPositionsFetched } = useJobPositions();
+  const { data: jobPositionsFallback = [],  isFetched: isJobPositionsFallbackFetched } = useJobPositions();
   const jobPosIdString = applicant && typeof applicant.jobPositionId === 'string' ? applicant.jobPositionId : '';
   const { data: jobPositionDetail, isFetched: isJobPositionDetailFetched } = useJobPosition(jobPosIdString, { enabled: !!jobPosIdString });
   const jpCompanyId = jobPositionDetail && ((jobPositionDetail as any).companyId ? (typeof (jobPositionDetail as any).companyId === 'string' ? (jobPositionDetail as any).companyId : (jobPositionDetail as any).companyId?._id) : '');
@@ -101,6 +101,22 @@ const ApplicantData = () => {
   }, [applicant]);
 
   const { data: fetchedCompany } = useCompany(resolvedCompanyId || '', { enabled: !!resolvedCompanyId });
+
+  // Fetch job positions scoped to the applicant's company when available.
+  // Use the '__NO_COMPANY__' sentinel to avoid fetching all positions during initial load.
+  const jobPositionsFetchParam = useMemo(() => {
+    if (!applicant) return ['__NO_COMPANY__'];
+    return resolvedCompanyId ? [resolvedCompanyId] : ['__NO_COMPANY__'];
+  }, [applicant, resolvedCompanyId]);
+
+  // Replace the top-level job positions query with a company-scoped one.
+  // This prevents listing job positions for other companies on page refresh.
+  const _jobPositionsScoped = useJobPositions(jobPositionsFetchParam as any);
+  // prefer scoped data if available; fall back to previously fetched jobPositions
+  const jobPositionsScopedData = _jobPositionsScoped?.data ?? jobPositionsFallback;
+  const isJobPositionsFetched = _jobPositionsScoped?.isFetched ?? isJobPositionsFallbackFetched;
+  // expose `jobPositions` variable for the rest of the component to consume
+  const jobPositions = jobPositionsScopedData;
 
   // Mutations: react-query mutation hooks for creating/updating comments, interviews, status and sending emails
 

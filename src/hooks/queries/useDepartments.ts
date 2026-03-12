@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { departmentsService } from "../../services/departmentsService";
+import { useAppSelector } from "../../store/hooks";
 import type {
   CreateDepartmentRequest,
   UpdateDepartmentRequest,
@@ -10,30 +11,55 @@ import type {
 export const departmentsKeys = {
   all: ["departments"] as const,
   lists: () => [...departmentsKeys.all, "list"] as const,
-  list: (companyId?: string) =>
+  list: (companyId?: string | string[]) =>
     [...departmentsKeys.lists(), { companyId }] as const,
   details: () => [...departmentsKeys.all, "detail"] as const,
   detail: (id: string) => [...departmentsKeys.details(), id] as const,
 };
 
 // Get all departments
-export function useDepartments(companyId?: string, options?: { enabled?: boolean }) {
+export function useDepartments(companyId?: string | string[], options?: { enabled?: boolean }) {
   const queryClient = useQueryClient();
+  const authUser = useAppSelector((s: any) => s.auth.user);
+
+  const userCompanyIds = (() => {
+    const roleName = authUser?.roleId?.name?.toLowerCase?.();
+    if (roleName === "admin" || roleName === "super admin") return undefined;
+    const fromCompanies = Array.isArray(authUser?.companies)
+      ? authUser.companies
+          .map((c: any) => (typeof c?.companyId === "string" ? c.companyId : c?.companyId?._id))
+          .filter(Boolean)
+      : [];
+    const fromAssigned = Array.isArray(authUser?.assignedcompanyId)
+      ? authUser.assignedcompanyId.filter(Boolean)
+      : [];
+    const merged = Array.from(new Set([...fromCompanies, ...fromAssigned]));
+    return merged.length > 0 ? merged : undefined;
+  })();
+
+  const effectiveCompanyId = companyId ?? userCompanyIds;
+
+  const normalizedCompanyIds = Array.isArray(effectiveCompanyId)
+    ? effectiveCompanyId
+    : effectiveCompanyId
+      ? [effectiveCompanyId]
+      : undefined;
 
   return useQuery<Department[]>({
-    queryKey: departmentsKeys.list(companyId),
+    queryKey: departmentsKeys.list(effectiveCompanyId),
     queryFn: async () => {
       const cachedAll = queryClient.getQueryData(departmentsKeys.list()) as any[] | undefined;
       if (cachedAll && cachedAll.length > 0) {
-        if (companyId) {
+        if (normalizedCompanyIds && normalizedCompanyIds.length > 0) {
+          const idSet = new Set(normalizedCompanyIds);
           return cachedAll.filter((d: any) => {
             const deptCompanyId = typeof d.companyId === "string" ? d.companyId : d.companyId?._id;
-            return deptCompanyId === companyId;
+            return idSet.has(deptCompanyId);
           });
         }
         return cachedAll;
       }
-      return departmentsService.getAllDepartments(companyId);
+      return departmentsService.getAllDepartments(effectiveCompanyId as any);
     },
     enabled: options?.enabled !== undefined ? options.enabled : true,
     staleTime: 5 * 60 * 1000,
