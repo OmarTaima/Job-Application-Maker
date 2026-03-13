@@ -22,7 +22,6 @@ const STATUSES: { key: Applicant['status']; label: string }[] = [
   { key: "interviewed", label: "Interviewed" },
   { key: "approved", label: "Approved" },
   { key: "rejected", label: "Rejected" },
-  { key: "trashed", label: "Trashed" },
 ];
 
 function getApplicantDate(a: any) {
@@ -31,7 +30,7 @@ function getApplicantDate(a: any) {
 
 export default function Home() {
   const [range, setRange] = useState<Date[] | null>(null);
-  const [openStatus, setOpenStatus] = useState<string | null>(null);
+  const [, setOpenStatus] = useState<string | null>(null);
   const { user } = useAuth();
 
   // Determine companyId based on user role; super admin fetches all
@@ -240,38 +239,20 @@ export default function Home() {
             </div>
             <div className="mt-2 text-2xl font-bold text-gray-800">{loading ? (
               <span className="inline-block h-6 w-14 rounded bg-gray-200 animate-pulse" />
-            ) : countsFromServer.total}</div>
+            ) : countsFromServer.total - countsFromServer.trashed}</div>
               
-            {openStatus === 'total' && (
-              <div className={`mt-4 border-t pt-3 space-y-2 max-h-56 overflow-auto`}>
-                {filteredNonTrashed.length === 0 ? (
-                  <div className="text-sm text-gray-500">No applicants</div>
-                ) : (
-                  filteredNonTrashed.map((a) => (
-                    <div key={a._id} className="flex items-center justify-between">
-                      <div>
-                        <div className="text-sm font-medium text-gray-800">Applicant ID: {a._id}</div>
-                      </div>
-                      <div className="text-xs text-gray-400">{new Date(getApplicantDate(a)).toLocaleDateString()}</div>
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
+           
           </div>
 
           {STATUSES.map((s) => {
             const Icon = STATUS_ICON[s.key];
             const key = s.key;
-            const applicantsOfStatus = filtered.filter((a) => a.status === key);
             const bgClass = STATUS_BG[key] || 'bg-gray-50';
-            const expandedBg = bgClass.replace('-50', '-50/60');
 
             return (
               <div key={key}>
                 <div
                   role="button"
-                  onClick={() => toggleOpen(key)}
                   className={`rounded-2xl border border-gray-200 ${bgClass} p-5 dark:border-gray-800 dark:bg-white/[0.03] cursor-pointer`}
                 >
                   <div className="flex items-center justify-between">
@@ -284,33 +265,7 @@ export default function Home() {
                   ) : counts[key]}</div>
                 </div>
 
-                {openStatus === key && (
-                  <div className={`mt-2 p-3 rounded-lg ${expandedBg} border border-gray-100 max-h-56 overflow-auto`}>
-                    {loading ? (
-                      <div className="space-y-2">
-                        {Array.from({ length: 4 }).map((_, i) => (
-                          <div key={i} className="flex items-center gap-3">
-                            <div className="h-8 w-8 rounded-full bg-gray-200 animate-pulse" />
-                            <div className="flex-1">
-                              <div className="h-3 w-3/4 bg-gray-200 rounded animate-pulse" />
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : applicantsOfStatus.length === 0 ? (
-                      <div className="text-sm text-gray-500">No applicants in this status</div>
-                    ) : (
-                      applicantsOfStatus.map((a) => (
-                        <div key={a._id} className="flex items-center justify-between py-2 border-b last:border-b-0">
-                          <div>
-                            <div className="text-sm font-medium text-gray-800">Applicant ID: {a._id}</div>
-                          </div>
-                          <div className="text-xs text-gray-400">{new Date(getApplicantDate(a)).toLocaleDateString()}</div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                )}
+               
               </div>
             );
           })}
