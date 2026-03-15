@@ -8,6 +8,10 @@ import LoadingSpinner from "../../../components/common/LoadingSpinner";
 import { useQueryClient } from '@tanstack/react-query';
 import { applicantsKeys } from '../../../hooks/queries/useApplicants';
 import { toPlainString } from "../../../utils/strings";
+import {
+  buildApplicantDuplicateLookup,
+  sortApplicantsByDuplicatePriority,
+} from '../../../utils/applicantDuplicateSort';
 import CustomFilterModal from "../../../components/modals/CustomFilterModal";
 import Swal from 'sweetalert2';
 import BulkMessageModal from '../../../components/modals/BulkMessageModal';
@@ -36,12 +40,61 @@ Trash2,
   Send,
   ArrowUpDown,
   SlidersHorizontal,
-  Download
+  Download,
+  ExternalLink
 } from 'lucide-react';
+
+const MOBILE_FILTERS_STORAGE_KEY = 'applicants_mobile_filters';
+
+const toStringArray = (value: any): string[] => {
+  if (Array.isArray(value)) return value.map(String).filter(Boolean);
+  if (typeof value === 'string' && value) return [value];
+  return [];
+};
+
+const readPersistedMobileFilters = () => {
+  try {
+    const rawSession = sessionStorage.getItem(MOBILE_FILTERS_STORAGE_KEY);
+    const rawLocal = rawSession
+      ? null
+      : localStorage.getItem(MOBILE_FILTERS_STORAGE_KEY);
+    const raw = rawSession || rawLocal;
+    const parsed = raw ? JSON.parse(raw) : {};
+    return {
+      query: typeof parsed?.query === 'string' ? parsed.query : '',
+      companyFilters: toStringArray(parsed?.companyFilters),
+      jobFilters: toStringArray(parsed?.jobFilters),
+      statusFilters: toStringArray(parsed?.statusFilters),
+      genderFilters: toStringArray(parsed?.genderFilters),
+      pageIndex:
+        typeof parsed?.pageIndex === 'number' && parsed.pageIndex >= 0
+          ? parsed.pageIndex
+          : 0,
+      pageSize:
+        typeof parsed?.pageSize === 'number' && parsed.pageSize > 0
+          ? parsed.pageSize
+          : 10,
+      submittedDesc:
+        typeof parsed?.submittedDesc === 'boolean' ? parsed.submittedDesc : true,
+    };
+  } catch (e) {
+    return {
+      query: '',
+      companyFilters: [] as string[],
+      jobFilters: [] as string[],
+      statusFilters: [] as string[],
+      genderFilters: [] as string[],
+      pageIndex: 0,
+      pageSize: 10,
+      submittedDesc: true,
+    };
+  }
+};
 
 export default function ApplicantsMobilePage(): JSX.Element {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [initialMobileFilters] = useState(() => readPersistedMobileFilters());
 
   // Lazy image loader with enhanced features
   function LazyImage({ src, alt, className, fallback }: { src?: string | null; alt?: string; className?: string; fallback?: string }) {
@@ -94,11 +147,19 @@ export default function ApplicantsMobilePage(): JSX.Element {
     );
   }
 
-  const [query, setQuery] = useState("");
-  const [companyFilter, setCompanyFilter] = useState<string | undefined>(undefined);
-  const [jobFilter, setJobFilter] = useState<string | undefined>(undefined);
-  const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
-  const [genderFilter, setGenderFilter] = useState<string | undefined>(undefined);
+  const [query, setQuery] = useState(initialMobileFilters.query);
+  const [companyFilters, setCompanyFilters] = useState<string[]>(
+    initialMobileFilters.companyFilters
+  );
+  const [jobFilters, setJobFilters] = useState<string[]>(
+    initialMobileFilters.jobFilters
+  );
+  const [statusFilters, setStatusFilters] = useState<string[]>(
+    initialMobileFilters.statusFilters
+  );
+  const [genderFilters, setGenderFilters] = useState<string[]>(
+    initialMobileFilters.genderFilters
+  );
   const [customFilterOpen, setCustomFilterOpen] = useState(false);
   const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
   const [customFilters, setCustomFilters] = useState<Array<any>>(() => {
@@ -114,9 +175,11 @@ export default function ApplicantsMobilePage(): JSX.Element {
   const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
   const [selectedMap, setSelectedMap] = useState<Record<string, boolean>>({});
   const [showBulkModal, setShowBulkModal] = useState(false);
-  const [pageIndex, setPageIndex] = useState<number>(0);
-  const [pageSize, setPageSize] = useState<number>(10);
-  const [submittedDesc, setSubmittedDesc] = useState<boolean>(true);
+  const [pageIndex, setPageIndex] = useState<number>(initialMobileFilters.pageIndex);
+  const [pageSize, setPageSize] = useState<number>(initialMobileFilters.pageSize);
+  const [submittedDesc, setSubmittedDesc] = useState<boolean>(
+    initialMobileFilters.submittedDesc
+  );
   const [refreshing, setRefreshing] = useState(false);
 
   const { data: companies = [], refetch: refetchCompanies, isFetching: isCompaniesFetching } = useCompanies();
@@ -126,6 +189,12 @@ export default function ApplicantsMobilePage(): JSX.Element {
     const roleName = user?.roleId?.name;
     return typeof roleName === 'string' && roleName.toLowerCase() === 'super admin';
   }, [user?.roleId?.name]);
+
+  const currentUserId = useMemo(
+    () =>
+      String((user as any)?._id || (user as any)?.id || ''),
+    [user]
+  );
 
   const companyId = useMemo(() => {
     if (!user) return undefined;
@@ -138,9 +207,17 @@ export default function ApplicantsMobilePage(): JSX.Element {
 
   const availableCompanyIds = useMemo(() => (companies || []).map((c: any) => c._id || c.id).filter(Boolean), [companies]);
 
-  const needServerFetchForCompany = companyFilter ? !availableCompanyIds.includes(companyFilter) : false;
-  const jobPositionsFetchParam = needServerFetchForCompany ? [companyFilter as string] : companyId;
-  const applicantsFetchParam = needServerFetchForCompany ? [companyFilter as string] : companyId;
+  const primarySelectedCompany =
+    companyFilters.length === 1 ? companyFilters[0] : undefined;
+  const needServerFetchForCompany = primarySelectedCompany
+    ? !availableCompanyIds.includes(primarySelectedCompany)
+    : false;
+  const jobPositionsFetchParam = needServerFetchForCompany
+    ? [primarySelectedCompany as string]
+    : companyId;
+  const applicantsFetchParam = needServerFetchForCompany
+    ? [primarySelectedCompany as string]
+    : companyId;
 
   const { data: jobPositions = [], refetch: refetchJobPositions, isFetching: isJobPositionsFetching } = useJobPositions(jobPositionsFetchParam as any);
   const { data: applicants = [], isLoading, error, refetch } = useApplicants(applicantsFetchParam as any, undefined);
@@ -160,14 +237,14 @@ export default function ApplicantsMobilePage(): JSX.Element {
       const comp = Array.isArray(next) ? next.find((c: any) => c.id === 'companyId') : undefined;
       const job = Array.isArray(next) ? next.find((c: any) => c.id === 'jobPositionId') : undefined;
       if (comp) {
-        if (Array.isArray(comp.value) && comp.value.length > 0) setCompanyFilter(String(comp.value[0]));
-        else if (typeof comp.value === 'string') setCompanyFilter(comp.value);
-        else setCompanyFilter(undefined);
+        setCompanyFilters(toStringArray(comp.value));
+      } else {
+        setCompanyFilters([]);
       }
       if (job) {
-        if (Array.isArray(job.value) && job.value.length > 0) setJobFilter(String(job.value[0]));
-        else if (typeof job.value === 'string') setJobFilter(job.value);
-        else setJobFilter(undefined);
+        setJobFilters(toStringArray(job.value));
+      } else {
+        setJobFilters([]);
       }
     } catch (e) {}
     return next;
@@ -189,13 +266,13 @@ export default function ApplicantsMobilePage(): JSX.Element {
   }, [jobPositions]);
 
   const displayedJobPositions = useMemo(() => {
-    if (!companyFilter) return jobPositions || [];
+    if (companyFilters.length === 0) return jobPositions || [];
     return (jobPositions || []).filter((j: any) => {
       const cid = j?.companyId || j?.company || (j?.companyObj && j.companyObj._id) || (j?.companyId?._id);
       const id = typeof cid === 'string' ? cid : cid?._id || cid?.id;
-      return id === companyFilter;
+      return id ? companyFilters.includes(String(id)) : false;
     });
-  }, [jobPositions, companyFilter]);
+  }, [jobPositions, companyFilters]);
 
   const displayedApplicants = useMemo(() => {
     const normalizeId = (v: any) => {
@@ -226,33 +303,87 @@ export default function ApplicantsMobilePage(): JSX.Element {
     const getApplicantJobId = (a: any) => normalizeId(a?.jobPositionId || a?.job);
 
     let list = Array.isArray(applicants) ? applicants.slice() : [];
-    if (companyFilter) {
+    if (companyFilters.length > 0) {
       list = list.filter((a: any) => {
         const cid = getApplicantCompanyId(a);
-        return cid === companyFilter;
+        return cid ? companyFilters.includes(String(cid)) : false;
       });
     }
-    if (jobFilter) {
+    if (jobFilters.length > 0) {
       list = list.filter((a: any) => {
         const jid = getApplicantJobId(a);
-        return jid === jobFilter;
+        return jid ? jobFilters.includes(String(jid)) : false;
       });
     }
     return list;
-  }, [applicants, companyFilter, jobFilter, jobPositionMap]);
+  }, [applicants, companyFilters, jobFilters, jobPositionMap]);
 
 
-  // persist custom filters immediately (so back navigation restores state)
+  // Keep selected job filters valid for selected companies.
+  useEffect(() => {
+    if (companyFilters.length === 0) return;
+    setJobFilters((prev) => {
+      const next = prev.filter((jobId) => {
+        const job = jobPositionMap[jobId];
+        if (!job) return false;
+        const raw = job?.companyId || job?.company || job?.companyObj;
+        const cid = typeof raw === 'string' ? raw : raw?._id || raw?.id || '';
+        return cid ? companyFilters.includes(String(cid)) : false;
+      });
+      return next.length === prev.length ? prev : next;
+    });
+  }, [companyFilters, jobPositionMap]);
+
+  // Sync company/job filters with the column filter model used by custom modal.
+  useEffect(() => {
+    _setColumnFilters((prev) => {
+      const base = Array.isArray(prev)
+        ? prev.filter((p: any) => p.id !== 'companyId' && p.id !== 'jobPositionId')
+        : [];
+      if (companyFilters.length > 0) base.push({ id: 'companyId', value: companyFilters });
+      if (jobFilters.length > 0) base.push({ id: 'jobPositionId', value: jobFilters });
+      if (JSON.stringify(prev || []) === JSON.stringify(base)) return prev;
+      return base;
+    });
+  }, [companyFilters, jobFilters]);
+
+  // Persist filters and list preferences so they survive entering applicant details and coming back.
   useEffect(() => {
     try {
+      const mobileState = {
+        query,
+        companyFilters,
+        jobFilters,
+        statusFilters,
+        genderFilters,
+        pageIndex,
+        pageSize,
+        submittedDesc,
+      };
+      const mobileStr = JSON.stringify(mobileState);
+      sessionStorage.setItem(MOBILE_FILTERS_STORAGE_KEY, mobileStr);
+      try { localStorage.setItem(MOBILE_FILTERS_STORAGE_KEY, mobileStr); } catch (e) { }
+
       const raw = sessionStorage.getItem('applicants_table_state');
       const parsed = raw ? JSON.parse(raw) : {};
       parsed.customFilters = customFilters || [];
+      parsed.columnFilters = columnFilters || parsed.columnFilters || [];
       const str = JSON.stringify(parsed);
       sessionStorage.setItem('applicants_table_state', str);
       try { localStorage.setItem('applicants_table_state', str); } catch (e) { }
     } catch (e) {}
-  }, [customFilters]);
+  }, [
+    query,
+    companyFilters,
+    jobFilters,
+    statusFilters,
+    genderFilters,
+    pageIndex,
+    pageSize,
+    submittedDesc,
+    customFilters,
+    columnFilters,
+  ]);
 
 
   const normalizeGender = (raw: any) => {
@@ -401,30 +532,36 @@ export default function ApplicantsMobilePage(): JSX.Element {
       window.open(url || String(path), '_blank');
     };
 
-  const filtered = (displayedApplicants || []).filter((a) => {
+  const allCustomFilters = Array.isArray(customFilters) ? customFilters : [];
+  const duplicatesOnlyEnabled = allCustomFilters.some(
+    (f: any) => f?.fieldId === '__duplicates_only' && f?.value === true
+  );
+  const effectiveCustomFilters = allCustomFilters.filter(
+    (f: any) => f?.fieldId !== '__duplicates_only'
+  );
+
+  const baseFiltered = (displayedApplicants || []).filter((a) => {
+
     // status + trashed visibility
-    if (!statusFilter) {
+    if (statusFilters.length === 0) {
       // default 'All statuses' — hide trashed for everyone
       if (a.status === 'trashed') return false;
     } else {
-      // explicit status selected
-      if (statusFilter === 'trashed') {
-        // only super admin can view trashed
-        if (!isSuperAdmin) return false;
-        if (a.status !== 'trashed') return false;
-      } else {
-        if (a.status !== statusFilter) return false;
-      }
+      const allowed = isSuperAdmin
+        ? statusFilters
+        : statusFilters.filter((s) => s !== 'trashed');
+      if (allowed.length === 0) return false;
+      if (!allowed.includes(String(a.status || ''))) return false;
     }
     // gender
-    if (genderFilter) {
+    if (genderFilters.length > 0) {
       const raw = (a as any)?.gender || a?.customResponses?.gender || a?.customResponses?.['النوع'] || (a as any)['النوع'] || '';
       const g = normalizeGender(raw);
-      if (g !== genderFilter) return false;
+      if (!genderFilters.includes(g)) return false;
     }
     // custom filters
-    if (customFilters && customFilters.length) {
-      for (const f of customFilters) {
+    if (effectiveCustomFilters.length) {
+      for (const f of effectiveCustomFilters) {
         try {
           const val = getCustomResponseValue(a, f);
           if (f.operator === 'equals' || f.operator === 'is') {
@@ -444,26 +581,91 @@ export default function ApplicantsMobilePage(): JSX.Element {
     );
   });
 
+  const filtered = useMemo(() => {
+    if (!duplicatesOnlyEnabled) return baseFiltered;
+    const duplicateLookup = buildApplicantDuplicateLookup(
+      baseFiltered as any[],
+      currentUserId,
+      {
+        getCompanyId: (applicant: any) => {
+          const rawCompany =
+            applicant?.companyId || applicant?.company || applicant?.companyObj;
+          if (rawCompany) {
+            if (typeof rawCompany === 'string' || typeof rawCompany === 'number') {
+              return String(rawCompany);
+            }
+            return String(rawCompany?._id || rawCompany?.id || '');
+          }
+
+          const rawJob = applicant?.jobPositionId;
+          const jobId =
+            typeof rawJob === 'string'
+              ? rawJob
+              : (rawJob?._id ?? rawJob?.id ?? '');
+          const job = jobPositionMap[jobId];
+          const jobCompany = job?.companyId || job?.company || job?.companyObj;
+          if (!jobCompany) return undefined;
+          if (typeof jobCompany === 'string' || typeof jobCompany === 'number') {
+            return String(jobCompany);
+          }
+          return String(jobCompany?._id || jobCompany?.id || '');
+        },
+      }
+    );
+    return baseFiltered.filter((a: any) => {
+      const aid = String((a as any)?._id || (a as any)?.id || '');
+      return duplicateLookup.get(aid)?.isDuplicate === true;
+    });
+  }, [baseFiltered, duplicatesOnlyEnabled, currentUserId, jobPositionMap]);
+
   // sort filtered by submittedAt (newest first by default)
   const sortedFiltered = useMemo(() => {
     try {
-      const rows = (filtered || []).slice();
-      const getTime = (r: any) => {
+      const getTime = (r: any): number => {
         const v = r?.submittedAt || r?.submittedAt === 0 ? r.submittedAt : (r?.submittedAt ?? r?.submittedAt);
         const t = v ? new Date(v).getTime() : 0;
         return Number.isNaN(t) ? 0 : t;
       };
-      rows.sort((a: any, b: any) => {
+
+      return sortApplicantsByDuplicatePriority(
+        filtered || [],
+        currentUserId,
+        (a: any, b: any) => {
         const ta = getTime(a);
         const tb = getTime(b);
         if (ta === tb) return 0;
         return submittedDesc ? (tb - ta) : (ta - tb);
-      });
-      return rows;
+        },
+        {
+          getCompanyId: (applicant: any) => {
+            const rawCompany =
+              applicant?.companyId || applicant?.company || applicant?.companyObj;
+            if (rawCompany) {
+              if (typeof rawCompany === 'string' || typeof rawCompany === 'number') {
+                return String(rawCompany);
+              }
+              return String(rawCompany?._id || rawCompany?.id || '');
+            }
+
+            const rawJob = applicant?.jobPositionId;
+            const jobId =
+              typeof rawJob === 'string'
+                ? rawJob
+                : (rawJob?._id ?? rawJob?.id ?? '');
+            const job = jobPositionMap[jobId];
+            const jobCompany = job?.companyId || job?.company || job?.companyObj;
+            if (!jobCompany) return undefined;
+            if (typeof jobCompany === 'string' || typeof jobCompany === 'number') {
+              return String(jobCompany);
+            }
+            return String(jobCompany?._id || jobCompany?.id || '');
+          },
+        }
+      );
     } catch (e) {
       return filtered || [];
     }
-  }, [filtered, submittedDesc]);
+  }, [filtered, submittedDesc, currentUserId, jobPositionMap]);
 
   const companyMap = useMemo(() => {
     const m: Record<string, string> = {};
@@ -823,11 +1025,27 @@ export default function ApplicantsMobilePage(): JSX.Element {
                         ? 'border-brand-500 shadow-lg shadow-blue-100' 
                         : 'border-gray-100 hover:border-gray-200'
                     }`}
-                    onClick={() => {
+                    onClick={(e) => {
                       if (a && (a._id || (a as any).id)) {
                         const navId = normalizeIdGlobal(a._id) || normalizeIdGlobal((a as any).id);
                         if (navId) queryClient.setQueryData(applicantsKeys.detail(navId), a as any);
-                        navigate(`/applicant/${navId}`, { state: { applicant: a } });
+                        if (e.ctrlKey || e.metaKey) {
+                          const url = `${window.location.origin}/applicant-details/${navId}`;
+                          window.open(url, '_blank', 'noopener,noreferrer');
+                          return;
+                        }
+                        navigate(`/applicant-details/${navId}`, { state: { applicant: a } });
+                      }
+                    }}
+                    onAuxClick={(e) => {
+                      if (e.button !== 1) return;
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (a && (a._id || (a as any).id)) {
+                        const navId = normalizeIdGlobal(a._id) || normalizeIdGlobal((a as any).id);
+                        if (!navId) return;
+                        const url = `${window.location.origin}/applicant-details/${navId}`;
+                        window.open(url, '_blank', 'noopener,noreferrer');
                       }
                     }}
                   >
@@ -919,6 +1137,24 @@ export default function ApplicantsMobilePage(): JSX.Element {
 
                       {/* Action Buttons */}
                       <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const navId = normalizeIdGlobal(a._id) || normalizeIdGlobal((a as any).id);
+                            if (!navId) return;
+                            const url = `${window.location.origin}/applicant-details/${navId}`;
+                            try {
+                              window.open(url, '_blank', 'noopener,noreferrer');
+                            } catch (err) {
+                              // ignore
+                            }
+                          }}
+                          className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-blue-50 rounded-xl text-blue-700 text-sm font-medium hover:bg-blue-100 transition-colors"
+                        >
+                          <ExternalLink size={16} />
+                          <span>Open in new tab</span>
+                        </button>
                         {/* <a
                           href={`mailto:${a.email}`}
                           onClick={(e) => e.stopPropagation()}
@@ -1049,77 +1285,161 @@ export default function ApplicantsMobilePage(): JSX.Element {
             {/* Company Filter */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Company</label>
-              <select
-                value={companyFilter ?? ""}
-                onChange={(e) => { setCompanyFilter(e.target.value || undefined); setJobFilter(undefined); }}
-                className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
-              >
-                <option value="">All companies</option>
-                {companies.map((c: any) => (
-                  <option key={c._id || c.id} value={c._id || c.id}>
-                    {toPlainString(c?.name) || toPlainString(c?.companyName) || toPlainString(c?.title)}
-                  </option>
-                ))}
-              </select>
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-2">
+                <p className="mb-2 text-xs text-gray-500">
+                  {companyFilters.length ? `${companyFilters.length} selected` : 'All companies'}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {companies.map((c: any) => {
+                    const cid = String(c._id || c.id || '');
+                    const selected = companyFilters.includes(cid);
+                    return (
+                      <button
+                        key={cid}
+                        type="button"
+                        onClick={() => {
+                          setCompanyFilters((prev) => {
+                            if (selected) return prev.filter((id) => id !== cid);
+                            return [...prev, cid];
+                          });
+                        }}
+                        className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                          selected
+                            ? 'border-brand-500 bg-brand-50 text-brand-700'
+                            : 'border-gray-300 bg-white text-gray-700'
+                        }`}
+                      >
+                        {toPlainString(c?.name) || toPlainString(c?.companyName) || toPlainString(c?.title)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
 
             {/* Job Filter */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Job Position</label>
-              <select
-                value={jobFilter ?? ""}
-                onChange={(e) => setJobFilter(e.target.value || undefined)}
-                className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
-              >
-                <option value="">All jobs</option>
-                {displayedJobPositions.map((j: any) => (
-                  <option key={j._id || j.id} value={j._id || j.id}>
-                    {jobMap[j._id || j.id] || ''}
-                  </option>
-                ))}
-              </select>
+              {companyFilters.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-3 text-xs text-gray-500">
+                  Select one or more companies first to show related job positions.
+                </div>
+              ) : (
+                <div className="rounded-xl border border-gray-200 bg-gray-50 p-2">
+                  <p className="mb-2 text-xs text-gray-500">
+                    {jobFilters.length ? `${jobFilters.length} selected` : 'All jobs'}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {displayedJobPositions.map((j: any) => {
+                      const jid = String(j._id || j.id || '');
+                      const selected = jobFilters.includes(jid);
+                      return (
+                        <button
+                          key={jid}
+                          type="button"
+                          onClick={() => {
+                            setJobFilters((prev) => {
+                              if (selected) return prev.filter((id) => id !== jid);
+                              return [...prev, jid];
+                            });
+                          }}
+                          className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                            selected
+                              ? 'border-brand-500 bg-brand-50 text-brand-700'
+                              : 'border-gray-300 bg-white text-gray-700'
+                          }`}
+                        >
+                          {jobMap[j._id || j.id] || ''}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Status Filter */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
-              <select
-                value={statusFilter ?? ""}
-                onChange={(e) => setStatusFilter(e.target.value || undefined)}
-                className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
-              >
-                <option value="">All statuses</option>
-                <option value="pending">Pending</option>
-                <option value="interview">Interview</option>
-                <option value="interviewed">Interviewed</option>
-                <option value="approved">Approved</option>
-                <option value="rejected">Rejected</option>
-                {isSuperAdmin && <option value="trashed">Trashed</option>}
-              </select>
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-2">
+                <p className="mb-2 text-xs text-gray-500">
+                  {statusFilters.length ? `${statusFilters.length} selected` : 'All statuses'}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    'pending',
+                    'interview',
+                    'interviewed',
+                    'approved',
+                    'rejected',
+                    ...(isSuperAdmin ? ['trashed'] : []),
+                  ].map((status) => {
+                    const selected = statusFilters.includes(status);
+                    return (
+                      <button
+                        key={status}
+                        type="button"
+                        onClick={() => {
+                          setStatusFilters((prev) => {
+                            if (selected) return prev.filter((s) => s !== status);
+                            return [...prev, status];
+                          });
+                        }}
+                        className={`rounded-full border px-3 py-1 text-xs font-medium capitalize transition-colors ${
+                          selected
+                            ? 'border-brand-500 bg-brand-50 text-brand-700'
+                            : 'border-gray-300 bg-white text-gray-700'
+                        }`}
+                      >
+                        {status.replace('_', ' ')}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
 
             {/* Gender Filter */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Gender</label>
-              <select
-                value={genderFilter ?? ""}
-                onChange={(e) => setGenderFilter(e.target.value || undefined)}
-                className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
-              >
-                <option value="">All genders</option>
-                {genderOptions.map((g) => (
-                  <option key={g.id} value={g.id}>{g.title}</option>
-                ))}
-              </select>
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-2">
+                <p className="mb-2 text-xs text-gray-500">
+                  {genderFilters.length ? `${genderFilters.length} selected` : 'All genders'}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {genderOptions.map((g) => {
+                    const selected = genderFilters.includes(g.id);
+                    return (
+                      <button
+                        key={g.id}
+                        type="button"
+                        onClick={() => {
+                          setGenderFilters((prev) => {
+                            if (selected) return prev.filter((id) => id !== g.id);
+                            return [...prev, g.id];
+                          });
+                        }}
+                        className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                          selected
+                            ? 'border-brand-500 bg-brand-50 text-brand-700'
+                            : 'border-gray-300 bg-white text-gray-700'
+                        }`}
+                      >
+                        {g.title}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
 
             {/* Clear Filters Button */}
             <button
               onClick={() => {
-                setCompanyFilter(undefined);
-                setJobFilter(undefined);
-                setStatusFilter(undefined);
-                setGenderFilter(undefined);
+                setCompanyFilters([]);
+                setJobFilters([]);
+                setStatusFilters([]);
+                setGenderFilters([]);
                 setQuery("");
                 setCustomFilters([]);
                 setFilterDrawerOpen(false);

@@ -71,7 +71,7 @@ export default function App() {
               />
               <Route path="applicants" element={<Applicants />} />
               <Route path="applicants/mobile" element={<ApplicantsMobilePage />} />
-              <Route path="applicant/:id" element={<ApplicantData />} />
+              <Route path="applicant-details/:id" element={<ApplicantData />} />
               <Route path="recruiting/saved-fields" element={<SavedFields />} />
               <Route path="recruiting/saved-fields/preview/:fieldId" element={<SavedFieldsPreview />} />
               <Route path="recruiting/saved-fields/create" element={<CreateSavedField />} />

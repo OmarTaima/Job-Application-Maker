@@ -742,12 +742,41 @@ const CustomFilterModal: React.FC<Props> = ({
     setColumnFilters(prev => {
       const base = Array.isArray(prev) ? prev.filter((p: any) => p.id !== 'jobPositionId' && p.id !== 'companyId') : [];
       const next = Array.isArray(base) ? [...base] : [];
-      if (modalSelectedCompanyIds && modalSelectedCompanyIds.length > 0) {
-        next.push({ id: 'companyId', value: modalSelectedCompanyIds });
+
+      const selectedCompanyIds = Array.from(new Set((modalSelectedCompanyIds || []).map(String).filter(Boolean)));
+      const selectedJobIds = Array.from(new Set((modalSelectedJobIds || []).map(String).filter(Boolean)));
+
+      const getId = (v: any) => (typeof v === 'string' ? v : v?._id ?? v?.id ?? '');
+      const validJobIds = new Set<string>();
+      (jobPositions || []).forEach((job: any) => {
+        const jobId = String(getId(job._id) || getId(job.id) || '');
+        if (!jobId) return;
+
+        // If no company is selected, keep all chosen jobs.
+        if (selectedCompanyIds.length === 0) {
+          validJobIds.add(jobId);
+          return;
+        }
+
+        const companyRaw = job?.companyId || job?.company || job?.companyObj;
+        const companyId = String(getId(companyRaw) || '');
+        if (companyId && selectedCompanyIds.includes(companyId)) {
+          validJobIds.add(jobId);
+        }
+      });
+
+      const sanitizedJobIds = selectedJobIds.filter((jid) =>
+        selectedCompanyIds.length > 0 ? validJobIds.has(jid) : true
+      );
+
+      // For users assigned to one company, avoid writing a company column filter.
+      if (!isSingleAssignedCompany && selectedCompanyIds.length > 0) {
+        next.push({ id: 'companyId', value: selectedCompanyIds });
       }
-      if (modalSelectedJobIds && modalSelectedJobIds.length > 0) {
-        next.push({ id: 'jobPositionId', value: modalSelectedJobIds });
+      if (sanitizedJobIds.length > 0) {
+        next.push({ id: 'jobPositionId', value: sanitizedJobIds });
       }
+
       try {
         const raw = sessionStorage.getItem('applicants_table_state');
         const parsed = raw ? JSON.parse(raw) : {};
@@ -1158,6 +1187,52 @@ const CustomFilterModal: React.FC<Props> = ({
                       );
                     })()}
                   </Box>
+                  </Box>
+
+                  {/* Duplicates Only */}
+                  <Box>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <FilterListIcon fontSize="small" color="primary" />
+                      Show All Duplicates
+                    </Typography>
+                    <Box sx={{ display: 'flex', gap: 2 }}>
+                      {(() => {
+                        const existing = customFilters.find((cf: any) => cf.fieldId === '__duplicates_only') || {};
+                        const isEnabled = existing.value === true;
+                        return (
+                          <ToggleButtonGroup value={isEnabled ? 'duplicates' : 'all'} exclusive size="small">
+                            <StyledToggleButton
+                              value="all"
+                              onClick={() => {
+                                setCustomFilters((prev) =>
+                                  prev.filter((p: any) => p.fieldId !== '__duplicates_only')
+                                );
+                              }}
+                            >
+                              All
+                            </StyledToggleButton>
+                            <StyledToggleButton
+                              value="duplicates"
+                              onClick={() => {
+                                setCustomFilters((prev) => {
+                                  const next = prev.filter((p: any) => p.fieldId !== '__duplicates_only');
+                                  next.push({
+                                    fieldId: '__duplicates_only',
+                                    labelEn: 'Show All Duplicates',
+                                    labelAr: 'عرض المكررات فقط',
+                                    type: 'duplicatesOnly',
+                                    value: true,
+                                  });
+                                  return next;
+                                });
+                              }}
+                            >
+                              Only Duplicates
+                            </StyledToggleButton>
+                          </ToggleButtonGroup>
+                        );
+                      })()}
+                    </Box>
                   </Box>
 
                   {/* Expected Salary (always present) */}

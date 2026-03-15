@@ -52,6 +52,26 @@ const ApplicantData = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
+ useEffect(() => {
+  // Check if this tab was opened in background
+  const params = new URLSearchParams(location.search);
+  if (params.get('bg') === '1') {
+    // This tab was opened in background, try to focus back to opener
+    if (window.opener && !window.opener.closed) {
+      // Focus back to the opener (original tab)
+      try {
+        window.opener.focus();
+      } catch (e) {
+        // Ignore cross-origin errors
+      }
+      
+      // Also try to blur this window
+      try {
+        window.blur();
+      } catch (e) {}
+    }
+  }
+}, [location.search]);
   // Navigation / incoming state
   // If the previous route passed applicant data via location.state we can use it for instant rendering
   const stateApplicant = location.state?.applicant as Applicant | undefined;
@@ -448,7 +468,7 @@ const ApplicantData = () => {
       setTimeout(() => {
         try {
           const p = window.location.pathname || '';
-          const inApplicantsPages = p.startsWith('/applicant') || p.startsWith('/applicants');
+          const inApplicantsPages = p.startsWith('/applicant-details') || p.startsWith('/applicants');
           if (!inApplicantsPages) {
             try { localStorage.removeItem('applicants_table_state'); } catch (e) { /* ignore */ }
             try { sessionStorage.removeItem('applicants_table_state'); } catch (e) { /* ignore */ }
@@ -1188,7 +1208,7 @@ const ApplicantData = () => {
               onClick={() => setShowStatusModal(true)}
               className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-green-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-green-700"
             >
-              <span className="hidden sm:inline">Change</span> Status
+              <span className="hidden sm:inline">{applicant.status.charAt(0).toUpperCase() + applicant.status.slice(1)}</span> 
             </button>
             <button
               onClick={() => {

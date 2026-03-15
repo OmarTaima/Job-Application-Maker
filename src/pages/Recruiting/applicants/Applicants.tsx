@@ -170,6 +170,7 @@ import {
 } from '../../../components/modals/CustomFilterModal';
 import type { Applicant } from '../../../store/slices/applicantsSlice';
 import { toPlainString } from '../../../utils/strings';
+import { buildApplicantDuplicateLookup } from '../../../utils/applicantDuplicateSort';
 import CustomFilterModal from '../../../components/modals/CustomFilterModal';
 import { TableLayout } from '../../../services/authService';
 import { useTableLayout } from '../../../hooks/queries/useTableLayout';
@@ -208,51 +209,46 @@ const Applicants = () => {
     }
   }, []);
 
-  // Context menu state (declared early so menu position memo can read it)
-  const [contextMenu, setContextMenu] = useState<{
-    open: boolean;
-    x: number;
-    y: number;
-    row?: any;
-  }>({ open: false, x: 0, y: 0 });
-
-  const menuPos = useMemo(() => {
-    if (!contextMenu.open) return { x: 0, y: 0 };
+  const openApplicantDetailsInNewTab = (row: any) => {
     try {
-      const maxW = Math.max(0, window.innerWidth - 220);
-      const maxH = Math.max(0, window.innerHeight - 160);
-      const x = Math.max(8, Math.min(contextMenu.x, maxW));
-      const y = Math.max(8, Math.min(contextMenu.y, maxH));
-      return { x, y };
-    } catch (err) {
-      return { x: contextMenu.x || 0, y: contextMenu.y || 0 };
-    }
-  }, [contextMenu.open, contextMenu.x, contextMenu.y]);
-
-  const saveTableState = () => {
-    try {
-      const state = table.getState();
-      const toSave: any = {
-        pagination: state.pagination,
-        sorting: state.sorting,
-        columnFilters: state.columnFilters,
-      };
-      try {
-        // include customFilters if present in component scope
-        if (Array.isArray((window as any).__app_customFilters)) {
-          toSave.customFilters = (window as any).__app_customFilters;
-        }
-      } catch {}
-      const str = JSON.stringify(toSave);
-      sessionStorage.setItem('applicants_table_state', str);
-      try {
-        localStorage.setItem('applicants_table_state', str);
-      } catch (e) {
-        /* ignore */
-      }
+      const url = `${window.location.origin}/applicant-details/${row.id}`;
+      window.open(url, '_blank', 'noopener,noreferrer');
     } catch (e) {
       // ignore
     }
+  };
+
+  const currentUserId = useMemo(
+    () => String((user as any)?._id || (user as any)?.id || ''),
+    [user]
+  );
+
+  const getApplicantStableId = (applicant: any) =>
+    String(applicant?._id || applicant?.id || '');
+
+  const getApplicantHref = (row: any) => {
+    const orig: any = row?.original ?? row;
+    const navId = String(orig?._id || orig?.id || row?.id || '');
+    return `/applicant-details/${navId}`;
+  };
+
+  const handleApplicantLinkClick = (
+    e: React.MouseEvent<HTMLAnchorElement>,
+    row: any
+  ) => {
+    if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) {
+      e.stopPropagation();
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    navigate(getApplicantHref(row), { state: { applicant: row.original } });
+  };
+
+  const handleApplicantLinkAuxClick = (
+    e: React.MouseEvent<HTMLAnchorElement>
+  ) => {
+    e.stopPropagation();
   };
 
   // Local state
@@ -269,7 +265,7 @@ const Applicants = () => {
   );
   // MRT sorting state (control sorting externally so we can offer only asc/desc for Submitted)
   const [sorting, setSorting] = useState<Array<any>>(
-    persistedTableState?.sorting ?? [{ id: 'submittedAt', desc: true }]
+    [{ id: 'submittedAt', desc: true }]
   );
   // Pagination state persisted
   const [pagination, setPagination] = useState(
@@ -308,24 +304,9 @@ const Applicants = () => {
   }, [companyId]);
 
   // Use React Query hooks
-  // Fetch job positions first so we can convert company filter into jobPositionIds
-  // If the Company column has an active filter, prefer that companyId(s)
-  const selectedCompanyFilter = useMemo(() => {
-    try {
-      const cf = Array.isArray(columnFilters)
-        ? columnFilters.find((c: any) => c.id === 'companyId')
-        : undefined;
-      if (!cf) return undefined;
-      const v = cf.value;
-      if (!v) return undefined;
-      if (Array.isArray(v) && v.length) return v;
-      return typeof v === 'string' ? [v] : undefined;
-    } catch (e) {
-      return undefined;
-    }
-  }, [columnFilters]);
-
-  const jobPositionCompanyParam = selectedCompanyFilter ?? companyId;
+  // Keep a full job-position map for the current user scope so MRT company/job
+  // filters always resolve consistently even while filter values are changing.
+  const jobPositionCompanyParam = companyId;
   const {
     data: jobPositions = [],
     isLoading: jobPositionsLoading,
@@ -708,6 +689,94 @@ const Applicants = () => {
       .filter((x) => x.id && x.title);
   }, [jobPositions]);
 
+  // Keep columnFilters compatible with the current MRT column set and selected company/jobs.
+  useEffect(() => {
+    try {
+      if (!Array.isArray(columnFilters)) return;
+
+      const getId = (v: any) =>
+        typeof v === 'string' ? v : (v?._id ?? v?.id ?? '');
+      const toArray = (v: any): string[] => {
+        if (Array.isArray(v)) return v.map(String).filter(Boolean);
+        if (v === undefined || v === null || v === '') return [];
+        return [String(v)];
+      };
+
+      let changed = false;
+      let next = [...columnFilters] as any[];
+
+      if (!showCompanyColumn) {
+        const prevLen = next.length;
+        next = next.filter((f: any) => f?.id !== 'companyId');
+        if (next.length !== prevLen) changed = true;
+      }
+
+      const companyFilter = next.find((f: any) => f?.id === 'companyId');
+      const selectedCompanyIds = new Set(toArray(companyFilter?.value));
+
+      const jobFilterIndex = next.findIndex((f: any) => f?.id === 'jobPositionId');
+      if (jobFilterIndex !== -1) {
+        const current = next[jobFilterIndex];
+        const currentJobIds = toArray(current?.value);
+
+        const sanitizedJobIds =
+          selectedCompanyIds.size === 0
+            ? currentJobIds
+            : currentJobIds.filter((jobId) => {
+                const job = jobPositionMap[jobId];
+                if (!job) return false;
+                const companyRaw = job?.companyId || job?.company || job?.companyObj;
+                const companyId = String(getId(companyRaw) || '');
+                return companyId ? selectedCompanyIds.has(companyId) : false;
+              });
+
+        const uniqueJobIds = Array.from(new Set(sanitizedJobIds));
+
+        if (uniqueJobIds.length === 0) {
+          next.splice(jobFilterIndex, 1);
+          changed = true;
+        } else if (
+          uniqueJobIds.length !== currentJobIds.length ||
+          uniqueJobIds.some((v, i) => v !== currentJobIds[i])
+        ) {
+          next[jobFilterIndex] = { ...current, value: uniqueJobIds };
+          changed = true;
+        }
+      }
+
+      const compacted = next.filter((f: any) => {
+        if (!f || !f.id) return false;
+        if (Array.isArray(f.value)) return f.value.length > 0;
+        return true;
+      });
+      if (compacted.length !== next.length) {
+        next = compacted;
+        changed = true;
+      }
+
+      if (!changed) return;
+
+      setColumnFilters(next as MRT_ColumnFiltersState);
+
+      try {
+        const raw = sessionStorage.getItem('applicants_table_state');
+        const parsed = raw ? JSON.parse(raw) : {};
+        parsed.columnFilters = next;
+        const str = JSON.stringify(parsed);
+        sessionStorage.setItem('applicants_table_state', str);
+        try {
+          localStorage.setItem('applicants_table_state', str);
+        } catch (e) {
+          // ignore
+        }
+      } catch (e) {
+        // ignore
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, [columnFilters, showCompanyColumn, jobPositionMap]);
+
   // availableCustomFields was replaced by dedupedCustomFields; keep jobPositions dependency above
 
   // Custom filters configured via the modal (rehydrate from persisted table state)
@@ -760,7 +829,7 @@ const Applicants = () => {
         try {
           const p = window.location.pathname || '';
           const inApplicantsPages =
-            p.startsWith('/applicant') || p.startsWith('/applicants');
+            p.startsWith('/applicant-details') || p.startsWith('/applicants');
           if (!inApplicantsPages) {
             try {
               localStorage.removeItem('applicants_table_state');
@@ -1026,10 +1095,21 @@ const Applicants = () => {
   };
 
   const filteredApplicants = useMemo(() => {
-    if (!customFilters || !customFilters.length) return displayedApplicants;
-    return displayedApplicants.filter((a: any) => {
+    const allCustomFilters = Array.isArray(customFilters) ? customFilters : [];
+    const duplicatesOnlyEnabled = allCustomFilters.some(
+      (f: any) => f?.fieldId === '__duplicates_only' && f?.value === true
+    );
+    const effectiveCustomFilters = allCustomFilters.filter(
+      (f: any) => f?.fieldId !== '__duplicates_only'
+    );
+
+    const baseFiltered =
+      effectiveCustomFilters.length === 0
+        ? displayedApplicants
+        : displayedApplicants.filter((a: any) => {
       try {
-        for (const f of customFilters) {
+        for (const f of effectiveCustomFilters) {
+
           let raw = getCustomResponseValue(a, f);
           // Override for hardcoded personal-info filters that are not stored
           // as job custom fields.
@@ -1694,7 +1774,74 @@ const Applicants = () => {
         return false;
       }
     });
-  }, [displayedApplicants, customFilters]);
+
+    if (!duplicatesOnlyEnabled) return baseFiltered;
+
+    const duplicateLookup = buildApplicantDuplicateLookup(
+      baseFiltered as any[],
+      currentUserId,
+      {
+        getCompanyId: (applicant: any) => {
+          const rawCompany =
+            applicant?.companyId || applicant?.company || applicant?.companyObj;
+          if (rawCompany) {
+            if (typeof rawCompany === 'string' || typeof rawCompany === 'number') {
+              return String(rawCompany);
+            }
+            return String(rawCompany?._id || rawCompany?.id || '');
+          }
+
+          const rawJob = applicant?.jobPositionId;
+          const jobId =
+            typeof rawJob === 'string'
+              ? rawJob
+              : (rawJob?._id ?? rawJob?.id ?? '');
+          const job = jobPositionMap[jobId];
+          const jobCompany = job?.companyId || job?.company || job?.companyObj;
+          if (!jobCompany) return undefined;
+          if (typeof jobCompany === 'string' || typeof jobCompany === 'number') {
+            return String(jobCompany);
+          }
+          return String(jobCompany?._id || jobCompany?.id || '');
+        },
+      }
+    );
+
+    return baseFiltered.filter((a: any) => {
+      const aid = String(a?._id || a?.id || '');
+      return duplicateLookup.get(aid)?.isDuplicate === true;
+    });
+  }, [displayedApplicants, customFilters, currentUserId, jobPositionMap]);
+
+  const duplicatePriorityLookup = useMemo(
+    () =>
+      buildApplicantDuplicateLookup(filteredApplicants as any[], currentUserId, {
+        getCompanyId: (applicant: any) => {
+          const rawCompany =
+            applicant?.companyId || applicant?.company || applicant?.companyObj;
+          if (rawCompany) {
+            if (typeof rawCompany === 'string' || typeof rawCompany === 'number') {
+              return String(rawCompany);
+            }
+            return String(rawCompany?._id || rawCompany?.id || '');
+          }
+
+          const rawJob = applicant?.jobPositionId;
+          const jobId =
+            typeof rawJob === 'string'
+              ? rawJob
+              : (rawJob?._id ?? rawJob?.id ?? '');
+          const job = jobPositionMap[jobId];
+          const jobCompany = job?.companyId || job?.company || job?.companyObj;
+          if (!jobCompany) return undefined;
+          if (typeof jobCompany === 'string' || typeof jobCompany === 'number') {
+            return String(jobCompany);
+          }
+          return String(jobCompany?._id || jobCompany?.id || '');
+        },
+      }),
+    [filteredApplicants, currentUserId, jobPositionMap]
+  );
 
   // Build gender filter options from the applicants dataset but apply only
   // the trashed-visibility rule (so options persist after refresh even when
@@ -1935,20 +2082,51 @@ const Applicants = () => {
         enableSorting: false,
         Cell: ({ row, table }) => {
           const orig: any = row.original as any;
+          const href = getApplicantHref(row);
           const possible =
             orig?.applicantNo ||
             orig?.applicantNumber ||
             orig?.applicationNo ||
             orig?.applicationId;
-          if (possible) return String(possible);
+          if (possible)
+            return (
+              <a
+                href={href}
+                className="block h-full w-full text-inherit underline-offset-2 hover:underline"
+                onClick={(e) => handleApplicantLinkClick(e, row)}
+                onAuxClick={handleApplicantLinkAuxClick}
+              >
+                {String(possible)}
+              </a>
+            );
           // fallback to visible index + 1 for human-friendly numbering
           const idx =
             row.index ??
             table.getRowModel().rows.findIndex((r) => r.id === row.id);
-          if (typeof idx === 'number' && idx >= 0) return String(idx + 1);
+          if (typeof idx === 'number' && idx >= 0)
+            return (
+              <a
+                href={href}
+                className="block h-full w-full text-inherit underline-offset-2 hover:underline"
+                onClick={(e) => handleApplicantLinkClick(e, row)}
+                onAuxClick={handleApplicantLinkAuxClick}
+              >
+                {String(idx + 1)}
+              </a>
+            );
           // last resort: shortened id
           const id = orig?._id || orig?.id || '';
-          return id ? String(id).slice(0, 8) : '-';
+          if (!id) return '-';
+          return (
+            <a
+              href={href}
+              className="block h-full w-full text-inherit underline-offset-2 hover:underline"
+              onClick={(e) => handleApplicantLinkClick(e, row)}
+              onAuxClick={handleApplicantLinkAuxClick}
+            >
+              {String(id).slice(0, 8)}
+            </a>
+          );
         },
       },
       {
@@ -1957,28 +2135,30 @@ const Applicants = () => {
         size: 80,
         enableSorting: false,
         enableColumnFilter: false,
-        Cell: ({ row }: { row: { original: Applicant } }) => (
-          <div
-            className="h-10 w-10 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700 cursor-pointer hover:ring-2 hover:ring-brand-500 transition"
-            onClick={(e) => {
-              e.stopPropagation();
-              if (row.original.profilePhoto) {
-                setPreviewPhoto(row.original.profilePhoto);
-              }
-            }}
-          >
-            {row.original.profilePhoto ? (
-              <ImageThumbnail
-                src={row.original.profilePhoto}
-                alt={row.original.fullName}
-              />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center text-sm font-semibold text-gray-500 dark:text-gray-400">
-                {row.original.fullName.charAt(0).toUpperCase()}
-              </div>
-            )}
-          </div>
-        ),
+        Cell: ({ row }: { row: { original: Applicant } }) => {
+          return (
+            <div
+              className="h-10 w-10 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700 transition hover:ring-2 hover:ring-brand-500 cursor-pointer"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (row.original.profilePhoto) {
+                  setPreviewPhoto(row.original.profilePhoto);
+                }
+              }}
+            >
+              {row.original.profilePhoto ? (
+                <ImageThumbnail
+                  src={row.original.profilePhoto}
+                  alt={row.original.fullName}
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center text-sm font-semibold text-gray-500 dark:text-gray-400">
+                  {row.original.fullName.charAt(0).toUpperCase()}
+                </div>
+              )}
+            </div>
+          );
+        },
       },
 
       {
@@ -1989,6 +2169,7 @@ const Applicants = () => {
         enableSorting: false,
         Cell: ({ row }: { row: { original: Applicant } }) => {
           const orig: any = row.original;
+          const href = getApplicantHref(row);
           const seenBy = orig?.seenBy ?? [];
           const currentUserId =
             (user as any)?._id || (user as any)?.id || undefined;
@@ -2001,9 +2182,18 @@ const Applicants = () => {
             });
 
           return (
-            <div className={isSeen ? 'text-gray-400' : 'text-gray-900'}>
+            <a
+              href={href}
+              className={
+                isSeen
+                  ? 'block h-full w-full text-gray-400'
+                  : 'block h-full w-full text-gray-900'
+              }
+              onClick={(e) => handleApplicantLinkClick(e, row)}
+              onAuxClick={handleApplicantLinkAuxClick}
+            >
               {orig?.fullName || '-'}
-            </div>
+            </a>
           );
         },
       },
@@ -2013,6 +2203,19 @@ const Applicants = () => {
         size: 200,
         enableColumnFilter: true,
         enableSorting: false,
+        Cell: ({ row }: { row: { original: Applicant } }) => {
+          const href = getApplicantHref(row);
+          return (
+            <a
+              href={href}
+              className="block h-full w-full text-inherit"
+              onClick={(e) => handleApplicantLinkClick(e, row)}
+              onAuxClick={handleApplicantLinkAuxClick}
+            >
+              {row.original.email || '-'}
+            </a>
+          );
+        },
       },
       {
         accessorKey: 'phone',
@@ -2020,6 +2223,19 @@ const Applicants = () => {
         size: 130,
         enableColumnFilter: true,
         enableSorting: false,
+        Cell: ({ row }: { row: { original: Applicant } }) => {
+          const href = getApplicantHref(row);
+          return (
+            <a
+              href={href}
+              className="block h-full w-full text-inherit"
+              onClick={(e) => handleApplicantLinkClick(e, row)}
+              onAuxClick={handleApplicantLinkAuxClick}
+            >
+              {row.original.phone || '-'}
+            </a>
+          );
+        },
       },
       {
         id: 'gender',
@@ -2136,7 +2352,17 @@ const Applicants = () => {
             (row.original as any)['النوع'] ||
             '';
           const g = normalizeGender(raw);
-          return g || '-';
+          const href = getApplicantHref(row);
+          return (
+            <a
+              href={href}
+              className="block h-full w-full text-inherit"
+              onClick={(e) => handleApplicantLinkClick(e, row)}
+              onAuxClick={handleApplicantLinkAuxClick}
+            >
+              {g || '-'}
+            </a>
+          );
         },
       },
       ...(showCompanyColumn
@@ -2267,6 +2493,7 @@ const Applicants = () => {
                 const getId = (v: any) =>
                   typeof v === 'string' ? v : (v?._id ?? v?.id ?? '');
                 const jobPosition = jobPositionMap[getId(jobPositionId)];
+                const href = getApplicantHref(row);
                 if (jobPosition?.companyId) {
                   const companyId =
                     typeof jobPosition.companyId === 'string'
@@ -2274,10 +2501,26 @@ const Applicants = () => {
                       : jobPosition.companyId._id || '';
                   const company = companyMap[companyId];
                   return (
-                    toPlainString(company?.name) || company?.title || 'N/A'
+                    <a
+                      href={href}
+                      className="block h-full w-full text-inherit"
+                      onClick={(e) => handleApplicantLinkClick(e, row)}
+                      onAuxClick={handleApplicantLinkAuxClick}
+                    >
+                      {toPlainString(company?.name) || company?.title || 'N/A'}
+                    </a>
                   );
                 }
-                return 'N/A';
+                return (
+                  <a
+                    href={href}
+                    className="block h-full w-full text-inherit"
+                    onClick={(e) => handleApplicantLinkClick(e, row)}
+                    onAuxClick={handleApplicantLinkAuxClick}
+                  >
+                    N/A
+                  </a>
+                );
               },
             },
           ]
@@ -2401,6 +2644,7 @@ const Applicants = () => {
 
         Cell: ({ row }: { row: { original: Applicant } }) => {
           const raw = row.original.jobPositionId;
+          const href = getApplicantHref(row);
 
           const getId = (v: any) => {
             if (!v) return '';
@@ -2418,7 +2662,16 @@ const Applicants = () => {
                 jobOptions.find((o) => o.id === jobId)?.title ??
                 'N/A');
 
-          return <span className="text-sm font-medium">{title}</span>;
+          return (
+            <a
+              href={href}
+              className="block h-full w-full text-sm font-medium text-inherit"
+              onClick={(e) => handleApplicantLinkClick(e, row)}
+              onAuxClick={handleApplicantLinkAuxClick}
+            >
+              {title}
+            </a>
+          );
         },
       },
       {
@@ -2531,18 +2784,26 @@ const Applicants = () => {
 
         Cell: ({ row }: { row: { original: Applicant } }) => {
           const colors = getStatusColor(row.original.status);
+          const href = getApplicantHref(row);
 
           return (
-            <span
-              style={{
-                backgroundColor: colors.bg,
-                color: colors.color,
-              }}
-              className="inline-block rounded-full px-3 py-1 text-xs font-semibold"
+            <a
+              href={href}
+              className="block h-full w-full"
+              onClick={(e) => handleApplicantLinkClick(e, row)}
+              onAuxClick={handleApplicantLinkAuxClick}
             >
-              {row.original.status.charAt(0).toUpperCase() +
-                row.original.status.slice(1)}
-            </span>
+              <span
+                style={{
+                  backgroundColor: colors.bg,
+                  color: colors.color,
+                }}
+                className="inline-block rounded-full px-3 py-1 text-xs font-semibold"
+              >
+                {row.original.status.charAt(0).toUpperCase() +
+                  row.original.status.slice(1)}
+              </span>
+            </a>
           );
         },
       },
@@ -2583,6 +2844,34 @@ const Applicants = () => {
         muiTableHeadCellProps: { className: 'hide-default-sort-icon' },
         // Sorting function compares ISO date strings safely
         sortingFn: (rowA: any, rowB: any, columnId: string) => {
+          const scoreA =
+            duplicatePriorityLookup.get(
+              getApplicantStableId(rowA?.original)
+            )?.priorityScore ?? 0;
+          const scoreB =
+            duplicatePriorityLookup.get(
+              getApplicantStableId(rowB?.original)
+            )?.priorityScore ?? 0;
+          const isDupA =
+            duplicatePriorityLookup.get(
+              getApplicantStableId(rowA?.original)
+            )?.isDuplicate ?? false;
+          const isDupB =
+            duplicatePriorityLookup.get(
+              getApplicantStableId(rowB?.original)
+            )?.isDuplicate ?? false;
+          const submittedSortState = sorting.find((s: any) => s.id === columnId);
+          const isDesc = submittedSortState ? submittedSortState.desc : true;
+
+          // Duplicate applicants should be grouped at the top regardless of date.
+          if (isDupA !== isDupB) return isDupA ? 1 : -1;
+
+          // Inside duplicate groups, prioritize unseen and upcoming-interview rows.
+          if (scoreA !== scoreB) {
+            if (isDesc) return scoreA > scoreB ? 1 : -1;
+            return scoreA > scoreB ? -1 : 1;
+          }
+
           const getVal = (r: any) => {
             const v = r.getValue(columnId) ?? r.original?.submittedAt;
             const t = v ? new Date(v).getTime() : 0;
@@ -2593,7 +2882,19 @@ const Applicants = () => {
           if (a === b) return 0;
           return a > b ? 1 : -1;
         },
-        Cell: ({ row }: any) => formatDate(row.original.submittedAt),
+        Cell: ({ row }: any) => {
+          const href = getApplicantHref(row);
+          return (
+            <a
+              href={href}
+              className="block h-full w-full text-inherit"
+              onClick={(e) => handleApplicantLinkClick(e, row)}
+              onAuxClick={handleApplicantLinkAuxClick}
+            >
+              {formatDate(row.original.submittedAt)}
+            </a>
+          );
+        },
       },
       {
         id: 'actions',
@@ -2659,6 +2960,8 @@ const Applicants = () => {
       formatDate,
       statusAnchorEl,
       jobAnchorEl,
+      duplicatePriorityLookup,
+      sorting,
     ]
   );
 
@@ -2965,7 +3268,7 @@ const Applicants = () => {
       );
     },
     muiTableBodyRowProps: ({ row }) => ({
-      onClick: () => {
+      onClick: (e: any) => {
         try {
           const state = table.getState();
           sessionStorage.setItem(
@@ -2979,16 +3282,24 @@ const Applicants = () => {
         } catch (e) {
           // ignore
         }
-        navigate(`/applicant/${row.id}`, {
+
+        // Support Ctrl/Cmd click on row to open details in new tab.
+        if (e?.ctrlKey || e?.metaKey) {
+          openApplicantDetailsInNewTab(row);
+          return;
+        }
+
+        navigate(`/applicant-details/${row.id}`, {
           state: { applicant: row.original },
         });
       },
-      onContextMenu: (e) => {
-        try {
+      onAuxClick: (e: any) => {
+        // Middle-click on row opens in new tab.
+        if (e?.button === 1) {
           e.preventDefault();
           e.stopPropagation();
-        } catch {}
-        setContextMenu({ open: true, x: e.clientX, y: e.clientY, row });
+          openApplicantDetailsInNewTab(row);
+        }
       },
       sx: {
         cursor: 'pointer',
@@ -3013,23 +3324,6 @@ const Applicants = () => {
       // ignore
     }
   }, [pagination, sorting, columnFilters]);
-
-  // Close custom context menu on outside click or Escape
-  useEffect(() => {
-    const onDocClick = () => {
-      setContextMenu((c) => (c.open ? { ...c, open: false } : c));
-    };
-    const onEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape')
-        setContextMenu((c) => (c.open ? { ...c, open: false } : c));
-    };
-    document.addEventListener('click', onDocClick);
-    document.addEventListener('keydown', onEsc);
-    return () => {
-      document.removeEventListener('click', onDocClick);
-      document.removeEventListener('keydown', onEsc);
-    };
-  }, []);
 
   return (
     <>
@@ -3194,83 +3488,6 @@ const Applicants = () => {
           </>
         </ComponentCard>
       </div>
-
-      {/* Custom context menu for applicant rows */}
-      {contextMenu.open && (
-        <div
-          style={{
-            position: 'fixed',
-            left: menuPos.x,
-            top: menuPos.y,
-            zIndex: 11000,
-          }}
-          onClick={(e) => {
-            e.stopPropagation();
-          }}
-        >
-          <div className="w-52 rounded bg-white dark:bg-gray-800 border dark:border-gray-700 shadow-lg overflow-hidden text-sm">
-            <button
-              className="w-full text-left px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
-              onClick={() => {
-                saveTableState();
-                try {
-                  const url = `${window.location.origin}/applicant/${contextMenu.row.id}`;
-                  window.open(url, '_blank');
-                } catch (err) {
-                  navigate(`/applicant/${contextMenu.row.id}`, {
-                    state: { applicant: contextMenu.row.original },
-                  });
-                }
-                setContextMenu((c) => ({ ...c, open: false }));
-              }}
-            >
-              Open in new tab
-            </button>
-            <button
-              className="w-full text-left px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
-              onClick={() => {
-                saveTableState();
-                navigate(`/applicant/${contextMenu.row.id}`, {
-                  state: { applicant: contextMenu.row.original },
-                });
-                setContextMenu((c) => ({ ...c, open: false }));
-              }}
-            >
-              Open in this tab
-            </button>
-            <button
-              className="w-full text-left px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
-              onClick={async () => {
-                try {
-                  const url = `${window.location.origin}/applicant/${contextMenu.row.id}`;
-                  await navigator.clipboard.writeText(url);
-                } catch (err) {
-                  // ignore
-                }
-                setContextMenu((c) => ({ ...c, open: false }));
-              }}
-            >
-              Copy link
-            </button>
-            {resolveCvPath(contextMenu.row.original) && (
-              <button
-                className="w-full text-left px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
-                onClick={async () => {
-                  try {
-                    await downloadCvForApplicant(contextMenu.row.original);
-                  } catch (e) {
-                    // ignore
-                  }
-                  setContextMenu((c) => ({ ...c, open: false }));
-                }}
-              >
-                Download CV
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* Photo Preview Modal */}
       {previewPhoto && (
         <div
