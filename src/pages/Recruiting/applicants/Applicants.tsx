@@ -142,6 +142,7 @@ import ApplicantsMobilePage from './ApplicantsMobilePage';
 import { useNavigate } from 'react-router';
 import {
   MaterialReactTable,
+  MRT_SelectCheckbox,
   useMaterialReactTable,
   type MRT_ColumnDef,
   type MRT_RowSelectionState,
@@ -2136,27 +2137,33 @@ const Applicants = () => {
         enableSorting: false,
         enableColumnFilter: false,
         Cell: ({ row }: { row: { original: Applicant } }) => {
+          const href = getApplicantHref(row);
           return (
-            <div
-              className="h-10 w-10 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700 transition hover:ring-2 hover:ring-brand-500 cursor-pointer"
+            <a
+              href={href}
+              className="block h-full w-full"
               onClick={(e) => {
+                e.preventDefault();
                 e.stopPropagation();
                 if (row.original.profilePhoto) {
                   setPreviewPhoto(row.original.profilePhoto);
                 }
               }}
+              onAuxClick={handleApplicantLinkAuxClick}
             >
-              {row.original.profilePhoto ? (
-                <ImageThumbnail
-                  src={row.original.profilePhoto}
-                  alt={row.original.fullName}
-                />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center text-sm font-semibold text-gray-500 dark:text-gray-400">
-                  {row.original.fullName.charAt(0).toUpperCase()}
-                </div>
-              )}
-            </div>
+              <div className="h-10 w-10 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700 transition hover:ring-2 hover:ring-brand-500 cursor-pointer">
+                {row.original.profilePhoto ? (
+                  <ImageThumbnail
+                    src={row.original.profilePhoto}
+                    alt={row.original.fullName}
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-sm font-semibold text-gray-500 dark:text-gray-400">
+                    {row.original.fullName.charAt(0).toUpperCase()}
+                  </div>
+                )}
+              </div>
+            </a>
           );
         },
       },
@@ -2905,49 +2912,57 @@ const Applicants = () => {
         Cell: ({ row }: any) => {
           const orig = row.original as any;
           const hasCv = Boolean(resolveCvPath(orig));
+          const href = getApplicantHref(row);
           return (
-            <div
-              onClick={(e) => e.stopPropagation()}
-              className="flex items-center gap-2"
+            <a
+              href={href}
+              className="block h-full w-full"
+              onClick={(e) => handleApplicantLinkClick(e, row)}
+              onAuxClick={handleApplicantLinkAuxClick}
             >
-              {hasCv ? (
-                <button
-                  type="button"
-                  aria-label="Download CV"
-                  title="Download CV"
-                  onClick={async (e) => {
-                    try {
-                      e.stopPropagation();
-                    } catch {}
-                    try {
-                      await downloadCvForApplicant(orig);
-                    } catch (err) {
-                      /* ignore */
-                    }
-                  }}
-                  className="inline-flex items-center justify-center rounded bg-brand-500 p-1 text-white hover:bg-brand-600"
-                >
-                  <span className="sr-only">Download CV</span>
-                  <svg
-                    className="w-4 h-4"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    xmlns="http://www.w3.org/2000/svg"
-                    aria-hidden="true"
+              <div
+                onClick={(e) => e.stopPropagation()}
+                className="flex items-center gap-2"
+              >
+                {hasCv ? (
+                  <button
+                    type="button"
+                    aria-label="Download CV"
+                    title="Download CV"
+                    onClick={async (e) => {
+                      try {
+                        e.stopPropagation();
+                      } catch {}
+                      try {
+                        await downloadCvForApplicant(orig);
+                      } catch (err) {
+                        /* ignore */
+                      }
+                    }}
+                    className="inline-flex items-center justify-center rounded bg-brand-500 p-1 text-white hover:bg-brand-600"
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2"
-                      d="M12 3v12m0 0l-4-4m4 4l4-4M21 21H3"
-                    />
-                  </svg>
-                </button>
-              ) : (
-                <span className="text-xs text-gray-500">-</span>
-              )}
-            </div>
+                    <span className="sr-only">Download CV</span>
+                    <svg
+                      className="w-4 h-4"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      xmlns="http://www.w3.org/2000/svg"
+                      aria-hidden="true"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M12 3v12m0 0l-4-4m4 4l4-4M21 21H3"
+                      />
+                    </svg>
+                  </button>
+                ) : (
+                  <span className="text-xs text-gray-500">-</span>
+                )}
+              </div>
+            </a>
           );
         },
       },
@@ -3097,6 +3112,31 @@ const Applicants = () => {
     columns,
     // Pass the filteredApplicants list (applies custom filters on top of displayedApplicants)
     data: filteredApplicants,
+    displayColumnDefOptions: {
+      'mrt-row-select': {
+        Cell: ({ row, table }: any) => {
+          const href = getApplicantHref(row);
+          return (
+            <div className="relative flex items-center justify-center">
+              <a
+                href={href}
+                className="absolute inset-0 z-0 block"
+                onClick={(e) => handleApplicantLinkClick(e, row)}
+                onAuxClick={handleApplicantLinkAuxClick}
+                aria-label={`Open ${row.original?.fullName || 'applicant'} details`}
+              />
+              <div
+                className="relative z-10"
+                onClick={(e) => e.stopPropagation()}
+                onAuxClick={(e) => e.stopPropagation()}
+              >
+                <MRT_SelectCheckbox row={row} table={table} />
+              </div>
+            </div>
+          );
+        },
+      },
+    },
     enableRowSelection: true,
     enablePagination: true,
     enableBatchRowSelection: false,
@@ -3149,6 +3189,16 @@ const Applicants = () => {
         borderColor: isDarkMode ? '#344054' : '#E4E7EC',
         fontFamily:
           "'Cairo', Outfit, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans'",
+        '& > a': {
+          display: 'block',
+          width: 'calc(100% + 32px)',
+          height: 'calc(100% + 16px)',
+          margin: '-8px -16px',
+          padding: '8px 16px',
+          color: 'inherit',
+          textDecoration: 'none',
+          boxSizing: 'border-box',
+        },
       },
     },
     muiTableHeadCellProps: {
