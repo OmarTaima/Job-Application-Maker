@@ -3,7 +3,7 @@ import Swal from 'sweetalert2';
 import { useAuth } from "../../../context/AuthContext";
 import PageMeta from "../../../components/common/PageMeta";
 import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
-import { useUpdateCompanySettings, useCompanies } from "../../../hooks/queries/useCompanies";
+import { useUpdateCompanySettings, useCompanies, useCompanySettings } from "../../../hooks/queries/useCompanies";
 import { 
   Building2, 
   Mail, 
@@ -49,6 +49,7 @@ export default function CompanySettingsPage({ companyId, onSaved, onChange }: Pr
   };
 
   const { data: companies = [] } = useCompanies();
+  const { data: selectedCompanySettings } = useCompanySettings(selectedCompanyId, { enabled: !!selectedCompanyId });
   const { user, hasPermission } = useAuth();
   const updateMutation = useUpdateCompanySettings();
 
@@ -82,16 +83,30 @@ export default function CompanySettingsPage({ companyId, onSaved, onChange }: Pr
   }, [companyId, companies, userCompaniesIds.join(","), showSelector, selectedCompanyId]);
 
   useEffect(() => {
-    if (!selectedCompanyId) return;
-    const company = (companies as Company[]).find((c) => c._id === selectedCompanyId);
-    const settings = (company?.settings ?? company?.mailSettings ?? company?.settings?.mailSettings) as any;
-    
-    if (settings) {
-      setAvailableMails(settings.availableMails || []);
-      setDefaultMail(settings.defaultMail || "");
-      setCompanyDomain(settings.companyDomain || "");
+    if (!selectedCompanyId) {
+      setAvailableMails([]);
+      setDefaultMail("");
+      setCompanyDomain("");
+      return;
     }
-  }, [selectedCompanyId, companies]);
+
+    const company = (companies as Company[]).find((c) => c._id === selectedCompanyId);
+
+    // Normalize settings from either dedicated settings endpoint or company payload.
+    const settings = (
+      (selectedCompanySettings as any)?.mailSettings ??
+      (selectedCompanySettings as any)?.settings?.mailSettings ??
+      (selectedCompanySettings as any)?.settings ??
+      (company as any)?.settings?.mailSettings ??
+      (company as any)?.mailSettings ??
+      (company as any)?.settings
+    ) as any;
+
+    const mails = settings?.availableMails ?? settings?.available_senders ?? settings?.availableSenders ?? [];
+    setAvailableMails(Array.isArray(mails) ? mails : []);
+    setDefaultMail(settings?.defaultMail || company?.contactEmail || "");
+    setCompanyDomain(settings?.companyDomain || "");
+  }, [selectedCompanyId, companies, selectedCompanySettings]);
 
   useEffect(() => {
     onChange?.({
