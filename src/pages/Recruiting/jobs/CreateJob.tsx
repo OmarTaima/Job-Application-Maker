@@ -1,7 +1,6 @@
-import { useMemo, useState, useEffect, useRef } from "react";
+﻿import { useMemo, useState, useEffect, useRef } from "react";
 import Swal from "sweetalert2";
 import { useNavigate, useSearchParams, useLocation } from "react-router";
-import ComponentCard from "../../../components/common/ComponentCard";
 import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
 import PageMeta from "../../../components/common/PageMeta";
 import LoadingSpinner from "../../../components/common/LoadingSpinner";
@@ -1363,19 +1362,28 @@ export default function CreateJob() {
           message={isEditMode ? "Loading job data..." : "Loading form..."}
         />
       ) : (
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-8">
           {formError && (
-            <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+            <div className="rounded-2xl border border-red-200 bg-red-50 p-4 dark:border-red-800/30 dark:bg-red-900/10">
               <div className="flex items-start justify-between">
-                <p className="text-sm text-red-600 dark:text-red-400">
-                  <strong>Error:</strong> {formError}
-                </p>
+                <div className="flex gap-3">
+                  <div className="flex-shrink-0">
+                    <svg className="size-5 text-red-500" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                  <p className="text-sm font-medium text-red-800 dark:text-red-400">
+                    {formError}
+                  </p>
+                </div>
                 <button
                   type="button"
                   onClick={() => setFormError("")}
-                  className="ml-3 text-red-400 hover:text-red-600 dark:hover:text-red-300"
+                  className="rounded-md p-1.5 text-red-500 hover:bg-red-100 dark:hover:bg-red-800/20"
                 >
-                  ✕
+                  <svg className="size-4" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                  </svg>
                 </button>
               </div>
             </div>
@@ -1383,45 +1391,70 @@ export default function CreateJob() {
 
           {/* Job Duplication */}
           {!isEditMode && (
-            <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
-              <Label htmlFor="duplicateJob" className="mb-2">
-                Duplicate from existing job (optional)
-              </Label>
-              <Select
-                options={[
-                  { value: "", label: "-- Start from scratch --" },
-                  ...allJobs.map((job: any) => ({
-                    value: job._id,
-                    label: `${toPlainString(job.title)} - ${toPlainString((job as any).companyId?.name || '')}`,
-                  })),
-                ]}
-                value={selectedJobId}
-                onChange={handleJobSelect}
-                placeholder="Select a job to duplicate"
-              />
-              {jobsLoading && (
-                <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-                  Loading jobs...
-                </p>
-              )}
-              {selectedJobId && (
-                <p className="mt-2 text-sm text-blue-600 dark:text-blue-400">
-                  ✓ Job data loaded. You can edit the fields below before saving.
-                </p>
-              )}
+            <div className="group relative overflow-hidden rounded-3xl border border-blue-100 bg-gradient-to-br from-blue-50/50 to-white p-6 shadow-sm transition-all hover:shadow-md dark:border-blue-900/20 dark:from-blue-900/5 dark:to-gray-900">
+              <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                <svg className="size-12 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" />
+                </svg>
+              </div>
+              <div className="relative">
+                <Label htmlFor="duplicateJob" className="mb-3 block text-sm font-semibold text-blue-900 dark:text-blue-300">
+                  Quick Start: Duplicate existing job
+                </Label>
+                <div className="max-w-2xl">
+                  <Select
+                    options={[
+                      { value: "", label: "-- Start from scratch --" },
+                      ...allJobs.map((job: any) => ({
+                        value: job._id,
+                        label: `${toPlainString(job.title)} - ${toPlainString((job as any).companyId?.name || '')}`,
+                      })),
+                    ]}
+                    value={selectedJobId}
+                    onChange={handleJobSelect}
+                    placeholder="Select a job to duplicate"
+                  />
+                </div>
+                {jobsLoading && (
+                  <div className="mt-3 flex items-center gap-2 text-sm text-blue-600 animate-pulse">
+                    <div className="h-4 w-4 rounded-full border-2 border-blue-600 border-t-transparent animate-spin" />
+                    Loading jobs...
+                  </div>
+                )}
+                {selectedJobId && (
+                  <div className="mt-3 flex items-center gap-2 text-sm font-medium text-emerald-600 dark:text-emerald-400">
+                    <svg className="size-4" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                    </svg>
+                    Job templates loaded successfully. You can now refine the details below.
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
           {/* Company & Department Selection */}
-          <ComponentCard
-            title={isEditMode ? "Department" : "Company & Department"}
-            desc={isEditMode ? "Select the department" : "Select the company and department"}
-          >
-            <div className={`grid grid-cols-1 gap-4 ${!isEditMode && shouldShowCompanyField ? 'md:grid-cols-2' : ''}`}>
-              {/* Only show company field if not in edit mode AND (user is admin OR has multiple companies) */}
+          <div className="group relative overflow-hidden rounded-3xl border border-gray-200 bg-white p-6 shadow-sm transition-all hover:shadow-md dark:border-gray-800 dark:bg-gray-900">
+            <div className="mb-6 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                  {isEditMode ? "Department" : "Company & Organization"}
+                </h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  {isEditMode ? "Assigned department for this position" : "Specify where this position belongs"}
+                </p>
+              </div>
+              <div className="rounded-xl bg-brand-50 p-2.5 text-brand-600 dark:bg-brand-500/10">
+                <svg className="size-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                </svg>
+              </div>
+            </div>
+
+            <div className={`grid grid-cols-1 gap-6 ${!isEditMode && shouldShowCompanyField ? 'md:grid-cols-2' : ''}`}>
               {!isEditMode && shouldShowCompanyField && (
-                <div>
-                  <Label htmlFor="companyId" required>Company</Label>
+                <div className="space-y-2">
+                  <Label htmlFor="companyId" required>Target Company</Label>
                   {companies.length > 0 ? (
                     <Select
                       options={companies}
@@ -1429,23 +1462,20 @@ export default function CreateJob() {
                       value={jobForm.companyId}
                       onChange={(value) => {
                         handleInputChange("companyId", value);
-                        handleInputChange("departmentId", ""); // Reset department when company changes
+                        handleInputChange("departmentId", "");
                       }}
                       required
                     />
                   ) : (
-                    <Input
-                      id="companyId"
-                      value="No companies available"
-                      disabled={true}
-                      className="bg-gray-50 dark:bg-gray-800"
-                    />
+                    <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5 text-gray-500 dark:border-gray-700 dark:bg-gray-800/50">
+                      No companies available
+                    </div>
                   )}
                 </div>
               )}
-              <div>
+              <div className="space-y-2">
                 <Label htmlFor="departmentId" required>Department</Label>
-                <div className={departmentSelectDisabled ? "opacity-50 pointer-events-none" : ""}>
+                <div className={departmentSelectDisabled ? "opacity-50 grayscale pointer-events-none" : ""}>
                   <Select
                     options={departments}
                     value={jobForm.departmentId}
@@ -1456,170 +1486,192 @@ export default function CreateJob() {
                         ? "Select company first"
                         : departments.length === 0
                         ? "No departments available"
-                        : "Select department "
+                        : "Select department"
                     }
                     onChange={(value) => {
                       if (!departmentSelectDisabled) handleInputChange("departmentId", value);
                     }}
                     required
                   />
-                  
                 </div>
               </div>
             </div>
-          </ComponentCard>
+          </div>
 
           {/* Basic Job Information */}
-          <ComponentCard title="Basic Information" desc="Enter the job details">
-            <div className="space-y-4">
-              <div className="flex items-center gap-4 pb-4 border-b border-gray-200 dark:border-gray-700">
-                <Switch
-                  label="Bilingual Job (English & Arabic)"
-                  checked={jobForm.bilingual}
-                  onChange={(checked) => handleInputChange("bilingual", checked)}
-                />
-                <span className="text-sm text-gray-500 dark:text-gray-400">
-                  {jobForm.bilingual ? "Showing bilingual inputs" : "Showing English only"}
+          <div className="group relative overflow-hidden rounded-3xl border border-gray-200 bg-white p-6 shadow-sm transition-all hover:shadow-md dark:border-gray-800 dark:bg-gray-900">
+            <div className="mb-6 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Basic Information</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Core details and multilingual settings</p>
+              </div>
+              <div className="rounded-xl bg-orange-50 p-2.5 text-orange-600 dark:bg-orange-500/10">
+                <svg className="size-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+            </div>
+
+            <div className="space-y-6">
+              <div className="flex flex-wrap items-center gap-6 rounded-2xl bg-gray-50 p-4 dark:bg-gray-800/50">
+                <div className="flex items-center gap-3">
+                  <Switch
+                    label="Bilingual (English & Arabic)"
+                    checked={jobForm.bilingual}
+                    onChange={(checked) => handleInputChange("bilingual", checked)}
+                  />
+                </div>
+                <div className="h-8 w-px bg-gray-200 dark:bg-gray-700 hidden sm:block" />
+                <span className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                  Currently viewing: {jobForm.bilingual ? 
+                    <span className="inline-flex items-center gap-1.5 text-brand-600"><span className="flex h-2 w-2 rounded-full bg-brand-500" />Bilingual Mode</span> : 
+                    <span className="inline-flex items-center gap-1.5 text-gray-600"><span className="flex h-2 w-2 rounded-full bg-gray-400" />English Only</span>
+                  }
                 </span>
               </div>
 
-              {/* Only show Job Code field when creating a new job */}
               {!isEditMode && (
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <div>
-                    <Label htmlFor="jobCode" required>Job Code</Label>
-                    <Input
-                      id="jobCode"
-                      value={jobForm.jobCode}
-                      onChange={(e) =>
-                        handleInputChange("jobCode", e.target.value)
-                      }
-                      placeholder="Auto-generated"
-                      required
-                    />
-                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                      Auto-generated based on company. You can edit it if needed.
-                    </p>
-                  </div>
+                <div className="max-w-md space-y-2">
+                  <Label htmlFor="jobCode" required>Position Reference Code</Label>
+                  <Input
+                    id="jobCode"
+                    value={jobForm.jobCode}
+                    onChange={(e) => handleInputChange("jobCode", e.target.value)}
+                    placeholder="Auto-generated (e.g., TECH-2024-001)"
+                    required
+                  />
+                  <p className="text-xs text-gray-500 italic">
+                    Unique identifier used for tracking this recruitment cycle.
+                  </p>
                 </div>
               )}
 
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div>
-                  <Label htmlFor="title" required>Job Title{jobForm.bilingual && " (English)"}</Label>
+              <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="title" required>Job Title {jobForm.bilingual && "(EN)"}</Label>
                   <Input
                     id="title"
                     value={jobForm.title}
                     onChange={(e) => handleInputChange("title", e.target.value)}
-                    placeholder="Senior Frontend Developer"
+                    placeholder="e.g. Senior Frontend Developer"
                     required
                   />
                 </div>
                 {jobForm.bilingual && (
-                  <div>
-                    <Label htmlFor="titleAr" required>Job Title (Arabic)</Label>
-                    <div dir="rtl">
-                      <Input
-                        id="titleAr"
-                        value={jobForm.titleAr}
-                        onChange={(e) => handleInputChange("titleAr", e.target.value)}
-                        placeholder="مطور واجهة أمامية أول"
-                        required
-                      />
-                    </div>
+                  <div className="space-y-2" dir="rtl">
+                    <Label htmlFor="titleAr" required className="text-right block w-full">مسمى الوظيفة (بالعربية)</Label>
+                    <Input
+                      id="titleAr"
+                      value={jobForm.titleAr}
+                      onChange={(e) => handleInputChange("titleAr", e.target.value)}
+                      placeholder="مثال: مطور واجهة أمامية أول"
+                      required
+                      className="text-right"
+                    />
                   </div>
                 )}
               </div>
 
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div>
-                  <Label htmlFor="description">Description{jobForm.bilingual && " (English)"}</Label>
+              <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="description">Job Description {jobForm.bilingual && "(EN)"}</Label>
                   <TextArea
                     value={jobForm.description}
                     onChange={(value) => handleInputChange("description", value)}
-                    placeholder="We are looking for a skilled developer..."
-                    rows={5}
+                    placeholder="Outline the primary responsibilities and goals..."
+                    rows={6}
                   />
                 </div>
                 {jobForm.bilingual && (
-                  <div>
-                    <Label htmlFor="descriptionAr">Description (Arabic)</Label>
-                    <div dir="rtl">
-                      <TextArea
-                        value={jobForm.descriptionAr}
-                        onChange={(value) => handleInputChange("descriptionAr", value)}
-                        placeholder="نبحث عن مطور ماهر..."
-                        rows={5}
-                      />
-                    </div>
+                  <div className="space-y-2" dir="rtl">
+                    <Label htmlFor="descriptionAr" className="text-right block w-full">وصف الوظيفة (بالعربية)</Label>
+                    <TextArea
+                      value={jobForm.descriptionAr}
+                      onChange={(value) => handleInputChange("descriptionAr", value)}
+                      placeholder="حدد المسؤوليات والأهداف الأساسية..."
+                      rows={6}
+                      className="text-right"
+                    />
                   </div>
                 )}
               </div>
 
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                <div>
-                  <Label htmlFor="salary">Salary</Label>
-                  <Input
-                    id="salary"
-                    type="number"
-                    value={jobForm.salary}
-                    onChange={(e) =>
-                      handleInputChange("salary", Number(e.target.value))
-                    }
-                    placeholder="85000"
-                  />
+              <div className="rounded-2xl border border-gray-100 bg-gray-50/50 p-6 dark:border-gray-800 dark:bg-gray-800/30">
+                <div className="mb-4 flex items-center gap-2">
+                  <svg className="size-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <h4 className="font-semibold text-gray-900 dark:text-white text-sm uppercase tracking-wider">Compensation & Availability</h4>
                 </div>
-                <div>
-                  <Label htmlFor="openPositions">Open Positions</Label>
-                  <Input
-                    id="openPositions"
-                    type="number"
-                    value={jobForm.openPositions}
-                    onChange={(e) =>
-                      handleInputChange("openPositions", Number(e.target.value))
-                    }
-                    placeholder="3"
-                    min="1"
-                  />
-                </div>
-                <div className="flex items-end pb-2">
-                  <Switch
-                    label="Salary Visible"
-                    checked={jobForm.salaryVisible}
-                    onChange={(checked) =>
-                      handleInputChange("salaryVisible", checked)
-                    }
-                  />
-                  <div className="mt-2 ml-4">
-                    <Switch
-                      label="Salary Field Visible"
-                      checked={jobForm.salaryFieldVisible}
-                      onChange={(checked) =>
-                        handleInputChange("salaryFieldVisible", checked)
-                      }
+                <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="salary">Salary (Base Monthly)</Label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
+                      <Input
+                        id="salary"
+                        type="number"
+                        className="pl-7"
+                        value={jobForm.salary}
+                        onChange={(e) => handleInputChange("salary", Number(e.target.value))}
+                        placeholder="0.00"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="openPositions">Total Vacancies</Label>
+                    <Input
+                      id="openPositions"
+                      type="number"
+                      value={jobForm.openPositions}
+                      onChange={(e) => handleInputChange("openPositions", Number(e.target.value))}
+                      min="1"
                     />
+                  </div>
+                  <div className="flex flex-col justify-end gap-4 pb-1">
+                    <div className="group/toggle relative">
+                      <Switch
+                        label="Salary Visible"
+                        checked={jobForm.salaryVisible}
+                        onChange={(checked) => handleInputChange("salaryVisible", checked)}
+                      />
+                      <p className="mt-1.5 ml-11 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400 opacity-70 group-hover/toggle:opacity-100 transition-opacity">
+                        Show the salary range on the public job listing page.
+                      </p>
+                    </div>
+
+                    <div className="group/toggle relative">
+                      <Switch
+                        label="Salary Field Visible"
+                        checked={jobForm.salaryFieldVisible}
+                        onChange={(checked) => handleInputChange("salaryFieldVisible", checked)}
+                      />
+                      <p className="mt-1.5 ml-11 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400 opacity-70 group-hover/toggle:opacity-100 transition-opacity">
+                        Include a "Current/Expected Salary" input field in the application form.
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div>
-                  <Label htmlFor="employmentType" required>Employment Type</Label>
+              <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="employmentType" required>Employment Type Style</Label>
                   <Select
-                      options={[
-                        { value: "full-time", label: "Full-time" },
-                        { value: "part-time", label: "Part-time" },
-                        { value: "contract", label: "Contract" },
-                        { value: "internship", label: "Internship" },
-                      ]}
+                    options={[
+                      { value: "full-time", label: "Full-time" },
+                      { value: "part-time", label: "Part-time" },
+                      { value: "contract", label: "Contract" },
+                      { value: "internship", label: "Internship" },
+                    ]}
                     value={jobForm.employmentType}
-                    placeholder="Select employment type"
+                    placeholder="Select option"
                     onChange={(val) => handleInputChange("employmentType", val)}
                     required
                   />
                 </div>
-                <div>
-                  <Label htmlFor="workArrangement" required>Work Arrangement</Label>
+                <div className="space-y-2">
+                  <Label htmlFor="workArrangement" required>Workspace Policy</Label>
                   <Select
                     options={[
                       { value: "on-site", label: "On-site" },
@@ -1627,106 +1679,112 @@ export default function CreateJob() {
                       { value: "hybrid", label: "Hybrid" },
                     ]}
                     value={jobForm.workArrangement}
-                    placeholder="Select work arrangement"
+                    placeholder="Select arrangement"
                     onChange={(val) => handleInputChange("workArrangement", val)}
                     required
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div>
-                  <Label htmlFor="registrationStart" required>Registration Start</Label>
+              <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="registrationStart" required>Recruitment Opening</Label>
                   <Input
                     id="registrationStart"
                     type="date"
                     value={jobForm.registrationStart}
-                    onChange={(e) =>
-                      handleInputChange("registrationStart", e.target.value)
-                    }
-                    onClick={(e) => {
-                      const input = e.currentTarget as HTMLInputElement;
-                      if (input.showPicker) {
-                        input.showPicker();
-                      }
-                    }}
+                    onChange={(e) => handleInputChange("registrationStart", e.target.value)}
+                    onClick={(e) => (e.currentTarget as any).showPicker?.()}
                     required
                   />
                 </div>
-                <div>
-                  <Label htmlFor="registrationEnd" required>Registration End</Label>
+                <div className="space-y-2">
+                  <Label htmlFor="registrationEnd" required>Application Deadline</Label>
                   <Input
                     id="registrationEnd"
                     type="date"
                     value={jobForm.registrationEnd}
-                    onChange={(e) =>
-                      handleInputChange("registrationEnd", e.target.value)
-                    }
-                    onClick={(e) => {
-                      const input = e.currentTarget as HTMLInputElement;
-                      if (input.showPicker) {
-                        input.showPicker();
-                      }
-                    }}
+                    onChange={(e) => handleInputChange("registrationEnd", e.target.value)}
+                    onClick={(e) => (e.currentTarget as any).showPicker?.()}
                     required
                   />
                 </div>
               </div>
             </div>
-          </ComponentCard>
+          </div>
 
           {/* Terms and Conditions */}
-          <ComponentCard
-            title="Terms and Conditions"
-            desc="Add requirements and conditions for this job"
-          >
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                <Input
-                  value={newTerm}
-                  onChange={(e) => setNewTerm(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      handleAddTerm();
-                    }
-                  }}
-                  placeholder={jobForm.bilingual ? "Add a term or condition (English)" : "Add a term or condition"}
-                />
-                {jobForm.bilingual && (
-                  <div dir="rtl">
+          <div className="group relative overflow-hidden rounded-3xl border border-gray-200 bg-white p-6 shadow-sm transition-all hover:shadow-md dark:border-gray-800 dark:bg-gray-900">
+            <div className="mb-6 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Terms and Conditions</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Add mandatory requirements or legal fine print</p>
+              </div>
+              <div className="rounded-xl bg-purple-50 p-2.5 text-purple-600 dark:bg-purple-500/10">
+                <svg className="size-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                </svg>
+              </div>
+            </div>
+
+            <div className="space-y-6">
+              <div className="rounded-2xl bg-gray-50 p-5 dark:bg-gray-800/50">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>New Term {jobForm.bilingual && "(EN)"}</Label>
                     <Input
-                      value={newTermAr}
-                      onChange={(e) => setNewTermAr(e.target.value)}
+                      value={newTerm}
+                      onChange={(e) => setNewTerm(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {
                           e.preventDefault();
                           handleAddTerm();
                         }
                       }}
-                      placeholder="أضف شرط أو حكم (العربية)"
+                      placeholder={jobForm.bilingual ? "Enter English term..." : "Enter requirement..."}
                     />
                   </div>
-                )}
+                  {jobForm.bilingual && (
+                    <div className="space-y-2" dir="rtl">
+                      <Label className="text-right block w-full">الشرط الجديد (بالعربية)</Label>
+                      <Input
+                        value={newTermAr}
+                        onChange={(e) => setNewTermAr(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            handleAddTerm();
+                          }
+                        }}
+                        placeholder="أضف شرط أو حكم..."
+                        className="text-right"
+                      />
+                    </div>
+                  )}
+                </div>
+                <div className="mt-4">
+                  <button
+                    type="button"
+                    onClick={handleAddTerm}
+                    className="inline-flex items-center gap-2 rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-brand-500/20 transition-all hover:bg-brand-600 hover:shadow-brand-500/40 active:scale-95"
+                  >
+                    <PlusIcon className="size-4" />
+                    Append to List
+                  </button>
+                </div>
               </div>
-              <button
-                type="button"
-                onClick={handleAddTerm}
-                className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600"
-              >
-                <PlusIcon className="size-4" />
-                Add
-              </button>
 
-              <div className="space-y-2">
+              <div className="grid grid-cols-1 gap-4">
                 {jobForm.termsAndConditions.map((term, index) => (
                   <div
                     key={index}
-                    className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-900/50"
+                    className="group item animate-in fade-in slide-in-from-bottom-2 duration-300 relative rounded-2xl border border-gray-100 bg-white p-4 shadow-sm transition-all hover:border-brand-200 hover:shadow-md dark:border-gray-800 dark:bg-gray-900"
                   >
+                    <div className="absolute left-0 top-0 h-full w-1 rounded-l-2xl bg-brand-500 opacity-0 transition-opacity group-hover:opacity-100" />
+                    
                     {editingTermIndex === index ? (
-                      <div className="space-y-2">
-                        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                           <Input
                             value={term}
                             onChange={(e) => {
@@ -1734,13 +1792,7 @@ export default function CreateJob() {
                               newTerms[index] = e.target.value;
                               setJobForm(prev => ({ ...prev, termsAndConditions: newTerms }));
                             }}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                e.preventDefault();
-                                setEditingTermIndex(null);
-                              }
-                            }}
-                            placeholder={jobForm.bilingual ? "Term (English)" : "Term"}
+                            autoFocus
                           />
                           {jobForm.bilingual && (
                             <div dir="rtl">
@@ -1751,52 +1803,47 @@ export default function CreateJob() {
                                   newTermsAr[index] = e.target.value;
                                   setJobForm(prev => ({ ...prev, termsAndConditionsAr: newTermsAr }));
                                 }}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") {
-                                    e.preventDefault();
-                                    setEditingTermIndex(null);
-                                  }
-                                }}
-                                placeholder="الشرط (العربية)"
+                                className="text-right"
                               />
                             </div>
                           )}
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex justify-end gap-2">
                           <button
                             type="button"
                             onClick={() => setEditingTermIndex(null)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                e.preventDefault();
-                                setEditingTermIndex(null);
-                              }
-                            }}
-                            className="inline-flex items-center gap-1 rounded px-3 py-1 text-sm font-medium text-success-600 transition hover:bg-success-50 dark:text-success-400 dark:hover:bg-success-500/10"
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-emerald-600"
                           >
                             <CheckCircleIcon className="size-4" />
-                            Save
+                            Confirm Changes
                           </button>
                         </div>
                       </div>
                     ) : (
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex-1 space-y-1">
-                          <div className="text-sm text-gray-700 dark:text-gray-300">
-                            {jobForm.bilingual && <strong>EN: </strong>}{term || "(empty)"}
-                          </div>
-                          {jobForm.bilingual && (
-                            <div className="text-sm text-gray-700 dark:text-gray-300" dir="rtl">
-                              <strong>AR:</strong> {jobForm.termsAndConditionsAr[index] || "(فارغ)"}
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex items-start gap-3">
+                          <span className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-100 text-xs font-bold text-gray-500 dark:bg-gray-800">
+                            {index + 1}
+                          </span>
+                          <div className="space-y-1.5">
+                            <div className="text-sm font-medium text-gray-900 dark:text-white">
+                              {jobForm.bilingual && <span className="text-[10px] uppercase tracking-wider text-gray-400 mr-2">EN:</span>}
+                              {term || <em className="text-gray-400">Empty description</em>}
                             </div>
-                          )}
+                            {jobForm.bilingual && (
+                              <div className="text-sm font-medium text-gray-700 dark:text-gray-300" dir="rtl">
+                                <span className="text-[10px] uppercase tracking-wider text-gray-400 ml-2">AR:</span>
+                                {jobForm.termsAndConditionsAr[index] || <em className="text-gray-400">فارغ</em>}
+                              </div>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex gap-1">
+                        <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                           <button
                             type="button"
                             onClick={() => setEditingTermIndex(index)}
-                            className="rounded p-1 text-blue-600 transition hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-500/10"
-                            title="Edit"
+                            className="rounded-lg p-2 text-blue-600 transition hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-500/10"
+                            title="Quick Edit"
                           >
                             <svg className="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -1805,7 +1852,7 @@ export default function CreateJob() {
                           <button
                             type="button"
                             onClick={() => handleRemoveTerm(index)}
-                            className="rounded p-1 text-error-600 transition hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-500/10"
+                            className="rounded-lg p-2 text-red-600 transition hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10"
                             title="Delete"
                           >
                             <TrashBinIcon className="size-4" />
@@ -1817,255 +1864,262 @@ export default function CreateJob() {
                 ))}
               </div>
             </div>
-          </ComponentCard>
+          </div>
 
           {/* Job Specs */}
-          <ComponentCard
-            title="Job Specifications"
-            desc="Define evaluation criteria and their weights"
-          >
+          <div className="group relative overflow-hidden rounded-3xl border border-gray-200 bg-white p-6 shadow-sm transition-all hover:shadow-md dark:border-gray-800 dark:bg-gray-900">
+            <div className="mb-6 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Job Specifications</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Define evaluation criteria and their relative weights</p>
+              </div>
+              <div className="rounded-xl bg-blue-50 p-2.5 text-blue-600 dark:bg-blue-500/10">
+                <svg className="size-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+              </div>
+            </div>
+
             <div className="space-y-4">
               {jobForm.jobSpecs.map((spec, index) => (
-                <div key={index}>
+                <div key={index} className="group/item relative">
                   {editingSpecIndex === index ? (
-                    <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-900/50 space-y-2">
-                      <div className="flex gap-3">
-                        <div className="flex-1">
-                          <Input
-                            value={spec.spec}
-                            onChange={(e) =>
-                              handleJobSpecChange(index, "spec", e.target.value)
-                            }
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                e.preventDefault();
-                                setEditingSpecIndex(null);
-                              }
-                            }}
-                            placeholder={jobForm.bilingual ? "Specification (English)" : "Specification"}
-                          />
-                        </div>
-                        {jobForm.bilingual && (
-                          <div className="flex-1" dir="rtl">
+                    <div className="rounded-2xl border border-blue-200 bg-blue-50/30 p-4 dark:border-blue-800/30 dark:bg-blue-900/10 space-y-4">
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-12 items-end">
+                        <div className="md:col-span-11 grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label>Specification Name {jobForm.bilingual && "(EN)"}</Label>
                             <Input
-                              value={spec.specAr || ""}
-                              onChange={(e) =>
-                                handleJobSpecChange(index, "specAr", e.target.value)
-                              }
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") {
-                                  e.preventDefault();
-                                  setEditingSpecIndex(null);
-                                }
-                              }}
-                              placeholder="المواصفة (العربية)"
+                              value={spec.spec}
+                              onChange={(e) => handleJobSpecChange(index, "spec", e.target.value)}
+                              autoFocus
                             />
                           </div>
-                        )}
-                        <div className="w-32">
+                          {jobForm.bilingual && (
+                            <div className="space-y-2" dir="rtl">
+                              <Label className="text-right block w-full">اسم المواصفة (بالعربية)</Label>
+                              <Input
+                                value={spec.specAr || ""}
+                                onChange={(e) => handleJobSpecChange(index, "specAr", e.target.value)}
+                                className="text-right"
+                              />
+                            </div>
+                          )}
+                        </div>
+                        <div className="md:col-span-1 space-y-2 min-w-[100px]">
+                          <Label>Weight %</Label>
                           <Input
                             type="number"
                             value={spec.weight}
-                            onChange={(e) =>
-                              handleJobSpecChange(
-                                index,
-                                "weight",
-                                Number(e.target.value)
-                              )
-                            }
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                e.preventDefault();
-                                setEditingSpecIndex(null);
-                              }
-                            }}
-                            placeholder="Weight"
+                            onChange={(e) => handleJobSpecChange(index, "weight", Number(e.target.value))}
                             min="0"
                             max="100"
                           />
                         </div>
                       </div>
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 justify-end">
                         <button
                           type="button"
                           onClick={() => setEditingSpecIndex(null)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              setEditingSpecIndex(null);
-                            }
-                          }}
-                          className="inline-flex items-center gap-1 rounded px-3 py-1 text-sm font-medium text-success-600 transition hover:bg-success-50 dark:text-success-400 dark:hover:bg-success-500/10"
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 px-4 py-2 text-xs font-bold text-white transition hover:bg-emerald-600 shadow-md shadow-emerald-500/20"
                         >
                           <CheckCircleIcon className="size-4" />
-                          Save
+                          Update Spec
                         </button>
                       </div>
                     </div>
                   ) : (
-                    <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-900/50">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="flex-1 flex items-center gap-3">
-                          <div className="flex-1">
-                            <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                              {jobForm.bilingual && <span className="text-gray-500">EN: </span>}
-                              {spec.spec || "(empty)"}
+                    <div className="flex items-center justify-between gap-4 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm transition-all hover:border-brand-200 hover:shadow-md dark:border-gray-800 dark:bg-gray-900">
+                      <div className="flex-1 flex items-center gap-6">
+                        <div className="hidden sm:flex h-10 w-10 items-center justify-center rounded-xl bg-gray-50 text-xs font-bold text-gray-400 dark:bg-gray-800">
+                          {index + 1}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-8">
+                            <div className="flex-1">
+                              <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">
+                                {jobForm.bilingual && <span className="text-[10px] uppercase text-gray-400 mr-2">EN:</span>}
+                                {spec.spec || <em className="text-gray-400 font-normal italic">Undefined Requirement</em>}
+                              </p>
+                              {jobForm.bilingual && (
+                                <p className="text-sm font-medium text-gray-600 dark:text-gray-400 truncate" dir="rtl">
+                                  <span className="text-[10px] uppercase text-gray-400 ml-2">AR:</span>
+                                  {spec.specAr || <em className="text-gray-400 font-normal italic">غير محدد</em>}
+                                </p>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400 w-fit">
+                              <span className="text-xs font-bold uppercase tracking-wider">Weight</span>
+                              <span className="text-sm font-black">{spec.weight}%</span>
                             </div>
                           </div>
-                          {jobForm.bilingual && (
-                            <div className="flex-1" dir="rtl">
-                              <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                                <span className="text-gray-500">AR: </span>
-                                {spec.specAr || "(فارغ)"}
-                              </div>
-                            </div>
-                          )}
-                          <div className="w-32 text-center">
-                            <span className="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-sm font-semibold text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
-                              {spec.weight}%
-                            </span>
-                          </div>
                         </div>
-                        <div className="flex gap-1">
-                          <button
-                            type="button"
-                            onClick={() => setEditingSpecIndex(index)}
-                            className="rounded p-1 text-blue-600 transition hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-500/10"
-                            title="Edit"
-                          >
-                            <svg className="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveJobSpec(index)}
-                            className="rounded p-1 text-error-600 transition hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-500/10"
-                            title="Delete"
-                          >
-                            <TrashBinIcon className="size-4" />
-                          </button>
-                        </div>
+                      </div>
+                      <div className="flex gap-1 opacity-0 transition-opacity group-hover/item:opacity-100">
+                        <button
+                          type="button"
+                          onClick={() => setEditingSpecIndex(index)}
+                          className="rounded-lg p-2 text-blue-600 transition hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-500/10"
+                        >
+                          <svg className="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveJobSpec(index)}
+                          className="rounded-lg p-2 text-red-600 transition hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10"
+                        >
+                          <TrashBinIcon className="size-4" />
+                        </button>
                       </div>
                     </div>
                   )}
                 </div>
               ))}
 
-              <div className="flex items-center justify-between">
+              <div className="mt-8 flex flex-col sm:flex-row items-center justify-between gap-6 rounded-2xl bg-gray-50 p-6 dark:bg-gray-800/40">
                 <button
                   type="button"
                   onClick={handleAddJobSpec}
-                  className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                  className="inline-flex items-center gap-2 rounded-xl bg-white border border-gray-200 px-6 py-3 text-sm font-bold text-gray-700 shadow-sm transition-all hover:bg-gray-50 hover:border-brand-300 dark:bg-gray-800 dark:border-gray-700 dark:text-white"
                 >
-                  <PlusIcon className="size-4" />
-                  Add Specification
+                  <PlusIcon className="size-5 text-brand-500" />
+                  Add New Specification
                 </button>
-                <span
-                  className={`text-sm font-semibold ${
-                    totalWeight === 100
-                      ? "text-success-600 dark:text-success-400"
-                      : "text-error-600 dark:text-error-400"
-                  }`}
-                >
-                  Total Weight: {totalWeight}%{" "}
-                  {totalWeight !== 100 && "(Should be 100%)"}
-                </span>
+                <div className="flex flex-col items-end">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-bold uppercase tracking-widest text-gray-500">Cumulative Weight</span>
+                    <div className={`flex items-center gap-2 rounded-lg px-4 py-2 text-lg font-black ${
+                      totalWeight === 100
+                        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400"
+                        : "bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400 animate-pulse"
+                    }`}>
+                      {totalWeight}%
+                    </div>
+                  </div>
+                  {totalWeight !== 100 && (
+                    <p className="mt-1 text-[11px] font-bold text-red-500 uppercase flex items-center gap-1">
+                      <svg className="size-3" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                      </svg>
+                      Attention: Specifications must total 100%
+                    </p>
+                  )}
+                </div>
               </div>
             </div>
-          </ComponentCard>
+          </div>
 
           {/* Custom Fields */}
-          <ComponentCard
-            title="Custom Form Fields"
-            desc="Define custom fields for the job application form"
-          >
-            <div className="mb-4 flex gap-3">
+          <div className="group relative overflow-hidden rounded-3xl border border-gray-200 bg-white p-6 shadow-sm transition-all hover:shadow-md dark:border-gray-800 dark:bg-gray-900">
+            <div className="mb-6 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Custom Form Fields</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Personalize the application form for candidates</p>
+              </div>
+              <div className="rounded-xl bg-orange-50 p-2.5 text-orange-600 dark:bg-orange-500/10">
+                <svg className="size-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+              </div>
+            </div>
+
+            <div className="mb-6 flex flex-wrap gap-4 p-4 rounded-2xl bg-gray-50 dark:bg-gray-800/50">
                 <button
                   type="button"
                   onClick={handleAddCustomField}
-                  className="flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white shadow-sm transition-all hover:bg-brand-700"
+                  className="flex items-center gap-2 rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-brand-500/20 transition-all hover:bg-brand-600 active:scale-95"
                 >
                   <PlusIcon className="size-4" />
-                  Add Custom Field
+                  New Custom Field
                 </button>
-                <div className="ml-2 relative">
+                <div className="flex gap-2 relative">
                   <button
                     type="button"
                     onClick={() => setShowRecommendedPanel((s) => !s)}
-                    className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                    className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300"
                   >
+                    <svg className="size-4 text-orange-500" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                    </svg>
                     Recommended
                   </button>
 
-                  <div className="inline-block ml-2 relative">
-                    <button
-                      type="button"
-                      onClick={() => setShowSavedPanel((s) => !s)}
-                      className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                    >
-                      Saved Fields
-                    </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowSavedPanel((s) => !s)}
+                    className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300"
+                  >
+                    <svg className="size-4 text-brand-500" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M5 4a2 2 0 012-2h6a2 2 0 012 2v14l-5-2.5L5 18V4z" />
+                    </svg>
+                    Saved Fields
+                  </button>
 
-                    {showSavedPanel && (
-                      <div className="absolute right-0 mt-2 w-80 rounded-md border bg-white p-3 shadow-lg z-50">
-                        <div className="max-h-64 overflow-auto">
-                          {savedFieldsLoading ? (
-                            <div className="text-sm text-gray-500">Loading...</div>
-                          ) : (
-                            (savedFields as any).map((sf: any, idx: number) => {
-                              const fieldId = sf.fieldId;
-                              const disabled = isSavedAdded(fieldId);
-                              const checked = selectedSaved.includes(fieldId);
-                              const inputId = `sav_${idx}_${fieldId}`;
-                              return (
-                                <label key={`${fieldId}_${idx}`} htmlFor={inputId} className={`flex items-center justify-between gap-3 py-2 ${disabled ? 'opacity-60' : ''}`}>
-                                  <div className="flex items-center gap-3">
-                                    <input
-                                      id={inputId}
-                                      type="checkbox"
-                                      checked={disabled || checked}
-                                      disabled={disabled}
-                                      onChange={() => toggleSelectSaved(fieldId)}
-                                      className="h-4 w-4 rounded border-gray-300 text-brand-600"
-                                    />
-                                    <div className="text-sm">
-                                      <div className="font-medium">{convertToString(sf.label) || fieldId}</div>
-                                      {sf.description && <div className="text-xs text-gray-500">{convertToString(sf.description)}</div>}
-                                    </div>
-                                  </div>
-                                  {disabled && <span className="text-xs text-green-600">Added</span>}
-                                </label>
-                              );
-                            })
-                          )}
-                        </div>
-                        <div className="mt-3 flex items-center justify-end gap-2">
-                          <button
-                            type="button"
-                            onClick={() => { setSelectedSaved([]); setShowSavedPanel(false); }}
-                            className="rounded px-3 py-1 text-sm text-gray-600 hover:bg-gray-100"
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            type="button"
-                            onClick={handleAddSelectedSaved}
-                            disabled={selectedSaved.length === 0}
-                            className="rounded bg-brand-500 px-3 py-1 text-sm text-white disabled:opacity-50"
-                          >
-                            Add Selected
-                          </button>
-                        </div>
+                  {/* Panels - Enhanced UI */}
+                  {showSavedPanel && (
+                    <div className="absolute left-0 top-full mt-2 w-80 rounded-2xl border border-gray-200 bg-white p-5 shadow-2xl z-50 animate-in zoom-in-95 duration-200 dark:border-gray-700 dark:bg-gray-900">
+                      <h4 className="mb-4 text-xs font-black uppercase tracking-widest text-gray-400">Library of Saved Fields</h4>
+                      <div className="max-h-80 overflow-auto scrollbar-hide space-y-3">
+                        {savedFieldsLoading ? (
+                          <div className="flex justify-center p-4">
+                            <div className="h-5 w-5 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
+                          </div>
+                        ) : (
+                          (savedFields as any).map((sf: any, idx: number) => {
+                            const fieldId = sf.fieldId;
+                            const disabled = isSavedAdded(fieldId);
+                            const checked = selectedSaved.includes(fieldId);
+                            const inputId = `sav_${idx}_${fieldId}`;
+                            return (
+                              <label key={`${fieldId}_${idx}`} htmlFor={inputId} className={`group flex cursor-pointer items-start gap-3 rounded-xl border border-transparent p-3 transition hover:border-brand-100 hover:bg-brand-50/30 dark:hover:bg-brand-500/5 ${disabled ? 'opacity-40 grayscale pointer-events-none' : ''}`}>
+                                <input
+                                  id={inputId}
+                                  type="checkbox"
+                                  checked={disabled || checked}
+                                  disabled={disabled}
+                                  onChange={() => toggleSelectSaved(fieldId)}
+                                  className="mt-1 h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                                />
+                                <div className="min-w-0 flex-1">
+                                  <div className="text-sm font-bold text-gray-900 dark:text-white truncate">{convertToString(sf.label) || fieldId}</div>
+                                  {sf.description && <div className="line-clamp-2 text-xs text-gray-500 mt-0.5">{convertToString(sf.description)}</div>}
+                                </div>
+                                {disabled && <CheckCircleIcon className="size-4 text-emerald-500 shrink-0" />}
+                              </label>
+                            );
+                          })
+                        )}
                       </div>
-                    )}
-                  </div>
+                      <div className="mt-5 flex items-center justify-end gap-2 border-t border-gray-100 pt-4 dark:border-gray-800">
+                        <button
+                          type="button"
+                          onClick={() => { setSelectedSaved([]); setShowSavedPanel(false); }}
+                          className="rounded-lg px-4 py-2 text-xs font-bold text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleAddSelectedSaved}
+                          disabled={selectedSaved.length === 0}
+                          className="rounded-lg bg-brand-500 px-4 py-2 text-xs font-bold text-white transition hover:bg-brand-600 disabled:opacity-30"
+                        >
+                          Add Selected ({selectedSaved.length})
+                        </button>
+                      </div>
+                    </div>
+                  )}
 
                   {showRecommendedPanel && (
-                    <div className="absolute right-0 mt-2 w-80 rounded-md border bg-white p-3 shadow-lg z-50">
-                      <div className="max-h-64 overflow-auto">
+                    <div className="absolute left-0 top-full mt-2 w-80 rounded-2xl border border-gray-200 bg-white p-5 shadow-2xl z-50 animate-in zoom-in-95 duration-200 dark:border-gray-700 dark:bg-gray-900">
+                      <h4 className="mb-4 text-xs font-black uppercase tracking-widest text-orange-500">Expert Recommended</h4>
+                      <div className="max-h-80 overflow-auto scrollbar-hide space-y-3">
                         {recommendedLoading ? (
-                          <div className="text-sm text-gray-500">Loading...</div>
+                          <div className="flex justify-center p-4">
+                            <div className="h-5 w-5 animate-spin rounded-full border-2 border-orange-500 border-t-transparent" />
+                          </div>
                         ) : (
                           recommendedFields.map((rf: any, idx: number) => {
                             const fieldId = rf.fieldId;
@@ -2073,32 +2127,30 @@ export default function CreateJob() {
                             const checked = selectedRecommended.includes(fieldId);
                             const inputId = `rec_${idx}_${fieldId}`;
                             return (
-                              <label key={`${fieldId}_${idx}`} htmlFor={inputId} className={`flex items-center justify-between gap-3 py-2 ${disabled ? 'opacity-60' : ''}`}>
-                                <div className="flex items-center gap-3">
-                                  <input
-                                    id={inputId}
-                                    type="checkbox"
-                                    checked={disabled || checked}
-                                    disabled={disabled}
-                                    onChange={() => toggleSelectRecommended(fieldId)}
-                                    className="h-4 w-4 rounded border-gray-300 text-brand-600"
-                                  />
-                                  <div className="text-sm">
-                                    <div className="font-medium">{convertToString(rf.label) || fieldId}</div>
-                                    {rf.description && <div className="text-xs text-gray-500">{convertToString(rf.description)}</div>}
-                                  </div>
+                              <label key={`${fieldId}_${idx}`} htmlFor={inputId} className={`group flex cursor-pointer items-start gap-3 rounded-xl border border-transparent p-3 transition hover:border-orange-100 hover:bg-orange-50/30 dark:hover:bg-orange-500/5 ${disabled ? 'opacity-40 grayscale pointer-events-none' : ''}`}>
+                                <input
+                                  id={inputId}
+                                  type="checkbox"
+                                  checked={disabled || checked}
+                                  disabled={disabled}
+                                  onChange={() => toggleSelectRecommended(fieldId)}
+                                  className="mt-1 h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                                />
+                                <div className="min-w-0 flex-1">
+                                  <div className="text-sm font-bold text-gray-900 dark:text-white truncate">{convertToString(rf.label) || fieldId}</div>
+                                  {rf.description && <div className="line-clamp-2 text-xs text-gray-500 mt-0.5">{convertToString(rf.description)}</div>}
                                 </div>
-                                {disabled && <span className="text-xs text-green-600">Added</span>}
+                                {disabled && <CheckCircleIcon className="size-4 text-emerald-500 shrink-0" />}
                               </label>
                             );
                           })
                         )}
                       </div>
-                      <div className="mt-3 flex items-center justify-end gap-2">
+                      <div className="mt-5 flex items-center justify-end gap-2 border-t border-gray-100 pt-4 dark:border-gray-800">
                         <button
                           type="button"
                           onClick={() => { setSelectedRecommended([]); setShowRecommendedPanel(false); }}
-                          className="rounded px-3 py-1 text-sm text-gray-600 hover:bg-gray-100"
+                          className="rounded-lg px-4 py-2 text-xs font-bold text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"
                         >
                           Cancel
                         </button>
@@ -2106,9 +2158,9 @@ export default function CreateJob() {
                           type="button"
                           onClick={handleAddSelectedRecommended}
                           disabled={selectedRecommended.length === 0}
-                          className="rounded bg-brand-500 px-3 py-1 text-sm text-white disabled:opacity-50"
+                          className="rounded-lg bg-orange-500 px-4 py-2 text-xs font-bold text-white transition hover:bg-orange-600 disabled:opacity-30"
                         >
-                          Add Selected
+                          Add Strategic Fields ({selectedRecommended.length})
                         </button>
                       </div>
                     </div>
@@ -2116,538 +2168,365 @@ export default function CreateJob() {
                 </div>
             </div>
 
-            <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-6">
               {jobForm.customFields.map((field, fieldIndex) => {
                 const isCollapsed = collapsedFields.has(fieldIndex);
                 return (
                   <div
                     key={field.fieldId}
-                    className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-900/50"
+                    className="group/field relative overflow-hidden rounded-2xl border border-gray-100 bg-gray-50/50 p-5 transition-all hover:border-brand-100 hover:bg-white hover:shadow-lg dark:border-gray-800 dark:bg-gray-900/40"
                   >
-                    <div className="space-y-3">
+                    <div className="absolute left-0 top-0 h-full w-1 bg-brand-500 opacity-0 transition-opacity group-hover/field:opacity-100" />
+                    
+                    <div className="space-y-4">
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-4">
                           <button
                             type="button"
                             onClick={() => toggleFieldCollapse(fieldIndex)}
-                            className="rounded p-1 text-gray-600 transition hover:bg-gray-200 dark:text-gray-400 dark:hover:bg-gray-700"
-                            title={isCollapsed ? "Expand" : "Collapse"}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg bg-white shadow-sm ring-1 ring-gray-200 transition-all hover:scale-110 dark:bg-gray-800 dark:ring-gray-700"
                           >
                             <svg
-                              className={`size-4 transition-transform ${isCollapsed ? '' : 'rotate-90'}`}
+                              className={`size-4 text-gray-500 transition-transform duration-300 ${isCollapsed ? '' : 'rotate-90'}`}
                               fill="none"
                               stroke="currentColor"
                               viewBox="0 0 24 24"
                             >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M9 5l7 7-7 7"
-                              />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
                             </svg>
                           </button>
-                          <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-                            Field #{fieldIndex + 1}{field.label && `: ${field.label}`}
-                          </h4>
+                          <div>
+                            <span className="text-[10px] font-black uppercase tracking-widest text-brand-500">Form Element {fieldIndex + 1}</span>
+                            <h4 className="text-base font-bold text-gray-900 dark:text-white">
+                              {field.label || <em className="font-normal text-gray-400 italic">Untitled Field</em>}
+                            </h4>
+                          </div>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveCustomField(fieldIndex)}
-                          className="rounded p-1 text-error-600 transition hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-500/10"
-                        >
-                          <TrashBinIcon className="size-4" />
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <div className={`rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-wider ${field.isRequired ? 'bg-red-50 text-red-600 dark:bg-red-900/20' : 'bg-gray-100 text-gray-500 dark:bg-gray-800'}`}>
+                            {field.isRequired ? 'Required' : 'Optional'}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveCustomField(fieldIndex)}
+                            className="rounded-lg p-2 text-gray-400 transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                          >
+                            <TrashBinIcon className="size-5" />
+                          </button>
+                        </div>
                       </div>
 
                       {!isCollapsed && (
-                        <>
-                          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                           
-                            <div>
-                              <Label htmlFor={`field-label-${fieldIndex}`}>
-                                Label{jobForm.bilingual && " (English)"}
-                              </Label>
+                        <div className="animate-in slide-in-from-top-2 duration-300 space-y-6 pt-4 border-t border-gray-100 dark:border-gray-800">
+                          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                            <div className="space-y-2">
+                              <Label htmlFor={`field-label-${fieldIndex}`}>Display Label {jobForm.bilingual && "(EN)"}</Label>
                               <Input
                                 id={`field-label-${fieldIndex}`}
                                 value={field.label}
-                                onChange={(e) =>
-                                  handleCustomFieldChange(
-                                    fieldIndex,
-                                    "label",
-                                    e.target.value
-                                  )
-                                }
-                                placeholder="Years of Experience"
+                                onChange={(e) => handleCustomFieldChange(fieldIndex, "label", e.target.value)}
+                                placeholder="e.g. Years of Experience"
                               />
                             </div>
                             {jobForm.bilingual && (
-                              <div>
-                                <Label htmlFor={`field-label-ar-${fieldIndex}`}>
-                                  Label (Arabic)
-                                </Label>
-                                <div dir="rtl">
-                                  <Input
-                                    id={`field-label-ar-${fieldIndex}`}
-                                    value={field.labelAr || ""}
-                                    onChange={(e) =>
-                                      handleCustomFieldChange(
-                                        fieldIndex,
-                                        "labelAr",
-                                        e.target.value
-                                      )
-                                    }
-                                    placeholder="سنوات الخبرة"
-                                  />
-                                </div>
+                              <div className="space-y-2" dir="rtl">
+                                <Label htmlFor={`field-label-ar-${fieldIndex}`} className="text-right block w-full">تسمية الحقل (بالعربية)</Label>
+                                <Input
+                                  id={`field-label-ar-${fieldIndex}`}
+                                  value={field.labelAr || ""}
+                                  onChange={(e) => handleCustomFieldChange(fieldIndex, "labelAr", e.target.value)}
+                                  placeholder="مثال: سنوات الخبرة"
+                                  className="text-right"
+                                />
                               </div>
                             )}
                           </div>
 
-                    <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                      <div>
-                        <Label htmlFor={`field-type-${fieldIndex}`}>
-                          Input Type
-                        </Label>
-                        <Select
-                          options={inputTypeOptions}
-                          value={field.inputType}
-                          placeholder="Select type"
-                          onChange={(value) =>
-                            handleCustomFieldChange(
-                              fieldIndex,
-                              "inputType",
-                              value
-                            )
-                          }
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor={`field-order-${fieldIndex}`}>
-                          Display Order
-                        </Label>
-                        <Input
-                          id={`field-order-${fieldIndex}`}
-                          type="number"
-                          value={field.displayOrder}
-                          onChange={(e) =>
-                            handleCustomFieldChange(
-                              fieldIndex,
-                              "displayOrder",
-                              Number(e.target.value)
-                            )
-                          }
-                          min="1"
-                        />
-                      </div>
-                      <div className="flex items-end pb-2">
-                        <Switch
-                          label="Required"
-                          defaultChecked={field.isRequired}
-                          onChange={(checked) =>
-                            handleCustomFieldChange(
-                              fieldIndex,
-                              "isRequired",
-                              checked
-                            )
-                          }
-                        />
-                      </div>
-                    </div>
-
-                    {field.inputType === "number" && (
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <Label htmlFor={`field-min-${fieldIndex}`}>
-                            Min Value
-                          </Label>
-                          <Input
-                            id={`field-min-${fieldIndex}`}
-                            type="number"
-                            value={field.minValue || ""}
-                            onChange={(e) =>
-                              handleCustomFieldChange(
-                                fieldIndex,
-                                "minValue",
-                                Number(e.target.value)
-                              )
-                            }
-                          />
-                        </div>
-                        <div>
-                          <Label htmlFor={`field-max-${fieldIndex}`}>
-                            Max Value
-                          </Label>
-                          <Input
-                            id={`field-max-${fieldIndex}`}
-                            type="number"
-                            value={field.maxValue || ""}
-                            onChange={(e) =>
-                              handleCustomFieldChange(
-                                fieldIndex,
-                                "maxValue",
-                                Number(e.target.value)
-                              )
-                            }
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    {(field.inputType === "checkbox" ||
-                      field.inputType === "radio" ||
-                      field.inputType === "dropdown") && (
-                      <div>
-                        <div className={`grid gap-3 items-start ${jobForm.bilingual ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
-                          <div>
-                            <Label>Choices{jobForm.bilingual && " (English)"}</Label>
-                            <Input
-                              value={newChoice[fieldIndex] || ""}
-                              onChange={(e) => setNewChoice(prev => ({ ...prev, [fieldIndex]: e.target.value }))}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") {
-                                  e.preventDefault();
-                                  handleAddChoice(fieldIndex);
-                                }
-                              }}
-                              placeholder="Add a choice"
-                            />
-                          </div>
-                          {jobForm.bilingual && (
-                            <div>
-                              <Label>Choices (Arabic)</Label>
-                              <div dir="rtl">
+                          <div className="grid grid-cols-1 gap-6 md:grid-cols-3 items-end">
+                            <div className="space-y-2">
+                              <Label htmlFor={`field-type-${fieldIndex}`}>Field Architecture</Label>
+                              <Select
+                                options={inputTypeOptions}
+                                value={field.inputType}
+                                placeholder="Select Component"
+                                onChange={(value) => handleCustomFieldChange(fieldIndex, "inputType", value)}
+                              />
+                            </div>
+                            <div className="space-y-2 text-center">
+                              <Label htmlFor={`field-order-${fieldIndex}`}>Sequence</Label>
+                              <div className="flex justify-center">
                                 <Input
-                                  value={newChoiceAr[fieldIndex] || ""}
-                                  onChange={(e) => setNewChoiceAr(prev => ({ ...prev, [fieldIndex]: e.target.value }))}
-                                  onKeyDown={(e) => {
-                                    if (e.key === "Enter") {
-                                      e.preventDefault();
-                                      handleAddChoice(fieldIndex);
-                                    }
-                                  }}
-                                  placeholder="أضف خيارًا"
+                                  id={`field-order-${fieldIndex}`}
+                                  type="number"
+                                  className="text-center w-24"
+                                  value={field.displayOrder}
+                                  onChange={(e) => handleCustomFieldChange(fieldIndex, "displayOrder", Number(e.target.value))}
+                                  min="1"
+                                />
+                              </div>
+                            </div>
+                            <div className="flex h-[44px] items-center justify-center rounded-xl bg-gray-100/50 px-4 dark:bg-gray-800/50">
+                              <Switch
+                                label="Mandatory Response"
+                                checked={field.isRequired}
+                                onChange={(checked) => handleCustomFieldChange(fieldIndex, "isRequired", checked)}
+                              />
+                            </div>
+                          </div>
+
+                          {field.inputType === "number" && (
+                            <div className="grid grid-cols-2 gap-6 rounded-2xl bg-brand-50/30 p-4 dark:bg-brand-500/5">
+                              <div className="space-y-2">
+                                <Label htmlFor={`field-min-${fieldIndex}`}>Minimum Threshold</Label>
+                                <Input
+                                  id={`field-min-${fieldIndex}`}
+                                  type="number"
+                                  value={field.minValue || ""}
+                                  onChange={(e) => handleCustomFieldChange(fieldIndex, "minValue", Number(e.target.value))}
+                                />
+                              </div>
+                              <div className="space-y-2">
+                                <Label htmlFor={`field-max-${fieldIndex}`}>Maximum Limit</Label>
+                                <Input
+                                  id={`field-max-${fieldIndex}`}
+                                  type="number"
+                                  value={field.maxValue || ""}
+                                  onChange={(e) => handleCustomFieldChange(fieldIndex, "maxValue", Number(e.target.value))}
                                 />
                               </div>
                             </div>
                           )}
-                          <div className="md:col-span-2">
-                            <div className="mt-2">
+
+                          {(field.inputType === "checkbox" || field.inputType === "radio" || field.inputType === "dropdown") && (
+                            <div className="rounded-2xl border border-gray-100 bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
+                              <Label className="mb-4 block text-xs font-black uppercase tracking-wider text-gray-400">Response Options</Label>
+                              <div className={`grid gap-4 items-end mb-4 ${jobForm.bilingual ? 'md:grid-cols-2' : ''}`}>
+                                <div className="space-y-2">
+                                  <Input
+                                    value={newChoice[fieldIndex] || ""}
+                                    onChange={(e) => setNewChoice(prev => ({ ...prev, [fieldIndex]: e.target.value }))}
+                                    onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleAddChoice(fieldIndex))}
+                                    placeholder="English Choice..."
+                                  />
+                                </div>
+                                {jobForm.bilingual && (
+                                  <div className="space-y-2" dir="rtl">
+                                    <Input
+                                      value={newChoiceAr[fieldIndex] || ""}
+                                      onChange={(e) => setNewChoiceAr(prev => ({ ...prev, [fieldIndex]: e.target.value }))}
+                                      onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleAddChoice(fieldIndex))}
+                                      placeholder="الخيار بالعربية..."
+                                      className="text-right"
+                                    />
+                                  </div>
+                                )}
+                              </div>
                               <button
                                 type="button"
                                 onClick={() => handleAddChoice(fieldIndex)}
-                                className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600"
+                                className="inline-flex items-center gap-2 rounded-xl bg-gray-900 px-4 py-2 text-xs font-bold text-white transition hover:bg-black dark:bg-brand-500 dark:hover:bg-brand-600"
                               >
-                                <PlusIcon className="size-4" />
-                                Add Choice
+                                <PlusIcon className="size-3" />
+                                Save Choice
                               </button>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="mt-2 space-y-1">
-                          {field.choices?.map((choice, choiceIndex) => (
-                            <div
-                              key={choiceIndex}
-                              className="flex items-center justify-between rounded border border-gray-200 bg-white px-3 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800"
-                            >
-                              <span className="text-gray-700 dark:text-gray-300">
-                                {jobForm.bilingual && "EN: "}{choice}
-                                {jobForm.bilingual && field.choicesAr?.[choiceIndex] && (
-                                  <span className="mt-1 block" dir="rtl">
-                                    AR: {field.choicesAr[choiceIndex]}
-                                  </span>
-                                )}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleRemoveChoice(fieldIndex, choiceIndex)
-                                }
-                                className="text-error-600 hover:text-error-700 dark:text-error-400"
-                              >
-                                <TrashBinIcon className="size-3" />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
 
-                    {/* Group Field Sub-Questions */}
-                    {field.inputType === "repeatable_group" && (
-                      <div className="border-l-4 border-brand-500 pl-4">
-                        <div className="mb-3 flex items-center justify-between">
-                          <Label>Sub-Questions</Label>
-                          <button
-                            type="button"
-                            onClick={() => handleAddSubField(fieldIndex)}
-                            className="inline-flex items-center gap-1 rounded-lg bg-brand-100 px-3 py-1.5 text-xs font-semibold text-brand-700 transition hover:bg-brand-200 dark:bg-brand-900/30 dark:text-brand-300"
-                          >
-                            <PlusIcon className="size-3" />
-                            Add Sub-Question
-                          </button>
-                        </div>
+                              <div className="mt-6 flex flex-wrap gap-2">
+                                {field.choices?.map((choice, choiceIndex) => (
+                                  <div
+                                    key={choiceIndex}
+                                    className="group/choice flex items-center gap-3 rounded-xl border border-gray-100 bg-gray-50 pl-4 pr-2 py-2 text-sm dark:border-gray-800 dark:bg-gray-800/50"
+                                  >
+                                    <div className="flex flex-col">
+                                      <span className="font-bold text-gray-900 dark:text-white">{choice}</span>
+                                      {jobForm.bilingual && field.choicesAr?.[choiceIndex] && (
+                                        <span className="text-[10px] text-gray-500 font-medium" dir="rtl">{field.choicesAr[choiceIndex]}</span>
+                                      )}
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveChoice(fieldIndex, choiceIndex)}
+                                      className="rounded-lg p-1 text-gray-300 hover:bg-red-50 hover:text-red-500"
+                                    >
+                                      <TrashBinIcon className="size-4" />
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
 
-                        <div className="space-y-4">
-                          {field.subFields?.map((subField, subFieldIndex) => (
-                            <div
-                              key={subField.fieldId}
-                              className="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800/50"
-                            >
-                              <div className="mb-3 flex items-center justify-between">
-                                <h5 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-                                  Sub-Question #{subFieldIndex + 1}
-                                </h5>
+                          {field.inputType === "repeatable_group" && (
+                            <div className="rounded-2xl border-2 border-dashed border-brand-100 bg-brand-50/20 p-6 dark:border-brand-900/20 dark:bg-brand-500/5">
+                              <div className="mb-6 flex items-center justify-between">
+                                <div>
+                                  <h5 className="text-sm font-black uppercase tracking-widest text-brand-600">Sub-Question Matrix</h5>
+                                  <p className="text-xs text-brand-500/70">Fields inside this repeatable section</p>
+                                </div>
                                 <button
                                   type="button"
-                                  onClick={() =>
-                                    handleRemoveSubField(
-                                      fieldIndex,
-                                      subFieldIndex
-                                    )
-                                  }
-                                  className="text-error-600 hover:text-error-700 dark:text-error-400"
+                                  onClick={() => handleAddSubField(fieldIndex)}
+                                  className="inline-flex items-center gap-2 rounded-xl bg-brand-500 px-4 py-2 text-xs font-bold text-white shadow-lg shadow-brand-500/20 hover:bg-brand-600"
                                 >
-                                  <TrashBinIcon className="size-4" />
+                                  <PlusIcon className="size-3" />
+                                  Add Sub-Field
                                 </button>
                               </div>
 
-                              <div className="space-y-3">
-                                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                                  <div>
-                                    <Label
-                                      htmlFor={`subfield-label-${subFieldIndex}`}
-                                    >
-                                      Label{jobForm.bilingual && " (English)"}
-                                    </Label>
-                                    <Input
-                                      id={`subfield-label-${subFieldIndex}`}
-                                      value={subField.label}
-                                      onChange={(e) =>
-                                        handleSubFieldChange(
-                                          fieldIndex,
-                                          subFieldIndex,
-                                          "label",
-                                          e.target.value
-                                        )
-                                      }
-                                      placeholder="Enter question label"
-                                    />
-                                  </div>
-                                  {jobForm.bilingual && (
-                                    <div>
-                                      <Label
-                                        htmlFor={`subfield-label-ar-${subFieldIndex}`}
+                              <div className="space-y-4">
+                                {field.subFields?.map((subField, subFieldIndex) => (
+                                  <div
+                                    key={subField.fieldId}
+                                    className="relative rounded-xl border border-gray-100 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900"
+                                  >
+                                    <div className="mb-4 flex items-center justify-between">
+                                      <span className="text-[10px] font-bold text-gray-400 uppercase">Sub-Field #{subFieldIndex + 1}</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleRemoveSubField(fieldIndex, subFieldIndex)}
+                                        className="text-gray-300 hover:text-red-500 transition-colors"
                                       >
-                                        Label (Arabic)
-                                      </Label>
-                                      <div dir="rtl">
-                                        <Input
-                                          id={`subfield-label-ar-${subFieldIndex}`}
-                                          value={subField.labelAr || ""}
-                                          onChange={(e) =>
-                                            handleSubFieldChange(
-                                              fieldIndex,
-                                              subFieldIndex,
-                                              "labelAr",
-                                              e.target.value
-                                            )
-                                          }
-                                          placeholder="أدخل تسمية السؤال"
-                                        />
-                                      </div>
+                                        <TrashBinIcon className="size-4" />
+                                      </button>
                                     </div>
-                                  )}
-                                </div>
 
-                                <div className="grid grid-cols-2 gap-3">
-                                  <div>
-                                    <Label
-                                      htmlFor={`subfield-type-${subFieldIndex}`}
-                                    >
-                                      Input Type
-                                    </Label>
-                                    <Select
-                                      options={subFieldTypeOptions}
-                                      value={subField.inputType}
-                                      placeholder="Select type"
-                                      onChange={(value) =>
-                                        handleSubFieldChange(
-                                          fieldIndex,
-                                          subFieldIndex,
-                                          "inputType",
-                                          value
-                                        )
-                                      }
-                                    />
-                                  </div>
-
-                                  <div className="flex items-end pb-2">
-                                    <Switch
-                                      label="Required"
-                                      defaultChecked={subField.isRequired}
-                                      onChange={(checked) =>
-                                        handleSubFieldChange(
-                                          fieldIndex,
-                                          subFieldIndex,
-                                          "isRequired",
-                                          checked
-                                        )
-                                      }
-                                    />
-                                  </div>
-                                </div>
-
-                                {/* Sub-field choices for radio, checkbox, dropdown */}
-                                {(subField.inputType === "radio" ||
-                                  subField.inputType === "checkbox" ||
-                                  subField.inputType === "dropdown") && (
-                                  <div>
-                                    <Label>Choices{jobForm.bilingual && " (English)"}</Label>
-                                    <div>
-                                      <div className="grid gap-2 md:grid-cols-2">
-                                        <div>
+                                    <div className="space-y-4">
+                                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                        <div className="space-y-1">
+                                          <Label className="text-[11px] font-bold text-gray-500">Label (EN)</Label>
                                           <Input
-                                            value={newSubFieldChoice[`${fieldIndex}-${subFieldIndex}`] || ""}
-                                            onChange={(e) =>
-                                              setNewSubFieldChoice(prev => ({ ...prev, [`${fieldIndex}-${subFieldIndex}`]: e.target.value }))
-                                            }
-                                            onKeyDown={(e) => {
-                                              if (e.key === "Enter") {
-                                                e.preventDefault();
-                                                handleAddSubFieldChoice(
-                                                  fieldIndex,
-                                                  subFieldIndex
-                                                );
-                                              }
-                                            }}
-                                            placeholder="Add a choice"
+                                            value={subField.label}
+                                            onChange={(e) => handleSubFieldChange(fieldIndex, subFieldIndex, "label", e.target.value)}
+                                            placeholder="Question label..."
+                                            className="h-9 text-sm"
                                           />
                                         </div>
                                         {jobForm.bilingual && (
-                                          <div>
-                                            <div dir="rtl">
-                                              <Input
-                                                value={newSubFieldChoiceAr[`${fieldIndex}-${subFieldIndex}`] || ""}
-                                                onChange={(e) =>
-                                                  setNewSubFieldChoiceAr(prev => ({ ...prev, [`${fieldIndex}-${subFieldIndex}`]: e.target.value }))
-                                                }
-                                                onKeyDown={(e) => {
-                                                  if (e.key === "Enter") {
-                                                    e.preventDefault();
-                                                    handleAddSubFieldChoice(
-                                                      fieldIndex,
-                                                      subFieldIndex
-                                                    );
-                                                  }
-                                                }}
-                                                placeholder="أضف خيارًا"
-                                              />
-                                            </div>
+                                          <div className="space-y-1" dir="rtl">
+                                            <Label className="text-[11px] font-bold text-gray-500">Label (AR)</Label>
+                                            <Input
+                                              value={subField.labelAr || ""}
+                                              onChange={(e) => handleSubFieldChange(fieldIndex, subFieldIndex, "labelAr", e.target.value)}
+                                              placeholder="السؤال بالعربية..."
+                                              className="h-9 text-sm text-right"
+                                            />
                                           </div>
                                         )}
                                       </div>
-                                      <div className="mt-2 md:col-span-2">
-                                        <button
-                                          type="button"
-                                          onClick={() =>
-                                            handleAddSubFieldChoice(
-                                              fieldIndex,
-                                              subFieldIndex
-                                            )
-                                          }
-                                          className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600"
-                                        >
-                                          <PlusIcon className="size-4" />
-                                          Add Choice
-                                        </button>
+
+                                      <div className="grid grid-cols-2 gap-4 items-end">
+                                        <div className="space-y-1">
+                                          <Label className="text-[11px] font-bold text-gray-500">Input Architecture</Label>
+                                          <Select
+                                            options={subFieldTypeOptions}
+                                            value={subField.inputType}
+                                            onChange={(value) => handleSubFieldChange(fieldIndex, subFieldIndex, "inputType", value)}
+                                          />
+                                        </div>
+                                        <div className="flex h-[40px] items-center px-3 rounded-lg bg-gray-50 dark:bg-gray-800/50">
+                                          <Switch
+                                            label="Required"
+                                            checked={subField.isRequired}
+                                            onChange={(checked) => handleSubFieldChange(fieldIndex, subFieldIndex, "isRequired", checked)}
+                                          />
+                                        </div>
                                       </div>
-                                    </div>
-                                    <div className="mt-2 space-y-1">
-                                      {subField.choices?.map(
-                                        (choice, choiceIndex) => (
-                                          <div
-                                            key={choiceIndex}
-                                            className="flex items-center justify-between rounded border border-gray-200 bg-white px-3 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800"
-                                          >
-                                            <span className="text-gray-700 dark:text-gray-300">
-                                              {jobForm.bilingual && "EN: "}{choice}
-                                              {jobForm.bilingual && subField.choicesAr?.[choiceIndex] && (
-                                                <span className="mt-1 block" dir="rtl">
-                                                  AR: {subField.choicesAr[choiceIndex]}
-                                                </span>
-                                              )}
-                                            </span>
-                                            <button
-                                              type="button"
-                                              onClick={() =>
-                                                handleRemoveSubFieldChoice(
-                                                  fieldIndex,
-                                                  subFieldIndex,
-                                                  choiceIndex
-                                                )
-                                              }
-                                              className="text-error-600 hover:text-error-700 dark:text-error-400"
-                                            >
-                                              <TrashBinIcon className="size-3" />
-                                            </button>
+
+                                      {(subField.inputType === "radio" || subField.inputType === "checkbox" || subField.inputType === "dropdown") && (
+                                        <div className="mt-4 pt-4 border-t border-gray-50 dark:border-gray-800">
+                                          <div className="grid gap-4 md:grid-cols-2 mb-3">
+                                            <Input
+                                              value={newSubFieldChoice[`${fieldIndex}-${subFieldIndex}`] || ""}
+                                              onChange={(e) => setNewSubFieldChoice(prev => ({ ...prev, [`${fieldIndex}-${subFieldIndex}`]: e.target.value }))}
+                                              onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleAddSubFieldChoice(fieldIndex, subFieldIndex))}
+                                              placeholder="English choice..."
+                                              className="h-8 text-xs"
+                                            />
+                                            {jobForm.bilingual && (
+                                              <div dir="rtl">
+                                                <Input
+                                                  value={newSubFieldChoiceAr[`${fieldIndex}-${subFieldIndex}`] || ""}
+                                                  onChange={(e) => setNewSubFieldChoiceAr(prev => ({ ...prev, [`${fieldIndex}-${subFieldIndex}`]: e.target.value }))}
+                                                  onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleAddSubFieldChoice(fieldIndex, subFieldIndex))}
+                                                  placeholder="الخيار بالعربية..."
+                                                  className="h-8 text-xs text-right"
+                                                />
+                                              </div>
+                                            )}
                                           </div>
-                                        )
+                                          <button
+                                            type="button"
+                                            onClick={() => handleAddSubFieldChoice(fieldIndex, subFieldIndex)}
+                                            className="text-[10px] font-black uppercase text-brand-600 hover:text-brand-700 flex items-center gap-1"
+                                          >
+                                            <PlusIcon className="size-3" /> Add Choice
+                                          </button>
+                                          <div className="mt-3 flex flex-wrap gap-2">
+                                            {subField.choices?.map((choice, choiceIndex) => (
+                                              <div key={choiceIndex} className="flex items-center gap-2 rounded-lg bg-gray-100 px-3 py-1 text-[11px] font-medium dark:bg-gray-800 dark:text-gray-300">
+                                                <span>{choice}</span>
+                                                <button onClick={() => handleRemoveSubFieldChoice(fieldIndex, subFieldIndex, choiceIndex)} className="text-gray-400 hover:text-red-500">×</button>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
                                       )}
                                     </div>
                                   </div>
-                                )}
+                                ))}
                               </div>
                             </div>
-                          ))}
+                          )}
                         </div>
-                      </div>
-                    )}
-                        </>
                       )}
                     </div>
                   </div>
                 );
               })}
             </div>
-          </ComponentCard>
+          </div>
 
-         
           {/* Submit and Preview */}
-          <ComponentCard title="Review & Submit">
-            <div className="space-y-4">
-              <div className="flex flex-wrap items-center gap-3">
+          <div className="group relative overflow-hidden rounded-3xl border border-gray-200 bg-white p-8 shadow-sm transition-all hover:shadow-xl dark:border-gray-800 dark:bg-gray-900">
+            <div className="flex flex-col items-center gap-6">
+              <div className="text-center">
+                <h3 className="text-xl font-black text-gray-900 dark:text-white uppercase tracking-wider">Ready to Finalize?</h3>
+                <p className="mt-1 text-sm text-gray-500">Ensure all mandatory fields and specifications are defined before proceeding.</p>
+              </div>
+              
+              <div className="flex flex-wrap items-center justify-center gap-4">
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-6 py-3 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="group relative inline-flex items-center gap-3 overflow-hidden rounded-2xl bg-brand-500 px-10 py-4 text-sm font-black text-white shadow-2xl shadow-brand-500/30 transition-all hover:bg-brand-600 hover:shadow-brand-500/50 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
+                  <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 animate-shimmer" />
                   {isSubmitting ? (
                     <>
                       <svg className="size-5 animate-spin" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                       </svg>
-                      {isEditMode ? "Updating..." : "Creating..."}
+                      {isEditMode ? "Propagating Changes..." : "Publishing Job..."}
                     </>
                   ) : (
                     <>
-                      <CheckCircleIcon className="size-5" />
-                      {isEditMode ? "Update Job" : "Create Job"}
+                      <CheckCircleIcon className="size-6 transition-transform group-hover:scale-110" />
+                      {isEditMode ? "Save Changes" : "Launch Position"}
                     </>
                   )}
                 </button>
+                
                 {jobStatus && (
-                  <span className="inline-flex items-center gap-2 rounded-full bg-success-50 px-4 py-2 text-sm font-semibold text-success-600 ring-1 ring-inset ring-success-200 dark:bg-success-500/10 dark:text-success-200 dark:ring-success-400/40">
-                    <CheckCircleIcon className="size-4" />
-                    {jobStatus}
-                  </span>
+                  <div className="animate-in fade-in zoom-in slide-in-from-right-4 duration-500 flex items-center gap-3 rounded-2xl bg-emerald-50 px-6 py-4 text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:ring-emerald-500/20">
+                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500 text-white shadow-lg">
+                      <CheckCircleIcon className="size-4" />
+                    </div>
+                    <span className="text-sm font-bold uppercase tracking-wider">{jobStatus}</span>
+                  </div>
                 )}
               </div>
-
-
             </div>
-          </ComponentCard>
+          </div>
         </form>
       )}
     </div>

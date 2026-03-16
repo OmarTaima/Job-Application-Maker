@@ -1,23 +1,33 @@
 import { useEffect, useState } from "react";
 import Swal from 'sweetalert2';
 import { useAuth } from "../../../context/AuthContext";
-import ComponentCard from "../../../components/common/ComponentCard";
-import Label from "../../../components/form/Label";
-import Input from "../../../components/form/input/InputField";
 import PageMeta from "../../../components/common/PageMeta";
 import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
 import { useUpdateCompanySettings, useCompanies } from "../../../hooks/queries/useCompanies";
+import { 
+  Building2, 
+  Mail, 
+  Trash2, 
+  Save, 
+  Globe, 
+  ShieldCheck, 
+  Settings, 
+  Briefcase,
+  CheckCircle,
+  PlusCircle,
+  ArrowRight
+} from "lucide-react";
 
 type Props = {
   companyId?: string;
   onSaved?: (data: any) => void;
-  // called whenever settings change (draft mode before company exists)
   onChange?: (mailSettings: { availableMails?: string[]; defaultMail?: string | null; companyDomain?: string | null }) => void;
 };
 
 export default function CompanySettingsPage({ companyId, onSaved, onChange }: Props) {
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | undefined>(companyId);
 
+  // Types
   type MailSettings = {
     companyDomain?: string | null;
     availableMails?: string[];
@@ -33,333 +43,296 @@ export default function CompanySettingsPage({ companyId, onSaved, onChange }: Pr
   type Company = {
     _id: string;
     contactEmail?: string | null;
-    email?: string | null;
     name?: any;
     settings?: CompanySettings | null;
     mailSettings?: MailSettings | null;
   };
 
-  // fetch companies for selector when needed
   const { data: companies = [] } = useCompanies();
   const { user, hasPermission } = useAuth();
-
-  const canViewMailManagement = !!hasPermission && hasPermission('Mail Management', 'read');
-  if (!canViewMailManagement) {
-    return (
-      <div className="p-6 max-w-md mx-auto text-center text-gray-600">
-        You do not have permission to view Mail Management.
-      </div>
-    );
-  }
-
-  const isSuperAdmin = !!user?.roleId?.name?.toString().toLowerCase().includes("admin");
-  const userCompaniesIds = (user?.companies ?? []).map((c: any) => (typeof c.companyId === "string" ? c.companyId : c.companyId?._id)).filter(Boolean) as string[];
-  const showSelector = isSuperAdmin || (userCompaniesIds.length > 1);
-
-  const canEdit = !!hasPermission && (hasPermission('Mail Management', 'write') && hasPermission('Mail Management', 'create'));
-
-  useEffect(() => {
-    // priority: prop `companyId` -> if user has single assigned company -> that -> otherwise first company from list
-    if (companyId) {
-      if (selectedCompanyId !== companyId) setSelectedCompanyId(companyId);
-      return;
-    }
-    if (!showSelector) {
-      // if user has a single company, use it
-      if (userCompaniesIds.length === 1 && selectedCompanyId !== userCompaniesIds[0]) {
-        setSelectedCompanyId(userCompaniesIds[0]);
-      }
-      return;
-    }
-    if (!selectedCompanyId && companies && companies.length > 0) {
-      const firstId = companies[0]._id;
-      if (selectedCompanyId !== firstId) setSelectedCompanyId(firstId);
-    }
-  }, [companyId, companies, userCompaniesIds.join(","), showSelector, selectedCompanyId]);
-
-  // Derive settings from the already-loaded companies list to avoid making
-  // an additional GET request for a single company's settings.
-  const company = (companies as Company[]).find((c) => c._id === selectedCompanyId);
-  const settings = (company?.settings ?? company?.mailSettings ?? company?.settings?.mailSettings) as any;
-  const isLoading = false;
   const updateMutation = useUpdateCompanySettings();
 
   const [availableMails, setAvailableMails] = useState<string[]>([]);
   const [defaultMail, setDefaultMail] = useState<string>("");
   const [companyDomain, setCompanyDomain] = useState<string>("");
   const [isSaving, setIsSaving] = useState(false);
+  const [newMail, setNewMail] = useState("");
 
-  // Initialize mails from the preloaded companies list so we don't have to
-  // wait for the specific company settings GET to populate the UI.
+  const canViewMailManagement = !!hasPermission && hasPermission('Mail Management', 'read');
+  const isSuperAdmin = !!user?.roleId?.name?.toString().toLowerCase().includes("admin");
+  const userCompaniesIds = (user?.companies ?? []).map((c: any) => (typeof c.companyId === "string" ? c.companyId : c.companyId?._id)).filter(Boolean) as string[];
+  const showSelector = isSuperAdmin || (userCompaniesIds.length > 1);
+  const canEdit = !!hasPermission && (hasPermission('Mail Management', 'write') && hasPermission('Mail Management', 'create'));
+
+  useEffect(() => {
+    if (companyId) {
+      if (selectedCompanyId !== companyId) setSelectedCompanyId(companyId);
+      return;
+    }
+    if (!showSelector) {
+      if (userCompaniesIds.length === 1 && selectedCompanyId !== userCompaniesIds[0]) {
+        setSelectedCompanyId(userCompaniesIds[0]);
+      }
+      return;
+    }
+    if (!selectedCompanyId && companies && companies.length > 0) {
+      const firstId = (companies[0] as any)._id;
+      if (selectedCompanyId !== firstId) setSelectedCompanyId(firstId);
+    }
+  }, [companyId, companies, userCompaniesIds.join(","), showSelector, selectedCompanyId]);
+
   useEffect(() => {
     if (!selectedCompanyId) return;
     const company = (companies as Company[]).find((c) => c._id === selectedCompanyId);
-    const companyMail = (company && (company.contactEmail || (company as any).email)) || "";
-
-    // Only initialize from company data when we don't already have any mails
-    // (avoid overwriting user edits or later settings merge).
-    if (companyMail && availableMails.length === 0) {
-      setAvailableMails([companyMail]);
-      setDefaultMail(companyMail);
-      const domainFromEmail = companyMail && companyMail.includes("@") ? companyMail.split("@")[1] : "";
-      setCompanyDomain(domainFromEmail);
+    const settings = (company?.settings ?? company?.mailSettings ?? company?.settings?.mailSettings) as any;
+    
+    if (settings) {
+      setAvailableMails(settings.availableMails || []);
+      setDefaultMail(settings.defaultMail || "");
+      setCompanyDomain(settings.companyDomain || "");
     }
-  }, [companies, selectedCompanyId, availableMails.length]);
+  }, [selectedCompanyId, companies]);
 
   useEffect(() => {
-  // Find the current company from the companies list
-  const company = (companies as Company[]).find((c) => c._id === selectedCompanyId);
-  const companyMail = (company && (company.contactEmail || (company as any).email)) || "";
-  
-  // Debug: log the settings structure to see what we're getting
-  console.debug('companysettings: settings structure', { 
-    selectedCompanyId, 
-    settings,
-    company,
-    companyMail 
-  });
-
-  if (settings) {
-    // The settings object might be nested in different ways
-    // Based on your API response, settings.company.settings.mailSettings is the path
-    let mailSettings = null;
-    
-    if (settings.company?.settings?.mailSettings) {
-      // Structure: { company: { settings: { mailSettings: {...} } } }
-      mailSettings = settings.company.settings.mailSettings;
-    } else if (settings.mailSettings) {
-      // Structure: { mailSettings: {...} }
-      mailSettings = settings.mailSettings;
-    } else if (settings.settings?.mailSettings) {
-      // Structure: { settings: { mailSettings: {...} } }
-      mailSettings = settings.settings.mailSettings;
-    }
-    
-    console.debug('companysettings: extracted mailSettings', { mailSettings });
-
-    if (mailSettings) {
-      const fromSettings = mailSettings.availableMails ?? [];
-      
-      // Merge company email with settings emails, removing duplicates
-      const merged = companyMail
-        ? Array.from(new Set([companyMail, ...fromSettings.filter(Boolean)]))
-        : Array.from(new Set(fromSettings.filter(Boolean)));
-
-      console.debug('companysettings: merged mails', { fromSettings, merged, companyMail });
-      
-      setAvailableMails(merged);
-
-      // Set default mail: prioritize company email, then settings default
-      setDefaultMail(companyMail || mailSettings.defaultMail || "");
-
-      // Set domain: derive from company email or use settings domain
-      const domainFromEmail = companyMail && companyMail.includes("@") ? companyMail.split("@")[1] : "";
-      setCompanyDomain(domainFromEmail || mailSettings.companyDomain || "");
-    } else {
-      // No mailSettings found, just use company email if available
-      if (companyMail) {
-        setAvailableMails([companyMail]);
-        setDefaultMail(companyMail);
-        const domainFromEmail = companyMail && companyMail.includes("@") ? companyMail.split("@")[1] : "";
-        setCompanyDomain(domainFromEmail);
-      } else {
-        setAvailableMails([]);
-        setDefaultMail("");
-        setCompanyDomain("");
-      }
-    }
-  } else {
-    // No settings at all, initialize with company contact email if available
-    if (companyMail) {
-      setAvailableMails([companyMail]);
-      setDefaultMail(companyMail);
-      const domainFromEmail = companyMail && companyMail.includes("@") ? companyMail.split("@")[1] : "";
-      setCompanyDomain(domainFromEmail);
-    } else {
-      setAvailableMails([]);
-      setDefaultMail("");
-      setCompanyDomain("");
-    }
-  }
-}, [settings, selectedCompanyId, companies]);
-
-  // notify parent when fields change (draft mode)
-  useEffect(() => {
-    onChange?.({ availableMails, defaultMail: defaultMail || null, companyDomain: companyDomain || null });
+    onChange?.({
+      availableMails,
+      defaultMail: defaultMail || null,
+      companyDomain: companyDomain || null,
+    });
   }, [availableMails, defaultMail, companyDomain, onChange]);
 
-  const handleAddMail = () => setAvailableMails((s) => [...s, ""]);
-  
- 
-  const handleRemoveMail = (idx: number) => setAvailableMails((s) => s.filter((_, i) => i !== idx));
-  const normalizeMail = (raw: string) => {
-    const v = String(raw || "").trim();
-    if (!v) return "";
-    // if already contains domain, return as-is
-    if (v.includes("@")) return v;
-    // if we have a configured companyDomain, append it
-    if (companyDomain && companyDomain.trim()) return `${v}@${companyDomain.trim()}`;
-    // otherwise return raw local-part (user will see warning on save)
-    return v;
+  const handleAddMail = () => {
+    if (!newMail || !newMail.includes("@")) {
+      Swal.fire("Invalid Format", "Please enter a valid credential email", "error");
+      return;
+    }
+    if (availableMails.includes(newMail)) return;
+    setAvailableMails([...availableMails, newMail]);
+    setNewMail("");
   };
-  const handleMailChange = (idx: number, val: string, domain?: string) => setAvailableMails((s) => s.map((m, i) => {
-    if (i !== idx) return m;
-    const v = String(val || '').trim();
-    if (!v) return '';
-    if (v.includes('@')) return v;
-    // prefer explicit domain param (from existing value), then companyDomain, else leave as local-part
-    const useDomain = domain || (companyDomain && companyDomain.trim()) || '';
-    return useDomain ? `${v}@${useDomain}` : v;
-  }));
 
-  useEffect(() => {
-    try { console.debug('companysettings: availableMails state', { selectedCompanyId, availableMails }); } catch (e) {}
-  }, [availableMails, selectedCompanyId]);
+  const handleRemoveMail = (mail: string) => {
+    setAvailableMails(availableMails.filter(m => m !== mail));
+    if (defaultMail === mail) setDefaultMail("");
+  };
 
   const handleSave = async () => {
-    const cid = selectedCompanyId ?? companyId;
-    if (!cid) return;
+    if (!selectedCompanyId) return;
     setIsSaving(true);
-    const payload = {
-      company: cid,
-      mailSettings: {
-        availableMails: availableMails.map(normalizeMail).filter(Boolean),
-        defaultMail: defaultMail || null,
-        companyDomain: companyDomain || null,
-      },
-    };
-
     try {
-      // Use the company id for the /companies/{id}/settings endpoint
-      // Robustly find a generated settings id in the `settings` object if present
-      const findSettingsId = (obj: any): string | undefined => {
-        if (!obj || typeof obj !== 'object') return undefined;
-        if (obj.settings && obj.settings._id) return obj.settings._id;
-        if (obj._id && typeof obj._id === 'string' && obj._id.match(/^[0-9a-fA-F]{24}$/)) return obj._id;
-        if (obj.company && obj.company.settings && obj.company.settings._id) return obj.company.settings._id;
-        if (obj.company && obj.company._id && typeof obj.company._id === 'string' && obj.company._id.match(/^[0-9a-fA-F]{24}$/)) return obj.company._id;
-        if (obj.mailSettings && obj.mailSettings._id) return obj.mailSettings._id;
-        for (const k of Object.keys(obj)) {
-          if (k.endsWith('_id') && typeof obj[k] === 'string' && obj[k].match(/^[0-9a-fA-F]{24}$/)) return obj[k];
-        }
-        return undefined;
-      };
-
-        const companyObj = (companies as Company[]).find((c) => c._id === cid) as Company | undefined;
-        const companySettingsId = companyObj?.settings?._id;
-        const generatedSettingsId = companySettingsId ?? findSettingsId(settings);
-        const idToSend = generatedSettingsId ?? cid; // fall back to company id if no settings id
-        const res = await updateMutation.mutateAsync({ id: idToSend, data: { mailSettings: payload.mailSettings } });
-        // Apply server response to local state so UI reflects saved changes
-        try {
-          const payload = res?.result ?? res?.data ?? res ?? {};
-          const mailSettingsFromPayload = payload?.mailSettings ?? payload?.settings?.mailSettings ?? payload?.result?.mailSettings ?? payload?.result?.settings?.mailSettings ?? null;
-
-          const returnedMails = (mailSettingsFromPayload && Array.isArray(mailSettingsFromPayload.availableMails)
-            ? mailSettingsFromPayload.availableMails
-            : Array.isArray(payload?.availableMails)
-            ? payload.availableMails
-            : []);
-
-          if (returnedMails && returnedMails.length > 0) {
-            // Ensure we include company contact email as first entry if present
-            const company = (companies as Company[]).find((c) => c._id === cid);
-            const companyMail = (company && (company.contactEmail || (company as any).email)) || '';
-            const merged = companyMail ? Array.from(new Set([companyMail, ...returnedMails.filter(Boolean)])) : Array.from(new Set(returnedMails.filter(Boolean)));
-            setAvailableMails(merged);
+      await updateMutation.mutateAsync({
+        id: selectedCompanyId,
+        data: {
+          mailSettings: {
+            availableMails,
+            defaultMail,
+            companyDomain
           }
-
-          const returnedDefault = (mailSettingsFromPayload && mailSettingsFromPayload.defaultMail) || payload?.defaultMail || '';
-          if (returnedDefault) setDefaultMail(returnedDefault);
-
-          const returnedDomain = (mailSettingsFromPayload && mailSettingsFromPayload.companyDomain) || payload?.companyDomain || '';
-          if (returnedDomain) setCompanyDomain(returnedDomain);
-        } catch (e) { /* ignore */ }
-        try { Swal.fire('Saved', 'Settings saved successfully', 'success'); } catch (e) { /* ignore */ }
-      onSaved?.(res);
-    } catch (err) {
-      console.error('handleSave: save error', err);
-      try {
-        const msg = (err && ((err as any).message || (err as any).toString())) || 'Failed to save settings';
-        Swal.fire('Save failed', msg, 'error');
-      } catch (e) { /* ignore */ }
+        }
+      });
+      Swal.fire({ title: "Configuration Synced", icon: "success", timer: 1500, showConfirmButton: false, background: "#1e293b", color: "#fff" });
+      onSaved?.({ availableMails, defaultMail, companyDomain });
+    } catch (err: any) {
+      Swal.fire("Failure", err.message || "Failed to update configuration", "error");
     } finally {
       setIsSaving(false);
     }
   };
 
+  if (!canViewMailManagement) {
+    return (
+      <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0F172A] flex items-center justify-center p-8">
+        <div className="text-center space-y-4">
+          <div className="size-20 bg-red-500/10 rounded-full flex items-center justify-center mx-auto text-red-500">
+            <ShieldCheck className="size-10" />
+          </div>
+          <h2 className="text-2xl font-black">Restricted Protocol</h2>
+          <p className="text-gray-500 max-w-xs mx-auto">Your account does not have authorization to manage communication infrastructure.</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-6">
-      <PageMeta title="Company Settings | Hiring" description="Company mail settings" />
-      <PageBreadcrumb pageTitle="Company Settings" />
+    <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0F172A] p-4 sm:p-8 text-slate-900 dark:text-slate-100">
+      <PageMeta title="Company Configuration | Job Application Maker" description="Manage infrastructure and settings" />
+      <PageBreadcrumb pageTitle="Infrastructure configuration" />
 
-      <ComponentCard title="Mail Settings" desc="Configure company mail settings and domain">
-        <div className="space-y-4">
-          {showSelector && (
+      <div className="max-w-6xl mx-auto space-y-12">
+        {/* Header Section */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8">
+          <div className="flex items-center gap-6">
+            <div className="size-16 rounded-3xl bg-brand-500 text-white flex items-center justify-center shadow-xl shadow-brand-500/20">
+              <Settings className="size-8" />
+            </div>
             <div>
-              <Label>Choose Company</Label>
-              <select
-                value={selectedCompanyId}
-                onChange={(e) => setSelectedCompanyId(e.target.value)}
-                disabled={!canEdit}
-                className="h-10 w-full rounded border border-gray-300 px-3 py-2 text-sm"
-              >
-                <option value="">Select company...</option>
-                {companies.map((c: any) => (
-                  <option key={c._id} value={c._id}>
-                    {typeof c.name === 'object' ? c.name.en || c.name.ar : c.name}
-                  </option>
-                ))}
-              </select>
+              <h1 className="text-3xl font-black bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-400 bg-clip-text text-transparent tracking-tight">
+                Corporate Infrastructure
+              </h1>
+              <p className="mt-1 text-gray-500 dark:text-gray-400 font-medium italic">Configure communication protocols and organizational domains</p>
             </div>
-          )}
-          <div>
-            <Label>Available Mails</Label>
-            <div className="space-y-2">
-              {isLoading && selectedCompanyId && availableMails.length === 0 ? (
-                <div className="text-sm text-gray-500">Loading...</div>
-              ) : (
-                availableMails.map((m, idx) => {
-                  const raw = String(m || '');
-                  const parts = raw.split('@');
-                  const local = parts[0] || '';
-                  const dom = parts[1] || companyDomain || '';
-                  return (
-                    <div key={idx} className="flex gap-2 items-center">
-                      <Input value={local} onChange={(e) => handleMailChange(idx, e.target.value, dom)} placeholder={`mail ${idx + 1}`} disabled={!canEdit} readOnly={!canEdit} />
-                      <div className="text-sm text-gray-600">
-                        {dom ? `@${dom}` : <span className="text-amber-600">⚠️ No domain</span>}
-                      </div>
-                      <button type="button" onClick={() => handleRemoveMail(idx)} disabled={!canEdit} className="text-red-600" aria-disabled={!canEdit}>Remove</button>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-            <button type="button" onClick={handleAddMail} disabled={!canEdit} className="mt-2 text-sm text-brand-600" aria-disabled={!canEdit}>+ Add mail</button>
           </div>
+          
+          <button
+            onClick={handleSave}
+            disabled={isSaving || !canEdit}
+            className="flex items-center gap-3 px-10 py-4 bg-brand-500 text-white rounded-[1.5rem] font-black shadow-xl shadow-brand-500/20 hover:scale-105 active:scale-95 disabled:opacity-50 transition-all"
+          >
+            {isSaving ? <div className="size-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="size-5" />}
+            Sync Configuration
+          </button>
+        </div>
 
-          <div>
-            <Label>Default Mail</Label>
-            <Input value={defaultMail} onChange={(e) => setDefaultMail(e.target.value)} placeholder="default@mail.com" disabled={!canEdit} readOnly={!canEdit} />
-          </div>
-
-          <div>
-            <Label>Company Domain</Label>
-            <Input value={companyDomain} onChange={(e) => setCompanyDomain(e.target.value)} placeholder="example.com" disabled={!canEdit} readOnly={!canEdit} />
-          </div>
-
-          <div className="flex items-center gap-3">
-            {(selectedCompanyId || companyId) ? (
-              <button onClick={canEdit ? handleSave : undefined} disabled={!canEdit || isSaving} className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold ${(!canEdit || isSaving) ? 'bg-gray-300 text-gray-600 cursor-not-allowed' : 'bg-brand-500 text-white'}`} title={!canEdit ? 'You need write/create permission to edit' : undefined}>
-                {isSaving ? "Saving..." : "Save Settings"}
-              </button>
-            ) : (
-              <div className="text-sm text-gray-500">Settings will be saved after company creation.</div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+          {/* Left Column: Selector & Domain */}
+          <div className="space-y-8">
+            {showSelector && (
+              <div className="bg-white/60 dark:bg-white/5 backdrop-blur-xl border border-white/20 dark:border-white/10 rounded-[2.5rem] p-8 shadow-sm">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="size-10 rounded-xl bg-purple-500/10 flex items-center justify-center text-purple-500">
+                    <Building2 className="size-5" />
+                  </div>
+                  <h3 className="text-lg font-black tracking-tight">Active Company</h3>
+                </div>
+                <div className="relative">
+                  <select
+                    value={selectedCompanyId}
+                    onChange={(e) => setSelectedCompanyId(e.target.value)}
+                    className="w-full pl-5 pr-10 py-4 bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/10 rounded-2xl font-black appearance-none focus:ring-4 ring-brand-500/10 transition-all outline-none"
+                  >
+                    {companies.map((c: any) => (
+                      <option key={c._id} value={c._id} className="font-bold">
+                        {(typeof c.name === 'object' ? c.name.en : c.name) || "Unnamed Company"}
+                      </option>
+                    ))}
+                  </select>
+                  <ArrowRight className="absolute right-4 top-1/2 -translate-y-1/2 size-4 text-slate-400 rotate-90" />
+                </div>
+                <p className="mt-4 text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">Select the Company you wish to configure</p>
+              </div>
             )}
+
+            <div className="bg-white/60 dark:bg-white/5 backdrop-blur-xl border border-white/20 dark:border-white/10 rounded-[2.5rem] p-8 shadow-sm">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="size-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-500">
+                  <Globe className="size-5" />
+                </div>
+                <h3 className="text-lg font-black tracking-tight">Domain Protocol</h3>
+              </div>
+              <div className="space-y-4">
+                <div className="relative group">
+                  <Globe className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-slate-400 group-focus-within:text-brand-500 transition-colors" />
+                  <input
+                    value={companyDomain || ""}
+                    onChange={(e) => setCompanyDomain(e.target.value)}
+                    placeholder="domain.com"
+                    className="w-full pl-11 pr-5 py-4 bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/10 rounded-2xl font-bold focus:ring-4 ring-brand-500/10 transition-all outline-none"
+                  />
+                </div>
+                <p className="text-xs text-slate-500 font-medium italic leading-relaxed">
+                  The official domain used for verifying communication origin and automated mail filtering.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Right Column: Communication Hub */}
+          <div className="lg:col-span-2 space-y-8">
+            <div className="bg-white/60 dark:bg-white/5 backdrop-blur-xl border border-white/20 dark:border-white/10 rounded-[2.5rem] p-10 shadow-sm">
+              <div className="flex items-center justify-between mb-10">
+                <div className="flex items-center gap-4">
+                  <div className="size-12 rounded-2xl bg-brand-500/10 flex items-center justify-center text-brand-500">
+                    <Mail className="size-6" />
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-black tracking-tight">Communication Infrastructure</h2>
+                    <p className="text-xs text-gray-400 mt-1 uppercase tracking-widest font-black">Managed Messaging Channels</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-10">
+                {/* New Mail Trigger */}
+                <div className="relative">
+                  <div className="flex gap-4 p-4 bg-slate-50 dark:bg-white/5 rounded-[2rem] border border-slate-200 dark:border-white/10 focus-within:border-brand-500/50 focus-within:ring-8 ring-brand-500/5 transition-all">
+                    <div className="relative flex-1">
+                      <Mail className="absolute left-4 top-1/2 -translate-y-1/2 size-5 text-slate-400" />
+                      <input
+                        value={newMail}
+                        onChange={(e) => setNewMail(e.target.value)}
+                        placeholder="Register new communication address (e.g. hr@domain.com)"
+                        className="w-full pl-12 pr-4 py-4 bg-transparent outline-none font-bold placeholder:text-slate-400 placeholder:italic"
+                        onKeyDown={(e) => e.key === 'Enter' && handleAddMail()}
+                      />
+                    </div>
+                    <button
+                      onClick={handleAddMail}
+                      className="px-8 py-4 bg-brand-500 text-white rounded-2xl font-black shadow-lg shadow-brand-500/20 hover:scale-105 active:scale-95 transition-all flex items-center gap-3"
+                    >
+                      <PlusCircle className="size-5" /> Register Address
+                    </button>
+                  </div>
+                </div>
+
+                {/* Mailing Matrix */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3 px-2">
+                    <Briefcase className="size-4 text-slate-400" />
+                    <span className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">Authorized Channels Matrix</span>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {availableMails.length > 0 ? availableMails.map((mail) => (
+                      <div 
+                        key={mail}
+                        onClick={() => setDefaultMail(mail)}
+                        className={`group relative p-6 rounded-[2rem] border-2 transition-all cursor-pointer flex items-center justify-between ${defaultMail === mail ? "bg-brand-500/5 border-brand-500 shadow-xl shadow-brand-500/5" : "bg-white dark:bg-white/5 border-slate-100 dark:border-white/5 hover:border-slate-300 dark:hover:border-white/20 hover:shadow-lg"}`}
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className={`size-12 rounded-2xl flex items-center justify-center transition-all ${defaultMail === mail ? "bg-brand-500 text-white rotate-12 shadow-lg" : "bg-slate-100 dark:bg-white/10 text-slate-400 group-hover:rotate-6"}`}>
+                            {defaultMail === mail ? <CheckCircle className="size-6" /> : <Mail className="size-5" />}
+                          </div>
+                          <div>
+                            <span className="block font-black tracking-tight">{mail}</span>
+                            <span className={`text-[10px] font-black uppercase tracking-widest ${defaultMail === mail ? "text-brand-500" : "text-slate-400"}`}>
+                              {defaultMail === mail ? "Default Protocol" : "Standby Channel"}
+                            </span>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleRemoveMail(mail); }}
+                          className="size-10 rounded-2xl bg-red-500/10 text-red-500 flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-red-500 hover:text-white transition-all hover:scale-110 active:scale-90"
+                        >
+                          <Trash2 className="size-4" />
+                        </button>
+                      </div>
+                    )) : (
+                      <div className="col-span-2 py-16 text-center border-2 border-dashed border-slate-200 dark:border-white/10 rounded-[3rem]">
+                        <Mail className="size-12 mx-auto mb-4 opacity-5" />
+                        <p className="font-bold text-slate-400 italic">No communication infrastructure registered.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Legend / Info */}
+                <div className="p-8 bg-blue-500/5 border border-blue-500/10 rounded-[2.5rem] flex items-start gap-6">
+                  <div className="size-12 rounded-2xl bg-blue-500/10 flex items-center justify-center text-blue-500 shrink-0">
+                    <ShieldCheck className="size-6" />
+                  </div>
+                  <div>
+                    <h4 className="font-black text-blue-900 dark:text-blue-300 mb-1">Architecture Note</h4>
+                    <p className="text-sm text-blue-700/70 dark:text-blue-400/70 leading-relaxed font-medium">
+                      Addresses registered here will be available as "From" aliases in the automated messaging system. The "Default Protocol" address is used for all system-triggered transactional correspondence and recovery protocols.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-      </ComponentCard>
+      </div>
     </div>
   );
 }

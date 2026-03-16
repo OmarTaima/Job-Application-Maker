@@ -1,1159 +1,323 @@
-import type { ChangeEvent, FormEvent } from "react";
-import { useState, useEffect } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import Swal from "sweetalert2";
-import { Link, useNavigate } from "react-router";
+import { useState, useMemo } from "react";
+import { useNavigate } from "react-router";
 import { useAuth } from "../../../context/AuthContext";
 import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
 import PageMeta from "../../../components/common/PageMeta";
-import ComponentCard from "../../../components/common/ComponentCard";
 import LoadingSpinner from "../../../components/common/LoadingSpinner";
-import { ValidationErrorAlert } from "../../../components/common/ValidationErrorAlert";
-import Label from "../../../components/form/Label";
-import Input from "../../../components/form/input/InputField";
-import MultiSelect from "../../../components/form/MultiSelect";
-import { PlusIcon, PencilIcon, TrashBinIcon } from "../../../icons";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableRow,
-} from "../../../components/ui/table";
-import { companiesService } from "../../../services/companiesService";
-import { usersService } from "../../../services/usersService";
-import {
-  useUsers,
-  useCreateUser,
-  useDeleteUser,
-  useUpdateUser,
-  useUpdateUserCompanies,
-  useAddUserCompany,
-  useRemoveUserCompany,
-  useRoles,
-  usePermissions,
-  useCompanies,
-  useDepartments,
+import { 
+  useUsers, 
+  useRoles, 
+  useDeleteUser 
 } from "../../../hooks/queries";
 import { toPlainString } from "../../../utils/strings";
-
-type CompanyAssignment = {
-  companyId: string;
-  departments: string[];
-};
-
-type UserForm = {
-  email: string;
-  password: string;
-  fullName: string;
-  phone: string;
-  roleId: string;
-  companies: CompanyAssignment[];
-  permissions: Array<{
-    permission: string;
-    access: string[];
-  }>;
-};
-
-const defaultUserForm: UserForm = {
-  email: "",
-  password: "",
-  fullName: "",
-  phone: "",
-  roleId: "",
-  companies: [],
-  permissions: [],
-};
+import { 
+  Search, 
+  UserPlus, 
+  Pencil, 
+  Trash2, 
+  Mail, 
+  Phone, 
+  Shield, 
+  Building2, 
+  ChevronLeft, 
+  ChevronRight,
+  Filter,
+  UserCheck,
+  UserMinus,
+  ArrowRight
+} from "lucide-react";
+import Swal from "sweetalert2";
 
 export default function Users() {
   const navigate = useNavigate();
   const { hasPermission } = useAuth();
 
-  // Check permissions
+  // Permissions check
   const canRead = hasPermission("User Management", "read");
   const canCreate = hasPermission("User Management", "create");
   const canWrite = hasPermission("User Management", "write");
-  
-  // React Query hooks - data fetching happens automatically
-  // Pagination state
+
+  const [searchTerm, setSearchTerm] = useState("");
+  const [roleFilter, setRoleFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [page, setPage] = useState(1);
-  const uiPageSize = 10; // number of items per UI page
-  const apiPageCount = 100; // fetch this many items per API request to allow instant UI paging
-  type User = {
-    _id: string;
-    fullName?: string;
-    name?: string;
-    email: string;
-    roleId?: string | { _id: string; name: string };
-    phone?: string;
-    isActive?: boolean;
-    [key: string]: any;
-  };
-  type UsersApiResponse = {
-    data?: User[];
-    pageCount?: number | string;
-    totalCount?: number | string;
-    page?: number | string;
-    [key: string]: any;
-  };
+  const pageSize = 8;
 
-  // Compute which API block (page) to request based on UI page
-  const blockSizePages = Math.max(1, Math.floor(apiPageCount / uiPageSize));
-  const apiPage = Math.max(1, Math.ceil(page / blockSizePages));
-
-  // Ensure usersResponse always has UsersApiResponse shape (this returns up to `apiPageCount` items)
-  const { data: usersResponse = {} as UsersApiResponse, isLoading: usersLoading, error } = useUsers({ page: apiPage, PageCount: apiPageCount });
-  // Ensure we have a typed response to avoid 'unknown' from the hook
-  const safeUsersResponse = (usersResponse ?? {}) as UsersApiResponse;
-  const users: User[] = Array.isArray(safeUsersResponse.data) ? safeUsersResponse.data : [];
-
-  const queryClient = useQueryClient();
-
-  const sortedUsers: User[] = users.slice().sort((a, b) => {
-    if (!!a.isActive === !!b.isActive) return 0;
-    return a.isActive ? -1 : 1;
-  });
-
-  // Parse pageCount and totalCount from API response robustly
-  const totalCount: number = Number(safeUsersResponse.totalCount) > 0 ? Number(safeUsersResponse.totalCount) : users.length;
-  const pageCount: number = Math.max(1, Math.ceil(totalCount / uiPageSize));
-
-  // Prefetch next API block for instant navigation when user approaches block boundary
-  useEffect(() => {
-    const maxApiPage = Math.max(1, Math.ceil(pageCount / blockSizePages));
-    if (apiPage < maxApiPage) {
-      const nextApiPage = apiPage + 1;
-      const nextKey = ["users", nextApiPage, apiPageCount];
-      // Use the object form for prefetchQuery to match the QueryClient API signature
-      queryClient.prefetchQuery({
-        queryKey: nextKey,
-        queryFn: () => usersService.getAllUsers({ page: nextApiPage, PageCount: apiPageCount }),
-      });
-    }
-  }, [apiPage, pageCount, blockSizePages, apiPageCount, queryClient]);
-
-  // Ensure local page state is within bounds (1..pageCount)
-  useEffect(() => {
-    const clamped = Math.max(1, Math.min(page, pageCount || 1));
-    if (clamped !== page) setPage(clamped);
-  }, [pageCount]);
-
-  // UI page to display
-  const displayedPage = page;
+  // Data fetching
+  const { data: usersResponse, isLoading: usersLoading } = useUsers({ page: 1, PageCount: 1000 });
   const { data: roles = [] } = useRoles();
-  const { data: permissions = [] } = usePermissions();
-  const { data: companies = [] } = useCompanies();
-  const { data: departments = [] } = useDepartments();
-
-  // Mutations
-  const createUserMutation = useCreateUser();
   const deleteUserMutation = useDeleteUser();
-  const updateUserMutation = useUpdateUser();
-  const updateUserCompaniesMutation = useUpdateUserCompanies();
-  const addUserCompanyMutation = useAddUserCompany();
-  const removeUserCompanyMutation = useRemoveUserCompany();
 
-  const [userForm, setUserForm] = useState<UserForm>(defaultUserForm);
-  const [showForm, setShowForm] = useState(false);
-  const [isCreating, setIsCreating] = useState(false);
-  const [editingUserId, setEditingUserId] = useState<string | null>(null);
-  const [originalUser, setOriginalUser] = useState<UserForm | null>(null);
-  const [formError, setFormError] = useState("");
-  const [isDeletingUser, setIsDeletingUser] = useState<string | null>(null);
+  const rawUsers = useMemo(() => {
+    if (!usersResponse) return [];
+    return Array.isArray(usersResponse)
+      ? usersResponse
+      : (((usersResponse as any)?.data ?? []) as any[]);
+  }, [usersResponse]);
 
-  // Helper function to extract detailed error messages
-  const getErrorMessage = (err: any): string => {
-    // Check for validation errors in 'details' array (new format)
-    if (
-      err.response?.data?.details &&
-      Array.isArray(err.response.data.details)
-    ) {
-      return err.response.data.details
-        .map((detail: any) => {
-          const field = detail.path?.[0] || "";
-          const message = detail.message || "";
-          return field ? `${field}: ${message}` : message;
-        })
-        .join(", ");
-    }
-    // Check for validation errors in 'errors' array (old format)
-    if (err.response?.data?.errors) {
-      const errors = err.response.data.errors;
-      if (Array.isArray(errors)) {
-        return errors.map((e: any) => e.msg || e.message).join(", ");
+  // Filtering logic
+  const filteredUsers = useMemo(() => {
+    return rawUsers.filter((user: any) => {
+      const nameMatch = toPlainString(user.fullName || user.name || "").toLowerCase().includes(searchTerm.toLowerCase());
+      const emailMatch = (user.email || "").toLowerCase().includes(searchTerm.toLowerCase());
+      
+      const roleId = typeof user.roleId === "string" ? user.roleId : (user.roleId?._id || "");
+      const roleMatch = roleFilter === "all" || roleId === roleFilter;
+      
+      const statusMatch = statusFilter === "all" || 
+        (statusFilter === "active" && user.isActive !== false) || 
+        (statusFilter === "inactive" && user.isActive === false);
+
+      return (nameMatch || emailMatch) && roleMatch && statusMatch;
+    });
+  }, [rawUsers, searchTerm, roleFilter, statusFilter]);
+
+  // Pagination
+  const totalPages = Math.ceil(filteredUsers.length / pageSize);
+  const paginatedUsers = filteredUsers.slice((page - 1) * pageSize, page * pageSize);
+
+  const handleDeleteUser = async (user: any) => {
+    const result = await Swal.fire({
+      title: "Deactivate User?",
+      text: `Are you sure you want to remove access for ${toPlainString(user.fullName || user.name)}?`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#ef4444",
+      confirmButtonText: "Yes, deactivate",
+      background: "#1e293b",
+      color: "#fff"
+    });
+
+    if (result.isConfirmed) {
+      try {
+        await deleteUserMutation.mutateAsync(user._id);
+        Swal.fire({ title: "Deactivated", icon: "success", timer: 1500, showConfirmButton: false });
+      } catch (err: any) {
+        Swal.fire("Error", err.message || "Failed to deactivate user", "error");
       }
-      if (typeof errors === "object") {
-        return Object.entries(errors)
-          .map(([field, msg]) => `${field}: ${msg}`)
-          .join(", ");
-      }
     }
-    if (err.response?.data?.message) return err.response.data.message;
-    if (err.message) return err.message;
-    return "An unexpected error occurred";
   };
 
-  const loading = usersLoading;
-
-  // If user doesn't have read permission, show access denied
   if (!canRead) {
     return (
-      <div className="space-y-6">
-        <PageMeta
-          title="Users | Saber Group - Hiring Management System"
-          description="Manage users in the system"
-        />
-        <PageBreadcrumb pageTitle="Users" />
-        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 py-24 dark:border-gray-700">
-          <svg
-            className="mb-4 size-16 text-gray-400"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-            />
-          </svg>
-          <p className="text-lg font-semibold text-gray-700 dark:text-gray-300">
-            Access Denied
-          </p>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            You don't have permission to view users
-          </p>
+      <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0F172A] p-8 flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="size-20 bg-red-500/10 rounded-full flex items-center justify-center mx-auto">
+            <Shield className="size-10 text-red-500" />
+          </div>
+          <h1 className="text-2xl font-black dark:text-white">Access Restricted</h1>
+          <p className="text-gray-500 max-w-xs mx-auto font-medium">Your account does not have the necessary clearance to view the personnel directory.</p>
         </div>
       </div>
     );
   }
 
-  const handleInputChange = (
-    e: ChangeEvent<HTMLInputElement | HTMLSelectElement>
-  ) => {
-    const { name, value } = e.target;
-    setUserForm((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setFormError("");
-
-   
-
-    setIsCreating(true);
-    try {
-      if (editingUserId && originalUser) {
-        // Update existing user - detect what changed and send appropriate requests
-        
-        // 1. Check if permissions changed
-        const permissionsChanged = JSON.stringify(userForm.permissions) !== JSON.stringify(originalUser.permissions);
-        const roleChanged = userForm.roleId !== originalUser.roleId;
-        
-        if (permissionsChanged || roleChanged) {
-          // PUT /users/:userId - update permissions and/or role
-          await updateUserMutation.mutateAsync({
-            id: editingUserId,
-            data: {
-              ...(roleChanged && { roleId: userForm.roleId }),
-              ...(permissionsChanged && { permissions: userForm.permissions }),
-            },
-          });
-        }
-        
-        // 2. Detect company changes
-        const originalcompanyId = originalUser.companies.map(c => c.companyId);
-        const currentcompanyId = userForm.companies.map(c => c.companyId);
-        
-        // Find added companies
-        const addedcompanyId = currentcompanyId.filter(id => !originalcompanyId.includes(id));
-        
-        // Find removed companies
-        const removedcompanyId = originalcompanyId.filter(id => !currentcompanyId.includes(id));
-        
-        // POST /users/:userId/companies - add new companies
-        for (const companyId of addedcompanyId) {
-          if (!companyId) {
-            setFormError("Invalid company selected");
-            continue;
-          }
-          try {
-            await companiesService.getCompanyById(companyId);
-          } catch (err: any) {
-            setFormError("Selected company does not exist");
-            continue;
-          }
-          // Debug: log payload before sending to server
-          // eslint-disable-next-line no-console
-          const addedCompany = userForm.companies.find((c) => c.companyId === companyId);
-          const departmentsForAdd = addedCompany?.departments || [];
-          console.debug("addUserCompany payload", { userId: editingUserId, companyId, departments: departmentsForAdd });
-          await addUserCompanyMutation.mutateAsync({
-            userId: editingUserId,
-            companyId,
-            departments: departmentsForAdd,
-          });
-        }
-        
-        // DELETE /users/:userId/companies/:companyId - remove companies
-        for (const companyId of removedcompanyId) {
-          await removeUserCompanyMutation.mutateAsync({
-            userId: editingUserId,
-            companyId,
-          });
-        }
-        
-        // 3. PUT /users/:userId/companies/:companyId/departments - update departments for existing companies
-        for (const company of userForm.companies) {
-          // Skip newly added companies (already handled above)
-          if (addedcompanyId.includes(company.companyId)) continue;
-          
-          // Check if departments changed
-          const originalCompany = originalUser.companies.find(c => c.companyId === company.companyId);
-          if (originalCompany) {
-            const depsChanged = JSON.stringify(company.departments.sort()) !== JSON.stringify(originalCompany.departments.sort());
-            
-            if (depsChanged) {
-              await updateUserCompaniesMutation.mutateAsync({
-                userId: editingUserId,
-                companyId: company.companyId,
-                data: { departments: company.departments },
-              });
-            }
-          }
-        }
-      } else {
-        // Create new user
-        // Validate required fields per backend schema
-        if (!userForm.fullName || !userForm.email || !userForm.password || !userForm.roleId) {
-          setFormError("Please fill required fields: full name, email, password and role");
-          setIsCreating(false);
-          return;
-        }
-
-        const payload = {
-          fullName: userForm.fullName,
-          email: userForm.email,
-          password: userForm.password,
-          roleId: userForm.roleId,
-          companies: userForm.companies.map((c) => ({
-            companyId: c.companyId,
-            departments: c.departments || [],
-          })),
-          ...(userForm.phone && { phone: userForm.phone }),
-          ...(userForm.permissions.length > 0 && {
-            permissions: userForm.permissions,
-          }),
-        };
-
-        await createUserMutation.mutateAsync(payload);
-      }
-
-      // Show success message
-      await Swal.fire({
-        title: "Success!",
-        text: editingUserId
-          ? "User updated successfully."
-          : "User created successfully.",
-        icon: "success",
-        position: "center",
-        timer: 2000,
-        showConfirmButton: false,
-        customClass: {
-          container: "!mt-16",
-        },
-      });
-
-      // Reset form
-      setUserForm(defaultUserForm);
-      setEditingUserId(null);
-      setShowForm(false);
-    } catch (err: any) {
-      console.error(
-        editingUserId ? "Error updating user:" : "Error creating user:",
-        err
-      );
-      const errorMsg = getErrorMessage(err);
-      setFormError(errorMsg);
-    } finally {
-      setIsCreating(false);
-    }
-  };
-
-  const handleDeleteUser = async (userId: string) => {
-    const result = await Swal.fire({
-      title: "Delete User?",
-      text: "Are you sure you want to delete this user?",
-      icon: "warning",
-      showCancelButton: true,
-      confirmButtonColor: "#3085d6",
-      cancelButtonColor: "#d33",
-      confirmButtonText: "Yes, delete it!",
-    });
-
-    if (!result.isConfirmed) return;
-
-    try {
-      setIsDeletingUser(userId);
-      await deleteUserMutation.mutateAsync(userId);
-      await Swal.fire({
-        title: "Deleted!",
-        text: "User has been deleted successfully.",
-        icon: "success",
-        position: "center",
-        timer: 2000,
-        showConfirmButton: false,
-        customClass: {
-          container: "!mt-16",
-        },
-      });
-    } catch (err: any) {
-      console.error("Error deleting user:", err);
-      const errorMsg = getErrorMessage(err);
-      setFormError(errorMsg);
-    } finally {
-      setIsDeletingUser(null);
-    }
-  };
-
-  const handleEditUser = (user: any) => {
-    // Navigate to edit user page with state to avoid re-fetching
-    navigate(`/user/${user._id}/edit`, {
-      state: { user }
-    });
-  };
-
-  const handleCancelEdit = () => {
-    setUserForm(defaultUserForm);
-    setOriginalUser(null);
-    setEditingUserId(null);
-    setShowForm(false);
-    setFormError("");
-  };
-
   return (
-    <>
-      <PageMeta
-        title="Users | Job Application Maker"
-        description="Manage system users, roles, and permissions"
-      />
-      <PageBreadcrumb pageTitle="Users" />
+    <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0F172A] p-4 sm:p-8 text-slate-900 dark:text-slate-100">
+      <PageMeta title="Personnel Directory | Job Application Maker" description="Manage system users and access" />
+      <PageBreadcrumb pageTitle="Personnel directory" />
 
-      {loading && users.length === 0 ? (
-        <LoadingSpinner fullPage message="Loading users..." />
-      ) : (
-        <div className="space-y-6">
-          {/* Header */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-            <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">
-              Users Management
+      <div className="max-w-7xl mx-auto space-y-8">
+        {/* Header Section */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+          <div>
+            <h1 className="text-3xl font-black bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-400 bg-clip-text text-transparent tracking-tight">
+              Personnel Directory
             </h1>
-            <div className="flex flex-wrap gap-2 sm:gap-3">
-              <Link
-                to="/permissions"
-                className="inline-flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors"
+            <p className="mt-1 text-gray-500 dark:text-gray-400 font-medium italic">Oversee system authentication and organizational access</p>
+          </div>
+          
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative flex-1 min-w-[300px]">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Find by name or email..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-11 pr-4 py-3 bg-white/60 dark:bg-white/5 backdrop-blur-md border border-white/20 dark:border-white/10 rounded-[1.25rem] focus:ring-2 focus:ring-brand-500/20 outline-none transition-all dark:text-white placeholder:text-gray-400 font-medium"
+              />
+            </div>
+            {canCreate && (
+              <button
+                onClick={() => navigate("/user/add")}
+                className="flex items-center gap-2 px-6 py-3 bg-brand-500 text-white rounded-[1.25rem] font-bold shadow-xl shadow-brand-500/20 hover:scale-105 active:scale-95 transition-all"
               >
-                <PlusIcon className="w-4 h-4 sm:w-5 sm:h-5" />
-                <span className="hidden sm:inline">Manage</span> Permissions
-              </Link>
-              {canCreate && (
-                <button
-                  onClick={() => {
-                    if (showForm) {
-                      handleCancelEdit();
-                    } else {
-                      setShowForm(true);
-                    }
-                  }}
-                  className="inline-flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm bg-brand-500 hover:bg-brand-600 text-white rounded-lg transition-colors"
-                >
-                  <PlusIcon className="w-4 h-4 sm:w-5 sm:h-5" />
-                  {showForm ? "Cancel" : <><span className="hidden sm:inline">Create</span> User</>}
-                </button>
-              )}
+                <UserPlus className="size-5" />
+                Create User
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Filters & Stats */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div className="md:col-span-3 flex flex-wrap gap-4 items-center bg-white/40 dark:bg-white/5 backdrop-blur-xl border border-white/20 dark:border-white/10 p-4 rounded-[2rem] shadow-sm">
+            <div className="flex items-center gap-2 px-3 text-gray-400">
+              <Filter className="size-4" />
+              <span className="text-xs font-black uppercase tracking-widest">Filters</span>
+            </div>
+            
+            <select 
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value)}
+              className="bg-white dark:bg-black/20 border border-white/20 dark:border-white/5 rounded-xl px-4 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500/20 transition-all cursor-pointer"
+            >
+              <option value="all">All Access Levels</option>
+              {roles.map((role) => (
+                <option key={role._id} value={role._id}>{toPlainString((role as any).name)}</option>
+              ))}
+            </select>
+
+            <select 
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="bg-white dark:bg-black/20 border border-white/20 dark:border-white/5 rounded-xl px-4 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500/20 transition-all cursor-pointer"
+            >
+              <option value="all">All Statuses</option>
+              <option value="active">Active Personnel</option>
+              <option value="inactive">Deactivated Accounts</option>
+            </select>
+
+            <div className="ml-auto flex items-center gap-2 px-4 py-2 bg-brand-500/10 text-brand-500 rounded-xl border border-brand-500/20">
+              <UserCheck className="size-4" />
+              <span className="text-sm font-black tabular-nums">{filteredUsers.length} Found</span>
             </div>
           </div>
 
-          {/* Create/Edit User Form */}
-          {showForm && (
-            <ComponentCard
-              title={editingUserId ? "Edit User" : "Create New User"}
-            >
-              {isCreating ? (
-                <div className="flex flex-col items-center justify-center py-12">
-                  <div className="w-16 h-16 border-4 border-brand-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-                  <p className="text-gray-600 dark:text-gray-400">
-                    {editingUserId ? "Updating user..." : "Creating user..."}
-                  </p>
-                </div>
-              ) : (
-                <form onSubmit={handleSubmit} className="space-y-6">
-                  <ValidationErrorAlert 
-                    error={formError} 
-                    onDismiss={() => setFormError("")}
-                  />
+          <div className="bg-gradient-to-br from-brand-500 to-brand-600 p-6 rounded-[2rem] shadow-xl shadow-brand-500/20 flex flex-col justify-between">
+            <span className="text-[10px] font-black text-white/60 uppercase tracking-widest">Global Headcount</span>
+            <div className="flex items-end justify-between">
+              <span className="text-4xl font-black text-white tabular-nums">{rawUsers.length}</span>
+              <Shield className="size-8 text-white/30" />
+            </div>
+          </div>
+        </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Basic Information */}
-                    <div>
-                      <Label htmlFor="fullName">
-                        Full Name <span className="text-red-500">*</span>
-                      </Label>
-                      <Input
-                        id="fullName"
-                        name="fullName"
-                        value={userForm.fullName}
-                        onChange={handleInputChange}
-                        placeholder="John Doe"
-                      />
-                    </div>
+        {/* User Grid */}
+        {usersLoading ? (
+          <div className="py-24 flex items-center justify-center">
+            <LoadingSpinner />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {paginatedUsers.map((user: any) => {
+              const roleName = user.roleId?.name || toPlainString((roles.find(r => r._id === (user.roleId?._id || user.roleId)) as any)?.name || "User");
+              const isActive = user.isActive !== false;
+              
+              return (
+                <div 
+                  key={user._id}
+                  onClick={() => navigate(`/user/${user._id}`)}
+                  className="group relative bg-white/60 dark:bg-white/5 backdrop-blur-xl border border-white/20 dark:border-white/10 rounded-[2.5rem] p-6 shadow-sm hover:shadow-2xl transition-all duration-500 cursor-pointer overflow-hidden"
+                >
+                  {/* Status Indicator Bar */}
+                  <div className={`absolute top-0 left-0 right-0 h-1.5 transition-all duration-500 ${isActive ? "bg-green-500/30 group-hover:bg-green-500" : "bg-red-500/30 group-hover:bg-red-500"}`} />
+                  
+                  <div className="space-y-6">
+                    <div className="flex justify-between items-start">
+                      <div className="relative">
+                        <div className="size-16 rounded-2xl bg-gradient-to-br from-slate-100 to-slate-200 dark:from-white/10 dark:to-white/5 flex items-center justify-center text-2xl font-black text-gray-500 dark:text-gray-400 overflow-hidden border border-white/20">
+                          {user.fullName?.charAt(0) || user.name?.charAt(0) || "U"}
+                        </div>
+                        <div className={`absolute -bottom-1 -right-1 size-5 rounded-full border-2 border-white dark:border-slate-800 flex items-center justify-center ${isActive ? "bg-green-500" : "bg-red-500"}`}>
+                          {isActive ? <UserCheck className="size-3 text-white" /> : <UserMinus className="size-3 text-white" />}
+                        </div>
+                      </div>
 
-                    <div>
-                      <Label htmlFor="email">
-                        Email <span className="text-red-500">*</span>
-                      </Label>
-                      <Input
-                        id="email"
-                        name="email"
-                        type="email"
-                        value={userForm.email}
-                        onChange={handleInputChange}
-                        placeholder="user@company.com"
-                        disabled={!!editingUserId}
-                        className={
-                          editingUserId ? "bg-gray-100 dark:bg-gray-800" : ""
-                        }
-                      />
-                    </div>
-
-                    <div>
-                      <Label htmlFor="password">
-                        Password{" "}
-                        {!editingUserId && (
-                          <span className="text-red-500">*</span>
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all translate-y-2 group-hover:translate-y-0 duration-300">
+                        {canWrite && (
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); navigate(`/user/${user._id}/edit`); }}
+                            className="size-8 rounded-lg bg-blue-500/10 text-blue-500 hover:bg-blue-500 hover:text-white flex items-center justify-center transition-all"
+                          >
+                            <Pencil className="size-3.5" />
+                          </button>
                         )}
-                        {editingUserId && (
-                          <span className="text-gray-500 text-xs ml-1">
-                            (leave blank to keep current)
-                          </span>
+                        {canWrite && (
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); handleDeleteUser(user); }}
+                            className="size-8 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white flex items-center justify-center transition-all"
+                          >
+                            <Trash2 className="size-3.5" />
+                          </button>
                         )}
-                      </Label>
-                      <Input
-                        id="password"
-                        name="password"
-                        type="password"
-                        value={userForm.password}
-                        onChange={handleInputChange}
-                        placeholder="••••••••"
-                        required={!editingUserId}
-                      />
-                    </div>
-
-                    <div>
-                      <Label htmlFor="phone">Phone</Label>
-                      <Input
-                        id="phone"
-                        name="phone"
-                        value={userForm.phone}
-                        onChange={handleInputChange}
-                        placeholder="+1234567890"
-                      />
-                    </div>
-
-                    <div>
-                      <Label htmlFor="roleId">
-                        Role <span className="text-red-500">*</span>
-                      </Label>
-                      <select
-                        id="roleId"
-                        name="roleId"
-                        value={userForm.roleId}
-                        onChange={handleInputChange}
-                        className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent"
-                      >
-                        <option value="">Select Role</option>
-                        {roles.map((role) => (
-                          <option key={role._id} value={role._id}>
-                            {toPlainString((role as any).name)}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {/* Additional Permissions */}
-                    <div className="col-span-2">
-                      <Label>Additional Permissions (Optional)</Label>
-                      <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
-                        Select extra permissions and their access levels beyond
-                        what the role provides
-                      </p>
-
-                      <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-x-auto">
-                        <table className="w-full min-w-[600px]">
-                          <thead className="bg-gray-50 dark:bg-gray-800">
-                            <tr>
-                              <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
-                                Permission
-                              </th>
-                              <th className="px-4 py-3 text-center text-sm font-medium text-gray-700 dark:text-gray-300">
-                                Read
-                              </th>
-                              <th className="px-4 py-3 text-center text-sm font-medium text-gray-700 dark:text-gray-300">
-                                Write
-                              </th>
-                              <th className="px-4 py-3 text-center text-sm font-medium text-gray-700 dark:text-gray-300">
-                                Create
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                            {permissions.length === 0 ? (
-                              <tr>
-                                <td
-                                  colSpan={4}
-                                  className="px-4 py-8 text-center text-gray-500 dark:text-gray-400"
-                                >
-                                  No permissions available
-                                </td>
-                              </tr>
-                            ) : (
-                              permissions.map((perm) => {
-                                // Check if permission is from selected role
-                                const selectedRole = roles.find(
-                                  (r) => r._id === userForm.roleId
-                                );
-
-                                // Debug logging
-                              
-                                // Find role permission with access info (if role has detailed permissions structure)
-                                const rolePermission =
-                                  selectedRole?.permissions?.find((rp: any) => {
-                                    const permId =
-                                      typeof rp === "string"
-                                        ? rp
-                                        : rp.permission?._id || rp.permission;
-                                    return permId === perm._id;
-                                  }) as any;
-                                const isFromRole = !!rolePermission;
-
-                                // Get access from role permission if available
-                                const roleAccess =
-                                  typeof rolePermission === "object" &&
-                                  rolePermission?.access
-                                    ? rolePermission.access
-                                    : isFromRole
-                                    ? ["read", "write", "create"]
-                                    : []; // Default to all access if role has permission
-
-                                const userPerm = userForm.permissions.find(
-                                  (p) => p.permission === perm._id
-                                );
-                                const isSelected = !!userPerm || isFromRole;
-                                const access = isFromRole
-                                  ? roleAccess
-                                  : userPerm?.access || [];
-
-                                return (
-                                  <tr
-                                    key={perm._id}
-                                    className={`hover:bg-gray-50 dark:hover:bg-gray-800 ${
-                                      isFromRole
-                                        ? "bg-green-50/50 dark:bg-green-900/10"
-                                        : isSelected
-                                        ? "bg-blue-50/50 dark:bg-blue-900/10"
-                                        : ""
-                                    }`}
-                                  >
-                                    <td className="px-4 py-3">
-                                      <label className="flex items-center gap-2 cursor-pointer">
-                                        <input
-                                          type="checkbox"
-                                          checked={isSelected}
-                                          onChange={(e) => {
-                                            if (e.target.checked) {
-                                              if (!userPerm) {
-                                                // Add permission with default access
-                                                setUserForm((prev) => ({
-                                                  ...prev,
-                                                  permissions: [
-                                                    ...prev.permissions,
-                                                    {
-                                                      permission: perm._id,
-                                                      access: ["read"],
-                                                    },
-                                                  ],
-                                                }));
-                                              }
-                                            } else {
-                                              // If unchecking a role permission, add it with empty access to override
-                                              if (isFromRole && !userPerm) {
-                                                setUserForm((prev) => ({
-                                                  ...prev,
-                                                  permissions: [
-                                                    ...prev.permissions,
-                                                    {
-                                                      permission: perm._id,
-                                                      access: [],
-                                                    },
-                                                  ],
-                                                }));
-                                              } else {
-                                                // Remove permission
-                                                setUserForm((prev) => ({
-                                                  ...prev,
-                                                  permissions:
-                                                    prev.permissions.filter(
-                                                      (p) =>
-                                                        p.permission !== perm._id
-                                                    ),
-                                                }));
-                                              }
-                                            }
-                                          }}
-                                          className="w-4 h-4 text-brand-500 rounded focus:ring-brand-500"
-                                        />
-                                        <span className="text-sm text-gray-900 dark:text-gray-100">
-                                          {perm.name}
-                                          {isFromRole && !userPerm && (
-                                            <span className="ml-2 text-xs text-green-600 dark:text-green-400">
-                                              (from role)
-                                            </span>
-                                          )}
-                                          {isFromRole && userPerm && (
-                                            <span className="ml-2 text-xs text-blue-600 dark:text-blue-400">
-                                              (overridden)
-                                            </span>
-                                          )}
-                                        </span>
-                                      </label>
-                                    </td>
-                                    <td className="px-4 py-3 text-center">
-                                      <input
-                                        type="checkbox"
-                                        disabled={!isSelected}
-                                        checked={access.includes("read")}
-                                        onChange={(e) => {
-                                          // If modifying a role permission, add it to user permissions
-                                          if (isFromRole && !userPerm) {
-                                            setUserForm((prev) => ({
-                                              ...prev,
-                                              permissions: [
-                                                ...prev.permissions,
-                                                {
-                                                  permission: perm._id,
-                                                  access: e.target.checked ? ["read"] : [],
-                                                },
-                                              ],
-                                            }));
-                                          } else {
-                                            setUserForm((prev) => ({
-                                              ...prev,
-                                              permissions: prev.permissions.map(
-                                                (p) =>
-                                                  p.permission === perm._id
-                                                    ? {
-                                                        ...p,
-                                                        access: e.target.checked
-                                                          ? [...p.access, "read"]
-                                                          : p.access.filter(
-                                                              (a) => a !== "read"
-                                                            ),
-                                                      }
-                                                    : p
-                                              ),
-                                            }));
-                                          }
-                                        }}
-                                        className="w-4 h-4 text-brand-500 rounded focus:ring-brand-500 disabled:opacity-30"
-                                      />
-                                    </td>
-                                    <td className="px-4 py-3 text-center">
-                                      <input
-                                        type="checkbox"
-                                        disabled={!isSelected}
-                                        checked={access.includes("write")}
-                                        onChange={(e) => {
-                                          if (isFromRole && !userPerm) {
-                                            setUserForm((prev) => ({
-                                              ...prev,
-                                              permissions: [
-                                                ...prev.permissions,
-                                                {
-                                                  permission: perm._id,
-                                                  access: e.target.checked ? ["write"] : [],
-                                                },
-                                              ],
-                                            }));
-                                          } else {
-                                            setUserForm((prev) => ({
-                                              ...prev,
-                                              permissions: prev.permissions.map(
-                                                (p) =>
-                                                  p.permission === perm._id
-                                                    ? {
-                                                        ...p,
-                                                        access: e.target.checked
-                                                          ? [...p.access, "write"]
-                                                          : p.access.filter(
-                                                              (a) => a !== "write"
-                                                            ),
-                                                      }
-                                                    : p
-                                              ),
-                                            }));
-                                          }
-                                        }}
-                                        className="w-4 h-4 text-brand-500 rounded focus:ring-brand-500 disabled:opacity-30"
-                                      />
-                                    </td>
-                                    <td className="px-4 py-3 text-center">
-                                      <input
-                                        type="checkbox"
-                                        disabled={!isSelected}
-                                        checked={access.includes("create")}
-                                        onChange={(e) => {
-                                          if (isFromRole && !userPerm) {
-                                            setUserForm((prev) => ({
-                                              ...prev,
-                                              permissions: [
-                                                ...prev.permissions,
-                                                {
-                                                  permission: perm._id,
-                                                  access: e.target.checked ? ["create"] : [],
-                                                },
-                                              ],
-                                            }));
-                                          } else {
-                                            setUserForm((prev) => ({
-                                              ...prev,
-                                              permissions: prev.permissions.map(
-                                                (p) =>
-                                                  p.permission === perm._id
-                                                    ? {
-                                                        ...p,
-                                                        access: e.target.checked
-                                                          ? [
-                                                              ...p.access,
-                                                              "create",
-                                                            ]
-                                                          : p.access.filter(
-                                                              (a) =>
-                                                                a !== "create"
-                                                            ),
-                                                      }
-                                                    : p
-                                              ),
-                                            }));
-                                          }
-                                        }}
-                                        className="w-4 h-4 text-brand-500 rounded focus:ring-brand-500 disabled:opacity-30"
-                                      />
-                                    </td>
-                                  </tr>
-                                );
-                              })
-                            )}
-                          </tbody>
-                        </table>
                       </div>
                     </div>
 
-                    {/* Companies Section */}
-                    <div className="col-span-2 space-y-4">
-                      <Label>
-                        Companies <span className="text-red-500">*</span>
-                      </Label>
+                    <div className="space-y-1">
+                      <h3 className="text-lg font-black text-gray-900 dark:text-white line-clamp-1 tracking-tight">
+                        {toPlainString(user.fullName || user.name || "Unknown Company")}
+                      </h3>
+                      <div className="flex items-center gap-2 text-xs font-bold text-gray-400 italic">
+                        <Shield className="size-3 text-brand-500" />
+                        {roleName}
+                      </div>
+                    </div>
 
-                      {/* Add Company Button */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const availableCompanies = companies.filter(
-                            (c) =>
-                              !userForm.companies.some(
-                                (uc) => uc.companyId === c._id
-                              )
-                          );
-                          if (availableCompanies.length > 0) {
-                            setUserForm({
-                              ...userForm,
-                              companies: [
-                                ...userForm.companies,
-                                {
-                                  companyId: availableCompanies[0]._id,
-                                  departments: [],
-                                },
-                              ],
-                            });
-                          }
-                        }}
-                        className="w-full px-4 py-2.5 border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-lg hover:border-brand-500 dark:hover:border-brand-500 transition-colors text-gray-600 dark:text-gray-400 hover:text-brand-500 dark:hover:text-brand-500 flex items-center justify-center gap-2"
-                      >
-                        <PlusIcon className="w-5 h-5" />
-                        Add Company
-                      </button>
+                    <div className="space-y-3 pt-4 border-t border-slate-100 dark:border-white/5">
+                      <div className="flex items-center gap-3 text-sm font-medium text-gray-500 dark:text-gray-400 group-hover:text-brand-500 transition-colors">
+                        <Mail className="size-4 opacity-50" />
+                        <span className="truncate">{user.email}</span>
+                      </div>
+                      <div className="flex items-center gap-3 text-sm font-medium text-gray-500 dark:text-gray-400">
+                        <Phone className="size-4 opacity-50" />
+                        <span className="truncate">{user.phone || "No secure line"}</span>
+                      </div>
+                      <div className="flex items-center gap-3 text-sm font-medium text-gray-500 dark:text-gray-400">
+                        <Building2 className="size-4 opacity-50" />
+                        <span className="truncate">{user.companies?.length || 0} Companies</span>
+                      </div>
+                    </div>
 
-                      {/* Company Assignments */}
-                      {userForm.companies.map((companyAssignment, index) => {
-                        const companyDepartments = departments.filter(
-                          (dept) => {
-                            const deptCompanyId =
-                              typeof dept.companyId === "string"
-                                ? dept.companyId
-                                : dept.companyId._id;
-                            return (
-                              deptCompanyId === companyAssignment.companyId
-                            );
-                          }
-                        );
-
-                        return (
-                          <div
-                            key={index}
-                            className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg space-y-3 bg-gray-50/50 dark:bg-gray-800/50"
-                          >
-                            <div className="flex items-center justify-between">
-                              <h4 className="font-medium text-gray-900 dark:text-gray-100">
-                                Company {index + 1}
-                              </h4>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const newCompanies =
-                                    userForm.companies.filter(
-                                      (_, i) => i !== index
-                                    );
-                            
-                                  setUserForm({
-                                    ...userForm,
-                                    companies: newCompanies,
-                                  });
-                                }}
-                                className="text-red-500 hover:text-red-600 text-sm"
-                              >
-                                Remove
-                              </button>
-                            </div>
-
-                            <div className="space-y-3">
-                              {/* Company Select */}
-                              <div>
-                                <Label htmlFor={`company-${index}`}>
-                                  Company
-                                </Label>
-                                <select
-                                  id={`company-${index}`}
-                                  value={companyAssignment.companyId}
-                                  onChange={(e) => {
-                                    const newCompanies = [
-                                      ...userForm.companies,
-                                    ];
-                                    newCompanies[index] = {
-                                      ...newCompanies[index],
-                                      companyId: e.target.value,
-                                      departments: [], // Reset departments when company changes
-                                    };
-                                    setUserForm({
-                                      ...userForm,
-                                      companies: newCompanies,
-                                    });
-                                  }}
-                                  className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent"
-                                >
-                                  {companies.map((company) => (
-                                    <option
-                                      key={company._id}
-                                      value={company._id}
-                                      disabled={userForm.companies.some(
-                                        (c, i) =>
-                                          i !== index &&
-                                          c.companyId === company._id
-                                      )}
-                                    >
-                                      {toPlainString((company as any).name)}
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
-
-                              {/* Departments MultiSelect */}
-                              <div>
-                                <Label htmlFor={`departments-${index}`}>
-                                  Departments (Optional)
-                                </Label>
-                                <MultiSelect
-                                  label=""
-                                  options={companyDepartments.map((dept) => ({
-                                    value: dept._id,
-                                    text: toPlainString(dept.name),
-                                  }))}
-                                  value={companyAssignment.departments}
-                                  onChange={(values) => {
-                                    const newCompanies = [
-                                      ...userForm.companies,
-                                    ];
-                                    newCompanies[index] = {
-                                      ...newCompanies[index],
-                                      departments: values,
-                                    };
-                                    setUserForm({
-                                      ...userForm,
-                                      companies: newCompanies,
-                                    });
-                                  }}
-                                  placeholder={
-                                    companyDepartments.length === 0
-                                      ? "No departments available"
-                                      : "Select departments"
-                                  }
-                                  disabled={companyDepartments.length === 0}
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
+                    <div className="flex items-center justify-between pt-2">
+                       <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-md ${isActive ? "bg-green-500/10 text-green-600" : "bg-red-500/10 text-red-600"}`}>
+                        {isActive ? "Active Duty" : "Revoked"}
+                      </span>
+                      <div className="flex items-center gap-1 text-brand-500 font-black text-[10px] uppercase tracking-widest group-hover:gap-2 transition-all">
+                        Details <ArrowRight className="size-3" />
+                      </div>
                     </div>
                   </div>
-
-                  {/* Submit Button */}
-                  <div className="flex justify-end gap-3">
-                    <button
-                      type="button"
-                      onClick={handleCancelEdit}
-                      className="px-6 py-2.5 border border-gray-300 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      className="px-6 py-2.5 bg-brand-500 hover:bg-brand-600 text-white rounded-lg transition-colors"
-                    >
-                      {editingUserId ? "Update User" : "Create User"}
-                    </button>
-                  </div>
-                </form>
-              )}
-            </ComponentCard>
-          )}
-
-          {/* Users Table */}
-          <ComponentCard title="All Users">
-            {loading ? (
-              <div className="p-8 text-center text-gray-500">
-                Loading users...
-              </div>
-            ) : error ? (
-              <div className="p-8 text-center text-red-600">
-                {error instanceof Error ? error.message : String(error)}
-              </div>
-            ) : users.length === 0 ? (
-              <div className="p-8 text-center text-gray-500">
-                No users found
-              </div>
-            ) : (
-              <>
-                <Table className="min-w-[800px]">
-                  <TableHeader>
-                    <TableRow>
-                      <TableCell isHeader className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800">Name</TableCell>
-                      <TableCell isHeader className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800">Email</TableCell>
-                      <TableCell isHeader className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800">Phone</TableCell>
-                      <TableCell isHeader className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800">Role</TableCell>
-                      <TableCell isHeader className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800">Status</TableCell>
-                      <TableCell isHeader className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800">Actions</TableCell>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {usersLoading && users.length > 0 && users.length < totalCount ? (
-                      // Show skeleton rows while fetching next page (only when not using full client-side list)
-                      Array.from({ length: uiPageSize }).map((_, i) => (
-                        <TableRow key={`skeleton-${i}`} className="animate-pulse">
-                          <TableCell className="px-4 py-3 text-sm">
-                            <div className="h-4 w-40 bg-gray-200 dark:bg-gray-700 rounded" />
-                          </TableCell>
-                          <TableCell className="px-4 py-3 text-sm">
-                            <div className="h-4 w-56 bg-gray-200 dark:bg-gray-700 rounded" />
-                          </TableCell>
-                          <TableCell className="px-4 py-3 text-sm">
-                            <div className="h-4 w-24 bg-gray-200 dark:bg-gray-700 rounded" />
-                          </TableCell>
-                          <TableCell className="px-4 py-3 text-sm">
-                            <div className="h-4 w-32 bg-gray-200 dark:bg-gray-700 rounded" />
-                          </TableCell>
-                          <TableCell className="px-4 py-3 text-sm">
-                            <div className="h-4 w-20 bg-gray-200 dark:bg-gray-700 rounded" />
-                          </TableCell>
-                          <TableCell className="px-4 py-3 text-sm">
-                            <div className="h-4 w-12 bg-gray-200 dark:bg-gray-700 rounded ml-auto" />
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    ) : (
-                      // Compute per-page users: if we have full list, slice it; otherwise server already provided page
-                      (() => {
-                        const start = ((displayedPage - 1) % blockSizePages) * uiPageSize;
-                        const end = start + uiPageSize;
-                        const pageUsers = sortedUsers.slice(start, end);
-                        return pageUsers.map((user: any) => {
-                          const roleName = typeof user.roleId === "object" && user.roleId ? user.roleId.name || "-" : typeof user.roleId === "string" ? user.roleId : "-";
-                          const userName = toPlainString(user.fullName || user.name || "-");
-                          return (
-                            <TableRow key={user._id} onClick={() => navigate(`/user/${user._id}`)} className="hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer">
-                              <TableCell className="px-4 py-3 text-sm">{userName}</TableCell>
-                              <TableCell className="px-4 py-3 text-sm">{user.email}</TableCell>
-                              <TableCell className="px-4 py-3 text-sm">{user.phone || "-"}</TableCell>
-                              <TableCell className="px-4 py-3 text-sm">{roleName}</TableCell>
-                              <TableCell className="px-4 py-3 text-sm">
-                                <span className={`px-2 py-1 text-xs rounded ${user.isActive !== false ? "bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200" : "bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200"}`}>{user.isActive !== false ? "Active" : "Inactive"}</span>
-                              </TableCell>
-                              <TableCell className="px-4 py-3 text-sm">
-                                <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
-                                  {canWrite && (
-                                    <button onClick={() => handleEditUser(user)} className="rounded p-1.5 text-brand-600 transition hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-brand-500/10" title="Edit user">
-                                      <PencilIcon className="size-4" />
-                                    </button>
-                                  )}
-                                  {canCreate && (
-                                    <button onClick={() => handleDeleteUser(user._id)} disabled={isDeletingUser === user._id} className="rounded p-1.5 text-error-600 transition hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-500/10 disabled:opacity-50 disabled:cursor-not-allowed" title={isDeletingUser === user._id ? "Deleting..." : "Delete user"}>
-                                      <TrashBinIcon className="size-4" />
-                                    </button>
-                                  )}
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          );
-                        });
-                      })()
-                    )}
-                  </TableBody>
-                </Table>
-                {/* Pagination Controls */}
-                <div className="flex justify-between items-center mt-4">
-                  <span className="text-sm text-gray-500">Page {displayedPage} of {pageCount} | Total: {totalCount}</span>
-                  <div className="flex gap-2">
-                    <button
-                      disabled={displayedPage <= 1}
-                      onClick={() => setPage(Math.max(1, displayedPage - 1))}
-                      className="px-3 py-1 rounded bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 disabled:opacity-50"
-                    >
-                      Previous
-                    </button>
-                    <button
-                      disabled={displayedPage >= pageCount}
-                      onClick={() => setPage(Math.min(pageCount, displayedPage + 1))}
-                      className="px-3 py-1 rounded bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 disabled:opacity-50"
-                    >
-                      Next
-                    </button>
-                  </div>
                 </div>
-              </>
+              );
+            })}
+
+            {filteredUsers.length === 0 && (
+              <div className="col-span-full py-32 text-center bg-white/40 dark:bg-white/5 backdrop-blur-md border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-[3rem]">
+                <div className="size-20 rounded-full bg-slate-100 dark:bg-white/5 mx-auto mb-6 flex items-center justify-center">
+                  <UserMinus className="size-10 text-slate-300 dark:text-slate-700" />
+                </div>
+                <h3 className="text-xl font-black text-gray-900 dark:text-white">No Personnel Found</h3>
+                <p className="text-gray-500 dark:text-gray-400 font-medium max-w-xs mx-auto mt-2">The search criteria did not match any active or historical records in our directory.</p>
+              </div>
             )}
-          </ComponentCard>
-        </div>
-      )}
-    </>
+          </div>
+        )}
+
+        {/* Pagination Console */}
+        {!usersLoading && totalPages > 1 && (
+          <div className="flex items-center justify-center gap-4 pt-10">
+            <button 
+              disabled={page === 1}
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              className="size-12 rounded-2xl bg-white/60 dark:bg-white/5 backdrop-blur-md border border-white/20 flex items-center justify-center disabled:opacity-30 hover:bg-brand-500 hover:text-white transition-all shadow-sm"
+            >
+              <ChevronLeft className="size-5" />
+            </button>
+            <div className="px-6 py-3 bg-white/60 dark:bg-white/5 backdrop-blur-md border border-white/20 rounded-2xl font-black tracking-widest text-sm uppercase">
+              Phase {page} <span className="opacity-30 mx-2">/</span> {totalPages}
+            </div>
+            <button 
+              disabled={page === totalPages}
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              className="size-12 rounded-2xl bg-white/60 dark:bg-white/5 backdrop-blur-md border border-white/20 flex items-center justify-center disabled:opacity-30 hover:bg-brand-500 hover:text-white transition-all shadow-sm"
+            >
+              <ChevronRight className="size-5" />
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

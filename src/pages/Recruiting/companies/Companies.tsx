@@ -1,25 +1,31 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import Swal from "sweetalert2";
 import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
 import PageMeta from "../../../components/common/PageMeta";
-import ComponentCard from "../../../components/common/ComponentCard";
 import LoadingSpinner from "../../../components/common/LoadingSpinner";
-import { Link, useNavigate } from "react-router";
-import { PlusIcon, PencilIcon, TrashBinIcon } from "../../../icons";
+import { useNavigate } from "react-router";
 import { useAuth } from "../../../context/AuthContext";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableRow,
-} from "../../../components/ui/table";
 import {
   useCompanies,
   useDepartments,
   useDeleteCompany,
 } from "../../../hooks/queries";
 import { toPlainString } from "../../../utils/strings";
+import { 
+  Search, 
+  Building2, 
+  Plus, 
+  Pencil, 
+  Trash2, 
+  Mail, 
+  Phone, 
+  Globe, 
+  ChevronLeft,
+  ChevronRight,
+  Users,
+  ArrowRight,
+  ShieldAlert
+} from "lucide-react";
 
 export default function Companies() {
   const navigate = useNavigate();
@@ -28,104 +34,36 @@ export default function Companies() {
   // Check permissions
   const canRead = hasPermission("Company Management", "read");
   const canCreate = hasPermission("Company Management", "create");
-  const canEdit = hasPermission("Company Management", "write");
+  const canWrite = hasPermission("Company Management", "write");
 
   const [searchTerm, setSearchTerm] = useState<string>("");
+  const [page, setPage] = useState(1);
+  const pageSize = 8;
 
   // Memoize user-derived values
-  const { isAdmin, companyId } = useMemo(() => {
+  const { companyId } = useMemo(() => {
     if (!user) return { isAdmin: false, companyId: undefined };
 
-    const isAdmin = user?.roleId?.name?.toLowerCase().includes("admin");
-    const usercompanyId = user?.companies?.map((c) =>
+    const isAdminResult = user?.roleId?.name?.toLowerCase().includes("admin");
+    const usercompanyIds = user?.companies?.map((c: any) =>
       typeof c.companyId === "string" ? c.companyId : c.companyId._id
     );
 
     const companyIdFiltered =
-      !isAdmin && usercompanyId?.length ? usercompanyId : undefined;
+      !isAdminResult && usercompanyIds?.length ? usercompanyIds : undefined;
 
-    return { isAdmin, companyId: companyIdFiltered };
-  }, [user?._id, user?.roleId?.name, user?.companies?.length]);
+    return { isAdmin: isAdminResult, companyId: companyIdFiltered };
+  }, [user]);
 
   // Use React Query hooks for data fetching
   const {
     data: companies = [],
     isLoading: companiesLoading,
-    error,
-    refetch: refetchCompanies,
-    isFetching: isCompaniesFetching,
-    isFetched: isCompaniesFetched,
   } = useCompanies(companyId);
   const { data: departments = [] } = useDepartments();
   const deleteCompanyMutation = useDeleteCompany();
 
-  const [deleteError, setDeleteError] = useState("");
-  const [isDeletingCompany, setIsDeletingCompany] = useState<string | null>(null);
-  const [lastRefetch, setLastRefetch] = useState<Date | null>(null);
-  const [elapsed, setElapsed] = useState<string | null>(null);
-
-  // Initialize and update elapsed label
-  useEffect(() => {
-    if (!lastRefetch && isCompaniesFetched) setLastRefetch(new Date());
-  }, [isCompaniesFetched]);
-
-  useEffect(() => {
-    if (!lastRefetch) {
-      setElapsed(null);
-      return;
-    }
-    const formatRelative = (d: Date) => {
-      const diffSec = Math.floor((Date.now() - d.getTime()) / 1000);
-      if (diffSec < 60) return "now";
-      const mins = Math.floor(diffSec / 60);
-      if (mins < 60) return `${mins} min ago`;
-      const hours = Math.floor(mins / 60);
-      if (hours < 24) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
-      const days = Math.floor(hours / 24);
-      if (days === 1) return "yesterday";
-      if (days < 7) return `${days} days ago`;
-      return d.toLocaleDateString();
-    };
-
-    const update = () => setElapsed(formatRelative(lastRefetch));
-    update();
-    const id = setInterval(update, 30 * 1000);
-    return () => clearInterval(id);
-  }, [lastRefetch]);
-
-  // Helper function to extract detailed error messages
-  const getErrorMessage = (err: any): string => {
-    // Check for validation errors in 'details' array (new format)
-    if (
-      err.response?.data?.details &&
-      Array.isArray(err.response.data.details)
-    ) {
-      return err.response.data.details
-        .map((detail: any) => {
-          const field = detail.path?.[0] || "";
-          const message = detail.message || "";
-          return field ? `${field}: ${message}` : message;
-        })
-        .join(", ");
-    }
-    // Check for validation errors in 'errors' array (old format)
-    if (err.response?.data?.errors) {
-      const errors = err.response.data.errors;
-      if (Array.isArray(errors)) {
-        return errors.map((e: any) => e.msg || e.message).join(", ");
-      }
-      if (typeof errors === "object") {
-        return Object.entries(errors)
-          .map(([field, msg]) => `${field}: ${msg}`)
-          .join(", ");
-      }
-    }
-    if (err.response?.data?.message) return err.response.data.message;
-    if (err.message) return err.message;
-    return "An unexpected error occurred";
-  };
-
-  // Calculate department counts from React Query data
+  // Calculate department counts
   const departmentCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     companies.forEach((company) => {
@@ -140,389 +78,257 @@ export default function Companies() {
     return counts;
   }, [companies, departments]);
 
-  const handleDeleteCompany = async (
-    companyId: string,
-    e: React.MouseEvent
-  ) => {
-    e.stopPropagation();
+  const handleDeleteCompany = async (company: any) => {
     const result = await Swal.fire({
       title: "Delete Company?",
-      text: "Are you sure you want to delete this company?",
+      text: `Are you sure you want to delete ${toPlainString(company.name)}? This action cannot be undone.`,
       icon: "warning",
       showCancelButton: true,
-      confirmButtonColor: "#3085d6",
-      cancelButtonColor: "#d33",
-      confirmButtonText: "Yes, delete it!",
+      confirmButtonColor: "#ef4444",
+      confirmButtonText: "Yes, delete it",
+      background: "#1e293b",
+      color: "#fff"
     });
 
-    if (!result.isConfirmed) return;
-
-    try {
-      setIsDeletingCompany(companyId);
-      // Optimistic delete: fire mutation (hook will update cache) and show success immediately
-      deleteCompanyMutation.mutate(companyId);
-      await Swal.fire({
-        title: "Deleted!",
-        text: "Company has been deleted successfully.",
-        icon: "success",
-        position: "center",
-        timer: 2000,
-        showConfirmButton: false,
-        customClass: {
-          container: "!mt-16",
-        },
-      });
-    } catch (err: any) {
-      console.error("Error deleting company:", err);
-      const errorMsg = getErrorMessage(err);
-      setDeleteError(errorMsg);
-    } finally {
-      setIsDeletingCompany(null);
-    }
-  };
-
-  const filteredCompanies = companies.filter((company) => {
-    // Filter by user's assigned companies first
-    const usercompanyId = user?.companies?.map((c) =>
-      typeof c.companyId === "string" ? c.companyId : c.companyId._id
-    );
-
-    // If not admin and has assigned companies, only show those
-    if (!isAdmin && usercompanyId && usercompanyId.length > 0) {
-      if (!usercompanyId.includes(company._id)) {
-        return false;
+    if (result.isConfirmed) {
+      try {
+        await deleteCompanyMutation.mutateAsync(company._id);
+        Swal.fire({ title: "Deleted", icon: "success", timer: 1500, showConfirmButton: false });
+      } catch (err: any) {
+        Swal.fire("Error", err.message || "Failed to delete company", "error");
       }
     }
-
-    // Then filter by search term (defensive: ensure we call toLowerCase on strings)
-    const term = searchTerm.toLowerCase();
-    const contactRaw =
-      company.contactEmail ||
-      (company as any).email ||
-      (company as any).contact ||
-      company.phone ||
-      "";
-    
-    // Handle address - could be array of localized objects or legacy string
-    let addressRaw: any = "";
-    if (company.address) {
-      addressRaw = company.address;
-    } else {
-      addressRaw = (company as any).location || (company as any).city || "";
-    }
-
-    const nameStr = toPlainString((company as any).name);
-    const contact = toPlainString(contactRaw);
-    const address = toPlainString(addressRaw);
-
-    return (
-      (nameStr && nameStr.toLowerCase().includes(term)) ||
-      (contact && contact.toLowerCase().includes(term)) ||
-      (address && address.toLowerCase().includes(term))
-    );
-  });
-
-  const handleRowClick = (companyId: string) => {
-    navigate(`/company/${companyId}`);
   };
 
-  // If user doesn't have read permission, show access denied
+  const filteredCompanies = useMemo(() => {
+    return companies.filter((company: any) => {
+      const term = searchTerm.toLowerCase();
+      const nameStr = toPlainString(company.name).toLowerCase();
+      const emailStr = (company.contactEmail || "").toLowerCase();
+      const phoneStr = (company.phone || "").toLowerCase();
+      
+      return nameStr.includes(term) || emailStr.includes(term) || phoneStr.includes(term);
+    });
+  }, [companies, searchTerm]);
+
+  // Pagination
+  const totalPages = Math.ceil(filteredCompanies.length / pageSize);
+  const paginatedCompanies = filteredCompanies.slice((page - 1) * pageSize, page * pageSize);
+
   if (!canRead) {
     return (
-      <div className="space-y-6">
-        <PageMeta
-          title="Companies | Saber Group - Hiring Management System"
-          description="View and manage all recruiting companies in the system."
-        />
-        <PageBreadcrumb pageTitle="Companies" />
-        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 py-24 dark:border-gray-700">
-          <svg
-            className="mb-4 size-16 text-gray-400"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-            />
-          </svg>
-          <p className="text-lg font-semibold text-gray-700 dark:text-gray-300">
-            Access Denied
-          </p>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            You don't have permission to view companies
-          </p>
+      <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0F172A] p-8 flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="size-20 bg-red-500/10 rounded-full flex items-center justify-center mx-auto">
+            <ShieldAlert className="size-10 text-red-500" />
+          </div>
+          <h1 className="text-2xl font-black dark:text-white">Access Restricted</h1>
+          <p className="text-gray-500 max-w-xs mx-auto font-medium">Your account does not have the necessary clearance to view the company directory.</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <PageMeta
-        title="Companies | Saber Group - Hiring Management System"
-        description="View and manage all recruiting companies in the system."
-      />
-      <PageBreadcrumb pageTitle="Companies" />
+    <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0F172A] p-4 sm:p-8 text-slate-900 dark:text-slate-100">
+      <PageMeta title="Company Directory | Job Application Maker" description="Manage organizations and entities" />
+      <PageBreadcrumb pageTitle="Company directory" />
 
-      {companiesLoading ? (
-        <LoadingSpinner fullPage message="Loading companies..." />
-      ) : (
-        <ComponentCard
-          title="All Companies"
-          desc="Browse and manage companies registered for recruiting"
-        >
-          <div className="space-y-4">
-            {error && (
-              <div className="p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg">
-                {error.message || String(error)}
-              </div>
-            )}
-
-            {deleteError && (
-              <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-                <div className="flex items-start justify-between">
-                  <p className="text-sm text-red-600 dark:text-red-400">
-                    <strong>Error deleting company:</strong> {deleteError}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setDeleteError("")}
-                    className="ml-3 text-red-400 hover:text-red-600 dark:hover:text-red-300"
-                  >
-                    ✕
-                  </button>
-                </div>
-              </div>
-            )}
-
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex-1">
-                <input
-                  type="text"
-                  placeholder="Search companies..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="h-11 w-full max-w-md rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/20 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800"
-                />
-              </div>
-              <button
-                  type="button"
-                  onClick={async () => {
-                    try {
-                      if (refetchCompanies) {
-                        await refetchCompanies();
-                        setLastRefetch(new Date());
-                      }
-                    } catch (e) {
-                      // ignore
-                    }
-                  }}
-                  disabled={isCompaniesFetching}
-                  className="inline-flex mr-1 items-center gap-2 rounded-lg bg-brand-500 px-3 py-2 text-sm font-semibold text-white ml-2 disabled:opacity-50"
-                >
-                  {isCompaniesFetching ? 'Updating Data' : 'Update Data'}
-                </button>
-                  <div className="mr-5 text-sm text-gray-500">{elapsed ? `Last Update: ${elapsed}` : 'Not updated yet'}</div>
-                     {canCreate && (
-                <Link
-                  to="/recruiting"
-                  className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600"
-                >
-                  <PlusIcon className="size-4" />
-                  Create Company
-                </Link>
-              )}
-                
+      <div className="max-w-7xl mx-auto space-y-8">
+        {/* Header Section */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+          <div>
+            <h1 className="text-3xl font-black bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-400 bg-clip-text text-transparent tracking-tight">
+              Company Directory
+            </h1>
+            <p className="mt-1 text-gray-500 dark:text-gray-400 font-medium italic">Manage corporate entities and their departmental structures</p>
+          </div>
+          
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative flex-1 min-w-[300px]">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search companies..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-11 pr-4 py-3 bg-white/60 dark:bg-white/5 backdrop-blur-md border border-white/20 dark:border-white/10 rounded-[1.25rem] focus:ring-2 focus:ring-brand-500/20 outline-none transition-all dark:text-white placeholder:text-gray-400 font-medium"
+              />
             </div>
-           
-    
-
-            {filteredCompanies.length === 0 ? (
-              <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 py-12 dark:border-gray-700">
-                <svg
-                  className="mb-4 size-12 text-gray-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
-                  />
-                </svg>
-                <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                  No companies found
-                </p>
-                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                  {searchTerm
-                    ? "Try adjusting your search"
-                    : "Get started by creating a new company"}
-                </p>
-              </div>
-            ) : (
-              <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-white/[0.05] dark:bg-white/[0.03]">
-                <div className="max-w-full overflow-x-auto">
-                  <Table>
-                    <TableHeader className="border-b border-gray-100 dark:border-white/[0.05]">
-                      <TableRow>
-                        <TableCell
-                          isHeader
-                          className="px-3 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400 w-16"
-                        >
-                          Logo
-                        </TableCell>
-                        <TableCell
-                          isHeader
-                          className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
-                        >
-                          Company Name
-                        </TableCell>
-                        <TableCell
-                          isHeader
-                          className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
-                        >
-                          Address
-                        </TableCell>
-                        <TableCell
-                          isHeader
-                          className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
-                        >
-                          Contact
-                        </TableCell>
-                        <TableCell
-                          isHeader
-                          className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
-                        >
-                          Departments
-                        </TableCell>
-                        <TableCell
-                          isHeader
-                          className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
-                        >
-                          Created
-                        </TableCell>
-                        <TableCell
-                          isHeader
-                          className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
-                        >
-                          Actions
-                        </TableCell>
-                      </TableRow>
-                    </TableHeader>
-
-                    <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
-                      {filteredCompanies.map((company) => (
-                        <TableRow
-                          key={company._id}
-                          onClick={() => handleRowClick(company._id)}
-                          className="cursor-pointer transition hover:bg-gray-50 dark:hover:bg-white/[0.02]"
-                        >
-                          <TableCell className="px-3 py-4 text-start">
-                            <div className="w-10 h-10 rounded-full overflow-hidden bg-gray-100 flex items-center justify-center">
-                              {company.logoPath ? (
-                                <img
-                                  src={company.logoPath}
-                                  alt={`${toPlainString((company as any).name)} logo`}
-                                  className="w-full h-full object-cover"
-                                />
-                              ) : (
-                                <span className="text-sm font-semibold text-gray-600">
-                                  {toPlainString((company as any).name)
-                                    ? toPlainString((company as any).name).charAt(0).toUpperCase()
-                                    : "?"}
-                                </span>
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell className="px-5 py-4 text-start">
-                            <div>
-                              <span className="block font-medium text-gray-800 text-theme-sm dark:text-white/90">
-                                {toPlainString((company as any).name)}
-                              </span>
-                            </div>
-                          </TableCell>
-                          <TableCell className="px-5 py-4 text-start">
-                            <span className="text-sm text-gray-600 dark:text-gray-400">
-                              {(() => {
-                                const addr = company.address ||
-                                  (company as any).location ||
-                                  (company as any).city;
-                                return addr ? toPlainString(addr) : "-";
-                              })()}
-                            </span>
-                          </TableCell>
-                          <TableCell className="px-5 py-4 text-start">
-                            <span className="text-sm text-gray-800 dark:text-gray-200">
-                              {toPlainString(
-                                company.contactEmail ||
-                                  (company as any).email ||
-                                  (company as any).contact ||
-                                  company.phone ||
-                                  "-"
-                              )}
-                            </span>
-                          </TableCell>
-                          <TableCell className="px-5 py-4 text-start">
-                            <span className="inline-flex items-center rounded-full bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-600 ring-1 ring-inset ring-brand-200 dark:bg-brand-500/10 dark:text-brand-200 dark:ring-brand-400/40">
-                              {departmentCounts[company._id] ?? 0}
-                            </span>
-                          </TableCell>
-                          <TableCell className="px-5 py-4 text-gray-500 text-start text-theme-sm dark:text-gray-400">
-                            {company.createdAt
-                              ? new Date(company.createdAt).toLocaleDateString(
-                                  "en-US",
-                                  {
-                                    year: "numeric",
-                                    month: "short",
-                                    day: "numeric",
-                                  }
-                                )
-                              : "-"}
-                          </TableCell>
-                          <TableCell className="px-5 py-4 text-start">
-                            <div className="inline-flex items-center gap-2">
-                                <div onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-2">
-                                  {canEdit && (
-                                    <button
-                                      onClick={() => navigate(`/company/${company._id}`)}
-                                      type="button"
-                                      className="rounded p-1.5 text-brand-600 transition hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-brand-500/10"
-                                      title="Edit company"
-                                    >
-                                      <PencilIcon className="size-4" />
-                                    </button>
-                                  )}
-
-                                  {canCreate && (
-                                    <button
-                                      onClick={(e) => handleDeleteCompany(company._id, e)}
-                                      disabled={isDeletingCompany === company._id}
-                                      className="rounded p-1.5 text-error-600 transition hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-500/10 disabled:opacity-50 disabled:cursor-not-allowed"
-                                      title={isDeletingCompany === company._id ? "Deleting..." : "Delete company"}
-                                    >
-                                      <TrashBinIcon className="size-4" />
-                                    </button>
-                                  )}
-                                </div>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </div>
+            {canCreate && (
+              <button
+                onClick={() => navigate("/company/add")}
+                className="flex items-center gap-2 px-6 py-3 bg-brand-500 text-white rounded-[1.25rem] font-bold shadow-xl shadow-brand-500/20 hover:scale-105 active:scale-95 transition-all"
+              >
+                <Plus className="size-5" />
+                Create Company
+              </button>
             )}
           </div>
+        </div>
+
+        {/* Stats Section */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div className="md:col-span-3 flex items-center bg-white/40 dark:bg-white/5 backdrop-blur-xl border border-white/20 dark:border-white/10 p-4 rounded-[2rem] shadow-sm">
+            <div className="flex items-center gap-4 px-4 border-r border-white/10">
+              <div className="size-10 bg-brand-500/10 rounded-xl flex items-center justify-center text-brand-500">
+                <Building2 className="size-5" />
+              </div>
+              <div>
+                <span className="block text-[10px] font-black uppercase text-gray-400">Total Entities</span>
+                <span className="text-xl font-bold">{companies.length}</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-4 px-6">
+              <div className="size-10 bg-blue-500/10 rounded-xl flex items-center justify-center text-blue-500">
+                <Users className="size-5" />
+              </div>
+              <div>
+                <span className="block text-[10px] font-black uppercase text-gray-400">Total Departments</span>
+                <span className="text-xl font-bold">{departments.length}</span>
+              </div>
+            </div>
+          </div>
+          
          
-        </ComponentCard>
-      )}
+        </div>
+
+        {/* Company Grid */}
+        {companiesLoading ? (
+          <div className="py-24 flex items-center justify-center">
+            <LoadingSpinner />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {paginatedCompanies.map((company: any) => {
+              const deptCount = departmentCounts[company._id] || 0;
+              
+              return (
+                <div 
+                  key={company._id}
+                  onClick={() => navigate(`/company/${company._id}`)}
+                  className="group relative bg-white/60 dark:bg-white/5 backdrop-blur-xl border border-white/20 dark:border-white/10 rounded-[2.5rem] p-6 shadow-sm hover:shadow-2xl transition-all duration-500 cursor-pointer overflow-hidden flex flex-col h-full"
+                >
+                  <div className="absolute top-0 left-0 right-0 h-1.5 transition-all duration-500 bg-brand-500/30 group-hover:bg-brand-500" />
+                  
+                  <div className="space-y-6 flex-1">
+                    <div className="flex justify-between items-start">
+                      <div className="relative">
+                        <div className="size-16 rounded-2xl bg-gradient-to-br from-slate-100 to-slate-200 dark:from-white/10 dark:to-white/5 flex items-center justify-center text-2xl font-black text-gray-500 dark:text-gray-400 overflow-hidden border border-white/20">
+                          {company.logoPath ? (
+                            <img src={company.logoPath} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                            toPlainString(company.name).charAt(0)
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all translate-y-2 group-hover:translate-y-0 duration-300">
+                        {canWrite && (
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); navigate(`/company/${company._id}`); }}
+                            className="size-8 rounded-lg bg-blue-500/10 text-blue-500 hover:bg-blue-500 hover:text-white flex items-center justify-center transition-all"
+                          >
+                            <Pencil className="size-3.5" />
+                          </button>
+                        )}
+                        {canWrite && (
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); handleDeleteCompany(company); }}
+                            className="size-8 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white flex items-center justify-center transition-all"
+                          >
+                            <Trash2 className="size-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <h3 className="text-lg font-black text-gray-900 dark:text-white line-clamp-1 tracking-tight">
+                        {toPlainString(company.name)}
+                      </h3>
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-brand-500 px-2.5 py-1 bg-brand-500/10 rounded-full w-fit">
+                        <Users className="size-3" />
+                        {deptCount} Departments
+                      </div>
+                    </div>
+
+                    <div className="space-y-3 pt-4 border-t border-gray-100 dark:border-white/5">
+                      {company.contactEmail && (
+                        <div className="flex items-center gap-3 text-slate-500 dark:text-slate-400 group/item hover:text-brand-500 transition-colors">
+                          <div className="size-8 rounded-lg bg-slate-50 dark:bg-white/5 flex items-center justify-center group-hover/item:bg-brand-500/10 transition-colors">
+                            <Mail className="size-3.5" />
+                          </div>
+                          <span className="text-xs font-medium truncate">{company.contactEmail}</span>
+                        </div>
+                      )}
+                      
+                      {company.phone && (
+                        <div className="flex items-center gap-3 text-slate-500 dark:text-slate-400 group/item hover:text-brand-500 transition-colors">
+                          <div className="size-8 rounded-lg bg-slate-50 dark:bg-white/5 flex items-center justify-center group-hover/item:bg-brand-500/10 transition-colors">
+                            <Phone className="size-3.5" />
+                          </div>
+                          <span className="text-xs font-medium">{company.phone}</span>
+                        </div>
+                      )}
+
+                      {company.website && (
+                        <div className="flex items-center gap-3 text-slate-500 dark:text-slate-400 group/item hover:text-brand-500 transition-colors">
+                          <div className="size-8 rounded-lg bg-slate-50 dark:bg-white/5 flex items-center justify-center group-hover/item:bg-brand-500/10 transition-colors">
+                            <Globe className="size-3.5" />
+                          </div>
+                          <span className="text-xs font-medium truncate">{company.website.replace(/^https?:\/\//, '')}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="mt-6 flex items-center justify-between group/btn">
+                    <span className="text-[10px] font-black uppercase text-gray-400 tracking-widest group-hover/btn:text-brand-500 transition-colors">View Operations</span>
+                    <div className="size-8 rounded-full border border-gray-100 dark:border-white/10 flex items-center justify-center group-hover/btn:bg-brand-500 group-hover/btn:border-brand-500 transition-all">
+                      <ArrowRight className="size-4 group-hover/btn:text-white transition-colors" />
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Custom Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between pt-8 border-t border-white/10">
+            <p className="text-sm font-bold text-gray-500">
+              Showing <span className="text-slate-900 dark:text-white">{(page - 1) * pageSize + 1}</span> to <span className="text-slate-900 dark:text-white">{Math.min(page * pageSize, filteredCompanies.length)}</span> of <span className="text-slate-900 dark:text-white">{filteredCompanies.length}</span> entities
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="size-10 rounded-xl border border-white/20 dark:border-white/10 flex items-center justify-center hover:bg-white dark:hover:bg-white/5 disabled:opacity-30 transition-all font-bold"
+              >
+                <ChevronLeft className="size-5" />
+              </button>
+              {[...Array(totalPages)].map((_, i) => (
+                <button
+                  key={i}
+                  onClick={() => setPage(i + 1)}
+                  className={`size-10 rounded-xl text-sm font-black transition-all ${page === i + 1 ? "bg-brand-500 text-white shadow-lg shadow-brand-500/20" : "hover:bg-white dark:hover:bg-white/5"}`}
+                >
+                  {i + 1}
+                </button>
+              ))}
+              <button
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+                className="size-10 rounded-xl border border-white/20 dark:border-white/10 flex items-center justify-center hover:bg-white dark:hover:bg-white/5 disabled:opacity-30 transition-all font-bold"
+              >
+                <ChevronRight className="size-5" />
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -173,7 +173,7 @@ export default function InterviewScheduleModal(props: Props) {
 
   const company = (applicant && (applicant.company || applicant.companyObj)) || null;
   // If company not present directly on applicant, try nested jobPosition/companyId paths
-  const companyEntity = company || (applicant as any)?.jobPositionId?.companyId || (applicant as any)?.jobPositionId?.company || (applicant as any)?.jobPositionId?.companyObj || null;
+  const companyCompany = company || (applicant as any)?.jobPositionId?.companyId || (applicant as any)?.jobPositionId?.company || (applicant as any)?.jobPositionId?.companyObj || null;
 
   // Debug: log company shape when modal opens to help diagnose missing sender entries
   // Remove this log once the issue is confirmed
@@ -199,16 +199,16 @@ export default function InterviewScheduleModal(props: Props) {
 
   // Collect potential source arrays for available senders (handle various backend shapes)
   const availableCandidates: any[] = [];
-  if (companyEntity) {
-    const ms = (companyEntity as any).mailSettings || (companyEntity as any).settings?.mailSettings || (companyEntity as any).settings?.mail || null;
+  if (companyCompany) {
+    const ms = (companyCompany as any).mailSettings || (companyCompany as any).settings?.mailSettings || (companyCompany as any).settings?.mail || null;
     // do not pre-add a "Default" labeled entry; availableMails will include defaults
     if (ms && Array.isArray(ms.availableMails)) availableCandidates.push(...ms.availableMails);
     if (ms && Array.isArray(ms.available_senders)) availableCandidates.push(...ms.available_senders);
     if (ms && Array.isArray(ms.availableSenders)) availableCandidates.push(...ms.availableSenders);
 
-    if (Array.isArray((companyEntity as any).availableMails)) availableCandidates.push(...(companyEntity as any).availableMails);
-    if (Array.isArray((companyEntity as any).available_senders)) availableCandidates.push(...(companyEntity as any).available_senders);
-    if (Array.isArray((companyEntity as any).mail?.availableMails)) availableCandidates.push(...(companyEntity as any).mail.availableMails);
+    if (Array.isArray((companyCompany as any).availableMails)) availableCandidates.push(...(companyCompany as any).availableMails);
+    if (Array.isArray((companyCompany as any).available_senders)) availableCandidates.push(...(companyCompany as any).available_senders);
+    if (Array.isArray((companyCompany as any).mail?.availableMails)) availableCandidates.push(...(companyCompany as any).mail.availableMails);
   }
 
   // Also explicitly check applicant.jobPositionId.companyId.settings.mailSettings (some responses nest there)
@@ -240,7 +240,7 @@ export default function InterviewScheduleModal(props: Props) {
   });
 
   // Fallback to company email if not already present
-  const fallbackEmail = (companyEntity as any)?.contactEmail || (companyEntity as any)?.email || (companyEntity as any)?.contactEmail || (companyEntity as any)?.contactEmailAddress;
+  const fallbackEmail = (companyCompany as any)?.contactEmail || (companyCompany as any)?.email || (companyCompany as any)?.contactEmail || (companyCompany as any)?.contactEmailAddress;
   if (fallbackEmail && !senderOptions.find((s) => s.value === fallbackEmail)) {
     senderOptions.push({ value: fallbackEmail, label: fallbackEmail });
   }
@@ -259,7 +259,7 @@ export default function InterviewScheduleModal(props: Props) {
   // Fetch latest company settings when modal opens so we can use companyDomain from server
   useEffect(() => {
     let mounted = true;
-    const cid = (companyEntity as any)?._id || (companyEntity as any)?.id || (companyEntity as any)?.company || ((companyEntity as any)?.companyId && (typeof (companyEntity as any).companyId === 'string' ? (companyEntity as any).companyId : (companyEntity as any).companyId?._id)) || null;
+    const cid = (companyCompany as any)?._id || (companyCompany as any)?.id || (companyCompany as any)?.company || ((companyCompany as any)?.companyId && (typeof (companyCompany as any).companyId === 'string' ? (companyCompany as any).companyId : (companyCompany as any).companyId?._id)) || null;
     if (!isOpen || !cid) {
       if (mounted) setCompanySettings(null);
       return;
@@ -277,17 +277,17 @@ export default function InterviewScheduleModal(props: Props) {
       }
     })();
     return () => { mounted = false; };
-  }, [isOpen, companyEntity]);
+  }, [isOpen, companyCompany]);
 
   // Extract domain from the response structure: company.settings.mailSettings.companyDomain
   const getCompanyDomain = () => {
-    try { console.debug && console.debug('Extracting domain from:', { companySettings, companyEntity }); } catch (e) { /* ignore */ }
+    try { console.debug && console.debug('Extracting domain from:', { companySettings, companyCompany }); } catch (e) { /* ignore */ }
 
     const domainFromResponse =
       companySettings?.company?.settings?.mailSettings?.companyDomain ||
       companySettings?.settings?.mailSettings?.companyDomain ||
-      (companyEntity as any)?.settings?.mailSettings?.companyDomain ||
-      (companyEntity as any)?.mailSettings?.companyDomain ||
+      (companyCompany as any)?.settings?.mailSettings?.companyDomain ||
+      (companyCompany as any)?.mailSettings?.companyDomain ||
       '';
 
     if (domainFromResponse) {
@@ -298,10 +298,10 @@ export default function InterviewScheduleModal(props: Props) {
     const defaultMail =
       companySettings?.company?.settings?.mailSettings?.defaultMail ||
       companySettings?.settings?.mailSettings?.defaultMail ||
-      (companyEntity as any)?.settings?.mailSettings?.defaultMail ||
-      (companyEntity as any)?.mailSettings?.defaultMail ||
-      (companyEntity as any)?.contactEmail ||
-      (companyEntity as any)?.email ||
+      (companyCompany as any)?.settings?.mailSettings?.defaultMail ||
+      (companyCompany as any)?.mailSettings?.defaultMail ||
+      (companyCompany as any)?.contactEmail ||
+      (companyCompany as any)?.email ||
       '';
 
     if (defaultMail && defaultMail.includes('@')) {
@@ -313,8 +313,8 @@ export default function InterviewScheduleModal(props: Props) {
     const firstAvailableMail =
       companySettings?.company?.settings?.mailSettings?.availableMails?.[0] ||
       companySettings?.settings?.mailSettings?.availableMails?.[0] ||
-      (companyEntity as any)?.settings?.mailSettings?.availableMails?.[0] ||
-      (companyEntity as any)?.mailSettings?.availableMails?.[0];
+      (companyCompany as any)?.settings?.mailSettings?.availableMails?.[0] ||
+      (companyCompany as any)?.mailSettings?.availableMails?.[0];
 
     if (firstAvailableMail && firstAvailableMail.includes('@')) {
       const extractedDomain = firstAvailableMail.split('@')[1];
@@ -333,7 +333,7 @@ export default function InterviewScheduleModal(props: Props) {
 
   // helper to get a candidate company id string for settings API
   const getCompanyIdVal = () => {
-    const c = companyEntity as any;
+    const c = companyCompany as any;
     return c?._id || c?.id || c?.company || (c?.companyId && (typeof c.companyId === 'string' ? c.companyId : c.companyId._id)) || null;
   };
 
@@ -385,7 +385,7 @@ export default function InterviewScheduleModal(props: Props) {
           return undefined;
         };
 
-        const companySettingsId = (companyEntity as any)?.settings?._id;
+        const companySettingsId = (companyCompany as any)?.settings?._id;
         const generatedSettingsId = companySettingsId ?? findSettingsId(settings);
         const idToSend = generatedSettingsId ?? cid; // fall back to company id
         try { console.debug('InterviewScheduleModal.updateCompanySettings', { idToSend, merged, settings }); } catch (e) { /* ignore */ }
@@ -514,7 +514,7 @@ export default function InterviewScheduleModal(props: Props) {
                       if (value !== 'new') setNewLocalEmail('');
                       if (value === 'company') {
                         // set selected to company default
-                        const mailDefault = (companyEntity as any)?.mailSettings?.defaultMail || (companyEntity as any)?.email || '';
+                        const mailDefault = (companyCompany as any)?.mailSettings?.defaultMail || (companyCompany as any)?.email || '';
                         setCustomEmail(mailDefault || '');
                       }
                     }} />
@@ -554,7 +554,7 @@ export default function InterviewScheduleModal(props: Props) {
                         value={
                           emailOption === 'new' && newLocalEmail
                             ? (domainForDisplay ? `${newLocalEmail}@${domainForDisplay}` : `${newLocalEmail}@[domain missing]`)
-                            : customEmail || (companyEntity as any)?.settings?.mailSettings?.defaultMail || (companyEntity as any)?.mailSettings?.defaultMail || (companyEntity as any)?.contactEmail || ''
+                            : customEmail || (companyCompany as any)?.settings?.mailSettings?.defaultMail || (companyCompany as any)?.mailSettings?.defaultMail || (companyCompany as any)?.contactEmail || ''
                         }
                         className={`mt-2 ${!domainForDisplay && emailOption === 'new' && newLocalEmail ? 'border-amber-300' : ''}`}
                         readOnly

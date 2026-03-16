@@ -27,6 +27,7 @@ const Jobs = lazy(() => import("./pages/Recruiting/jobs/Jobs"));
 const CreateJob = lazy(() => import("./pages/Recruiting/jobs/CreateJob"));
 const PreviewJob = lazy(() => import("./pages/Recruiting/jobs/PreviewJob"));
 const Users = lazy(() => import("./pages/Recruiting/users/Users"));
+const CreateUser = lazy(() => import("./pages/Recruiting/users/CreateUser"));
 const EditUser = lazy(() => import("./pages/Recruiting/users/EditUser"));
 const Permissions = lazy(() => import("./pages/Recruiting/roles/Permissions"));
 const PreviewRole = lazy(() => import("./pages/Recruiting/roles/PreviewRole"));
@@ -90,6 +91,7 @@ export default function App() {
                 }
               >
                 <Route path="users" element={<Users />} />
+                <Route path="user/add" element={<CreateUser />} />
                 <Route path="user/:id" element={<PreviewUser />} />
                 <Route path="user/:id/edit" element={<EditUser />} />
                 <Route path="permissions" element={<Permissions />} />

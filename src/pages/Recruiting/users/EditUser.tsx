@@ -1,951 +1,811 @@
-import type { ChangeEvent, FormEvent } from "react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { useParams, useNavigate } from "react-router";
 import Swal from "sweetalert2";
-import { useParams, useNavigate, useLocation } from "react-router";
-import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
 import PageMeta from "../../../components/common/PageMeta";
-import ComponentCard from "../../../components/common/ComponentCard";
 import LoadingSpinner from "../../../components/common/LoadingSpinner";
 import { ValidationErrorAlert } from "../../../components/common/ValidationErrorAlert";
-import Label from "../../../components/form/Label";
-import Input from "../../../components/form/input/InputField";
-import MultiSelect from "../../../components/form/MultiSelect";
-import { PlusIcon } from "../../../icons";
 import {
   useUsers,
   useUpdateUser,
-  useUpdateUserCompanies,
-  useAddUserCompany,
-  useRemoveUserCompany,
   useRoles,
   usePermissions,
   useCompanies,
   useDepartments,
-  usersKeys,
 } from "../../../hooks/queries";
-import type { User } from "../../../services/usersService";
-import { useQueryClient } from "@tanstack/react-query";
-import { companiesService } from "../../../services/companiesService";
 import { toPlainString } from "../../../utils/strings";
+import { 
+  User as UserIcon, 
+  Shield, 
+  Building2, 
+  ChevronLeft, 
+  Save, 
+  UserCheck,
+  Plus,
+  Trash2,
+  Lock,
+  Hash,
+  AlertCircle,
+  X
+} from "lucide-react";
 
-type CompanyAssignment = {
-  companyId: string;
-  departments: string[];
-};
-
-type UserForm = {
-  email: string;
-  password: string;
-  fullName: string;
-  phone: string;
-  roleId: string;
-  companies: CompanyAssignment[];
-  permissions: Array<{
-    permission: string;
-    access: string[];
-  }>;
-  isActive: boolean;
+type UserPermission = {
+  permission: string;
+  access: string[];
 };
 
 export default function EditUser() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const location = useLocation();
-  const userFromState = location.state?.user; // Get user data from navigation state
 
-  // Fetch data
-  const { data: usersData, isLoading: usersLoading } = useUsers();
-  const users: User[] = Array.isArray(usersData) ? usersData : ((usersData as any)?.data ?? []) as User[];
+  // Data fetching
+  const { data: usersResponse, isLoading: usersLoading } = useUsers();
+  const rawUsers = Array.isArray(usersResponse) ? usersResponse : ((usersResponse as any)?.data ?? []);
   const { data: roles = [] } = useRoles();
   const { data: permissions = [] } = usePermissions();
   const { data: companies = [] } = useCompanies();
   const { data: departments = [] } = useDepartments();
 
-  // Mutations
+  // Mutation
   const updateUserMutation = useUpdateUser();
-  const updateUserCompaniesMutation = useUpdateUserCompanies();
-  const addUserCompanyMutation = useAddUserCompany();
-  const removeUserCompanyMutation = useRemoveUserCompany();
-  const queryClient = useQueryClient();
 
-  const [userForm, setUserForm] = useState<UserForm>({
+  const [formData, setFormData] = useState({
     email: "",
     password: "",
     fullName: "",
     phone: "",
     roleId: "",
-    companies: [],
-    permissions: [],
-    isActive: false,
+    isActive: true,
+    companies: [] as any[]
   });
-  const [originalUser, setOriginalUser] = useState<UserForm | null>(null);
+
   const [formError, setFormError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [permissionToAdd, setPermissionToAdd] = useState("");
+  const [userPermissions, setUserPermissions] = useState<UserPermission[]>([]);
+  const [permissionViewMode, setPermissionViewMode] = useState<"cards" | "matrix">("cards");
+  const [permissionSearchTerm, setPermissionSearchTerm] = useState("");
+  const [initializedUserId, setInitializedUserId] = useState("");
 
-  // Find the current user - use state data if available, otherwise find in fetched users
-  // Cast to any[] so TypeScript doesn't infer 'never' for an empty default
-  const userArray = users as User[];
-  const user = (userFromState as any) || userArray.find((u: User) => u._id === id);
+  // Find user
+  const user = useMemo(() => {
+    return rawUsers.find((u: any) => u._id === id);
+  }, [rawUsers, id]);
 
-  // Populate form when user data loads
+  const getDefaultAccessForPermission = (permissionId: string) => {
+    const permissionObj = permissions.find((p: any) => p._id === permissionId);
+    const actions = Array.isArray(permissionObj?.actions) && permissionObj.actions.length > 0
+      ? permissionObj.actions
+      : ["read", "write", "create"];
+
+    return Array.from(new Set(actions.map((action: string) => String(action).toLowerCase())));
+  };
+
+  const normalizeRolePermissions = (role: any): UserPermission[] => {
+    const rawPermissions = Array.isArray(role?.permissions) ? role.permissions : [];
+    const merged = new Map<string, Set<string>>();
+
+    rawPermissions.forEach((perm: any) => {
+      const permissionId =
+        typeof perm === "string"
+          ? perm
+          : typeof perm?.permission === "string"
+            ? perm.permission
+            : perm?.permission?._id || "";
+
+      if (!permissionId) return;
+
+      const accessList = Array.isArray(perm?.access) && perm.access.length > 0
+        ? perm.access.map((action: string) => String(action).toLowerCase())
+        : getDefaultAccessForPermission(permissionId);
+
+      const existing = merged.get(permissionId) || new Set<string>();
+      accessList.forEach((action: string) => existing.add(action));
+      merged.set(permissionId, existing);
+    });
+
+    return Array.from(merged.entries()).map(([permission, accessSet]) => ({
+      permission,
+      access: Array.from(accessSet),
+    }));
+  };
+
+  const normalizeUserPermissions = (rawUser: any): UserPermission[] => {
+    const raw = Array.isArray(rawUser?.permissions) ? rawUser.permissions : [];
+    const merged = new Map<string, Set<string>>();
+
+    raw.forEach((item: any) => {
+      const permissionId =
+        typeof item === "string"
+          ? item
+          : typeof item?.permission === "string"
+            ? item.permission
+            : item?.permission?._id || "";
+
+      if (!permissionId) return;
+
+      const access = Array.isArray(item?.access) && item.access.length > 0
+        ? item.access.map((action: string) => String(action).toLowerCase())
+        : getDefaultAccessForPermission(permissionId);
+
+      const existing = merged.get(permissionId) || new Set<string>();
+      access.forEach((action: string) => existing.add(action));
+      merged.set(permissionId, existing);
+    });
+
+    return Array.from(merged.entries()).map(([permission, accessSet]) => ({
+      permission,
+      access: Array.from(accessSet),
+    }));
+  };
+
   useEffect(() => {
-    if (user) {
-      const userCompanies: CompanyAssignment[] =
-        user.companies?.filter((c: any) => c && c.companyId).map((c: any) => ({
-          companyId:
-            typeof c.companyId === "string" ? c.companyId : c.companyId?._id || "",
-          departments: (c.departments || [])
-            .filter((dept: any) => dept)
-            .map((dept: any) => (typeof dept === "string" ? dept : dept._id)),
-        })) || [];
-
-      const userPermissions =
-        user.permissions?.map((p: any) => {
-          let permissionId: string;
-          if (typeof p === "string") {
-            permissionId = p;
-          } else if (p.permission) {
-            permissionId =
-              typeof p.permission === "string" ? p.permission : p.permission._id;
-          } else {
-            permissionId = p._id;
-          }
-
-          return {
-            permission: permissionId,
-            access: p.access || [],
-          };
-        }) || [];
-
-      const formData = {
+    if (user && user._id !== initializedUserId) {
+      setFormData({
         email: user.email || "",
-        password: "",
+        password: "", 
         fullName: toPlainString(user.fullName || user.name || ""),
         phone: user.phone || "",
-        roleId:
-          typeof user.roleId === "string" ? user.roleId : user.roleId?._id || "",
-        companies: userCompanies,
-        permissions: userPermissions,
+        roleId: typeof user.roleId === "string" ? user.roleId : user.roleId?._id || "",
         isActive: user.isActive !== false,
-      };
-
-      setUserForm(formData);
-      setOriginalUser(formData);
-    }
-  }, [user]);
-
-  // Helper function to extract detailed error messages
-  const getErrorMessage = (err: any): string => {
-    if (
-      err.response?.data?.details &&
-      Array.isArray(err.response.data.details)
-    ) {
-      return err.response.data.details
-        .map((detail: any) => {
-          const field = detail.path?.[0] || "";
-          const message = detail.message || "";
-          return field ? `${field}: ${message}` : message;
-        })
-        .join(", ");
-    }
-    if (err.response?.data?.errors) {
-      const errors = err.response.data.errors;
-      if (Array.isArray(errors)) {
-        return errors.map((e: any) => e.msg || e.message).join(", ");
-      }
-      if (typeof errors === "object") {
-        return Object.entries(errors)
-          .map(([field, msg]) => `${field}: ${msg}`)
-          .join(", ");
-      }
-    }
-    if (err.response?.data?.message) return err.response.data.message;
-    if (err.message) return err.message;
-    return "An unexpected error occurred";
-  };
-
-  const handleInputChange = (
-    e: ChangeEvent<HTMLInputElement | HTMLSelectElement>
-  ) => {
-    const { name, value } = e.target;
-    setUserForm((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setFormError("");
-
-    if (!originalUser || !id) return;
-
-   
-
-    setIsSaving(true);
-    try {
-      // Optimistically update cache so edits appear instantly in UI
-      if (id) {
-        const optimisticUser = {
-          ...(queryClient.getQueryData(usersKeys.detail(id)) as any),
-          email: userForm.email,
-          fullName: userForm.fullName,
-          phone: userForm.phone,
-          roleId: userForm.roleId,
-          permissions: userForm.permissions,
-          companies: userForm.companies,
-          isActive: userForm.isActive,
-        };
-
-        queryClient.setQueriesData({ queryKey: usersKeys.lists() }, (old: any) => {
-          if (!old) return old;
-
-          // If the cached value is an object with a `data` array (e.g., paginated response)
-          if (typeof old === "object" && !Array.isArray(old) && old.data && Array.isArray(old.data)) {
-            return { ...old, data: old.data.map((u: any) => (u._id === id ? { ...u, ...optimisticUser } : u)) };
-          }
-
-          // If the cached value is a simple array of users
-          if (Array.isArray(old)) {
-            return old.map((u: any) => (u._id === id ? { ...u, ...optimisticUser } : u));
-          }
-
-          return old;
-        });
-
-        queryClient.setQueryData(usersKeys.detail(id), optimisticUser);
-      }
-      // 1. Check if basic info, permissions, or role changed
-      const permissionsChanged =
-        JSON.stringify(userForm.permissions) !==
-        JSON.stringify(originalUser.permissions);
-      const roleChanged = userForm.roleId !== originalUser.roleId;
-      const basicInfoChanged =
-      userForm.fullName !== originalUser.fullName ||
-      userForm.phone !== originalUser.phone ||
-      userForm.isActive !== originalUser.isActive;
-
-      if (permissionsChanged || roleChanged || basicInfoChanged) {
-        await updateUserMutation.mutateAsync({
-          id,
-          data: {
-            ...(basicInfoChanged && {
-              fullName: userForm.fullName,
-              phone: userForm.phone,
-              isActive: userForm.isActive,
-            }),
-            ...(roleChanged && { roleId: userForm.roleId }),
-            ...(permissionsChanged && { permissions: userForm.permissions }),
-          },
-        });
-      }
-
-      // 2. Detect company changes
-      const originalcompanyId = originalUser.companies.map((c) => c.companyId);
-      const currentcompanyId = userForm.companies.map((c) => c.companyId);
-
-      // Find added companies
-      const addedcompanyId = currentcompanyId.filter(
-        (cid) => !originalcompanyId.includes(cid)
-      );
-
-      // Find removed companies
-      const removedcompanyId = originalcompanyId.filter(
-        (cid) => !currentcompanyId.includes(cid)
-      );
-
-      // Add new companies
-      for (const companyId of addedcompanyId) {
-          if (!companyId) {
-            setFormError("Invalid company selected");
-            continue;
-          }
-          try {
-            await companiesService.getCompanyById(companyId);
-          } catch (err: any) {
-            setFormError("Selected company does not exist");
-            continue;
-          }
-          // Debug: log payload before sending to server
-          // eslint-disable-next-line no-console
-        const addedCompany = userForm.companies.find((c) => c.companyId === companyId);
-        const departmentsForAdd = addedCompany?.departments || [];
-        console.debug("addUserCompany payload", { userId: id, companyId, departments: departmentsForAdd });
-        await addUserCompanyMutation.mutateAsync({
-          userId: id,
-          companyId,
-          departments: departmentsForAdd,
-        });
-        }
-
-      // Remove companies
-      for (const companyId of removedcompanyId) {
-        await removeUserCompanyMutation.mutateAsync({
-          userId: id,
-          companyId,
-        });
-      }
-
-      // 3. Update departments for existing companies
-      for (const company of userForm.companies) {
-        if (addedcompanyId.includes(company.companyId)) continue;
-
-        const originalCompany = originalUser.companies.find(
-          (c) => c.companyId === company.companyId
-        );
-        if (originalCompany) {
-          const depsChanged =
-            JSON.stringify(company.departments.sort()) !==
-            JSON.stringify(originalCompany.departments.sort());
-
-          if (depsChanged) {
-            await updateUserCompaniesMutation.mutateAsync({
-              userId: id,
-              companyId: company.companyId,
-              data: { departments: company.departments },
-            });
-          }
-        }
-      }
-
-      await Swal.fire({
-        title: "Success!",
-        text: "User updated successfully.",
-        icon: "success",
-        position: "center",
-        timer: 2000,
-        showConfirmButton: false,
-        customClass: {
-          container: "!mt-16",
-        },
+        companies: user.companies?.map((c: any) => ({
+          companyId: typeof c.companyId === "string" ? c.companyId : c.companyId?._id,
+          departments:
+            c.departments
+              ?.map((d: any) => {
+                if (typeof d === "string") return d;
+                if (d?._id) return d._id;
+                if (typeof d?.departmentId === "string") return d.departmentId;
+                if (d?.departmentId?._id) return d.departmentId._id;
+                return "";
+              })
+              .filter(Boolean) || [],
+          isPrimary: c.isPrimary || false
+        })) || []
       });
 
+      const fromUser = normalizeUserPermissions(user);
+      if (fromUser.length > 0) {
+        setUserPermissions(fromUser);
+      } else {
+        const currentRoleId = typeof user.roleId === "string" ? user.roleId : user.roleId?._id;
+        const selectedRole = roles.find((role: any) => role._id === currentRoleId);
+        setUserPermissions(normalizeRolePermissions(selectedRole));
+      }
+
+      setInitializedUserId(user._id);
+    }
+  }, [user, initializedUserId, roles, permissions]);
+
+  const handleAddCompany = () => {
+    setFormData(prev => ({
+      ...prev,
+      companies: [...prev.companies, { companyId: "", departments: [], isPrimary: prev.companies.length === 0 }]
+    }));
+  };
+
+  const handleRemoveCompany = (index: number) => {
+    setFormData(prev => ({
+      ...prev,
+      companies: prev.companies.filter((_, i) => i !== index)
+    }));
+  };
+
+  const updateCompany = (index: number, field: string, value: any) => {
+    setFormData(prev => {
+      const newCos = [...prev.companies];
+      newCos[index] = { ...newCos[index], [field]: value };
+      
+      // If setting a primary, unset others
+      if (field === "isPrimary" && value === true) {
+        newCos.forEach((c, i) => { if(i !== index) c.isPrimary = false; });
+      }
+      
+      return { ...prev, companies: newCos };
+    });
+  };
+
+  const handleRoleChange = (nextRoleId: string) => {
+    setFormData((prev) => ({ ...prev, roleId: nextRoleId }));
+    const selectedRole = roles.find((role: any) => role._id === nextRoleId);
+    setUserPermissions(normalizeRolePermissions(selectedRole));
+    setPermissionToAdd("");
+  };
+
+  const availablePermissions = useMemo(() => {
+    const selectedIds = new Set(userPermissions.map((item) => item.permission));
+    return permissions.filter((perm: any) => !selectedIds.has(perm._id));
+  }, [permissions, userPermissions]);
+
+  const selectedPermissionMap = useMemo(() => {
+    return new Map(userPermissions.map((item) => [item.permission, item.access]));
+  }, [userPermissions]);
+
+  const filteredPermissionCatalog = useMemo(() => {
+    const term = permissionSearchTerm.trim().toLowerCase();
+    if (!term) return permissions;
+    return permissions.filter((perm: any) =>
+      toPlainString(perm.name || "").toLowerCase().includes(term)
+    );
+  }, [permissions, permissionSearchTerm]);
+
+  const handleAddPermission = () => {
+    if (!permissionToAdd) return;
+
+    setUserPermissions((prev) => {
+      if (prev.some((item) => item.permission === permissionToAdd)) return prev;
+      return [
+        ...prev,
+        {
+          permission: permissionToAdd,
+          access: getDefaultAccessForPermission(permissionToAdd),
+        },
+      ];
+    });
+    setPermissionToAdd("");
+  };
+
+  const handleRemovePermission = (permissionId: string) => {
+    setUserPermissions((prev) => prev.filter((item) => item.permission !== permissionId));
+  };
+
+  const handleTogglePermissionAccess = (permissionId: string, action: string) => {
+    setUserPermissions((prev) =>
+      prev.map((item) => {
+        if (item.permission !== permissionId) return item;
+        const hasAccess = item.access.includes(action);
+        return {
+          ...item,
+          access: hasAccess
+            ? item.access.filter((acc) => acc !== action)
+            : [...item.access, action],
+        };
+      })
+    );
+  };
+
+  const setPermissionSelection = (permissionId: string, selected: boolean) => {
+    if (selected) {
+      setUserPermissions((prev) => {
+        if (prev.some((item) => item.permission === permissionId)) return prev;
+        return [
+          ...prev,
+          {
+            permission: permissionId,
+            access: getDefaultAccessForPermission(permissionId),
+          },
+        ];
+      });
+      return;
+    }
+
+    handleRemovePermission(permissionId);
+  };
+
+  const setPermissionAction = (permissionId: string, action: string, enabled: boolean) => {
+    setUserPermissions((prev) => {
+      const existing = prev.find((item) => item.permission === permissionId);
+
+      if (!existing) {
+        if (!enabled) return prev;
+        return [...prev, { permission: permissionId, access: [action] }];
+      }
+
+      const nextAccess = enabled
+        ? Array.from(new Set([...existing.access, action]))
+        : existing.access.filter((acc) => acc !== action);
+
+      return prev.map((item) =>
+        item.permission === permissionId ? { ...item, access: nextAccess } : item
+      );
+    });
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormError("");
+    setIsSaving(true);
+
+    try {
+      if (!formData.fullName || !formData.email || !formData.roleId) {
+        throw new Error("Core identification fields are required.");
+      }
+
+      await updateUserMutation.mutateAsync({
+        id: id!,
+        data: {
+          fullName: formData.fullName,
+          email: formData.email,
+          phone: formData.phone,
+          roleId: formData.roleId,
+          isActive: formData.isActive,
+          permissions: userPermissions.map((item) => ({
+            permission: item.permission,
+            access: item.access,
+          }))
+        }
+      });
+
+      await Swal.fire({
+        title: "Company Verified",
+        text: "User profile has been updated within the system records.",
+        icon: "success",
+        background: "rgba(255, 255, 255, 0.9)",
+        backdrop: "rgba(0,0,0,0.4)"
+      });
       navigate("/users");
     } catch (err: any) {
-      console.error("Error updating user:", err);
-      const errorMsg = getErrorMessage(err);
-      setFormError(errorMsg);
+      setFormError(err.message || "Credential validation failed.");
     } finally {
       setIsSaving(false);
     }
   };
 
-  if (usersLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <LoadingSpinner />
-      </div>
-    );
-  }
-
-  if (!user) {
-    return (
-      <div className="space-y-6">
-        <PageMeta
-          title="User Not Found | Job Application Maker"
-          description="The requested user could not be found"
-        />
-        <PageBreadcrumb pageTitle="User Not Found" />
-        <ComponentCard title="User Not Found">
-          <div className="text-center py-12">
-            <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-              User Not Found
-            </h3>
-            <p className="text-gray-600 dark:text-gray-400 mb-4">
-              The user you're looking for doesn't exist or has been deleted.
-            </p>
-            <button
-              onClick={() => navigate("/users")}
-              className="px-4 py-2 bg-brand-500 text-white rounded-lg hover:bg-brand-600 transition-colors"
-            >
-              Back to Users
-            </button>
-          </div>
-        </ComponentCard>
-      </div>
-    );
-  }
-
-  const userName = toPlainString(user.fullName || user.name || "Unnamed User");
+  if (usersLoading) return <LoadingSpinner fullPage />;
 
   return (
-    <div className="space-y-6">
-      <PageMeta
-        title={`Edit ${userName} | Job Application Maker`}
-        description={`Edit user information for ${userName}`}
-      />
+    <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0F172A] p-4 sm:p-8">
+      <PageMeta title={`Modify Company - ${formData.fullName}`} description="Update personnel credentials and organizational access" />
+      
+      <div className="max-w-5xl mx-auto space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
+        <div className="flex items-center justify-between">
+          <button 
+            onClick={() => navigate("/users")}
+            className="group flex items-center gap-3 transition-all"
+          >
+            <div className="size-12 bg-white/60 dark:bg-white/5 backdrop-blur-xl border border-white/20 rounded-2xl flex items-center justify-center shadow-sm group-hover:-translate-x-1 group-hover:bg-brand-500 group-hover:text-white transition-all">
+              <ChevronLeft className="size-5" />
+            </div>
+            <span className="font-black text-xs uppercase tracking-widest text-gray-400 group-hover:text-brand-500 transition-colors">Discard Changes</span>
+          </button>
+        </div>
 
-      <div className="flex items-center justify-between">
-        <PageBreadcrumb pageTitle={`Edit User: ${userName}`} />
-        <button
-          onClick={() => navigate(-1)}
-          className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
-        >
-          Cancel
-        </button>
-      </div>
+        <div className="relative overflow-hidden bg-white/60 dark:bg-white/5 backdrop-blur-2xl border border-white/20 dark:border-white/10 rounded-[3.5rem] p-10 shadow-2xl">
+           <div className="absolute -top-20 -right-20 p-20 opacity-5 pointer-events-none">
+             <UserIcon className="size-80" />
+           </div>
 
-      <ComponentCard title="Edit User">
-        {isSaving ? (
-          <div className="flex flex-col items-center justify-center py-12">
-            <div className="w-16 h-16 border-4 border-brand-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-            <p className="text-gray-600 dark:text-gray-400">Updating user...</p>
-          </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <ValidationErrorAlert
-              error={formError}
-              onDismiss={() => setFormError("")}
-            />
+           <div className="relative z-10 flex flex-col md:flex-row items-center gap-8 mb-12">
+             <div className="size-28 rounded-[2rem] bg-gradient-to-br from-brand-500/10 to-purple-500/10 border-2 border-brand-500/20 flex items-center justify-center text-4xl font-black text-brand-500 shadow-xl">
+               {formData.fullName?.charAt(0) || <Hash className="size-8" />}
+             </div>
+             <div className="text-center md:text-left space-y-2">
+               <h1 className="text-4xl font-black tracking-tight dark:text-white">Modify Credential</h1>
+               <p className="text-slate-500 font-bold uppercase tracking-widest text-[10px] italic">Personnel ID: {id?.slice(-8).toUpperCase()}</p>
+             </div>
+           </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Basic Information */}
-              <div>
-                <Label htmlFor="fullName">
-                  Full Name <span className="text-red-500">*</span>
-                </Label>
-                <Input
-                  id="fullName"
-                  name="fullName"
-                  value={userForm.fullName}
-                  onChange={handleInputChange}
-                  placeholder="John Doe"
-                  required
-                />
-              </div>
+           {formError && (
+             <div className="mb-10">
+               <ValidationErrorAlert error={formError} onDismiss={() => setFormError("")} />
+             </div>
+           )}
 
-              <div>
-                <Label htmlFor="email">
-                  Email <span className="text-red-500">*</span>
-                </Label>
-                <Input
-                  id="email"
-                  name="email"
-                  type="email"
-                  value={userForm.email}
-                  onChange={handleInputChange}
-                  placeholder="user@company.com"
-                  disabled
-                  className="bg-gray-100 dark:bg-gray-800"
-                />
-              </div>
+           <form onSubmit={handleSubmit} className="space-y-12">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+                <div className="space-y-8">
+                  <h3 className="text-lg font-black flex items-center gap-2 mb-6 tracking-tight">
+                    <Shield className="size-5 text-brand-500" />
+                    Personal Information
+                  </h3>
+                  
+                  <div className="space-y-6">
+                    <div className="group space-y-2">
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1 flex items-center gap-2">
+                         Full Company Name
+                      </label>
+                      <input 
+                        type="text" 
+                        value={formData.fullName} 
+                        onChange={(e) => setFormData({...formData, fullName: e.target.value})}
+                        className="w-full px-6 py-4 bg-white/40 dark:bg-black/20 border-2 border-slate-100 dark:border-white/5 rounded-2xl focus:border-brand-500/50 focus:ring-4 focus:ring-brand-500/5 outline-none transition-all font-bold dark:text-white"
+                        placeholder="John Doe"
+                      />
+                    </div>
 
-              <div>
-                <Label htmlFor="password">
-                  Password
-                  <span className="text-gray-500 text-xs ml-1">
-                    (leave blank to keep current)
-                  </span>
-                </Label>
-                <Input
-                  id="password"
-                  name="password"
-                  type="password"
-                  value={userForm.password}
-                  onChange={handleInputChange}
-                  placeholder="••••••••"
-                />
-              </div>
+                    <div className="group space-y-2">
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1 flex items-center gap-2">
+                         Digital Mailbox
+                      </label>
+                      <input 
+                        type="email" 
+                        value={formData.email} 
+                        onChange={(e) => setFormData({...formData, email: e.target.value})}
+                        className="w-full px-6 py-4 bg-white/40 dark:bg-black/20 border-2 border-slate-100 dark:border-white/5 rounded-2xl focus:border-brand-500/50 focus:ring-4 focus:ring-brand-500/5 outline-none transition-all font-bold dark:text-white"
+                        placeholder="j.doe@network.com"
+                      />
+                    </div>
 
-              <div>
-                <Label htmlFor="phone">Phone</Label>
-                <Input
-                  id="phone"
-                  name="phone"
-                  value={userForm.phone}
-                  onChange={handleInputChange}
-                  placeholder="+1234567890"
-                />
-              </div>
+                    <div className="group space-y-2">
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1 flex items-center gap-2">
+                          Communication Line
+                      </label>
+                      <input 
+                        type="text" 
+                        value={formData.phone} 
+                        onChange={(e) => setFormData({...formData, phone: e.target.value})}
+                        className="w-full px-6 py-4 bg-white/40 dark:bg-black/20 border-2 border-slate-100 dark:border-white/5 rounded-2xl focus:border-brand-500/50 focus:ring-4 focus:ring-brand-500/5 outline-none transition-all font-bold dark:text-white"
+                        placeholder="+1 (555) 000-0000"
+                      />
+                    </div>
+                  </div>
+                </div>
 
-              <div>
-                <Label htmlFor="roleId">
-                  Role <span className="text-red-500">*</span>
-                </Label>
-                <select
-                  id="roleId"
-                  name="roleId"
-                  value={userForm.roleId}
-                  onChange={handleInputChange}
-                  className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent"
-                  required
-                >
-                  <option value="">Select Role</option>
-                  {roles.filter((role) => role && role._id).map((role) => (
-                    <option key={role._id} value={role._id}>
-                      {toPlainString((role as any).name)}
-                    </option>
-                  ))}
-                </select>
-              </div>
+                <div className="space-y-8">
+                  <h3 className="text-lg font-black flex items-center gap-2 mb-6 tracking-tight">
+                    <Lock className="size-5 text-purple-500" />
+                    Security Access Level
+                  </h3>
+                  
+                  <div className="space-y-8 p-8 bg-slate-50/50 dark:bg-white/5 rounded-[2.5rem] border border-slate-100 dark:border-white/5">
+                    <div className="group space-y-4">
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Assigned Security Role</label>
+                      <select 
+                        value={formData.roleId} 
+                        onChange={(e) => handleRoleChange(e.target.value)}
+                        className="w-full px-6 py-4 bg-white dark:bg-slate-900 border-2 border-slate-100 dark:border-white/5 rounded-2xl focus:border-purple-500 outline-none transition-all font-bold dark:text-white appearance-none cursor-pointer"
+                      >
+                        <option value="">Select Clearance Level</option>
+                        {roles.map((r: any) => (
+                          <option key={r._id} value={r._id}>{toPlainString(r.name)}</option>
+                        ))}
+                      </select>
+                    </div>
 
-              <div>
-                <Label htmlFor="isActive">Status</Label>
-                <select
-                  id="isActive"
-                  name="isActive"
-                  value={userForm.isActive ? "true" : "false"}
-                  onChange={(e) =>
-                    setUserForm({
-                      ...userForm,
-                      isActive: e.target.value === "true",
-                    })
-                  }
-                  className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent"
-                >
-                  <option value="true">Active</option>
-                  <option value="false">Inactive</option>
-                </select>
-              </div>
-
-              {/* Additional Permissions */}
-              <div className="col-span-2">
-                <Label>Additional Permissions (Optional)</Label>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
-                  Select extra permissions and their access levels beyond what
-                  the role provides
-                </p>
-
-                <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
-                  <table className="w-full">
-                    <thead className="bg-gray-50 dark:bg-gray-800">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
-                          Permission
-                        </th>
-                        <th className="px-4 py-3 text-center text-sm font-medium text-gray-700 dark:text-gray-300">
-                          Read
-                        </th>
-                        <th className="px-4 py-3 text-center text-sm font-medium text-gray-700 dark:text-gray-300">
-                          Write
-                        </th>
-                        <th className="px-4 py-3 text-center text-sm font-medium text-gray-700 dark:text-gray-300">
-                          Create
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                      {permissions.length === 0 ? (
-                        <tr>
-                          <td
-                            colSpan={4}
-                            className="px-4 py-8 text-center text-gray-500 dark:text-gray-400"
-                          >
-                            No permissions available
-                          </td>
-                        </tr>
-                      ) : (
-                        permissions.map((perm) => {
-                          const selectedRole = roles.find(
-                            (r) => r._id === userForm.roleId
-                          );
-
-                          const rolePermission =
-                            selectedRole?.permissions?.find((rp: any) => {
-                              const permId =
-                                typeof rp === "string"
-                                  ? rp
-                                  : rp.permission?._id || rp.permission;
-                              return permId === perm._id;
-                            }) as any;
-                          const isFromRole = !!rolePermission;
-
-                          const roleAccess =
-                            typeof rolePermission === "object" &&
-                            rolePermission?.access
-                              ? rolePermission.access
-                              : isFromRole
-                              ? ["read", "write", "create"]
-                              : [];
-
-                          const userPerm = userForm.permissions.find(
-                            (p) => p.permission === perm._id
-                          );
-                          // If user has an explicit override, respect its access array.
-                          // An explicit override with empty `access` means the permission is disabled.
-                          const isSelected = userPerm
-                            ? Array.isArray(userPerm.access) && userPerm.access.length > 0
-                            : isFromRole;
-                          const access = userPerm
-                            ? userPerm.access || []
-                            : isFromRole
-                            ? roleAccess
-                            : [];
-
-                          return (
-                            <tr
-                              key={perm._id}
-                              className={`hover:bg-gray-50 dark:hover:bg-gray-800 ${
-                                isFromRole
-                                  ? "bg-green-50/50 dark:bg-green-900/10"
-                                  : isSelected
-                                  ? "bg-blue-50/50 dark:bg-blue-900/10"
-                                  : ""
-                              }`}
-                            >
-                              <td className="px-4 py-3">
-                                <label className="flex items-center gap-2 cursor-pointer">
-                                  <input
-                                    type="checkbox"
-                                    checked={isSelected}
-                                    onChange={(e) => {
-                                      const checked = e.target.checked;
-                                      if (checked) {
-                                        // If there's an existing user override, update it to include a default access
-                                        if (userPerm) {
-                                          setUserForm((prev) => ({
-                                            ...prev,
-                                            permissions: prev.permissions.map((p) =>
-                                              p.permission === perm._id ? { ...p, access: ["read"] } : p
-                                            ),
-                                          }));
-                                        } else {
-                                          // Otherwise add a new user-specific permission (overrides role)
-                                          setUserForm((prev) => ({
-                                            ...prev,
-                                            permissions: [
-                                              ...prev.permissions,
-                                              {
-                                                permission: perm._id,
-                                                access: ["read"],
-                                              },
-                                            ],
-                                          }));
-                                        }
-                                      } else {
-                                        // Unchecking: if permission comes from role and no override exists, add an empty override
-                                        if (isFromRole && !userPerm) {
-                                          setUserForm((prev) => ({
-                                            ...prev,
-                                            permissions: [
-                                              ...prev.permissions,
-                                              {
-                                                permission: perm._id,
-                                                access: [],
-                                              },
-                                            ],
-                                          }));
-                                        } else {
-                                          // Otherwise remove any user-specific permission entry
-                                          setUserForm((prev) => ({
-                                            ...prev,
-                                            permissions: prev.permissions.filter(
-                                              (p) => p.permission !== perm._id
-                                            ),
-                                          }));
-                                        }
-                                      }
-                                    }}
-                                    className="w-4 h-4 text-brand-500 rounded focus:ring-brand-500"
-                                  />
-                                  <span className="text-sm text-gray-900 dark:text-gray-100">
-                                    {perm.name}
-                                    {isFromRole && !userPerm && (
-                                      <span className="ml-2 text-xs text-green-600 dark:text-green-400">
-                                        (from role)
-                                      </span>
-                                    )}
-                                    {isFromRole && userPerm && (
-                                      <span className="ml-2 text-xs text-blue-600 dark:text-blue-400">
-                                        (overridden)
-                                      </span>
-                                    )}
-                                  </span>
-                                </label>
-                              </td>
-                              <td className="px-4 py-3 text-center">
-                                <input
-                                  type="checkbox"
-                                  disabled={!isSelected}
-                                  checked={access.includes("read")}
-                                  onChange={(e) => {
-                                    const checked = e.target.checked;
-                                    if (isFromRole && !userPerm) {
-                                      const baseAccess = Array.isArray(roleAccess)
-                                        ? roleAccess
-                                        : [];
-                                      const newAccess = checked
-                                        ? Array.from(new Set([...baseAccess, "read"]))
-                                        : baseAccess.filter((a) => a !== "read");
-                                      setUserForm((prev) => ({
-                                        ...prev,
-                                        permissions: [
-                                          ...prev.permissions,
-                                          {
-                                            permission: perm._id,
-                                            access: newAccess,
-                                          },
-                                        ],
-                                      }));
-                                    } else {
-                                      setUserForm((prev) => ({
-                                        ...prev,
-                                        permissions: prev.permissions.map((p) =>
-                                          p.permission === perm._id
-                                            ? {
-                                                ...p,
-                                                access: checked
-                                                  ? Array.from(new Set([...p.access, "read"]))
-                                                  : p.access.filter((a) => a !== "read"),
-                                              }
-                                            : p
-                                        ),
-                                      }));
-                                    }
-                                  }}
-                                  className="w-4 h-4 text-brand-500 rounded focus:ring-brand-500 disabled:opacity-30"
-                                />
-                              </td>
-                              <td className="px-4 py-3 text-center">
-                                <input
-                                  type="checkbox"
-                                  disabled={!isSelected}
-                                  checked={access.includes("write")}
-                                  onChange={(e) => {
-                                    const checked = e.target.checked;
-                                    if (isFromRole && !userPerm) {
-                                      const baseAccess = Array.isArray(roleAccess)
-                                        ? roleAccess
-                                        : [];
-                                      const newAccess = checked
-                                        ? Array.from(new Set([...baseAccess, "write"]))
-                                        : baseAccess.filter((a) => a !== "write");
-                                      setUserForm((prev) => ({
-                                        ...prev,
-                                        permissions: [
-                                          ...prev.permissions,
-                                          {
-                                            permission: perm._id,
-                                            access: newAccess,
-                                          },
-                                        ],
-                                      }));
-                                    } else {
-                                      setUserForm((prev) => ({
-                                        ...prev,
-                                        permissions: prev.permissions.map((p) =>
-                                          p.permission === perm._id
-                                            ? {
-                                                ...p,
-                                                access: checked
-                                                  ? Array.from(new Set([...p.access, "write"]))
-                                                  : p.access.filter((a) => a !== "write"),
-                                              }
-                                            : p
-                                        ),
-                                      }));
-                                    }
-                                  }}
-                                  className="w-4 h-4 text-brand-500 rounded focus:ring-brand-500 disabled:opacity-30"
-                                />
-                              </td>
-                              <td className="px-4 py-3 text-center">
-                                <input
-                                  type="checkbox"
-                                  disabled={!isSelected}
-                                  checked={access.includes("create")}
-                                  onChange={(e) => {
-                                    const checked = e.target.checked;
-                                    if (isFromRole && !userPerm) {
-                                      const baseAccess = Array.isArray(roleAccess)
-                                        ? roleAccess
-                                        : [];
-                                      const newAccess = checked
-                                        ? Array.from(new Set([...baseAccess, "create"]))
-                                        : baseAccess.filter((a) => a !== "create");
-                                      setUserForm((prev) => ({
-                                        ...prev,
-                                        permissions: [
-                                          ...prev.permissions,
-                                          {
-                                            permission: perm._id,
-                                            access: newAccess,
-                                          },
-                                        ],
-                                      }));
-                                    } else {
-                                      setUserForm((prev) => ({
-                                        ...prev,
-                                        permissions: prev.permissions.map((p) =>
-                                          p.permission === perm._id
-                                            ? {
-                                                ...p,
-                                                access: checked
-                                                  ? Array.from(new Set([...p.access, "create"]))
-                                                  : p.access.filter((a) => a !== "create"),
-                                              }
-                                            : p
-                                        ),
-                                      }));
-                                    }
-                                  }}
-                                  className="w-4 h-4 text-brand-500 rounded focus:ring-brand-500 disabled:opacity-30"
-                                />
-                              </td>
-                            </tr>
-                          );
-                        })
-                      )}
-                    </tbody>
-                  </table>
+                    <div className="pt-6 border-t border-slate-100 dark:border-white/5 flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Profile Activity Status</label>
+                        <p className="text-xs font-bold text-slate-500 italic">Toggle to revoke system-wide access</p>
+                      </div>
+                      <button 
+                        type="button"
+                        onClick={() => setFormData({...formData, isActive: !formData.isActive})}
+                        className={`relative w-16 h-8 rounded-full transition-all duration-300 ${formData.isActive ? "bg-green-500 shadow-lg shadow-green-500/20" : "bg-slate-200 dark:bg-slate-700"}`}
+                      >
+                        <div className={`absolute top-1 size-6 bg-white rounded-full shadow-md transition-all duration-300 ${formData.isActive ? "left-9" : "left-1"}`} />
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              {/* Companies Section */}
-              <div className="col-span-2 space-y-4">
-                <Label>
-                  Companies <span className="text-red-500">*</span>
-                </Label>
-
-                {/* Add Company Button */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    const availableCompanies = companies.filter(
-                      (c) =>
-                        !userForm.companies.some((uc) => uc.companyId === c._id)
-                    );
-                    if (availableCompanies.length > 0) {
-                      setUserForm({
-                        ...userForm,
-                        companies: [
-                          ...userForm.companies,
-                          {
-                            companyId: availableCompanies[0]._id,
-                            departments: [],
-                          },
-                        ],
-                      });
-                    }
-                  }}
-                  className="w-full px-4 py-2.5 border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-lg hover:border-brand-500 dark:hover:border-brand-500 transition-colors text-gray-600 dark:text-gray-400 hover:text-brand-500 dark:hover:text-brand-500 flex items-center justify-center gap-2"
-                >
-                  <PlusIcon className="w-5 h-5" />
-                  Add Company
-                </button>
-
-                {/* Company Assignments */}
-                {userForm.companies.map((companyAssignment, index) => {
-                  const companyDepartments = departments.filter((dept) => {
-                    const deptCompanyId =
-                      typeof dept.companyId === "string"
-                        ? dept.companyId
-                        : dept.companyId._id;
-                    return deptCompanyId === companyAssignment.companyId;
-                  });
-
-                  return (
-                    <div
-                      key={index}
-                      className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg space-y-3 bg-gray-50/50 dark:bg-gray-800/50"
+              <div className="space-y-6 p-10 bg-purple-500/5 dark:bg-purple-500/10 rounded-[4rem] border border-purple-500/15">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <h3 className="text-xl font-black tracking-tight flex items-center gap-3">
+                    <Shield className="size-6 text-purple-500" />
+                    Permission Control Center
+                  </h3>
+                  <div className="inline-flex items-center p-1 bg-slate-100 dark:bg-black/20 rounded-xl border border-slate-200 dark:border-white/10">
+                    <button
+                      type="button"
+                      onClick={() => setPermissionViewMode("cards")}
+                      className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all ${
+                        permissionViewMode === "cards"
+                          ? "bg-white dark:bg-slate-900 text-brand-500 shadow"
+                          : "text-slate-500"
+                      }`}
                     >
-                      <div className="flex items-center justify-between">
-                        <h4 className="font-medium text-gray-900 dark:text-gray-100">
-                          Company {index + 1}
-                        </h4>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const newCompanies = userForm.companies.filter(
-                              (_, i) => i !== index
-                            );
-                            setUserForm({
-                              ...userForm,
-                              companies: newCompanies,
-                            });
-                          }}
-                          className="text-red-500 hover:text-red-600 text-sm"
-                        >
-                          Remove
-                        </button>
-                      </div>
+                      Cards
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPermissionViewMode("matrix")}
+                      className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all ${
+                        permissionViewMode === "matrix"
+                          ? "bg-white dark:bg-slate-900 text-brand-500 shadow"
+                          : "text-slate-500"
+                      }`}
+                    >
+                      Matrix
+                    </button>
+                  </div>
+                </div>
 
-                      <div className="space-y-3">
-                        {/* Company Select */}
-                        <div>
-                          <Label htmlFor={`company-${index}`}>Company</Label>
-                          <select
-                            id={`company-${index}`}
-                            value={companyAssignment.companyId}
-                            onChange={(e) => {
-                              const newCompanies = [...userForm.companies];
-                              newCompanies[index] = {
-                                ...newCompanies[index],
-                                companyId: e.target.value,
-                                departments: [],
-                              };
-                              setUserForm({
-                                ...userForm,
-                                companies: newCompanies,
-                              });
-                            }}
-                            className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+                {permissionViewMode === "cards" && (
+                  <>
+                    <div className="flex gap-2">
+                      <select
+                        value={permissionToAdd}
+                        onChange={(e) => setPermissionToAdd(e.target.value)}
+                        className="flex-1 px-4 py-3 bg-white dark:bg-slate-900 border border-slate-100 dark:border-white/5 rounded-xl font-bold dark:text-white"
+                      >
+                        <option value="">Add permission module</option>
+                        {availablePermissions.map((perm: any) => (
+                          <option key={perm._id} value={perm._id}>
+                            {toPlainString(perm.name)}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={handleAddPermission}
+                        disabled={!permissionToAdd}
+                        className="px-4 py-3 bg-purple-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest disabled:opacity-50"
+                      >
+                        Add
+                      </button>
+                    </div>
+
+                    <div className="space-y-3">
+                      {userPermissions.map((permItem) => {
+                        const permObj = permissions.find((perm: any) => perm._id === permItem.permission);
+                        const actions = Array.from(
+                          new Set([
+                            "read",
+                            "write",
+                            "create",
+                            ...getDefaultAccessForPermission(permItem.permission),
+                            ...permItem.access,
+                          ])
+                        );
+
+                        return (
+                          <div
+                            key={permItem.permission}
+                            className="p-4 bg-white/60 dark:bg-black/20 rounded-2xl border border-slate-100 dark:border-white/5"
                           >
-                            {companies.map((company) => (
-                              <option
-                                key={company._id}
-                                value={company._id}
-                                disabled={userForm.companies.some(
-                                  (c, i) =>
-                                    i !== index && c.companyId === company._id
-                                )}
+                            <div className="flex items-center justify-between gap-2 mb-3">
+                              <p className="text-sm font-black tracking-tight dark:text-white">
+                                {toPlainString(permObj?.name || "Unknown Permission")}
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => handleRemovePermission(permItem.permission)}
+                                className="size-8 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white flex items-center justify-center transition-all"
                               >
-                                {toPlainString((company as any).name)}
-                              </option>
+                                <X className="size-4" />
+                              </button>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              {actions.map((action) => {
+                                const active = permItem.access.includes(action);
+                                return (
+                                  <button
+                                    key={`${permItem.permission}-${action}`}
+                                    type="button"
+                                    onClick={() => handleTogglePermissionAccess(permItem.permission, action)}
+                                    className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
+                                      active
+                                        ? "bg-brand-500 text-white"
+                                        : "bg-white dark:bg-white/5 text-gray-400"
+                                    }`}
+                                  >
+                                    {action}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      {userPermissions.length === 0 && (
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 italic px-1">
+                          Select a role to preload permissions, then adjust as needed.
+                        </p>
+                      )}
+                    </div>
+                  </>
+                )}
+
+                {permissionViewMode === "matrix" && (
+                  <div className="space-y-3">
+                    <input
+                      type="text"
+                      value={permissionSearchTerm}
+                      onChange={(e) => setPermissionSearchTerm(e.target.value)}
+                      placeholder="Search permission module"
+                      className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-100 dark:border-white/5 rounded-xl font-bold dark:text-white"
+                    />
+
+                    <div className="rounded-2xl border border-slate-100 dark:border-white/5 overflow-x-auto">
+                      <table className="w-full text-xs min-w-[620px]">
+                        <thead className="bg-slate-50 dark:bg-slate-900/90">
+                          <tr>
+                            <th className="text-left px-3 py-2 font-black uppercase tracking-widest text-[10px] text-slate-400">Module</th>
+                            <th className="text-center px-2 py-2 font-black uppercase tracking-widest text-[10px] text-slate-400">Use</th>
+                            <th className="text-center px-2 py-2 font-black uppercase tracking-widest text-[10px] text-slate-400">Read</th>
+                            <th className="text-center px-2 py-2 font-black uppercase tracking-widest text-[10px] text-slate-400">Write</th>
+                            <th className="text-center px-2 py-2 font-black uppercase tracking-widest text-[10px] text-slate-400">Create</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filteredPermissionCatalog.map((perm: any) => {
+                            const permissionId = String(perm._id);
+                            const selectedAccess = selectedPermissionMap.get(permissionId) || [];
+                            const isSelected = selectedPermissionMap.has(permissionId);
+                            return (
+                              <tr key={permissionId} className="border-t border-slate-100 dark:border-white/5">
+                                <td className="px-3 py-2 font-bold dark:text-white">{toPlainString(perm.name)}</td>
+                                <td className="px-2 py-2 text-center">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={(e) => setPermissionSelection(permissionId, e.target.checked)}
+                                    className="size-4 accent-brand-500"
+                                  />
+                                </td>
+                                {["read", "write", "create"].map((action) => (
+                                  <td key={`${permissionId}-${action}`} className="px-2 py-2 text-center">
+                                    <input
+                                      type="checkbox"
+                                      disabled={!isSelected}
+                                      checked={selectedAccess.includes(action)}
+                                      onChange={(e) => setPermissionAction(permissionId, action, e.target.checked)}
+                                      className="size-4 accent-brand-500 disabled:opacity-40"
+                                    />
+                                  </td>
+                                ))}
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-8 p-10 bg-brand-500/5 dark:bg-brand-500/10 rounded-[4rem] border border-brand-500/10">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xl font-black flex items-center gap-3 tracking-tight">
+                    <Building2 className="size-6 text-brand-500" />
+                    Company Selection Section
+                  </h3>
+                  <button 
+                    type="button" 
+                    onClick={handleAddCompany}
+                    className="flex items-center gap-2 px-6 py-3 bg-brand-500 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-lg shadow-brand-500/20"
+                  >
+                    <Plus className="size-4" /> Add Node
+                  </button>
+                </div>
+
+                <div className="space-y-6">
+                  {formData.companies.map((assignment, idx) => (
+                    <div key={idx} className="relative group bg-white dark:bg-slate-900/50 p-8 rounded-[3rem] border border-slate-200 dark:border-white/5 shadow-sm transition-all hover:shadow-xl">
+                      <button 
+                        type="button" 
+                        onClick={() => handleRemoveCompany(idx)}
+                        className="absolute -top-3 -right-3 size-10 bg-red-500 text-white rounded-xl items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity flex shadow-lg hover:rotate-12"
+                      >
+                        <Trash2 className="size-5" />
+                      </button>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 items-end">
+                        <div className="space-y-3">
+                          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                             Linked Company
+                          </label>
+                          <select 
+                            value={assignment.companyId}
+                            onChange={(e) => {
+                              const nextCompanyId = e.target.value;
+                              // Keep department selections scoped to the selected company.
+                              updateCompany(idx, "companyId", nextCompanyId);
+                              updateCompany(idx, "departments", []);
+                            }}
+                            className="w-full px-4 py-3 bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/5 rounded-xl font-bold dark:text-white"
+                          >
+                            <option value="">Select Company</option>
+                            {companies.map((c: any) => (
+                              <option key={c._id} value={c._id}>{toPlainString(c.name)}</option>
                             ))}
                           </select>
                         </div>
 
-                        {/* Departments MultiSelect */}
-                        <div>
-                          <Label htmlFor={`departments-${index}`}>
-                            Departments (Optional)
-                          </Label>
-                          <MultiSelect
-                            label=""
-                            options={companyDepartments.map((dept) => ({
-                              value: dept._id,
-                              text: toPlainString((dept as any).name),
-                            }))}
-                            value={companyAssignment.departments}
-                            onChange={(values) => {
-                              const newCompanies = [...userForm.companies];
-                              newCompanies[index] = {
-                                ...newCompanies[index],
-                                departments: values,
+                        <div className="space-y-3">
+                          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                             Department Access
+                          </label>
+                          <div className="flex flex-wrap gap-2 min-h-[46px] p-2 bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/5 rounded-xl">
+                            {(() => {
+                              const getId = (value: any) => {
+                                if (!value) return "";
+                                if (typeof value === "string") return value;
+                                return value._id || "";
                               };
-                              setUserForm({
-                                ...userForm,
-                                companies: newCompanies,
+
+                              const selectedCompanyId = String(assignment.companyId || "");
+                              const availableDepts = departments.filter((d: any) => {
+                                const deptCompanyId = String(getId(d?.companyId));
+                                return Boolean(selectedCompanyId) && deptCompanyId === selectedCompanyId;
                               });
-                            }}
-                          />
+
+                              if (!assignment.companyId) {
+                                return (
+                                  <div className="flex items-center justify-center w-full min-h-[30px]">
+                                    <p className="text-[9px] font-black uppercase text-slate-400 italic">Select Company First</p>
+                                  </div>
+                                );
+                              }
+
+                              if (availableDepts.length === 0) {
+                                return (
+                                  <div className="flex items-center justify-center w-full min-h-[30px]">
+                                    <p className="text-[9px] font-black uppercase text-slate-400 italic">No Departments Found</p>
+                                  </div>
+                                );
+                              }
+
+                              return availableDepts.map((d: any) => {
+                                const isSelected = assignment.departments.includes(d._id);
+                                return (
+                                  <button
+                                    key={d._id}
+                                    type="button"
+                                    onClick={() => {
+                                      const nextDepts = isSelected 
+                                        ? assignment.departments.filter((eid: string) => eid !== d._id)
+                                        : [...assignment.departments, d._id];
+                                      updateCompany(idx, "departments", nextDepts);
+                                    }}
+                                    className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase transition-all ${isSelected ? "bg-brand-500 text-white" : "bg-white dark:bg-white/5 text-gray-400"}`}
+                                  >
+                                    {toPlainString(d.name)}
+                                  </button>
+                                );
+                              });
+                            })()}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-4 h-[46px]">
+                           <button 
+                             type="button"
+                             onClick={() => updateCompany(idx, "isPrimary", !assignment.isPrimary)}
+                             className={`flex-1 px-4 py-3 rounded-xl border-2 font-black text-[9px] uppercase tracking-widest transition-all ${assignment.isPrimary ? "bg-purple-500/10 border-purple-500 text-purple-600" : "bg-slate-50 dark:bg-white/5 border-slate-100 dark:border-white/5 text-gray-400"}`}
+                           >
+                             {assignment.isPrimary ? "★ Primary Office" : "Set as Primary"}
+                           </button>
                         </div>
                       </div>
                     </div>
-                  );
-                })}
+                  ))}
+                  
+                  {formData.companies.length === 0 && (
+                    <div className="text-center py-16 bg-white/30 dark:bg-black/10 rounded-[3rem] border-2 border-dashed border-slate-200 dark:border-white/10">
+                      <AlertCircle className="size-10 text-slate-300 mx-auto mb-4" />
+                      <p className="text-slate-400 font-bold text-sm">No organizational nodes assigned to this Company.</p>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
 
-            {/* Submit Button */}
-            <div className="flex items-center gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
-              <button
-                type="submit"
-                disabled={isSaving}
-                className="px-6 py-2.5 bg-brand-500 text-white rounded-lg hover:bg-brand-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
-              >
-                {isSaving ? "Saving..." : "Save Changes"}
-              </button>
-              <button
-                type="button"
-                onClick={() => navigate(-1)}
-                disabled={isSaving}
-                className="px-6 py-2.5 bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
-        )}
-      </ComponentCard>
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-6 pt-10 border-t border-slate-100 dark:border-white/10">
+                <div className="space-y-1 text-center sm:text-left">
+                  <p className="text-xs font-black dark:text-white flex items-center gap-2">
+                    <UserCheck className="size-4 text-green-500" /> Authorized Personnel Update
+                  </p>
+                  <p className="text-[10px] text-gray-400 uppercase font-bold tracking-widest italic">Proceed with caution • All modifications are logged</p>
+                </div>
+                
+                <div className="flex items-center gap-4">
+                  <button 
+                    type="button"
+                    onClick={() => navigate("/users")}
+                    className="px-8 py-4 bg-slate-100 dark:bg-white/5 text-slate-500 dark:text-gray-400 rounded-3xl font-black text-xs uppercase tracking-widest hover:bg-slate-200 transition-all"
+                  >
+                    Abort
+                  </button>
+                  <button 
+                    type="submit" 
+                    disabled={isSaving}
+                    className="flex items-center gap-3 px-10 py-4 bg-brand-500 text-white rounded-[2rem] font-black tracking-widest uppercase text-xs shadow-xl shadow-brand-500/30 hover:scale-105 active:scale-95 disabled:opacity-50 transition-all"
+                  >
+                    {isSaving ? (
+                      <div className="size-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <>
+                        <Save className="size-4" />
+                        Save Changes
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+           </form>
+        </div>
+      </div>
     </div>
   );
 }

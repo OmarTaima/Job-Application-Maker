@@ -2,12 +2,10 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
 import PageMeta from "../../../components/common/PageMeta";
-import ComponentCard from "../../../components/common/ComponentCard";
 import LoadingSpinner from "../../../components/common/LoadingSpinner";
 import { useSavedFields, useDeleteSavedField } from "../../../hooks/queries";
 import Swal from "sweetalert2";
-import { Table, TableBody, TableCell, TableHeader, TableRow } from "../../../components/ui/table";
-import { PencilIcon, TrashBinIcon } from "../../../icons";
+import { PencilIcon, TrashBinIcon, PlusIcon } from "../../../icons";
 import { useQueryClient } from "@tanstack/react-query";
 import { savedFieldsKeys } from "../../../hooks/queries/useSavedFields";
 
@@ -20,31 +18,6 @@ export default function SavedFields() {
 
   const fields = useMemo(() => data || [], [data]);
 
-  const convertToString = (value: any): string => {
-    if (typeof value === 'string') return value;
-    if (typeof value === 'object' && value !== null) {
-      if (value.en) return value.en;
-      return Object.keys(value)
-        .filter((key) => !isNaN(Number(key)) && key !== '_id')
-        .sort((a, b) => Number(a) - Number(b))
-        .map((key) => value[key])
-        .join('');
-    }
-    return '';
-  };
-
-  const convertChoicesArray = (choices: any): string[] => {
-    if (!Array.isArray(choices)) return [];
-    return choices.map((choice: any) => {
-      if (typeof choice === 'object' && choice !== null && choice.en) return choice.en;
-      return convertToString(choice);
-    });
-  };
-
-  
-
-  
-
   const handleEdit = (field: any) => {
     navigate(`/recruiting/saved-fields/create`, { state: { field } });
   };
@@ -52,138 +25,159 @@ export default function SavedFields() {
   const handleDelete = async (fieldId: string) => {
     const result = await Swal.fire({
       title: "Delete Saved Field?",
-      text: "This action is permanent.",
+      text: "This action is permanent and cannot be undone.",
       icon: "warning",
       showCancelButton: true,
-      confirmButtonText: "Delete",
+      confirmButtonColor: "#EF4444",
+      cancelButtonColor: "#6B7280",
+      confirmButtonText: "Delete Template",
+      customClass: {
+        popup: "rounded-3xl border-none",
+        confirmButton: "rounded-xl px-6 py-2.5 font-bold",
+        cancelButton: "rounded-xl px-6 py-2.5 font-bold",
+      }
     });
     if (!result.isConfirmed) return;
 
-    // Use mutation lifecycle for optimistic update
-    const successToast = Swal.fire({ title: "Deleted", icon: "success", timer: 1200, showConfirmButton: false });
-
-    // mark as deleting locally so UI hides row instantly
     setDeletingIds((s) => ({ ...s, [fieldId]: true }));
-
     deleteMutation.mutate(fieldId, {
       onError: (err, id) => {
-        // rollback
         Swal.fire({ title: "Error", text: String((err as any)?.message || err), icon: "error" });
-        // unmark deleting so it re-appears
         setDeletingIds((s) => { const copy = { ...s }; delete copy[id as string]; return copy; });
       },
       onSettled: () => {
         qc.invalidateQueries({ queryKey: savedFieldsKeys.lists() });
-        // clear deleting flag after settled
         setDeletingIds((s) => { const copy = { ...s }; delete copy[fieldId]; return copy; });
       },
     });
-
-    // show the success toast without waiting for network
-    await successToast;
   };
 
   if (isLoading) {
     return (
-      <div className="space-y-6">
-        <PageMeta title="Saved Fields" description="Loading saved fields" />
-        <PageBreadcrumb pageTitle="Saved Fields" />
-        <LoadingSpinner fullPage message="Loading saved fields..." />
+      <div className="min-h-screen space-y-6 pb-20">
+        <PageMeta title="Saved Fields" description="Loading field templates..." />
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <PageBreadcrumb pageTitle="Saved Fields" />
+        </div>
+        <div className="flex flex-col items-center justify-center py-20">
+          <LoadingSpinner fullPage message="Locating your field templates..." />
+        </div>
       </div>
     );
   }
 
-  return (
-    <div className="space-y-6">
-      <PageMeta title="Saved Fields" description="Manage your saved field templates" />
-      <PageBreadcrumb pageTitle="Saved Fields" />
+  const activeFields = fields.filter((f: any) => !deletingIds[f.fieldId]);
 
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Saved Fields</h1>
+  return (
+    <div className="mx-auto max-w-[1200px] space-y-8 pb-20">
+      <PageMeta title="Saved Fields" description="Manage your reusable field templates" />
+      
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <PageBreadcrumb pageTitle="Saved Fields" />
         <button
           onClick={() => navigate(`/recruiting/saved-fields/create`)}
-          className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white"
+          className="inline-flex items-center gap-2 rounded-2xl bg-brand-500 px-6 py-3 text-sm font-bold text-white shadow-xl shadow-brand-500/25 transition-all hover:bg-brand-600 hover:shadow-brand-500/40 active:scale-95"
         >
-          Create Saved Field
+          <PlusIcon className="size-5" />
+          Create New Template
         </button>
       </div>
 
-      <ComponentCard title="Your Saved Fields" desc="Reusable field templates">
-        {fields.length === 0 ? (
-          <div className="p-6 text-center text-sm text-gray-500">No saved fields yet.</div>
-        ) : (
-          <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-white/[0.05] dark:bg-white/[0.03]">
-            <div className="max-w-full overflow-x-auto">
-              <Table>
-                <TableHeader className="border-b border-gray-100 dark:border-white/[0.05]">
-                  <TableRow>
-                    <TableCell isHeader className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">Label</TableCell>
-                    <TableCell isHeader className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">Type</TableCell>
-                    <TableCell isHeader className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">Required</TableCell>
-                    <TableCell isHeader className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">Options</TableCell>
-                    <TableCell isHeader className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">Actions</TableCell>
-                  </TableRow>
-                </TableHeader>
-
-                <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
-                  {fields.filter((f: any) => !deletingIds[f.fieldId]).map((f: any) => (
-                    <TableRow key={f.fieldId} className="cursor-default hover:bg-gray-50 dark:hover:bg-white/[0.02]">
-                      <TableCell className="px-5 py-4 text-start">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-semibold text-gray-400">en</span>
-                            <span className="block font-medium text-gray-800 text-theme-sm dark:text-white/90">{typeof f.label === 'string' ? f.label : f.label?.en}</span>
-                          </div>
-                          {typeof f.label !== 'string' && f.label?.ar && (
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-semibold text-gray-400">ar</span>
-                              <span className="text-xs text-gray-500">{f.label.ar}</span>
-                            </div>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="px-5 py-4 text-start">
-                        <span className="text-sm text-gray-700 dark:text-gray-200">{f.inputType}</span>
-                      </TableCell>
-                      <TableCell className="px-5 py-4 text-start">
-                        <span className="inline-flex items-center rounded-full bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-600 ring-1 ring-inset ring-brand-200 dark:bg-brand-500/10 dark:text-brand-200 dark:ring-brand-400/40">{f.isRequired ? 'Yes' : 'No'}</span>
-                      </TableCell>
-
-                      <TableCell className="px-5 py-4 text-start max-w-[280px] align-middle">
-                        {(() => {
-                          const choices = f.choices || (f as any).options || [];
-                          const enArr = convertChoicesArray(choices);
-                          return enArr && enArr.length > 0 ? (
-                            <span
-                              className="text-sm text-gray-600 dark:text-gray-400 overflow-hidden whitespace-nowrap truncate block"
-                              title={enArr.join(", ")}
-                            >
-                              {enArr.slice(0, 3).join(", ")}{enArr.length > 3 ? "..." : ""}
-                            </span>
-                          ) : (
-                            <span className="text-gray-400">-</span>
-                          );
-                        })()}
-                      </TableCell>
-
-                      <TableCell className="px-5 py-4 text-start">
-                        <div className="inline-flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                          <button onClick={() => handleEdit(f)} className="rounded p-1.5 text-brand-600 hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-brand-500/10" title="Edit">
-                            <PencilIcon className="size-4" />
-                          </button>
-                          <button onClick={() => handleDelete(f.fieldId)} className="rounded p-1.5 text-error-600 hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-500/10" title="Delete">
-                            <TrashBinIcon className="size-4" />
-                          </button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+      <div className="relative overflow-hidden rounded-[2.5rem] border border-gray-200 bg-white shadow-sm transition-all hover:shadow-md dark:border-gray-800 dark:bg-gray-950">
+        <div className="p-8">
+            <div className="mb-8 flex items-center justify-between">
+                <div>
+                <h3 className="text-2xl font-bold text-gray-900 dark:text-white">Field Repository</h3>
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Total of {activeFields.length} reusable field templates found</p>
+                </div>
+                <div className="h-12 w-12 rounded-2xl bg-brand-50 flex items-center justify-center dark:bg-brand-500/10">
+                    <svg className="size-6 text-brand-600 dark:text-brand-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                    </svg>
+                </div>
             </div>
-          </div>
-        )}
-      </ComponentCard>
+
+            {activeFields.length === 0 ? (
+                <div className="flex flex-col items-center justify-center rounded-3xl border-2 border-dashed border-gray-100 py-20 dark:border-gray-800">
+                <div className="rounded-full bg-gray-50 p-6 dark:bg-gray-900">
+                    <svg className="size-12 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                    </svg>
+                </div>
+                <h4 className="mt-6 text-lg font-bold text-gray-900 dark:text-white">Empty Repository</h4>
+                <p className="mt-2 text-sm text-gray-500 dark:text-gray-400 max-w-xs text-center">Start by creating your first reusable field template for job applications.</p>
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                {activeFields.map((f: any) => (
+                    <div 
+                        key={f.fieldId}
+                        className="group relative overflow-hidden rounded-3xl border border-gray-100 bg-white p-6 shadow-sm transition-all hover:border-brand-200 hover:shadow-xl dark:border-gray-800 dark:bg-gray-900/50"
+                    >
+                        <div className="flex items-start justify-between">
+                            <div className="space-y-3 flex-1 overflow-hidden">
+                                <div className="flex items-center gap-3">
+                                    <div className="rounded-xl bg-gray-50 p-2 dark:bg-gray-800">
+                                        <span className="text-xs font-bold uppercase tracking-widest text-gray-400">
+                                            {f.inputType === "repeatable_group" ? "GRP" : f.inputType.substring(0, 3)}
+                                        </span>
+                                    </div>
+                                    {f.isRequired && (
+                                        <span className="rounded-full bg-error-50 px-2 py-0.5 text-[10px] font-bold text-error-600 dark:bg-error-500/10 dark:text-error-400 uppercase">Required</span>
+                                    )}
+                                </div>
+                                
+                                <div>
+                                    <h4 className="truncate text-lg font-bold text-gray-900 dark:text-white group-hover:text-brand-600 transition-colors">
+                                        {typeof f.label === "string" ? f.label : (f.label?.en || "Untitled Field")}
+                                    </h4>
+                                    {typeof f.label !== "string" && f.label?.ar && (
+                                        <p className="mt-1 truncate text-sm text-gray-400 font-medium" dir="rtl">{f.label.ar}</p>
+                                    )}
+                                </div>
+
+                                <div className="flex flex-wrap gap-2">
+                                    <div className="rounded-xl bg-blue-50/50 px-3 py-1.5 text-xs font-semibold text-blue-600 dark:bg-blue-500/10 dark:text-blue-400">
+                                        Type: {f.inputType.replace("_", " ")}
+                                    </div>
+                                    {(f.choices || []).length > 0 && (
+                                        <div className="rounded-xl bg-amber-50/50 px-3 py-1.5 text-xs font-semibold text-amber-600 dark:bg-amber-500/10 dark:text-amber-400">
+                                            {f.choices.length} Options
+                                        </div>
+                                    )}
+                                    {(f.groupFields || []).length > 0 && (
+                                        <div className="rounded-xl bg-purple-50/50 px-3 py-1.5 text-xs font-semibold text-purple-600 dark:bg-purple-500/10 dark:text-purple-400">
+                                            {f.groupFields.length} Nested Fields
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="flex flex-col gap-2">
+                                <button 
+                                    onClick={() => handleEdit(f)}
+                                    className="rounded-xl p-2.5 text-gray-400 bg-gray-50 hover:bg-brand-50 hover:text-brand-600 transition-all dark:bg-gray-800 dark:hover:bg-brand-500/10 dark:hover:text-brand-400"
+                                    title="Edit Template"
+                                >
+                                    <PencilIcon className="size-5" />
+                                </button>
+                                <button 
+                                    onClick={() => handleDelete(f.fieldId)}
+                                    className="rounded-xl p-2.5 text-gray-400 bg-gray-50 hover:bg-error-50 hover:text-error-600 transition-all dark:bg-gray-800 dark:hover:bg-error-500/10 dark:hover:text-error-400"
+                                    title="Delete Template"
+                                >
+                                    <TrashBinIcon className="size-5" />
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div className="absolute bottom-0 left-0 h-1 w-0 bg-brand-500 transition-all group-hover:w-full" />
+                    </div>
+                ))}
+                </div>
+            )}
+        </div>
+      </div>
     </div>
   );
 }

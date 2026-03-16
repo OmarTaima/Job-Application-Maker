@@ -1,11 +1,20 @@
-import { useMemo, useState, useEffect } from "react";
+﻿import { useMemo, useState, useEffect } from "react";
 import Swal from "sweetalert2";
 import { useParams, useNavigate, useLocation } from "react-router";
 import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
 import PageMeta from "../../../components/common/PageMeta";
-import ComponentCard from "../../../components/common/ComponentCard";
 import LoadingSpinner from "../../../components/common/LoadingSpinner";
-import { PencilIcon, TrashBinIcon } from "../../../icons";
+import { 
+  PencilIcon, 
+  TrashBinIcon, 
+  CalenderIcon, 
+  InfoIcon, 
+  DollarLineIcon, 
+  TimeIcon, 
+  CheckCircleIcon,
+  UserIcon,
+  AngleLeftIcon
+} from "../../../icons";
 import {
   useCompany,
   useDepartment,
@@ -13,6 +22,12 @@ import {
   useJobPosition,
 } from "../../../hooks/queries";
 import { toPlainString } from "../../../utils/strings";
+
+// Helper to handle multilingual objects or strings and always return plain text
+const getTranslation = (value: any, defaultValue = ""): string => {
+  const plain = toPlainString(value);
+  return plain || defaultValue;
+};
 
 export default function PreviewJob() {
   const { jobId } = useParams<{ jobId: string }>();
@@ -26,9 +41,9 @@ export default function PreviewJob() {
   const {
     data: jobFromApi,
     isLoading: isLoadingJob,
-    refetch: refetchJob,
     isFetching: isJobFetching,
     isFetched: isJobFetched,
+    refetch: refetchJob
   } = useJobPosition(jobId || "", { enabled: !jobFromState && !!jobId });
   
   // Use data from state if available, otherwise use fetched data
@@ -52,8 +67,8 @@ export default function PreviewJob() {
   }, [job]);
 
   // Fetch company and department names ONLY if not already populated
-  const { data: companyFromApi, refetch: refetchCompany, isFetched: isCompanyFetched, isFetching: isCompanyFetching } = useCompany(companyId || "", { enabled: !companyData && !!companyId });
-  const { data: departmentFromApi, refetch: refetchDepartment, isFetched: isDepartmentFetched, isFetching: isDepartmentFetching } = useDepartment(departmentId || "", { enabled: !departmentData && !!departmentId });
+  const { data: companyFromApi, isFetched: isCompanyFetched, isFetching: isCompanyFetching, refetch: refetchCompany } = useCompany(companyId || "", { enabled: !companyData && !!companyId });
+  const { data: departmentFromApi, isFetched: isDepartmentFetched, isFetching: isDepartmentFetching, refetch: refetchDepartment } = useDepartment(departmentId || "", { enabled: !departmentData && !!departmentId });
   
   // Use populated data if available, otherwise use fetched data
   const company = companyData || companyFromApi;
@@ -62,7 +77,6 @@ export default function PreviewJob() {
   // Mutations
   const deleteJobMutation = useDeleteJobPosition();
 
-  const [deleteError, setDeleteError] = useState("");
   const [isDeletingJob, setIsDeletingJob] = useState(false);
   const [lastRefetch, setLastRefetch] = useState<Date | null>(null);
   const [elapsed, setElapsed] = useState<string | null>(null);
@@ -81,14 +95,11 @@ export default function PreviewJob() {
     }
     const formatRelative = (d: Date) => {
       const diffSec = Math.floor((Date.now() - d.getTime()) / 1000);
-      if (diffSec < 60) return "now";
+      if (diffSec < 60) return "just now";
       const mins = Math.floor(diffSec / 60);
-      if (mins < 60) return `${mins} min ago`;
+      if (mins < 60) return `${mins}m ago`;
       const hours = Math.floor(mins / 60);
-      if (hours < 24) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
-      const days = Math.floor(hours / 24);
-      if (days === 1) return "yesterday";
-      if (days < 7) return `${days} days ago`;
+      if (hours < 24) return `${hours}h ago`;
       return d.toLocaleDateString();
     };
 
@@ -100,57 +111,51 @@ export default function PreviewJob() {
 
   // Helper function to extract detailed error messages
   const getErrorMessage = (err: any): string => {
-    // Check for validation errors in 'details' array (new format)
-    if (
-      err.response?.data?.details &&
-      Array.isArray(err.response.data.details)
-    ) {
-      return err.response.data.details
-        .map((detail: any) => {
-          const field = detail.path?.[0] || "";
-          const message = detail.message || "";
-          return field ? `${field}: ${message}` : message;
-        })
-        .join(", ");
+    if (err.response?.data?.details && Array.isArray(err.response.data.details)) {
+      return err.response.data.details.map((detail: any) => {
+        const field = detail.path?.[0] || "";
+        const message = detail.message || "";
+        return field ? `${field}: ${message}` : message;
+      }).join(", ");
     }
-    // Check for validation errors in 'errors' array (old format)
     if (err.response?.data?.errors) {
       const errors = err.response.data.errors;
-      if (Array.isArray(errors)) {
-        return errors.map((e: any) => e.msg || e.message).join(", ");
-      }
-      if (typeof errors === "object") {
-        return Object.entries(errors)
-          .map(([field, msg]: [string, any]) => `${field}: ${msg}`)
-          .join(", ");
-      }
+      if (Array.isArray(errors)) return errors.map((e: any) => e.msg || e.message).join(", ");
+      if (typeof errors === "object") return Object.entries(errors).map(([field, msg]: [string, any]) => `${field}: ${msg}`).join(", ");
     }
-    if (err.response?.data?.message) return err.response.data.message;
-    if (err.message) return err.message;
-    return "An unexpected error occurred";
+    return err.response?.data?.message || err.message || "An unexpected error occurred";
   };
 
   const handleEdit = () => {
-    navigate(`/create-job?id=${jobId}`, {
-      state: { job }
-    });
+    navigate(`/create-job?id=${jobId}`, { state: { job } });
+  };
+
+  const handleUpdate = async () => {
+    try {
+      const promises: Promise<any>[] = [];
+      if (refetchJob) promises.push(refetchJob());
+      if (refetchCompany) promises.push(refetchCompany());
+      if (refetchDepartment) promises.push(refetchDepartment());
+      if (promises.length === 0) return;
+      await Promise.all(promises);
+      setLastRefetch(new Date());
+    } catch (e) {
+      // ignore
+    }
   };
 
   const handleDelete = async () => {
     if (!jobId) return;
-
     const result = await Swal.fire({
       title: "Delete Job?",
       text: "Are you sure you want to delete this job?",
       icon: "warning",
       showCancelButton: true,
-      confirmButtonColor: "#3085d6",
-      cancelButtonColor: "#d33",
+      confirmButtonColor: "#EF4444",
+      cancelButtonColor: "#6B7280",
       confirmButtonText: "Yes, delete it!",
     });
-
     if (!result.isConfirmed) return;
-
     try {
       setIsDeletingJob(true);
       await deleteJobMutation.mutateAsync(jobId);
@@ -161,15 +166,14 @@ export default function PreviewJob() {
         position: "center",
         timer: 1500,
         showConfirmButton: false,
-        customClass: {
-          container: "!mt-16",
-        },
       });
       navigate("/jobs");
     } catch (err) {
-      console.error("Error deleting job:", err);
-      const errorMsg = getErrorMessage(err);
-      setDeleteError(errorMsg);
+      Swal.fire({
+        title: "Error",
+        text: getErrorMessage(err),
+        icon: "error",
+      });
     } finally {
       setIsDeletingJob(false);
     }
@@ -179,35 +183,34 @@ export default function PreviewJob() {
     if (!dateString) return "N/A";
     return new Date(dateString).toLocaleDateString("en-US", {
       year: "numeric",
-      month: "long",
+      month: "short",
       day: "numeric",
     });
   };
 
   const formatEmploymentType = (val: any) => {
-    if (!val) return undefined;
+    if (!val) return "N/A";
     const s = String(val).toLowerCase();
     if (s.includes("full")) return "Full-time";
     if (s.includes("part")) return "Part-time";
     if (s.includes("contract")) return "Contract";
     if (s.includes("intern")) return "Internship";
-    return String(val);
+    return String(val).charAt(0).toUpperCase() + String(val).slice(1);
   };
 
   const formatInputType = (type: string) => {
-    if (!type) return "";
     const typeMap: { [key: string]: string } = {
-      text: "Text",
-      textarea: "Textarea",
-      number: "Number",
-      email: "Email",
-      date: "Date",
-      radio: "Radio",
-      dropdown: "Dropdown",
-      checkbox: "Checkbox",
-      url: "URL",
-      tags: "Tags",
-      repeatable_group: "Repeatable Group",
+      text: "Short Text",
+      textarea: "Long Text",
+      number: "Numeric",
+      email: "Email Address",
+      date: "Date Picker",
+      radio: "Single Choice",
+      dropdown: "Dropdown Menu",
+      checkbox: "Multiple Choice",
+      url: "Website URL",
+      tags: "Tag Input",
+      repeatable_group: "Grouping",
     };
     return typeMap[type] || type;
   };
@@ -224,34 +227,22 @@ export default function PreviewJob() {
 
   if (!job) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-6 p-4 md:p-6">
         <PageMeta title="Job Not Found" description="Job not found" />
         <PageBreadcrumb pageTitle="Job Details" />
-        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 py-24 dark:border-gray-700">
-          <svg
-            className="mb-4 size-16 text-gray-400"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-            />
-          </svg>
-          <p className="text-lg font-semibold text-gray-700 dark:text-gray-300">
-            Job Not Found
-          </p>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            The job you're looking for doesn't exist or has been removed.
+        <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-gray-200 py-20 dark:border-gray-800">
+          <div className="rounded-full bg-gray-50 p-4 dark:bg-gray-900">
+             <InfoIcon className="size-12 text-gray-400" />
+          </div>
+          <p className="mt-4 text-xl font-bold text-gray-900 dark:text-white">Job Not Found</p>
+          <p className="mt-2 text-center text-gray-500 dark:text-gray-400 max-w-sm px-6">
+            The job you're looking for doesn't exist or might have been removed already.
           </p>
           <button
             onClick={() => navigate("/jobs")}
-            className="mt-4 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600"
+            className="mt-8 rounded-xl bg-brand-500 px-6 py-3 text-sm font-bold text-white shadow-lg transition hover:bg-brand-600 active:scale-95"
           >
-            Back to Jobs
+            Go Back to Job List
           </button>
         </div>
       </div>
@@ -259,375 +250,342 @@ export default function PreviewJob() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-20 md:pb-10">
       <PageMeta
-        title={`${typeof job.title === "string" ? job.title : job.title?.en || "Job"} | Job Preview`}
-        description={`View details for ${typeof job.title === "string" ? job.title : job.title?.en || "this job"}`}
+        title={`${getTranslation(job.title, "Job Detail")} | Preview`}
+        description={`Details for ${getTranslation(job.title, "job")}`}
       />
 
-      {deleteError && (
-        <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-          <div className="flex items-start justify-between">
-            <p className="text-sm text-red-600 dark:text-red-400">
-              <strong>Error:</strong> {deleteError}
-            </p>
-            <button
-              type="button"
-              onClick={() => setDeleteError("")}
-              className="ml-3 text-red-400 hover:text-red-600 dark:hover:text-red-300"
-            >
-              ✕
-            </button>
-          </div>
+      {/* Floating Mobile Action Header (Optional enhancement for UX) */}
+      <div className="sticky top-0 z-40 -mx-4 flex items-center justify-between border-b bg-white/80 px-4 py-3 backdrop-blur-md md:hidden dark:border-gray-800 dark:bg-gray-900/80">
+        <button onClick={() => navigate("/jobs")} className="rounded-lg p-2 hover:bg-gray-100 dark:hover:bg-gray-800">
+          <AngleLeftIcon className="size-6 text-gray-600 dark:text-gray-400" />
+        </button>
+        <span className="font-semibold text-gray-900 dark:text-white truncate max-w-[200px]">
+          {getTranslation(job.title)}
+        </span>
+        <div className="flex gap-2 items-center">
+           <button 
+             onClick={handleUpdate} 
+             title="Update data"
+             className={`p-2 rounded-lg transition-colors ${isJobFetching || isCompanyFetching || isDepartmentFetching ? 'text-amber-500 animate-spin' : 'text-gray-400 hover:text-brand-500'}`}
+           >
+             <TimeIcon className="size-5" />
+           </button>
+           <button onClick={handleEdit} className="p-2 text-brand-500 hover:bg-brand-50 rounded-lg transition-colors"><PencilIcon className="size-5"/></button>
         </div>
-      )}
+      </div>
 
-      <div className="flex items-center gap-4">
+      <div className="hidden md:flex items-center justify-between">
         <button
           onClick={() => navigate("/jobs")}
-          className="flex items-center gap-2 text-sm text-gray-600 hover:text-brand-600 dark:text-gray-400 dark:hover:text-brand-400"
+          className="group flex items-center gap-2 text-sm font-medium text-gray-500 transition hover:text-brand-600 dark:text-gray-400 dark:hover:text-brand-400"
         >
-          <svg
-            className="size-4"
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M15 19l-7-7 7-7"
-            />
-          </svg>
-          Back to Jobs
+          <AngleLeftIcon className="size-4 transition-transform group-hover:-translate-x-1" />
+          Back to Career List
         </button>
-      </div>
-
-      <PageBreadcrumb pageTitle={typeof job.title === "string" ? job.title : job.title?.en || "Job"} />
-
-      {/* Header with Actions */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-            {typeof job.title === "string" ? job.title : job.title?.en || "Untitled Job"}
-          </h1>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            Job Code: {job.jobCode || "N/A"}
-          </p>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            Employment Type: {formatEmploymentType(job?.employmentType) || "N/A"}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={async () => {
-              try {
-                const promises: Promise<any>[] = [];
-                if (isJobFetched && refetchJob) promises.push(refetchJob());
-                if (isCompanyFetched && refetchCompany) promises.push(refetchCompany());
-                if (isDepartmentFetched && refetchDepartment) promises.push(refetchDepartment());
-                if (promises.length === 0) return;
-                await Promise.all(promises);
-                setLastRefetch(new Date());
-              } catch (e) {
-                // ignore
-              }
-            }}
-            disabled={isJobFetching || isCompanyFetching || isDepartmentFetching}
-            className="inline-flex mr-1 items-center gap-2 rounded-lg bg-brand-500 px-3 py-1 text-sm font-semibold text-white shadow-sm hover:bg-brand-600 disabled:opacity-50"
-          >
-            { (isJobFetching || isCompanyFetching || isDepartmentFetching) ? 'Updating Data' : 'Update Data' }
-          </button>
-          <div className="text-sm mr-5 text-gray-500">{elapsed ? `Last Update: ${elapsed}` : 'Not updated yet'}</div>
-
-          <button
-            onClick={handleEdit}
-            className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600"
-          >
-            <PencilIcon className="size-4" />
-            Edit Job
-          </button>
-          <button
-            onClick={handleDelete}
-            disabled={isDeletingJob}
-            className="inline-flex items-center gap-2 rounded-lg bg-red-500 px-4 py-2 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <TrashBinIcon className="size-4" />
-            {isDeletingJob ? "Deleting..." : "Delete"}
-          </button>
-        </div>
-      </div>
-
-      {/* Job Status */}
-      <div className="flex items-center gap-3">
         
-        <span className="inline-flex items-center rounded-full bg-brand-50 px-4 py-1.5 text-sm font-semibold text-brand-600 ring-1 ring-inset ring-brand-200 dark:bg-brand-500/10 dark:text-brand-200 dark:ring-brand-400/40">
-          {job.openPositions || 0} Open Position
-          {job.openPositions !== 1 ? "s" : ""}
-        </span>
+        <div className="flex items-center gap-4 text-xs text-gray-400 italic">
+          <button 
+            onClick={handleUpdate}
+            className="flex items-center gap-1.5 hover:text-brand-500 transition-colors cursor-pointer group/sync"
+          >
+            <span className={`size-2 rounded-full ${isJobFetching || isCompanyFetching || isDepartmentFetching ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400 group-hover/sync:bg-brand-400'}`} />
+            {isJobFetching || isCompanyFetching || isDepartmentFetching ? "Syncing..." : "Synced"}
+          </button>
+          {elapsed && <span>{elapsed}</span>}
+        </div>
       </div>
 
-      {/* Basic Information */}
-      <ComponentCard title="Basic Information" desc="General job details">
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Company
-            </label>
-            <p className="mt-1 text-base text-gray-900 dark:text-white">
-              {toPlainString((company as any)?.name) || "Unknown Company"}
-            </p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Department
-            </label>
-            <p className="mt-1 text-base text-gray-900 dark:text-white">
-              {toPlainString((department as any)?.name) || "Unknown Department"}
-            </p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Employment Type
-            </label>
-            <p className="mt-1 text-base text-gray-900 dark:text-white">
-              {job?.employmentType
-                ? (
-                    job.employmentType
-                      .split("-")
-                      .map((p: string) => p[0].toUpperCase() + p.slice(1))
-                      .join("-")
-                  )
-                : "N/A"}
-            </p>
-          </div>
-        </div>
-      </ComponentCard>
-
-      {/* Description */}
-      <ComponentCard title="Job Description" desc="Detailed job description">
-        <div className="prose max-w-none dark:prose-invert">
-          <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
-            {typeof job.description === "string" ? job.description : job.description?.en || "No description provided"}
-          </p>
-        </div>
-      </ComponentCard>
-
-      {/* Salary Information */}
-      {job.salary && typeof job.salary === "number" && (
-        <ComponentCard title="Salary Information" desc="Compensation details">
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Salary
-              </label>
-              <p className="mt-1 text-xl font-semibold text-gray-900 dark:text-white">
-                $ {job.salary.toLocaleString()}
-              </p>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        {/* Main Content Area */}
+        <div className="space-y-6 lg:col-span-2">
+          {/* Hero Section */}
+          <div className="group relative overflow-hidden rounded-3xl border border-gray-200 bg-white p-6 shadow-sm transition-all hover:shadow-md dark:border-gray-800 dark:bg-gray-900 md:p-8">
+            <div className="absolute top-0 right-0 p-4 opacity-0 transition-opacity group-hover:opacity-100 hidden md:block">
+               <span className="text-[120px] font-black text-gray-50/10 leading-none pointer-events-none select-none dark:text-white/[0.02]">JOB</span>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Salary Visibility
-              </label>
-              <p className="mt-1 text-base text-gray-900 dark:text-white">
-                {job.salaryVisible ? "Public" : "Hidden"}
-              </p>
+            
+            <div className="relative">
+              <div className="flex flex-wrap items-center gap-3 mb-4">
+                <span className="inline-flex items-center rounded-lg bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400">
+                  <CheckCircleIcon className="mr-1 size-3.5" />
+                  Active Listing
+                </span>
+                <span className="inline-flex items-center rounded-lg bg-gray-100 px-2.5 py-1 text-xs font-bold text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+                   {job.jobCode || "NO-CODE"}
+                </span>
+              </div>
+
+              <h1 className="text-2xl font-black tracking-tight text-gray-900 sm:text-4xl dark:text-white">
+                {getTranslation(job.title, "Untitled Position")}
+              </h1>
+
+              <div className="mt-6 flex flex-wrap gap-y-4 gap-x-8">
+                <div className="flex items-center gap-3">
+                  <div className="flex size-10 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-400">
+                    <UserIcon className="size-5" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Department</p>
+                    <p className="text-sm font-bold text-gray-900 dark:text-white">
+                      {toPlainString((department as any)?.name) || "Cross-functional"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <div className="flex size-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400">
+                    <TimeIcon className="size-5" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Type</p>
+                    <p className="text-sm font-bold text-gray-900 dark:text-white">
+                      {formatEmploymentType(job?.employmentType)}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <div className="flex size-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400">
+                    <CalenderIcon className="size-5" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Deadline</p>
+                    <p className="text-sm font-bold text-gray-900 dark:text-white">
+                      {formatDate(job.registrationEnd)}
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
-        </ComponentCard>
-      )}
 
-      {/* Registration Period */}
-      <ComponentCard title="Registration Period" desc="Application timeline">
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Registration Start
-            </label>
-            <p className="mt-1 text-base text-gray-900 dark:text-white">
-              {formatDate(job.registrationStart)}
-            </p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Registration End
-            </label>
-            <p className="mt-1 text-base text-gray-900 dark:text-white">
-              {formatDate(job.registrationEnd)}
-            </p>
+          {/* Description Section */}
+          <section className="rounded-3xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900 md:p-8">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-6 flex items-center gap-2">
+               <InfoIcon className="size-5 text-brand-500" />
+               Role Overview
+            </h2>
+            <div className="prose prose-brand max-w-none dark:prose-invert">
+              <div className="whitespace-pre-wrap text-gray-600 leading-relaxed dark:text-gray-400">
+                {getTranslation(job.description, "Detailed description is coming soon.")}
+              </div>
+            </div>
+          </section>
+
+          {/* Requirements & Terms (Consolidated) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {job.requirements && job.requirements.length > 0 && (
+              <section className="rounded-3xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900">
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Requirements</h3>
+                <ul className="space-y-3">
+                  {job.requirements.map((req: any, i: number) => (
+                    <li key={i} className="flex gap-3 text-sm text-gray-600 dark:text-gray-400">
+                      <div className="mt-1 flex-shrink-0 size-1.5 rounded-full bg-brand-500" />
+                      {getTranslation(req)}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+
+            {job.termsAndConditions && job.termsAndConditions.length > 0 && (
+              <section className="rounded-3xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900">
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Terms</h3>
+                <ul className="space-y-3">
+                  {job.termsAndConditions.map((term: any, i: number) => (
+                    <li key={i} className="flex gap-3 text-sm text-gray-600 dark:text-gray-400 italic">
+                       <span className="text-brand-500 font-bold">•</span>
+                       {getTranslation(term)}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
           </div>
         </div>
-      </ComponentCard>
 
-      {/* Requirements */}
-      {job.requirements && job.requirements.length > 0 && (
-        <ComponentCard
-          title="Requirements"
-          desc="Job requirements and qualifications"
-        >
-          <ul className="space-y-2">
-            {job.requirements.map((req: string, index: number) => (
-              <li
-                key={index}
-                className="flex items-start gap-3 text-gray-700 dark:text-gray-300"
+        {/* Sidebar info */}
+        <div className="space-y-6">
+          {/* Actions Card */}
+          <div className="hidden md:block rounded-3xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+            <h3 className="text-sm font-bold uppercase tracking-widest text-gray-400 mb-4">Manage Position</h3>
+            <div className="space-y-3">
+              <button
+                onClick={handleEdit}
+                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-500 py-3.5 text-sm font-bold text-white shadow-brand-100 transition hover:bg-brand-600 hover:shadow-lg dark:shadow-none"
               >
-                <svg
-                  className="mt-1 size-5 flex-shrink-0 text-brand-500"
-                  fill="currentColor"
-                  viewBox="0 0 20 20"
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-                <span>{req}</span>
-              </li>
-            ))}
-          </ul>
-        </ComponentCard>
-      )}
-
-      {/* Terms and Conditions */}
-      {job.termsAndConditions && job.termsAndConditions.length > 0 && (
-        <ComponentCard
-          title="Terms and Conditions"
-          desc="Terms and conditions for this position"
-        >
-          <ul className="space-y-2">
-            {job.termsAndConditions.map((term: any, index: number) => (
-              <li
-                key={index}
-                className="flex items-start gap-3 text-gray-700 dark:text-gray-300"
+                <PencilIcon className="size-4" />
+                Edit Listing
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={isDeletingJob}
+                className="flex w-full items-center justify-center gap-2 rounded-2xl border border-red-100 bg-red-50 py-3.5 text-sm font-bold text-red-600 transition hover:bg-red-100 dark:border-red-900/30 dark:bg-red-900/20 dark:text-red-400"
               >
-                <svg
-                  className="mt-1 size-5 flex-shrink-0 text-amber-500"
-                  fill="currentColor"
-                  viewBox="0 0 20 20"
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-                <span>{typeof term === "string" ? term : term?.en || ""}</span>
-              </li>
-            ))}
-          </ul>
-        </ComponentCard>
-      )}
+                <TrashBinIcon className="size-4" />
+                {isDeletingJob ? "Deleting..." : "Archive Job"}
+              </button>
+            </div>
+          </div>
 
-      {/* Job Specifications */}
+          {/* Quick Stats Widget */}
+          <div className="rounded-3xl border border-gray-200 bg-brand-500 p-6 text-white shadow-lg dark:border-gray-800">
+            <p className="text-brand-100 text-xs font-bold uppercase tracking-wider">Hiring Goal</p>
+            <div className="mt-2 flex items-baseline gap-2">
+              <span className="text-4xl font-black">{job.openPositions || 0}</span>
+              <span className="text-brand-100 font-medium">Open Seats</span>
+            </div>
+            <div className="mt-6 flex gap-4 border-t border-white/10 pt-6">
+               <div className="flex-1">
+                  <p className="text-[10px] font-bold text-brand-100 uppercase mb-1">Status</p>
+                  <p className="text-sm font-bold">Internal/External</p>
+               </div>
+               <div className="flex-1">
+                  <p className="text-[10px] font-bold text-brand-100 uppercase mb-1">Company</p>
+                <p className="text-sm font-bold truncate">{getTranslation((company as any)?.name, "Corporate")}</p>
+               </div>
+            </div>
+          </div>
+
+          {/* Salary Card */}
+          {job.salary && typeof job.salary === "number" && (
+            <div className="rounded-3xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900">
+              <div className="flex items-center justify-between mb-4">
+                <span className="bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400 p-2 rounded-xl">
+                  <DollarLineIcon className="size-5" />
+                </span>
+                <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-md ${job.salaryVisible ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/30' : 'bg-gray-100 text-gray-500 dark:bg-gray-800'}`}>
+                  {job.salaryVisible ? "Public" : "Confidential"}
+                </span>
+              </div>
+              <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Annual Compensation</p>
+              <h3 className="mt-1 text-2xl font-black text-gray-900 dark:text-white">
+                ${job.salary.toLocaleString()}
+              </h3>
+            </div>
+          )}
+
+          {/* Timeline Card */}
+          <div className="rounded-3xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900">
+             <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-4">Application Period</h3>
+             <div className="space-y-4 relative before:absolute before:left-2 before:top-2 before:bottom-2 before:w-px before:bg-gray-100 dark:before:bg-gray-800">
+                <div className="pl-6 relative">
+                   <div className="absolute left-0 top-1.5 size-4 -translate-x-1/2 rounded-full border-2 border-white bg-emerald-500 ring-4 ring-emerald-100 dark:border-gray-900 dark:ring-emerald-900/30" />
+                   <p className="text-xs font-bold text-gray-400 uppercase">Starts</p>
+                   <p className="text-sm font-bold text-gray-900 dark:text-white">{formatDate(job.registrationStart)}</p>
+                </div>
+                <div className="pl-6 relative">
+                   <div className="absolute left-0 top-1.5 size-4 -translate-x-1/2 rounded-full border-2 border-white bg-amber-500 ring-4 ring-amber-100 dark:border-gray-900 dark:ring-amber-900/30" />
+                   <p className="text-xs font-bold text-gray-400 uppercase">Closes</p>
+                   <p className="text-sm font-bold text-gray-900 dark:text-white">{formatDate(job.registrationEnd)}</p>
+                </div>
+             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Specifications Table - Smarter UI */}
       {job.jobSpecs && job.jobSpecs.length > 0 && (
-        <ComponentCard
-          title="Job Specifications"
-          desc="Evaluation criteria and weights"
-        >
-          <div className="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
-            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-              <thead className="bg-gray-50 dark:bg-gray-800">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                    Specification
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                    Weight
-                  </th>
+        <section className="rounded-3xl border border-gray-200 bg-white overflow-hidden shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <div className="p-6 md:p-8 border-b dark:border-gray-800">
+             <h3 className="text-xl font-bold text-gray-900 dark:text-white">Evaluation Matrix</h3>
+             <p className="text-sm text-gray-500">Weight distribution for applicant scoring</p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="bg-gray-50/50 dark:bg-gray-800/50 text-[10px] font-black uppercase tracking-widest text-gray-400">
+                  <th className="px-8 py-4">Assessment Factor</th>
+                  <th className="px-8 py-4 text-center">Relative Weight</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200 bg-white dark:divide-gray-700 dark:bg-gray-900">
-                {job.jobSpecs.map((spec: any, index: number) => (
-                  <tr key={index}>
-                    <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900 dark:text-gray-100">
-                      {typeof spec.spec === "string" ? spec.spec : spec.spec?.en || ""}
+              <tbody className="divide-y dark:divide-gray-800">
+                {job.jobSpecs.map((spec: any, i: number) => (
+                  <tr key={i} className="group hover:bg-gray-50/50 dark:hover:bg-gray-800/50 transition-colors">
+                    <td className="px-8 py-5">
+                      <p className="font-bold text-gray-900 dark:text-white">
+                        {getTranslation(spec.spec, "Criterion")}
+                      </p>
                     </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500 dark:text-gray-400">
-                      {spec.weight}%
+                    <td className="px-8 py-5">
+                      <div className="flex items-center justify-center gap-4">
+                        <div className="w-24 bg-gray-100 rounded-full h-1.5 dark:bg-gray-800 hidden sm:block">
+                          <div className="bg-brand-500 h-1.5 rounded-full" style={{ width: `${spec.weight}%` }} />
+                        </div>
+                        <span className="font-mono text-sm font-bold text-brand-600 dark:text-brand-400">
+                          {spec.weight}%
+                        </span>
+                      </div>
                     </td>
                   </tr>
                 ))}
               </tbody>
-              <tfoot className="bg-gray-50 dark:bg-gray-800">
-                <tr>
-                  <td className="px-6 py-3 text-sm font-semibold text-gray-900 dark:text-gray-100">
-                    Total Weight
-                  </td>
-                  <td className="px-6 py-3 text-sm font-semibold text-gray-900 dark:text-gray-100">
+              <tfoot>
+                <tr className="bg-gray-50/80 dark:bg-gray-800/80">
+                  <td className="px-8 py-4 font-black text-gray-900 dark:text-white">Overall Score Distribution</td>
+                  <td className="px-8 py-4 text-center font-black text-brand-600 dark:text-brand-400">
                     {job.jobSpecs.reduce((sum: number, spec: any) => sum + spec.weight, 0)}%
                   </td>
                 </tr>
               </tfoot>
             </table>
           </div>
-        </ComponentCard>
+        </section>
       )}
 
-      {/* Custom Fields */}
+      {/* Custom Fields - Cards-style UI */}
       {job.customFields && job.customFields.length > 0 && (
-        <ComponentCard
-          title="Custom Application Fields"
-          desc="Additional fields for applicants"
-        >
-          <div className="space-y-4">
+        <section className="space-y-4">
+          <div className="flex items-baseline gap-2 px-2">
+            <h3 className="text-xl font-bold text-gray-900 dark:text-white">Dynamic Form Fields</h3>
+            <span className="text-xs font-bold text-gray-400">({job.customFields.length})</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {job.customFields.map((field: any) => (
-              <div
-                key={field.fieldId}
-                className="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800"
-              >
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h4 className="font-medium text-gray-900 dark:text-white">
-                      {typeof field.label === "string" ? field.label : field.label?.en || ""}
-                      {field.isRequired && (
-                        <span className="ml-1 text-red-500">*</span>
-                      )}
-                    </h4>
-                    <div className="mt-1 flex items-center gap-3 text-sm text-gray-500 dark:text-gray-400">
-                      <span>Type: {formatInputType(field.inputType)}</span>
-                      <span>•</span>
-                      <span>Order: {field.displayOrder}</span>
-                      {field.minValue !== undefined && (
-                        <>
-                          <span>•</span>
-                          <span>Min: {field.minValue}</span>
-                        </>
-                      )}
-                      {field.maxValue !== undefined && (
-                        <>
-                          <span>•</span>
-                          <span>Max: {field.maxValue}</span>
-                        </>
-                      )}
-                    </div>
-                    {field.choices && field.choices.length > 0 && (
-                      <div className="mt-2">
-                        <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                          Options:
-                        </span>
-                        <div className="mt-1 flex flex-wrap gap-2">
-                          {field.choices.map((choice: any, idx: number) => (
-                            <span
-                              key={idx}
-                              className="inline-flex items-center rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-medium text-brand-700 dark:bg-brand-900/30 dark:text-brand-300"
-                            >
-                              {typeof choice === "string" ? choice : choice?.en || ""}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+              <div key={field.fieldId} className="group rounded-2xl border border-gray-200 bg-white p-5 transition-all hover:border-brand-200 hover:shadow-lg dark:border-gray-800 dark:bg-gray-900 dark:hover:border-brand-900/40">
+                <div className="flex justify-between items-start mb-3">
+                  <div className="px-2 py-0.5 rounded-md bg-gray-100 text-gray-500 text-[10px] font-black uppercase dark:bg-gray-800">
+                    {formatInputType(field.inputType)}
                   </div>
+                  {field.isRequired && (
+                    <span className="text-[10px] font-bold text-red-500 uppercase">Required</span>
+                  )}
+                </div>
+                
+                <h4 className="font-bold text-gray-900 dark:text-white leading-tight mb-2">
+                  {getTranslation(field.label, "Custom Input")}
+                </h4>
+                
+                {field.choices && field.choices.length > 0 && (
+                   <div className="mt-4 flex flex-wrap gap-1.5">
+                      {field.choices.slice(0, 4).map((c: any, idx: number) => (
+                        <span key={idx} className="text-[10px] font-medium px-2 py-1 rounded bg-brand-50 text-brand-700 dark:bg-brand-900/20 dark:text-brand-400">
+                          {getTranslation(c)}
+                        </span>
+                      ))}
+                      {field.choices.length > 4 && (
+                        <span className="text-[10px] font-medium px-2 py-1 text-gray-400">+{field.choices.length - 4} more</span>
+                      )}
+                   </div>
+                )}
+                
+                <div className="mt-4 pt-4 border-t border-gray-50 dark:border-gray-800 flex items-center justify-between opacity-50 group-hover:opacity-100 transition-opacity">
+                   <span className="text-[10px] text-gray-400">Display Order: {field.displayOrder}</span>
+                   <div className="flex gap-2">
+                      {field.minValue !== undefined && <span className="text-[10px] text-gray-400 italic">Min: {field.minValue}</span>}
+                      {field.maxValue !== undefined && <span className="text-[10px] text-gray-400 italic">Max: {field.maxValue}</span>}
+                   </div>
                 </div>
               </div>
             ))}
           </div>
-        </ComponentCard>
+        </section>
       )}
+
+      {/* Floating Action Button for Mobile Add Applicant or similar could go here */}
     </div>
   );
 }
+

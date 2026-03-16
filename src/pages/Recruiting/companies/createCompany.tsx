@@ -2,34 +2,33 @@ import type { ChangeEvent, FormEvent } from "react";
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import ComponentCard from "../../../components/common/ComponentCard";
 import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
 import PageMeta from "../../../components/common/PageMeta";
-import Label from "../../../components/form/Label";
-import Input from "../../../components/form/input/InputField";
-import TextArea from "../../../components/form/input/TextArea";
-import { PlusIcon } from "../../../icons";
 import Swal from "sweetalert2";
 import { useAppDispatch } from "../../../store/hooks";
 import { createCompany } from "../../../store/slices/companiesSlice";
 import { companiesKeys } from "../../../hooks/queries/useCompanies";
+import { 
+  Building2, 
+  Mail, 
+  Phone, 
+  Globe, 
+  MapPin, 
+  Save, 
+  Plus, 
+  Trash2, 
+  Image as ImageIcon,
+  Upload,
+  AlertCircle,
+  ArrowLeft
+} from "lucide-react";
 
 type CompanyForm = {
-  name: {
-    en: string;
-    ar: string;
-  };
-  description: {
-    en: string;
-    ar: string;
-  };
+  name: { en: string; ar: string; };
+  description: { en: string; ar: string; };
   contactEmail: string;
   phone: string;
-  address: Array<{
-    en: string;
-    ar: string;
-    location: string;
-  }>;
+  address: Array<{ en: string; ar: string; location: string; }>;
   website: string;
   logoPath?: string;
 };
@@ -44,40 +43,28 @@ const defaultCompany: CompanyForm = {
   logoPath: "",
 };
 
-export default function RecruitingDashboard() {
+export default function CreateCompany() {
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
   const queryClient = useQueryClient();
   
-  // Component state
   const [companyForm, setCompanyForm] = useState<CompanyForm>(defaultCompany);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  const handleCompanyChange = (
-    e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
-  ) => {
+  const handleCompanyChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setCompanyForm((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleLocalizedChange = (
-    field: 'name' | 'description',
-    lang: 'en' | 'ar',
-    value: string
-  ) => {
+  const handleLocalizedChange = (field: 'name' | 'description', lang: 'en' | 'ar', value: string) => {
     setCompanyForm((prev) => ({
-      ...prev,
-      [field]: { ...prev[field], [lang]: value },
+      ...prev, [field]: { ...prev[field], [lang]: value },
     }));
   };
 
-  const handleAddressChange = (
-    index: number,
-    field: 'en' | 'ar' | 'location',
-    value: string
-  ) => {
+  const handleAddressChange = (index: number, field: 'en' | 'ar' | 'location', value: string) => {
     setCompanyForm((prev) => {
       const newAddress = [...prev.address];
       newAddress[index] = { ...newAddress[index], [field]: value };
@@ -87,42 +74,25 @@ export default function RecruitingDashboard() {
 
   const handleAddAddress = () => {
     setCompanyForm((prev) => ({
-      ...prev,
-      address: [...prev.address, { en: '', ar: '', location: '' }],
+      ...prev, address: [...prev.address, { en: '', ar: '', location: '' }],
     }));
   };
 
   const handleRemoveAddress = (index: number) => {
     setCompanyForm((prev) => ({
-      ...prev,
-      address: prev.address.filter((_, i) => i !== index),
+      ...prev, address: prev.address.filter((_, i) => i !== index),
     }));
   };
 
- 
-
-  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
-  
-
   const uploadToCloudinary = async (file: File) => {
     const CLOUD_NAME = (import.meta.env.VITE_CLOUDINARY_CLOUD_NAME as string) || "175237158579478";
-    const UPLOAD_PRESET = (import.meta.env.VITE_CLOUDINARY_PRESET as string)
-      || (import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET as string)
-      || "ml_default";
-
-    if (!CLOUD_NAME) throw new Error("Missing Cloudinary cloud name. Set VITE_CLOUDINARY_CLOUD_NAME in your .env");
-    if (!UPLOAD_PRESET) throw new Error("Missing Cloudinary upload preset. Set VITE_CLOUDINARY_PRESET in your .env");
-
+    const UPLOAD_PRESET = (import.meta.env.VITE_CLOUDINARY_PRESET as string) || "ml_default";
     const url = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`;
     const formData = new FormData();
     formData.append("file", file);
     formData.append("upload_preset", UPLOAD_PRESET);
-
     const res = await fetch(url, { method: "POST", body: formData });
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`Cloudinary upload failed: ${res.status} ${text}`);
-    }
+    if (!res.ok) throw new Error("Cloudinary upload failed");
     return res.json();
   };
 
@@ -132,13 +102,9 @@ export default function RecruitingDashboard() {
     setIsUploadingLogo(true);
     try {
       const result: any = await uploadToCloudinary(file);
-      // Cloudinary returns `secure_url` (publicly accessible)
-      const publicUrl = result?.secure_url || result?.url;
-      if (!publicUrl) throw new Error("No URL returned from Cloudinary");
-      setCompanyForm((prev) => ({ ...prev, logoPath: publicUrl }));
+      setCompanyForm((prev) => ({ ...prev, logoPath: result.secure_url }));
     } catch (err: any) {
-      console.error("Failed to upload logo to Cloudinary", err);
-      setError(err?.message || "Failed to upload logo");
+      setError(err.message || "Failed to upload logo");
     } finally {
       setIsUploadingLogo(false);
     }
@@ -148,301 +114,292 @@ export default function RecruitingDashboard() {
     e.preventDefault();
     setIsSubmitting(true);
     setError(null);
-    setSuccessMessage(null);
 
-    // Prepare optimistic temp company and snapshot previous cache
     const previousCompanies = queryClient.getQueryData(companiesKeys.list());
     const tempId = `temp-${Date.now()}`;
-    const tempCompany: any = {
-      ...companyForm,
-      _id: tempId,
-      createdAt: new Date().toISOString(),
-    };
+    const tempCompany: any = { ...companyForm, _id: tempId };
 
     try {
-      // Insert temp company into React Query cache immediately
       queryClient.setQueryData<any>(companiesKeys.list(), (old: any) => {
         if (!old) return [tempCompany];
         if (Array.isArray(old)) return [...old, tempCompany];
-        if (old.data && Array.isArray(old.data)) return { ...old, data: [...old.data, tempCompany] };
-        return old;
+        return { ...old, data: [...(old.data || []), tempCompany] };
       });
 
-      // Show success alert immediately (optimistic UX)
       await Swal.fire({
-        title: "Success!",
-        text: "Company created successfully.",
-        icon: "success",
-        position: "center",
-        timer: 1500,
+        title: "Submitting...",
+        text: "Registering new corporate Company",
+        icon: "info",
         showConfirmButton: false,
-        customClass: { container: "!mt-16" },
+        timer: 1000,
+        background: "#1e293b",
+        color: "#fff"
       });
 
-      // Dispatch create in background; update cache when response arrives
-      const promise = dispatch(
-        createCompany({
-          name: companyForm.name,
-          description: companyForm.description,
-          contactEmail: companyForm.contactEmail,
-          phone: companyForm.phone,
-          address: companyForm.address.map((a) => ({ en: a.en, ar: a.ar, location: a.location })),
-          website: companyForm.website,
-          logoPath: companyForm.logoPath,
-        })
-      ) as any;
+      const promise = dispatch(createCompany(companyForm)) as any;
+      const resultAction = await promise;
 
-      promise.then((resultAction: any) => {
-        if (createCompany.fulfilled.match(resultAction)) {
-          const newCompany = resultAction.payload as any;
-          const newId = newCompany?._id ?? newCompany?.data?._id ?? null;
-          // Replace temp entry with real server data
-          try {
-            queryClient.setQueryData<any>(companiesKeys.list(), (old: any) => {
-              if (!old) return [newCompany];
-              if (Array.isArray(old)) return old.map((c: any) => (c._id === tempId ? newCompany : c));
-              if (old.data && Array.isArray(old.data)) return { ...old, data: old.data.map((c: any) => (c._id === tempId ? newCompany : c)) };
-              return old;
-            });
-            if (newId) queryClient.setQueryData(companiesKeys.detail(newId), newCompany);
-            if (newId) navigate(`/company/${newId}`);
-          } catch (e) {
-            // ignore cache errors
-          }
-        } else {
-          // rollback on failure
-          queryClient.setQueryData(companiesKeys.list(), previousCompanies);
-          const errorMessage = resultAction.payload as string || "Failed to create company";
-          setError(errorMessage);
-        }
-      }).catch((err: any) => {
-        queryClient.setQueryData(companiesKeys.list(), previousCompanies);
-        console.error('Create company failed', err);
-        setError(err?.message || 'Failed to create company');
-      }).finally(() => setIsSubmitting(false));
+      if (createCompany.fulfilled.match(resultAction)) {
+        const newCompany = resultAction.payload as any;
+        const newId = newCompany?._id ?? newCompany?.data?._id;
+        queryClient.invalidateQueries({ queryKey: companiesKeys.list() });
+        Swal.fire({ title: "Company Created", icon: "success", timer: 1500, showConfirmButton: false });
+        if (newId) navigate(`/company/${newId}`);
+        else navigate("/companies");
+      } else {
+        throw new Error(resultAction.payload || "Failed to create company");
+      }
     } catch (err: any) {
-      setIsSubmitting(false);
-      setError(err?.message || "Failed to create company");
-      console.error("Error creating company:", err);
-      // rollback
       queryClient.setQueryData(companiesKeys.list(), previousCompanies);
+      setError(err.message || "Failed to create company");
+      Swal.fire("Registration Failed", err.message, "error");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-
   return (
-    <div className="space-y-6">
-      <PageMeta
-        title="Create Company | Saber Group - Hiring Management System"
-        description="Create a new company for recruiting."
-      />
-      <PageBreadcrumb pageTitle="Create Company" />
+    <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0F172A] p-4 sm:p-8 text-slate-900 dark:text-slate-100">
+      <PageMeta title="New Company | Job Application Maker" description="Register a new company Company" />
+      <PageBreadcrumb pageTitle="New Company registry" />
 
-      <ComponentCard
-        title="Company Information"
-        desc="Enter the company details to create a new recruiting company"
-      >
-        {error && (
-          <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg">
-            {error}
-          </div>
-        )}
-
-        {successMessage && (
-          <div className="mb-4 p-4 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded-lg">
-            {successMessage}
-          </div>
-        )}
-
-        <form className="space-y-4" onSubmit={handleCompanySubmit}>
-          {/* Company Name (EN/AR) */}
-          <div className="space-y-3">
-            <Label htmlFor="name-en" required>
-              Company Name
-            </Label>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Input
-                  id="name-en"
-                  name="name-en"
-                  value={companyForm.name.en}
-                  onChange={(e) => handleLocalizedChange('name', 'en', e.target.value)}
-                  placeholder="Company name (English)"
-                  required
-                />
-                <span className="text-xs text-gray-500 mt-1 block">English</span>
-              </div>
-              <div>
-                <Input
-                  id="name-ar"
-                  name="name-ar"
-                  value={companyForm.name.ar}
-                  onChange={(e) => handleLocalizedChange('name', 'ar', e.target.value)}
-                  placeholder="اسم الشركة (عربي)"
-                  required
-                  className="text-right"
-                />
-                <span className="text-xs text-gray-500 mt-1 block text-right">العربية</span>
-              </div>
+      <div className="max-w-5xl mx-auto">
+        {/* Header Section */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={() => navigate("/companies")}
+              className="size-12 rounded-2xl bg-white dark:bg-white/5 border border-white/20 dark:border-white/10 flex items-center justify-center hover:scale-110 active:scale-90 transition-all shadow-sm"
+            >
+              <ArrowLeft className="size-5" />
+            </button>
+            <div>
+              <h1 className="text-3xl font-black bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-400 bg-clip-text text-transparent tracking-tight">
+                New Company Registry
+              </h1>
+              <p className="text-gray-500 dark:text-gray-400 font-medium italic">Initialize a new corporate Company within the ecosystem</p>
             </div>
           </div>
+          
+          <button
+            form="company-form"
+            type="submit"
+            disabled={isSubmitting || isUploadingLogo}
+            className="flex items-center justify-center gap-2 px-8 py-4 bg-brand-500 text-white rounded-[1.25rem] font-bold shadow-xl shadow-brand-500/20 hover:scale-105 active:scale-95 disabled:opacity-50 transition-all"
+          >
+            {isSubmitting ? <div className="size-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="size-5" />}
+            Authenticate & Save
+          </button>
+        </div>
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div>
-              <Label htmlFor="website">Website</Label>
-              <Input
-                id="website"
-                name="website"
-                value={companyForm.website}
-                onChange={handleCompanyChange}
-                placeholder="https://"
-              />
-            </div>
-            <div>
-              <Label htmlFor="logo">Upload logo</Label>
-              <input
-                id="logo"
-                name="logo"
-                type="file"
-                accept="image/*"
-                onChange={handleLogoChange}
-                className="block w-full text-sm text-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-brand-50 file:text-brand-600 file:hover:bg-brand-100 file:hover:text-brand-700 file:transition file:duration-150"
-              />
-                {isUploadingLogo ? (
-                  <div className="mt-2 text-sm text-gray-500">Uploading logo...</div>
-                ) : companyForm.logoPath ? (
-                  <div className="mt-2">
-                    <img src={companyForm.logoPath} alt="logo" className="h-16 w-auto rounded" />
+        <form id="company-form" onSubmit={handleCompanySubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Left Column: Basic Info & Branding */}
+          <div className="lg:col-span-2 space-y-8">
+            <div className="bg-white/60 dark:bg-white/5 backdrop-blur-xl border border-white/20 dark:border-white/10 rounded-[2.5rem] p-8 shadow-sm">
+              <div className="flex items-center gap-3 mb-8">
+                <div className="size-10 rounded-xl bg-brand-500/10 flex items-center justify-center text-brand-500">
+                  <Building2 className="size-5" />
+                </div>
+                <h2 className="text-xl font-black tracking-tight">Company Profile</h2>
+              </div>
+
+              <div className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-xs font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
+                      Company Name (English) <span className="text-brand-500">*</span>
+                    </label>
+                    <input
+                      required
+                      value={companyForm.name.en}
+                      onChange={(e) => handleLocalizedChange('name', 'en', e.target.value)}
+                      placeholder="e.g. Acme Corporation"
+                      className="w-full px-5 py-3.5 bg-white dark:bg-black/20 border border-slate-200 dark:border-white/10 rounded-2xl focus:ring-2 focus:ring-brand-500/20 outline-none transition-all font-bold"
+                    />
                   </div>
-                ) : null}
+                  <div className="space-y-2">
+                    <label className="text-xs font-black uppercase tracking-widest text-slate-400 flex items-center justify-end gap-2">
+                      <span className="text-brand-500">*</span> اسم الكيان (بالعربية)
+                    </label>
+                    <input
+                      required
+                      value={companyForm.name.ar}
+                      onChange={(e) => handleLocalizedChange('name', 'ar', e.target.value)}
+                      placeholder="مثال: شركة أكمي"
+                      dir="rtl"
+                      className="w-full px-5 py-3.5 bg-white dark:bg-black/20 border border-slate-200 dark:border-white/10 rounded-2xl focus:ring-2 focus:ring-brand-500/20 outline-none transition-all font-bold"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-black uppercase tracking-widest text-slate-400">Mission Statement (English)</label>
+                  <textarea
+                    rows={4}
+                    value={companyForm.description.en}
+                    onChange={(e) => handleLocalizedChange('description', 'en', e.target.value)}
+                    placeholder="Describe the company mission and operations..."
+                    className="w-full px-5 py-3.5 bg-white dark:bg-black/20 border border-slate-200 dark:border-white/10 rounded-2xl focus:ring-2 focus:ring-brand-500/20 outline-none transition-all font-medium italic"
+                  />
+                </div>
+              </div>
             </div>
-            <div>
-              <Label htmlFor="contactEmail" required>
-                Contact Email
-              </Label>
-              <Input
-                id="contactEmail"
-                name="contactEmail"
-                type="email"
-                value={companyForm.contactEmail}
-                onChange={handleCompanyChange}
-                placeholder="contact@company.com"
-                required
-              />
-            </div>
-            <div>
-              <Label htmlFor="phone">Phone</Label>
-              <Input
-                id="phone"
-                name="phone"
-                value={companyForm.phone}
-                onChange={handleCompanyChange}
-                placeholder="+1-555-0123"
-              />
+
+            <div className="bg-white/60 dark:bg-white/5 backdrop-blur-xl border border-white/20 dark:border-white/10 rounded-[2.5rem] p-8 shadow-sm">
+              <div className="flex items-center justify-between mb-8">
+                <div className="flex items-center gap-3">
+                  <div className="size-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-500">
+                    <MapPin className="size-5" />
+                  </div>
+                  <h2 className="text-xl font-black tracking-tight">Deployment Locations</h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleAddAddress}
+                  className="flex items-center gap-2 px-4 py-2 bg-brand-500/10 text-brand-500 rounded-xl text-xs font-black hover:bg-brand-500 hover:text-white transition-all"
+                >
+                  <Plus className="size-3" /> Add Location
+                </button>
+              </div>
+
+              <div className="space-y-6">
+                {companyForm.address.map((addr, idx) => (
+                  <div key={idx} className="relative group p-6 border border-slate-200 dark:border-white/5 rounded-[2rem] bg-slate-50/50 dark:bg-white/5 space-y-4">
+                    {companyForm.address.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveAddress(idx)}
+                        className="absolute -top-3 -right-3 size-8 bg-red-500 text-white rounded-full flex items-center justify-center shadow-lg opacity-0 group-hover:opacity-100 transition-all hover:scale-110 active:scale-90"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    )}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Street Address (EN)</label>
+                        <input
+                          value={addr.en}
+                          onChange={(e) => handleAddressChange(idx, 'en', e.target.value)}
+                          className="w-full bg-transparent border-b border-slate-300 dark:border-white/10 py-1 outline-none focus:border-brand-500 transition-colors font-bold"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 text-right block">Street Address (AR)</label>
+                        <input
+                          value={addr.ar}
+                          dir="rtl"
+                          onChange={(e) => handleAddressChange(idx, 'ar', e.target.value)}
+                          className="w-full bg-transparent border-b border-slate-300 dark:border-white/10 py-1 outline-none focus:border-brand-500 transition-colors font-bold"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Geolocation / Landmarks</label>
+                      <input
+                        value={addr.location}
+                        onChange={(e) => handleAddressChange(idx, 'location', e.target.value)}
+                        placeholder="Google Maps link or landmark notes"
+                        className="w-full bg-transparent border-b border-slate-300 dark:border-white/10 py-1 outline-none focus:border-brand-500 transition-colors font-medium italic"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 
-          {/* Description (EN/AR) */}
-          <div className="space-y-3">
-            <Label htmlFor="description-en">Description</Label>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <TextArea
-                  placeholder="What does this company do? (English)"
-                  rows={3}
-                  value={companyForm.description.en}
-                  onChange={(value) => handleLocalizedChange('description', 'en', value)}
-                />
-                <span className="text-xs text-gray-500 mt-1 block">English</span>
-              </div>
-              <div>
-                <TextArea
-                  placeholder="ماذا تفعل هذه الشركة؟ (عربي)"
-                  rows={3}
-                  value={companyForm.description.ar}
-                  onChange={(value) => handleLocalizedChange('description', 'ar', value)}
-                  className="text-right"
-                />
-                <span className="text-xs text-gray-500 mt-1 block text-right">العربية</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Address Array */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <Label>Addresses</Label>
-              <button
-                type="button"
-                onClick={handleAddAddress}
-                className="text-sm text-brand-600 hover:text-brand-700 dark:text-brand-400 font-medium"
-              >
-                + Add Address
-              </button>
-            </div>
-            {companyForm.address.map((addr, index) => (
-              <div key={index} className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                    Address {index + 1}
-                  </span>
-                  {companyForm.address.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveAddress(index)}
-                      className="text-sm text-red-600 hover:text-red-700 dark:text-red-400"
-                    >
-                      Remove
-                    </button>
+          {/* Right Column: Contact & Logo */}
+          <div className="space-y-8">
+            <div className="bg-white/60 dark:bg-white/5 backdrop-blur-xl border border-white/20 dark:border-white/10 rounded-[2.5rem] p-8 shadow-sm">
+              <div className="flex flex-col items-center gap-6 text-center">
+                <div className="relative group">
+                  <div className="size-40 rounded-[3rem] bg-gradient-to-br from-slate-100 to-slate-200 dark:from-white/10 dark:to-white/5 flex items-center justify-center text-4xl font-black text-slate-300 overflow-hidden border-2 border-dashed border-slate-300 dark:border-white/10 group-hover:border-brand-500/50 transition-all">
+                    {companyForm.logoPath ? (
+                      <img src={companyForm.logoPath} alt="Logo Preview" className="w-full h-full object-cover" />
+                    ) : (
+                      <ImageIcon className="size-12 opacity-20" />
+                    )}
+                    <label className="absolute inset-0 bg-brand-500/80 text-white flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 cursor-pointer transition-all gap-2 p-4">
+                      <Upload className="size-6" />
+                      <span className="text-xs font-black uppercase tracking-wider">Update Logo</span>
+                      <input type="file" className="hidden" accept="image/*" onChange={handleLogoChange} />
+                    </label>
+                  </div>
+                  {isUploadingLogo && (
+                    <div className="absolute inset-0 bg-white/60 dark:bg-black/60 backdrop-blur-sm rounded-[3rem] flex items-center justify-center">
+                      <div className="size-8 border-4 border-brand-500 border-t-transparent rounded-full animate-spin" />
+                    </div>
                   )}
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div>
-                    <Input
-                      placeholder="Address (English)"
-                      value={addr.en}
-                      onChange={(e) => handleAddressChange(index, 'en', e.target.value)}
-                    />
-                    <span className="text-xs text-gray-500 mt-1 block">English</span>
-                  </div>
-                  <div>
-                    <Input
-                      placeholder="العنوان (عربي)"
-                      value={addr.ar}
-                      onChange={(e) => handleAddressChange(index, 'ar', e.target.value)}
-                      className="text-right"
-                    />
-                    <span className="text-xs text-gray-500 mt-1 block text-right">العربية</span>
-                  </div>
-                </div>
-                <div className="mt-3">
-                  <Input
-                    placeholder="Location / Coordinates (optional)"
-                    value={addr.location}
-                    onChange={(e) => handleAddressChange(index, 'location', e.target.value)}
-                  />
-                  <span className="text-xs text-gray-500 mt-1 block">Location coordinates or map link</span>
+                <div>
+                  <h3 className="text-lg font-black tracking-tight">Brand Company</h3>
+                  <p className="text-xs text-gray-400 mt-1">PNG, JPG or WebP. Max 2MB.</p>
                 </div>
               </div>
-            ))}
+            </div>
+
+            <div className="bg-white/60 dark:bg-white/5 backdrop-blur-xl border border-white/20 dark:border-white/10 rounded-[2.5rem] p-8 shadow-sm space-y-8">
+              <div className="flex items-center gap-3">
+                <div className="size-10 rounded-xl bg-purple-500/10 flex items-center justify-center text-purple-500">
+                  <Mail className="size-5" />
+                </div>
+                <h2 className="text-xl font-black tracking-tight">Communication</h2>
+              </div>
+
+              <div className="space-y-6">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">Corporate Email</label>
+                  <div className="relative">
+                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
+                    <input
+                      name="contactEmail"
+                      value={companyForm.contactEmail}
+                      onChange={handleCompanyChange}
+                      placeholder="hr@acme.com"
+                      className="w-full pl-11 pr-5 py-3.5 bg-white dark:bg-black/20 border border-slate-200 dark:border-white/10 rounded-2xl focus:ring-2 focus:ring-brand-500/20 outline-none transition-all font-bold"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">Central Switchboard</label>
+                  <div className="relative">
+                    <Phone className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
+                    <input
+                      name="phone"
+                      value={companyForm.phone}
+                      onChange={handleCompanyChange}
+                      placeholder="+966 5..."
+                      className="w-full pl-11 pr-5 py-3.5 bg-white dark:bg-black/20 border border-slate-200 dark:border-white/10 rounded-2xl focus:ring-2 focus:ring-brand-500/20 outline-none transition-all font-bold"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">Official Website</label>
+                  <div className="relative">
+                    <Globe className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
+                    <input
+                      name="website"
+                      value={companyForm.website}
+                      onChange={handleCompanyChange}
+                      placeholder="www.acme.com"
+                      className="w-full pl-11 pr-5 py-3.5 bg-white dark:bg-black/20 border border-slate-200 dark:border-white/10 rounded-2xl focus:ring-2 focus:ring-brand-500/20 outline-none transition-all font-bold"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {error && (
+                <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center gap-3 animate-shake">
+                  <AlertCircle className="size-5 text-red-500 flex-shrink-0" />
+                  <p className="text-xs font-black text-red-500 leading-tight">{error}</p>
+                </div>
+              )}
+            </div>
           </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-theme-xs transition hover:bg-brand-600 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <PlusIcon className="size-4" />
-              {isSubmitting ? "Creating..." : "Create Company"}
-            </button>
-          </div>
-
-          {/* Company settings are configured in a separate page under Company Management */}
-
-        
         </form>
-      </ComponentCard>
+      </div>
     </div>
   );
 }

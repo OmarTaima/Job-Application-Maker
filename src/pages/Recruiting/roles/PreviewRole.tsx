@@ -1,658 +1,449 @@
-import { useMemo, useState, useEffect } from "react";
-import { useParams, useNavigate, useSearchParams } from "react-router";
+import { useState, useEffect } from "react";
+import { useParams, useNavigate, useLocation } from "react-router";
+import { useAuth } from "../../../context/AuthContext";
 import Swal from "sweetalert2";
 import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
 import PageMeta from "../../../components/common/PageMeta";
-import ComponentCard from "../../../components/common/ComponentCard";
 import LoadingSpinner from "../../../components/common/LoadingSpinner";
-import Label from "../../../components/form/Label";
+// Label was unused — removed during refactor
 import Input from "../../../components/form/input/InputField";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableRow,
-} from "../../../components/ui/table";
-import { useRoles, usePermissions, useUsers, useUpdateRole } from "../../../hooks/queries";
-import type { User } from "../../../services/usersService";
+  useRoles,
+  usePermissions,
+  useUpdateRole,
+  useUsers,
+  useDeleteRole,
+} from "../../../hooks/queries";
 import { toPlainString } from "../../../utils/strings";
+import { 
+  Shield, 
+  Users, 
+  ChevronLeft, 
+  Pencil, 
+  Trash2, 
+  CheckCircle2, 
+  ShieldAlert, 
+  Lock,
+  Calendar,
+  Layers,
+  Fingerprint,
+  ArrowRight,
+  ShieldCheck,
+  UserCheck
+} from "lucide-react";
 
 export default function PreviewRole() {
-  const { id } = useParams<{ id: string }>();
+  const { id } = useParams();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const isEditMode = searchParams.get("edit") === "true";
+  const location = useLocation();
+  const { hasPermission } = useAuth();
+  
+  // Check if we should start in edit mode based on query param
+  const queryParams = new URLSearchParams(location.search);
+  const startInEditMode = queryParams.get("edit") === "true";
 
-  // Fetch data
-  const { data: roles = [] as any[], isLoading: rolesLoading } = useRoles();
-  const { data: permissions = [] as any[], isLoading: permissionsLoading } =
-    usePermissions();
-  const { data: usersData, isLoading: usersLoading } = useUsers();
-  const users: User[] = Array.isArray(usersData) ? usersData : ((usersData as any)?.data ?? []) as User[];
-  const updateRoleMutation = useUpdateRole();
-
-  // Edit state
-  const [isEditing, setIsEditing] = useState(isEditMode);
-  const [editForm, setEditForm] = useState({
-    name: "",
-    permissions: [] as string[],
-    
-  });
+  const [isEditing, setIsEditing] = useState(startInEditMode);
+  const [formData, setFormData] = useState({ name: "", description: "" });
+  const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
   const [permissionAccess, setPermissionAccess] = useState<Record<string, string[]>>({});
-  const [formError, setFormError] = useState("");
 
-  // Find the current role
-  const role = useMemo(() => {
-    return roles.find((r) => r._id === id);
-  }, [roles, id]);
+  const { data: roles = [], isLoading: rolesLoading, error: rolesError } = useRoles();
+  const role: any = Array.isArray(roles)
+    ? roles.find((r: any) => r._id === id)
+    : ((roles as any)?.data || []).find((r: any) => r._id === id);
+  const { data: permissions = [], isLoading: permissionsLoading } = usePermissions();
+  const { data: usersData, isLoading: usersLoading } = useUsers();
+  
+  const updateRoleMutation = useUpdateRole();
+  const deleteRoleMutation = useDeleteRole();
 
-  // Initialize edit form when role is loaded
+  const canUpdate = hasPermission("Role Management", "write");
+  const canDelete = hasPermission("Role Management", "write");
+
   useEffect(() => {
-    if (role && isEditing) {
-      setEditForm({
-        name: toPlainString((role as any).name),
-        permissions: role.permissions?.map((p: any) => 
-          typeof p === "string" ? p : p.permission?._id || p.permission
-        ) || [],
+    if (role) {
+      setFormData({
+        name: toPlainString((role as any).name) || "",
+        description: role.description || "",
       });
-
-      // Initialize permission access
-      const initialAccess: Record<string, string[]> = {};
-      role.permissions?.forEach((p: any) => {
-        const permId = typeof p === "string" ? p : p.permission?._id || p.permission;
-        const access = typeof p === "object" ? p.access : [];
-        initialAccess[permId] = access.length > 0 ? access : [];
+      
+      const rolePerms = role.permissions || [];
+      setSelectedPermissions(rolePerms.map((p: any) => p.permission?._id || p.permission));
+      
+      const accessMap: Record<string, string[]> = {};
+      rolePerms.forEach((p: any) => {
+        const permId = p.permission?._id || p.permission;
+        accessMap[permId] = p.access || [];
       });
-      setPermissionAccess(initialAccess);
+      setPermissionAccess(accessMap);
     }
-  }, [role, isEditing]);
+  }, [role]);
 
-  // Find users with this role
-  const roleUsers = useMemo(() => {
-    if (!role) return [];
-    return users.filter((user: User) => {
-      const userRoleId = typeof user.roleId === "string" ? user.roleId : (user.roleId as any)?._id;
-      return userRoleId === role._id;
-    });
-  }, [users, role]);
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+  };
 
-  // Get permission details for this role (normalized)
-  const rolePermissions = useMemo(() => {
-    if (!role || !role.permissions) return [];
-
-    return role.permissions.map((rolePerm: any) => {
-      // Determine permission id and access array from various shapes
-      const permId =
-        typeof rolePerm === "string"
-          ? rolePerm
-          : rolePerm?.permission?._id || rolePerm?.permission || (rolePerm?._id || undefined);
-
-      const access = Array.isArray(rolePerm?.access)
-        ? rolePerm.access
-        : [];
-
-      // Try to find the permission metadata from the global permissions list
-      const permissionMeta = permissions.find((p) => p._id === permId);
-
-      if (permissionMeta) {
-        return {
-          ...permissionMeta,
-          access: access.length > 0 ? access : permissionMeta.actions || [],
-        };
-      }
-
-      // Fallback: if rolePerm itself contains a name, use it; otherwise show a user-friendly placeholder
-      const fallbackName =
-        (typeof rolePerm === "object" && (rolePerm.permission?.name || rolePerm.name)) ||
-        "Unknown Permission";
-
-      return {
-        _id: permId || "",
-        name: fallbackName,
-        description: "",
-        access: access.length > 0 ? access : [],
-      } as any;
-    });
-  }, [role, permissions]);
-
-  const loading = rolesLoading || permissionsLoading || usersLoading;
-
-  // Handler functions
   const handlePermissionToggle = (permId: string) => {
-    setEditForm((prev) => {
-      if (prev.permissions.includes(permId)) {
-        // Remove permission and its access
-        const newPerms = prev.permissions.filter((id) => id !== permId);
+    if (!isEditing) return;
+    setSelectedPermissions((prev) => {
+      if (prev.includes(permId)) {
+        const newPerms = prev.filter((id) => id !== permId);
         setPermissionAccess((prevAccess) => {
           const newAccess = { ...prevAccess };
           delete newAccess[permId];
           return newAccess;
         });
-        return { ...prev, permissions: newPerms };
+        return newPerms;
       } else {
-        // Add permission with default access
         const permission = permissions.find((p) => p._id === permId);
-        const defaultActions = permission?.actions || ["read", "write", "create"];
-        setPermissionAccess((prevAccess) => ({
-          ...prevAccess,
-          [permId]: defaultActions,
-        }));
-        return { ...prev, permissions: [...prev.permissions, permId] };
+        const defaultActions = permission?.actions || ["read"];
+        setPermissionAccess((prevAccess) => ({ ...prevAccess, [permId]: defaultActions }));
+        return [...prev, permId];
       }
     });
   };
 
-  const handleAccessToggle = (permId: string, access: string) => {
+  const handleAccessToggle = (permId: string, action: string) => {
+    if (!isEditing) return;
     setPermissionAccess((prev) => {
-      const currentAccess = prev[permId] || [];
-      const newAccess = currentAccess.includes(access)
-        ? currentAccess.filter((a) => a !== access)
-        : [...currentAccess, access];
-      return { ...prev, [permId]: newAccess };
+      const current = prev[permId] || [];
+      const updated = current.includes(action)
+        ? current.filter((a) => a !== action)
+        : [...current, action];
+      return { ...prev, [permId]: updated };
     });
   };
 
   const handleSave = async () => {
-    // Basic client-side validation
-    if (!editForm.name || !editForm.name.trim()) {
-      setFormError("Role name is required");
-      return;
-    }
-
-    try {
-      const permissionsWithAccess = editForm.permissions.map((permId) => ({
+    const payload = {
+      name: formData.name,
+      description: formData.description,
+      permissions: selectedPermissions.map((permId) => ({
         permission: permId,
         access: permissionAccess[permId] || [],
-      }));
+      })),
+    };
 
-      const payload = {
-        name: editForm.name,
-        permissions: permissionsWithAccess,
-      };
-
-
-      await updateRoleMutation.mutateAsync({
-        id: id!,
-        data: payload,
-      });
-
-      await Swal.fire({
-        title: "Success!",
-        text: "Role updated successfully.",
-        icon: "success",
-        position: "center",
-        timer: 2000,
-        showConfirmButton: false,
-        customClass: {
-          container: "!mt-16",
-        },
-      });
-
+    try {
+      await updateRoleMutation.mutateAsync({ id: id!, data: payload as any });
       setIsEditing(false);
-      navigate(`/role/${id}`);
-    } catch (err: any) {
-      console.error("Error updating role:", err);
-      console.error("Error response:", err.response?.data);
-      // Show server error to user for debugging
-      const serverMessage = err.response?.data?.message || err.message || "An error occurred";
-      setFormError(serverMessage);
-      await Swal.fire({
-        title: "Error",
-        text: String(serverMessage),
-        icon: "error",
-        confirmButtonText: "OK",
+      Swal.fire({
+        title: "Profile Updated",
+        text: "The role Company has been successfully recalibrated.",
+        icon: "success",
+        timer: 1500,
+        showConfirmButton: false,
+        background: "rgba(255, 255, 255, 0.9)",
+        backdrop: `rgba(0,0,0,0.4) blur(4px)`
       });
+    } catch (err: any) {
+      Swal.fire("Update Failed", err.message || "An error occurred", "error");
     }
   };
 
-  const handleCancel = () => {
-    setIsEditing(false);
-    navigate(`/role/${id}`);
+  const handleDelete = async () => {
+    const result = await Swal.fire({
+      title: "Decommission Company?",
+      text: "This operation will disconnect all associated users from this role baseline.",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#ef4444",
+      confirmButtonText: "Decommission",
+      background: "#1e293b",
+      color: "#fff"
+    });
+
+    if (result.isConfirmed) {
+      try {
+        await deleteRoleMutation.mutateAsync(id!);
+        navigate("/roles");
+        Swal.fire({ title: "Decommissioned", icon: "success", timer: 1500, showConfirmButton: false });
+      } catch (err: any) {
+        Swal.fire("Error", err.message, "error");
+      }
+    }
   };
 
-  if (loading) {
-    return <LoadingSpinner fullPage message="Loading role details..." />;
-  }
+  const roleUsers = (Array.isArray(usersData) ? usersData : ((usersData as any)?.data ?? []))
+    .filter((u: any) => (u.roleId?._id || u.roleId) === id);
 
-  if (!role) {
-    return (
-      <>
-        <PageMeta title="Role Not Found" description="Role details" />
-        <PageBreadcrumb pageTitle="Role Not Found" />
-        <div className="p-8 text-center">
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
-            Role Not Found
-          </h2>
-          <p className="text-gray-600 dark:text-gray-400 mb-6">
-            The role you're looking for doesn't exist.
-          </p>
-          <button
-            onClick={() => navigate("/permissions")}
-            className="px-6 py-2.5 bg-brand-500 hover:bg-brand-600 text-white rounded-lg transition-colors"
-          >
-            Back to Permissions
-          </button>
-        </div>
-      </>
-    );
-  }
+  if (rolesLoading || permissionsLoading || usersLoading) return <LoadingSpinner fullPage />;
+  if (rolesError || !role) return (
+    <div className="p-8 text-center bg-white/60 dark:bg-white/5 backdrop-blur-xl rounded-[3rem] border border-red-500/20 max-w-2xl mx-auto mt-20">
+      <ShieldAlert className="size-16 text-red-500 mx-auto mb-6" />
+      <h2 className="text-2xl font-black text-gray-900 dark:text-white">Company Missing</h2>
+      <p className="text-gray-500 mt-2">The requested role profile could not be located in our repository.</p>
+      <button onClick={() => navigate("/roles")} className="mt-8 px-8 py-3 bg-brand-500 text-white font-bold rounded-2xl shadow-xl shadow-brand-500/20">
+        Return to Repository
+      </button>
+    </div>
+  );
 
   return (
-    <>
-      
-      <PageBreadcrumb pageTitle={toPlainString((role as any).name)} />
+    <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0F172A] p-4 sm:p-8 text-slate-900 dark:text-slate-100">
+      <PageMeta title={`Role Detail - ${formData.name}`} description="View and manage role permissions" />
+      <PageBreadcrumb pageTitle="Role Detail" />
 
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex justify-between items-center">
-          <div className="flex-1">
-            {isEditing ? (
-              <div className="space-y-4 max-w-2xl">
-                <div>
-                  <Label htmlFor="roleName">Role Name</Label>
-                  <Input
-                    id="roleName"
-                    value={editForm.name}
-                    onChange={(e) =>
-                      setEditForm((prev) => ({ ...prev, name: e.target.value }))
-                    }
-                    placeholder="Role Name"
-                  />
-                </div>
-                
-                
-                {formError && (
-                  <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-                    <p className="text-sm text-red-600 dark:text-red-400">
-                      <strong>Error:</strong> {formError}
-                    </p>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-                  {toPlainString((role as any).name)}
-                </h1>
-                
-              </div>
+      <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-700">
+        {/* Profile Navigation */}
+        <div className="flex items-center justify-between">
+          <button 
+            onClick={() => navigate("/roles")}
+            className="group flex items-center gap-2 text-gray-400 hover:text-brand-500 transition-all font-bold tracking-tight"
+          >
+            <div className="size-10 rounded-xl bg-white/60 dark:bg-white/5 backdrop-blur-md border border-white/20 flex items-center justify-center transition-transform group-hover:-translate-x-1 shadow-sm">
+              <ChevronLeft className="size-5" />
+            </div>
+            Back to Hub
+          </button>
+          
+          <div className="flex gap-3">
+            {!isEditing && canUpdate && (
+              <button 
+                onClick={() => setIsEditing(true)}
+                className="flex items-center gap-2 px-6 py-3 bg-brand-500 text-white rounded-[1.25rem] font-bold shadow-xl shadow-brand-500/20 hover:scale-105 transition-all"
+              >
+                <Pencil className="size-4" />
+                Modify Company
+              </button>
             )}
-          </div>
-          <div className="flex gap-2">
-            {isEditing ? (
-              <>
-                <button
-                  onClick={handleCancel}
-                  className="px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+            {!isEditing && canDelete && (
+              <button 
+                onClick={handleDelete}
+                className="size-12 flex items-center justify-center bg-red-500/10 text-red-500 rounded-[1.25rem] border border-red-500/20 hover:bg-red-500 hover:text-white transition-all shadow-sm"
+              >
+                <Trash2 className="size-5" />
+              </button>
+            )}
+            {isEditing && (
+              <div className="flex gap-3 animate-in zoom-in-95 duration-200">
+                <button 
+                  onClick={() => setIsEditing(false)}
+                  className="px-6 py-3 text-gray-400 hover:text-gray-900 dark:hover:text-white font-bold transition-colors"
                 >
                   Cancel
                 </button>
-                <button
+                <button 
                   onClick={handleSave}
-                  className="px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-lg transition-colors"
+                  className="px-8 py-3 bg-brand-500 text-white rounded-[1.25rem] font-black tracking-widest uppercase shadow-xl shadow-brand-500/20 hover:scale-105 transition-all"
                 >
-                  Save Changes
+                  Commit Changes
                 </button>
-              </>
-            ) : (
-              <>
-                <button
-                  onClick={() => setIsEditing(true)}
-                  className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-lg transition-colors"
-                >
-                  Edit Role
-                </button>
-                <button
-                  onClick={() => navigate("/permissions")}
-                  className="px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-                >
-                  Back to Permissions
-                </button>
-              </>
+              </div>
             )}
           </div>
         </div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">
-                  Total Permissions
-                </p>
-                <p className="mt-2 text-3xl font-bold text-gray-900 dark:text-white">
-                  {rolePermissions.length}
-                </p>
-              </div>
-              <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
-                <svg
-                  className="w-8 h-8 text-blue-600 dark:text-blue-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
-                  />
-                </svg>
-              </div>
-            </div>
+        {/* Company Profile Header */}
+        <div className="relative overflow-hidden bg-white/60 dark:bg-white/5 backdrop-blur-xl border border-white/20 dark:border-white/10 rounded-[3rem] p-8 sm:p-12 shadow-2xl">
+          <div className="absolute top-0 right-0 p-12 opacity-[0.03] pointer-events-none">
+            <Fingerprint className="size-64" />
           </div>
-
-          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">
-                  Assigned Users
-                </p>
-                <p className="mt-2 text-3xl font-bold text-gray-900 dark:text-white">
-                  {roleUsers.length}
-                </p>
-              </div>
-              <div className="p-3 bg-green-100 dark:bg-green-900/30 rounded-lg">
-                <svg
-                  className="w-8 h-8 text-green-600 dark:text-green-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
-                  />
-                </svg>
-              </div>
+          
+          <div className="relative z-10 flex flex-col md:flex-row gap-10 items-start md:items-center">
+            <div className="size-32 rounded-[2.5rem] bg-gradient-to-br from-brand-500/20 to-purple-500/10 border-2 border-white/40 dark:border-white/10 flex items-center justify-center shadow-inner group transition-all duration-500">
+              <ShieldCheck className="size-16 text-brand-500 drop-shadow-lg" />
             </div>
-          </div>
-
-          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">
-                  Created
-                </p>
-                <p className="mt-2 text-lg font-semibold text-gray-900 dark:text-white">
-                  {role.createdAt
-                    ? new Date(role.createdAt).toLocaleDateString("en-US", {
-                        year: "numeric",
-                        month: "short",
-                        day: "numeric",
-                      })
-                    : "N/A"}
-                </p>
+            
+            <div className="flex-1 space-y-4">
+              <div className="space-y-1">
+                {isEditing ? (
+                  <div className="space-y-4 max-w-lg">
+                    <Input
+                      name="name"
+                      value={formData.name}
+                      onChange={handleInputChange}
+                      className="!text-3xl !font-black !bg-transparent !border-b-2 !border-brand-500 !p-0 focus:!ring-0 transition-all text-gray-900 dark:text-white"
+                      placeholder="Role Name"
+                    />
+                    <textarea
+                      name="description"
+                      value={formData.description}
+                      onChange={handleInputChange}
+                      rows={2}
+                      className="w-full bg-white/40 dark:bg-black/20 border border-white/20 rounded-2xl p-4 text-gray-600 dark:text-gray-300 font-medium focus:ring-2 focus:ring-brand-500/20 outline-none transition-all placeholder:text-gray-400"
+                      placeholder="Describe the operational scope of this Company..."
+                    />
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-4">
+                      <h1 className="text-4xl font-black text-gray-900 dark:text-white tracking-tighter">
+                        {formData.name}
+                      </h1>
+                      <div className="px-3 py-1 bg-brand-500/10 text-brand-500 border border-brand-500/20 rounded-full text-[10px] font-black uppercase tracking-widest">
+                        Core Company
+                      </div>
+                    </div>
+                    <p className="text-lg text-gray-500 dark:text-gray-400 font-medium leading-relaxed max-w-2xl">
+                      {formData.description || "A foundational access profile designed for specialized platform interaction and enterprise resource management."}
+                    </p>
+                  </>
+                )}
               </div>
-              <div className="p-3 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
-                <svg
-                  className="w-8 h-8 text-purple-600 dark:text-purple-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-                  />
-                </svg>
+
+              <div className="flex flex-wrap gap-6 pt-2">
+                <div className="flex items-center gap-2 text-sm font-bold text-gray-400 uppercase tracking-widest">
+                  <Calendar className="size-4 text-brand-500" />
+                  Deployed: <span className="text-gray-700 dark:text-gray-300">{role.createdAt ? new Date(role.createdAt).toLocaleDateString() : "Historical"}</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm font-bold text-gray-400 uppercase tracking-widest">
+                  <Layers className="size-4 text-purple-500" />
+                  Modules: <span className="text-gray-700 dark:text-gray-300">{selectedPermissions.length} Active</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm font-bold text-gray-400 uppercase tracking-widest">
+                  <UserCheck className="size-4 text-blue-500" />
+                  Influence: <span className="text-gray-700 dark:text-gray-300">{roleUsers.length} Users</span>
+                </div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Permissions Table */}
-        <ComponentCard title="Role Permissions">
-          {isEditing ? (
-            <div className="border border-gray-300 dark:border-gray-700 rounded-lg overflow-hidden">
-              <div className="max-h-96 overflow-y-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50 dark:bg-gray-800 sticky top-0">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-sm font-medium w-12">
-                        <input
-                          type="checkbox"
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setEditForm((prev) => ({
-                                ...prev,
-                                permissions: permissions.map((p) => p._id),
-                              }));
-                              const allAccess: Record<string, string[]> = {};
-                              permissions.forEach((p) => {
-                                allAccess[p._id] = p.actions || ["read", "write", "create"];
-                              });
-                              setPermissionAccess(allAccess);
-                            } else {
-                              setEditForm((prev) => ({ ...prev, permissions: [] }));
-                              setPermissionAccess({});
-                            }
-                          }}
-                          checked={
-                            permissions.length > 0 &&
-                            editForm.permissions.length === permissions.length
-                          }
-                          className="w-4 h-4 text-brand-500 rounded focus:ring-brand-500"
-                        />
-                      </th>
-                      <th className="px-4 py-3 text-left text-sm font-medium">
-                        Permission
-                      </th>
-                      <th className="px-4 py-3 text-left text-sm font-medium">
-                        Description
-                      </th>
-                      <th className="px-4 py-3 text-left text-sm font-medium">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                    {permissions.map((perm) => (
-                      <tr
-                        key={perm._id}
-                        className="hover:bg-gray-50 dark:hover:bg-gray-800"
-                      >
-                        <td className="px-4 py-3">
-                          <input
-                            type="checkbox"
-                            checked={editForm.permissions.includes(perm._id)}
-                            onChange={() => handlePermissionToggle(perm._id)}
-                            className="w-4 h-4 text-brand-500 rounded focus:ring-brand-500"
-                          />
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="font-medium text-sm">{perm.name}</div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="text-sm text-gray-600 dark:text-gray-400">
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex flex-wrap gap-1">
-                            {(perm.actions || ["read", "write", "create"]).map(
-                              (action: any) => {
-                                const isPermSelected = editForm.permissions.includes(perm._id);
-                                const isAccessSelected = permissionAccess[perm._id]?.includes(action);
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+          {/* Permission Matrix */}
+          <div className="lg:col-span-2 space-y-6">
+            <div className="flex items-center justify-between px-4">
+              <h2 className="text-xl font-bold flex items-center gap-3">
+                <Lock className="size-5 text-brand-500" />
+                Capabilities Matrix
+              </h2>
+              <span className="text-xs font-black text-gray-400 uppercase tracking-widest">
+                 {selectedPermissions.length} / {permissions.length} Modules Enabled
+              </span>
+            </div>
 
-                                return (
-                                  <label
-                                    key={action}
-                                    className={`px-2 py-0.5 text-xs rounded cursor-pointer transition-colors ${
-                                      isPermSelected && isAccessSelected
-                                        ? "bg-purple-500 text-white"
-                                        : isPermSelected
-                                        ? "bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200 hover:bg-purple-200"
-                                        : "bg-gray-100 dark:bg-gray-800 text-gray-400"
-                                    }`}
-                                  >
-                                    <input
-                                      type="checkbox"
-                                      className="hidden"
-                                      checked={isPermSelected && isAccessSelected}
-                                      disabled={!isPermSelected}
-                                      onChange={() => handleAccessToggle(perm._id, action)}
-                                    />
-                                    {action}
-                                  </label>
-                                );
-                              }
-                            )}
+            <div className={`grid grid-cols-1 md:grid-cols-2 gap-5 ${!isEditing ? "opacity-90" : ""}`}>
+              {permissions.map((perm) => {
+                const isSelected = selectedPermissions.includes(perm._id);
+                return (
+                  <div 
+                    key={perm._id}
+                    onClick={() => isEditing && handlePermissionToggle(perm._id)}
+                    className={`group p-6 rounded-[2.5rem] border transition-all duration-300 ${
+                      isSelected 
+                      ? "bg-brand-500/[0.05] border-brand-500/30 ring-1 ring-brand-500/10 shadow-lg" 
+                      : "bg-white/40 dark:bg-white/5 border-white/20 hover:border-brand-500/20"
+                    } ${isEditing ? "cursor-pointer" : "cursor-default"}`}
+                  >
+                    <div className="flex flex-col gap-5">
+                      <div className="flex items-center justify-between">
+                        <div className={`p-3 rounded-xl ${isSelected ? "bg-brand-500 text-white shadow-brand-500/30 shadow-lg" : "bg-white dark:bg-black/20 text-gray-400 dark:text-gray-600 border border-white/20"} transition-all`}>
+                          <Shield className="size-5" />
+                        </div>
+                        {isSelected && !isEditing && (
+                          <div className="flex items-center gap-1.5 text-brand-500">
+                            <CheckCircle2 className="size-4" />
+                            <span className="text-[10px] font-black uppercase tracking-widest">Enabled</span>
                           </div>
-                        </td>
-                      </tr>
+                        )}
+                        {isEditing && (
+                          <div className={`size-6 rounded-lg border-2 transition-all flex items-center justify-center ${isSelected ? "bg-brand-500 border-brand-500 text-white scale-110" : "border-slate-200 dark:border-slate-800"}`}>
+                            {isSelected && <CheckCircle2 className="size-4" />}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="space-y-1">
+                        <h4 className={`text-base font-black transition-colors ${isSelected ? "text-brand-600 dark:text-brand-400" : "text-gray-500 dark:text-gray-500"}`}>
+                          {perm.name}
+                        </h4>
+                        <p className="text-[11px] font-medium text-gray-400 line-clamp-1 italic">
+                          {perm.description || "Operational unit access configuration"}
+                        </p>
+                      </div>
+
+                      {isSelected && (
+                        <div className="flex flex-wrap gap-2 pt-2 border-t border-brand-500/10 animate-in slide-in-from-top-2 duration-300">
+                          {(perm.actions || ["read", "write", "create", "delete", "update"]).map((action) => {
+                            const isActionActive = permissionAccess[perm._id]?.includes(action);
+                            return (
+                              <button
+                                key={action}
+                                disabled={!isEditing}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleAccessToggle(perm._id, action);
+                                }}
+                                className={`px-3 py-1.5 text-[9px] font-black tracking-widest uppercase rounded-lg transition-all border-2 ${
+                                  isActionActive
+                                  ? "bg-brand-500 text-white border-brand-500 shadow-sm"
+                                  : "bg-transparent text-gray-400 dark:text-gray-600 border-slate-100 dark:border-white/5 hover:border-brand-500/20"
+                                }`}
+                              >
+                                {action}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Side Info / Associated Users */}
+          <div className="space-y-8">
+            <div className="bg-white/60 dark:bg-white/5 backdrop-blur-xl border border-white/20 dark:border-white/10 rounded-[3rem] p-8 shadow-xl">
+              <div className="flex items-center gap-3 mb-8">
+                <div className="p-3 bg-blue-500/10 rounded-2xl text-blue-500">
+                  <Users className="size-6" />
+                </div>
+                <h3 className="text-xl font-bold tracking-tight">Active Reach</h3>
+              </div>
+
+              <div className="space-y-6">
+                <div className="flex flex-col gap-1 px-4 py-5 bg-blue-500/[0.03] rounded-3xl border border-blue-500/10">
+                  <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Connected Identities</span>
+                  <span className="text-4xl font-black text-blue-600 dark:text-blue-400 tabular-nums">{roleUsers.length}</span>
+                </div>
+
+                <div className="space-y-4">
+                  <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-4">Primary Stakeholders</span>
+                  <div className="space-y-3">
+                    {roleUsers.slice(0, 5).map((user: any) => (
+                      <div key={user._id} className="flex items-center gap-3 p-3 hover:bg-white/40 dark:hover:bg-white/10 rounded-2xl transition-all group cursor-pointer">
+                        <div className="size-10 rounded-full bg-slate-200 dark:bg-slate-800 border-2 border-white/50 dark:border-white/5 overflow-hidden flex items-center justify-center font-bold text-gray-500">
+                          {user.name?.charAt(0) || "U"}
+                        </div>
+                        <div className="flex-1 overflow-hidden">
+                          <p className="text-sm font-bold truncate text-gray-700 dark:text-gray-200">{user.name}</p>
+                          <p className="text-[10px] text-gray-400 font-medium truncate">{user.email}</p>
+                        </div>
+                        <ArrowRight className="size-4 text-gray-300 group-hover:text-brand-500 group-hover:translate-x-1 transition-all" />
+                      </div>
                     ))}
-                  </tbody>
-                </table>
+                    {roleUsers.length > 5 && (
+                      <p className="text-center text-[11px] font-bold text-gray-400 pt-2 italic">
+                        + {roleUsers.length - 5} additional users authenticated
+                      </p>
+                    )}
+                    {roleUsers.length === 0 && (
+                      <div className="text-center py-6 border-2 border-dashed border-slate-100 dark:border-white/5 rounded-3xl">
+                        <p className="text-xs font-bold text-gray-400">No users currently assigned</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
-          ) : rolePermissions.length === 0 ? (
-            <div className="py-12 text-center text-gray-500 dark:text-gray-400">
-              No permissions assigned to this role.
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableCell
-                    isHeader
-                    className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
-                  >
-                    Permission Name
-                  </TableCell>
-                  <TableCell
-                    isHeader
-                    className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
-                  >
-                    Description
-                  </TableCell>
-                  <TableCell
-                    isHeader
-                    className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
-                  >
-                    Access Rights
-                  </TableCell>
-                </TableRow>
-              </TableHeader>
-              <TableBody className="divide-y divide-gray-200 dark:divide-gray-700">
-                {rolePermissions.map((permission: any) => (
-                  <TableRow
-                    key={permission._id}
-                    className="hover:bg-gray-50 dark:hover:bg-gray-800"
-                  >
-                    <TableCell className="px-4 py-3 align-middle">
-                      <span className="font-medium">{toPlainString((permission as any).name)}</span>
-                    </TableCell>
-                    <TableCell className="px-4 py-3 align-middle">
-                      <span className="text-gray-600 dark:text-gray-400">
-                      </span>
-                    </TableCell>
-                    <TableCell className="px-4 py-3 align-middle">
-                      <div className="flex flex-wrap gap-1">
-                        {(permission.access || []).map((action: string) => (
-                          <span
-                            key={action}
-                            className="px-2 py-1 text-xs bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200 rounded"
-                          >
-                            {action}
-                          </span>
-                        ))}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </ComponentCard>
 
-        {/* Users Table */}
-        <ComponentCard title="Users with This Role">
-          {roleUsers.length === 0 ? (
-            <div className="py-12 text-center text-gray-500 dark:text-gray-400">
-              No users assigned to this role yet.
+            <div className="relative group overflow-hidden bg-brand-500 rounded-[3rem] p-8 shadow-2xl shadow-brand-500/30">
+              <div className="absolute -top-10 -right-10 size-32 bg-white/10 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700" />
+              <div className="relative z-10 space-y-4">
+                <ShieldAlert className="size-10 text-white/50" />
+                <h4 className="text-xl font-black text-white leading-tight">Company Compliance Audit</h4>
+                <p className="text-sm text-brand-50/70 font-medium leading-relaxed">
+                  Modifying this role will immediately impact all connected operational vectors for the {roleUsers.length} assigned users.
+                </p>
+              </div>
             </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableCell
-                    isHeader
-                    className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
-                  >
-                    Name
-                  </TableCell>
-                  <TableCell
-                    isHeader
-                    className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
-                  >
-                    Email
-                  </TableCell>
-                  <TableCell
-                    isHeader
-                    className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
-                  >
-                    Phone
-                  </TableCell>
-                  <TableCell
-                    isHeader
-                    className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
-                  >
-                    Status
-                  </TableCell>
-                  <TableCell
-                    isHeader
-                    className="px-4 py-3 text-left text-sm font-medium bg-gray-50 dark:bg-gray-800"
-                  >
-                    Joined
-                  </TableCell>
-                </TableRow>
-              </TableHeader>
-              <TableBody className="divide-y divide-gray-200 dark:divide-gray-700">
-                {roleUsers.map((user: User) => (
-                  <TableRow
-                    key={user._id}
-                    className="hover:bg-gray-50 dark:hover:bg-gray-800"
-                  >
-                    <TableCell className="px-4 py-3 align-middle">
-                      <span className="font-medium">
-                        {toPlainString(user.fullName || user.name || "N/A")}
-                      </span>
-                    </TableCell>
-                    <TableCell className="px-4 py-3 align-middle">
-                      {user.email}
-                    </TableCell>
-                    <TableCell className="px-4 py-3 align-middle">
-                      {user.phone || "-"}
-                    </TableCell>
-                    <TableCell className="px-4 py-3 align-middle">
-                      <span
-                        className={`px-2 py-1 text-xs rounded ${
-                          user.isActive !== false
-                            ? "bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200"
-                            : "bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200"
-                        }`}
-                      >
-                        {user.isActive !== false ? "Active" : "Inactive"}
-                      </span>
-                    </TableCell>
-                    <TableCell className="px-4 py-3 align-middle">
-                      {(user as any).createdAt
-                        ? new Date((user as any).createdAt).toLocaleDateString()
-                        : "N/A"}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </ComponentCard>
+          </div>
+        </div>
       </div>
-    </>
+    </div>
   );
 }
