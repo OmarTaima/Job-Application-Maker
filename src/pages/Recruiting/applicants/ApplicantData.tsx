@@ -1552,7 +1552,7 @@ const ApplicantData = () => {
   </div>
 </div>
 
-        {/* Job Specs With Details (from applicant or populated jobPosition) */}
+            {/* Job Specs With Details (from applicant or populated jobPosition) */}
         {(() => {
           const specs: any[] = (applicant && Array.isArray((applicant as any).jobSpecsWithDetails))
             ? (applicant as any).jobSpecsWithDetails
@@ -1561,56 +1561,84 @@ const ApplicantData = () => {
               : [];
           if (!specs || specs.length === 0) return null;
           return (
-            <div className="mt-6 mb-6">
-              <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">Job Specs</h3>
-              <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
-                {specs.map((s: any, idx: number) => {
-                  const specText = typeof s.spec === 'string' ? s.spec : (s.spec && (s.spec.en || s.spec.value)) || '';
-                  const weight = typeof s.weight === 'number' ? s.weight : (s.weight ? Number(s.weight) : 0);
-                  const answered = typeof s.answer === 'boolean' ? s.answer : Boolean(s.answer);
-                  return (
-                    <div
-                      key={s.jobSpecId || s._id || idx}
-                      className="p-3 border rounded-lg bg-white dark:bg-gray-800 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
-                    >
-                      <div className="flex-1">
-                        <p className={`text-sm font-medium ${isArabic(specText) ? 'text-right' : 'text-left'} text-gray-800 dark:text-white`}>
-                          {specText || '(no spec)'}
-                        </p>
-                        {s.description ? (
-                          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{String(s.description)}</p>
-                        ) : null}
-                      </div>
+            <div className="mt-8 mb-8 relative overflow-hidden rounded-2xl bg-white shadow-xl">
+              {/* Decorative background matching Personal Info */}
+              <div className="absolute inset-0 bg-linear-to-br from-indigo-500/5 via-purple-500/5 to-blue-500/5" />
+              <div className="absolute -top-24 -right-24 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl" />
+              
+              <div className="relative p-8">
+                <div className="mb-6 flex items-start gap-4">
+                  <div className="shrink-0 p-3 bg-linear-to-br from-indigo-500 to-indigo-600 rounded-2xl shadow-lg">
+                    <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-2xl font-extrabold bg-linear-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
+                      Job Specifications
+                    </h3>
+                    <p className="text-sm text-gray-500 mt-1">Required skills and qualifications assessment</p>
+                  </div>
+                </div>
 
-                      <div className="flex items-center gap-2">
-                        <div className="inline-flex items-center px-2 py-0.5 rounded-full bg-gradient-to-r from-indigo-100 to-indigo-50 dark:from-indigo-700/30 dark:to-indigo-800/20 text-xs font-semibold text-indigo-700 dark:text-indigo-200">
-                          <svg className="w-3 h-3 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                            <circle cx="12" cy="12" r="9" />
-                          </svg>
-                          <span>Weight: {weight}</span>
-                        </div>
-
-                        <div className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${answered ? 'bg-green-100 text-green-800 dark:bg-green-800/30 dark:text-green-200' : 'bg-gray-100 text-gray-700 dark:bg-gray-700/30 dark:text-gray-300'}`}>
-                          {answered ? (
-                            <>
-                              <svg className="w-3 h-3 mr-1 text-green-600 dark:text-green-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                              </svg>
-                              <span>Met</span>
-                            </>
-                          ) : (
-                            <>
-                              <svg className="w-3 h-3 mr-1 text-gray-500 dark:text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                              </svg>
-                              <span>Not met</span>
-                            </>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  {specs.map((s: any, idx: number) => {
+                    const specText = typeof s.spec === 'string' ? s.spec : (s.spec && (s.spec.en || s.spec.value)) || '';
+                    const weight = typeof s.weight === 'number' ? s.weight : (s.weight ? Number(s.weight) : 0);
+                    const answered = typeof s.answer === 'boolean' ? s.answer : Boolean(s.answer);
+                    
+                    return (
+                      <div
+                        key={s.jobSpecId || s._id || idx}
+                        className="group relative pl-5 pr-5 py-5 bg-white/60 backdrop-blur-sm rounded-xl border-l-4 border-indigo-500 hover:bg-white transition-all duration-200 hover:shadow-lg flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-base font-bold text-gray-900 ${isArabic(specText) ? 'text-right' : 'text-left'}`}>
+                            {specText || '(no spec)'}
+                          </p>
+                          {s.description && (
+                            <p className={`mt-1 text-sm text-gray-500 ${isArabic(s.description) ? 'text-right' : 'text-left'}`}>
+                              {String(s.description)}
+                            </p>
                           )}
                         </div>
+
+                        <div className="flex items-center gap-3 shrink-0">
+                          <div className="inline-flex items-center px-3 py-1 rounded-full bg-indigo-50 text-xs font-bold text-indigo-700 border border-indigo-100">
+                            <svg className="w-3.5 h-3.5 mr-1.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                              <circle cx="12" cy="12" r="9" />
+                              <line x1="12" y1="8" x2="12" y2="16" />
+                              <line x1="8" y1="12" x2="16" y2="12" />
+                            </svg>
+                            Weight: {weight}
+                          </div>
+
+                          <div className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold border transition-colors ${
+                            answered 
+                              ? 'bg-green-50 text-green-700 border-green-100' 
+                              : 'bg-gray-50 text-gray-500 border-gray-200'
+                          }`}>
+                            {answered ? (
+                              <>
+                                <svg className="w-3.5 h-3.5 mr-1.5 text-green-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                </svg>
+                                <span>Met</span>
+                              </>
+                            ) : (
+                              <>
+                                <svg className="w-3.5 h-3.5 mr-1.5 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                                <span>Not met</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
             </div>
           );
