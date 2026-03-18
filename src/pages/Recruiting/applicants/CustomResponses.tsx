@@ -154,91 +154,69 @@ export default function CustomResponses({ applicant }: Props) {
                                       return String(v);
                                     };
 
-                                    return (
-                                      <div className="space-y-3">
-                                        {entries.map(([itemKey, itemValue]) => {
-                                          const label = formatLabel(itemKey);
+                                      return (
+                                    <div className="space-y-3">
+                                      {entries.map(([itemKey, itemValue]) => {
+                                        const label = formatLabel(itemKey);
+                                        const valueStr = formatValue(itemValue);
+                                        const valueIsArabic = typeof valueStr === 'string' && isArabic(valueStr);
+                                        const rowIsArabic = valueIsArabic || isArabic(label);
 
-                                          const valueStr = formatValue(itemValue);
-                                          const valueIsArabic =
-                                            typeof valueStr === "string" && isArabic(valueStr);
+                                        const isFieldExpanded = (expandedItemFields[key] && expandedItemFields[key][idx] && expandedItemFields[key][idx].has(itemKey)) || false;
+                                        const needsTruncate = typeof valueStr === 'string' && valueStr.length > 20;
 
-                                          const rowIsArabic = valueIsArabic || isArabic(label);
+                                        const toggleField = (fieldName: string) => {
+                                          setExpandedItemFields((prev) => {
+                                            const newState = { ...prev };
+                                            if (!newState[key]) newState[key] = {};
+                                            if (!newState[key][idx]) newState[key][idx] = new Set<string>();
+                                            if (newState[key][idx].has(fieldName)) {
+                                              newState[key][idx].delete(fieldName);
+                                            } else {
+                                              newState[key][idx].add(fieldName);
+                                            }
+                                            return { ...newState };
+                                          });
+                                        };
 
-                                          const isFieldExpanded = (expandedItemFields[key] && expandedItemFields[key][idx] && expandedItemFields[key][idx].has(itemKey)) || false;
-                                          const needsTruncate = typeof valueStr === 'string' && valueStr.length > 20;
-
-                                          const toggleField = (fieldName: string) => {
-                                            setExpandedItemFields(prev => {
-                                              const newState = { ...prev };
-                                              if (!newState[key]) newState[key] = {};
-                                              if (!newState[key][idx]) newState[key][idx] = new Set<string>();
-                                              if (newState[key][idx].has(fieldName)) {
-                                                newState[key][idx].delete(fieldName);
-                                              } else {
-                                                newState[key][idx].add(fieldName);
-                                              }
-                                              return { ...newState };
-                                            });
-                                          };
-
-                                          return (
-                                            <div
-                                              key={itemKey}
-                                              dir={rowIsArabic ? 'rtl' : 'ltr'}
-                                              className={`
-                                                rounded-xl border border-gray-100 bg-gray-50 px-3 py-2
-                                                dark:border-gray-700/60 dark:bg-gray-900/30
-                                                transition
-                                              `}
-                                            >
+                                        return (
+                                          <div
+                                            key={itemKey}
+                                            className="rounded-xl border border-gray-100 bg-gray-50/50 px-4 py-3 transition hover:bg-white hover:shadow-sm"
+                                          >
+                                            <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:gap-6">
                                               <div
-                                                className={`
-                                                  grid grid-cols-1 gap-1
-                                                  ${rowIsArabic ? 'sm:grid-cols-[170px_1fr] sm:gap-4' : 'sm:grid-cols-[170px_1fr] sm:gap-4'}
-                                                `}
+                                                className={`text-[10px] font-bold uppercase tracking-widest text-gray-400 shrink-0 sm:pt-1 min-w-[150px] text-left`}
                                               >
-                                                <div
-                                                  className={`
-                                                    text-xs font-semibold mt-1 uppercase tracking-wide
-                                                    text-gray-500 dark:text-gray-400
-                                                    ${rowIsArabic ? "text-right" : "text-left"}
-                                                  `}
-                                                >
-                                                  <span className="font-cairo">{label} :</span>
-                                                </div>
+                                                <span className="opacity-80">{label} :</span>
+                                              </div>
 
-                                                <div
-                                                  className={`
-                                                    text-sm font-medium -mr-15 text-gray-900 dark:text-white
-                                                    whitespace-pre-wrap break-words leading-relaxed
-                                                    ${rowIsArabic ? "text-right" : "text-left"}
-                                                  `}
-                                                >
-                                                  {needsTruncate && !isFieldExpanded ? (
-                                                    <span className="inline-flex items-center gap-2">
-                                                      <span>{valueStr.slice(0, 20)}</span>
-                                                      <button
-                                                        type="button"
-                                                        onClick={() => toggleField(itemKey)}
-                                                        className="text-xs text-brand-600 hover:text-brand-700"
-                                                        aria-label={`Expand ${label}`}
-                                                      >
-                                                        ⋯
-                                                      </button>
-                                                    </span>
-                                                  ) : (
-                                                    <span>
-                                                      {valueStr}
-                                                    </span>
-                                                  )}
-                                                </div>
+                                              <div
+                                                dir={rowIsArabic ? 'rtl' : 'ltr'}
+                                                className={`text-sm font-semibold text-gray-800 whitespace-pre-wrap wrap-break-word leading-relaxed flex-1 ${rowIsArabic ? 'text-right' : 'text-left'}`}
+                                              >
+                                                {needsTruncate && !isFieldExpanded ? (
+                                                  <span className="inline-flex items-center gap-1">
+                                                    <span>{valueStr.slice(0, 40)}</span>
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => toggleField(itemKey)}
+                                                      className="text-brand-600 hover:text-brand-700 font-bold px-1 transition-colors"
+                                                      aria-label={`Expand ${label}`}
+                                                    >
+                                                      ...
+                                                    </button>
+                                                  </span>
+                                                ) : (
+                                                  <span>{valueStr}</span>
+                                                )}
                                               </div>
                                             </div>
-                                          );
-                                        })}
-                                      </div>
-                                    );
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  );
                                   })()}
                                 </div>
                               </div>
