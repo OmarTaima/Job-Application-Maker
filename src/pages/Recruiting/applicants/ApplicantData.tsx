@@ -35,7 +35,7 @@ import InterviewScheduleModal from '../../../components/modals/InterviewSchedule
 import CommentModal from '../../../components/modals/commentmodal';
 import InterviewSettingsModal from '../../../components/modals/InterviewSettingsModal';
 import StatusChangeModal from '../../../components/modals/StatusChangeModal';
-import StatusHistory from './StatusHistory';
+import StatusHistory from './StatusHistory.tsx';
 import CustomResponses from './CustomResponses';
 
 // Simple Quill editor integration (dynamic import to avoid react-quill)
