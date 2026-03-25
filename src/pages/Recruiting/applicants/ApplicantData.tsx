@@ -962,9 +962,14 @@ const ApplicantData = () => {
             return out.trim();
           };
 
-          const toEmail = emailOption === 'custom' ? customEmail || applicant.email : applicant.email;
-          const mailDefault = companyObj?.mailSettings?.defaultMail || companyObj?.email || '';
-          const fromEmail = mailDefault;
+          const toEmail = applicant.email;
+          // Fallback logic exactly matching the UI in InterviewScheduleModal
+          const mailDefault = companyObj?.settings?.mailSettings?.defaultMail || companyObj?.mailSettings?.defaultMail || companyObj?.contactEmail || companyObj?.email || '';
+          // We use notifCustomEmail for the fromEmail (sender) as the UI state might have been cleared.
+          let fromEmail = notifCustomEmail || mailDefault;
+          if (!fromEmail || fromEmail.trim() === '') {
+            console.warn('ApplicantData: Email sender is empty, using fallback support@yourdomain.com for safety', { mailDefault, notifCustomEmail, companyObj });
+          }
           const subject = interviewEmailSubject || `Interview Invitation`;
 
               const sanitizedBody = sanitizeMessageTemplate(messageTemplate || '');

@@ -3086,9 +3086,16 @@ const Applicants = () => {
             },
           },
           MuiCheckbox: {
+            defaultProps: {
+              size: 'large',
+            },
             styleOverrides: {
               root: {
                 color: isDarkMode ? '#667085' : '#98A2B3',
+                padding: '2px',
+                '& .MuiSvgIcon-root': {
+                  fontSize: '2rem',
+                },
                 '&.Mui-checked': {
                   color: '#e42e2b',
                 },
@@ -3114,10 +3121,29 @@ const Applicants = () => {
     data: filteredApplicants,
     displayColumnDefOptions: {
       'mrt-row-select': {
+        size: 90, // Even more width
+        muiTableHeadCellProps: {
+          align: 'center',
+          sx: {
+            padding: 0,
+            width: '90px',
+            minWidth: '90px',
+            maxWidth: '90px',
+          },
+        },
+        muiTableBodyCellProps: {
+          align: 'center',
+          sx: {
+            padding: 0,
+            width: '90px',
+            minWidth: '90px',
+            maxWidth: '90px',
+          },
+        },
         Cell: ({ row, table }: any) => {
           const href = getApplicantHref(row);
           return (
-            <div className="relative flex items-center justify-center">
+            <div className="relative flex items-center justify-center p-2">
               <a
                 href={href}
                 className="absolute inset-0 z-0 block"
