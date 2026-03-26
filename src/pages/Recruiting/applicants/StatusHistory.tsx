@@ -20,6 +20,31 @@ const formatDate = (dateString?: string) => {
   });
 };
 
+const getReadableMessageText = (value?: string) => {
+  if (!value) return '';
+
+  // Some messages are saved as escaped HTML (&lt;p&gt;...); decode first.
+  const rawValue = String(value);
+  const decoded = typeof document !== 'undefined'
+    ? (() => {
+      const textarea = document.createElement('textarea');
+      textarea.innerHTML = rawValue;
+      return textarea.value;
+    })()
+    : rawValue;
+
+  const withLineBreaks = decoded
+    .replace(/<\s*br\s*\/?>/gi, '\n')
+    .replace(/<\s*\/p\s*>\s*<\s*p\s*>/gi, '\n\n')
+    .replace(/<\s*\/div\s*>\s*<\s*div\s*>/gi, '\n\n')
+    .replace(/<[^>]*>/g, '');
+
+  return withLineBreaks
+    .replace(/\u00a0/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+};
+
 const getStatusColor = (status: string) => {
   switch (status) {
     case 'pending':
@@ -223,6 +248,7 @@ export default function StatusHistory({ applicant, loading = false }: Props) {
                   );
                 } else if (activity.type === 'message') {
                   const message = activity.data;
+                  const messageContent = getReadableMessageText(message.content || message.body || message.message);
                   return (
                     <div key={`message-${index}`} onClick={() => setExpandedHistory(expandedHistory === `message-${index}` ? null : `message-${index}`)} className="cursor-pointer rounded-lg border border-stroke p-4 transition hover:bg-gray-50 dark:border-strokedark dark:hover:bg-gray-800/50">
                       <div className="flex items-center justify-between">
@@ -232,8 +258,8 @@ export default function StatusHistory({ applicant, loading = false }: Props) {
                       <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">{formatDate(message.sentAt)}</p>
                       <p className="text-sm text-gray-600 dark:text-gray-400">By: {typeof message.sentBy === 'string' ? message.sentBy : message.sentBy?.fullName || message.sentBy?.email || 'Unknown'}</p>
                       {message.subject && <p className="mt-1 text-sm font-medium text-gray-700 dark:text-gray-300">{message.subject}</p>}
-                      {expandedHistory === `message-${index}` && (message.content || message.body || message.message) && (
-                        <div className="mt-3 border-t border-stroke pt-3 dark:border-strokedark"><p className="text-sm text-gray-700 dark:text-gray-300">{message.content || message.body || message.message}</p></div>
+                      {expandedHistory === `message-${index}` && messageContent && (
+                        <div className="mt-3 border-t border-stroke pt-3 dark:border-strokedark"><p className="whitespace-pre-line text-sm text-gray-700 dark:text-gray-300">{messageContent}</p></div>
                       )}
                     </div>
                   );
