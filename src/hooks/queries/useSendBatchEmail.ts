@@ -20,7 +20,7 @@ export function useSendBatchEmail() {
         from: typeof item.from === 'string' ? item.from.replace(/[<>]/g, '') : item.from,
       }));
 
-      return axiosInstance.post('/applicants/mail', body, {
+      return axiosInstance.post('/mail', body, {
         headers: {
           'Content-Type': 'application/json',
         },

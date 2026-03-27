@@ -18,7 +18,7 @@ export function useSendEmail() {
         from: typeof emailData.from === 'string' ? emailData.from.replace(/[<>]/g, '') : emailData.from,
       } as any;
 
-      return axiosInstance.post('/applicants/mail', payload);
+      return axiosInstance.post('/mail', payload);
     },
   });
 }
