@@ -181,6 +181,8 @@ export default function ApplicantsMobilePage(): JSX.Element {
     initialMobileFilters.submittedDesc
   );
   const [refreshing, setRefreshing] = useState(false);
+  const hasSearchQuery = query.trim().length > 0;
+  const normalizedSearchQuery = query.trim().toLowerCase();
 
   const { data: companies = [], refetch: refetchCompanies, isFetching: isCompaniesFetching } = useCompanies();
   const { user } = useAuth();
@@ -303,20 +305,22 @@ export default function ApplicantsMobilePage(): JSX.Element {
     const getApplicantJobId = (a: any) => normalizeId(a?.jobPositionId || a?.job);
 
     let list = Array.isArray(applicants) ? applicants.slice() : [];
-    if (companyFilters.length > 0) {
-      list = list.filter((a: any) => {
-        const cid = getApplicantCompanyId(a);
-        return cid ? companyFilters.includes(String(cid)) : false;
-      });
-    }
-    if (jobFilters.length > 0) {
-      list = list.filter((a: any) => {
-        const jid = getApplicantJobId(a);
-        return jid ? jobFilters.includes(String(jid)) : false;
-      });
+    if (!hasSearchQuery) {
+      if (companyFilters.length > 0) {
+        list = list.filter((a: any) => {
+          const cid = getApplicantCompanyId(a);
+          return cid ? companyFilters.includes(String(cid)) : false;
+        });
+      }
+      if (jobFilters.length > 0) {
+        list = list.filter((a: any) => {
+          const jid = getApplicantJobId(a);
+          return jid ? jobFilters.includes(String(jid)) : false;
+        });
+      }
     }
     return list;
-  }, [applicants, companyFilters, jobFilters, jobPositionMap]);
+  }, [applicants, companyFilters, jobFilters, jobPositionMap, hasSearchQuery]);
 
 
   // Keep selected job filters valid for selected companies.
@@ -542,6 +546,14 @@ export default function ApplicantsMobilePage(): JSX.Element {
 
   const baseFiltered = (displayedApplicants || []).filter((a) => {
 
+    if (hasSearchQuery) {
+      return (
+        (a.fullName || "").toLowerCase().includes(normalizedSearchQuery) ||
+        (a.email || "").toLowerCase().includes(normalizedSearchQuery) ||
+        (a.phone || "").toLowerCase().includes(normalizedSearchQuery)
+      );
+    }
+
     // status + trashed visibility
     if (statusFilters.length === 0) {
       // default 'All statuses' — hide trashed for everyone
@@ -572,17 +584,11 @@ export default function ApplicantsMobilePage(): JSX.Element {
         } catch (e) { return false; }
       }
     }
-    if (!query) return true;
-    const q = query.toLowerCase();
-    return (
-      (a.fullName || "").toLowerCase().includes(q) ||
-      (a.email || "").toLowerCase().includes(q) ||
-      (a.phone || "").toLowerCase().includes(q)
-    );
+    return true;
   });
 
   const filtered = useMemo(() => {
-    if (!duplicatesOnlyEnabled) return baseFiltered;
+    if (hasSearchQuery || !duplicatesOnlyEnabled) return baseFiltered;
     const duplicateLookup = buildApplicantDuplicateLookup(
       baseFiltered as any[],
       currentUserId,
@@ -616,7 +622,7 @@ export default function ApplicantsMobilePage(): JSX.Element {
       const aid = String((a as any)?._id || (a as any)?.id || '');
       return duplicateLookup.get(aid)?.isDuplicate === true;
     });
-  }, [baseFiltered, duplicatesOnlyEnabled, currentUserId, jobPositionMap]);
+  }, [baseFiltered, duplicatesOnlyEnabled, currentUserId, jobPositionMap, hasSearchQuery]);
 
   // sort filtered by submittedAt (newest first by default)
   const sortedFiltered = useMemo(() => {
