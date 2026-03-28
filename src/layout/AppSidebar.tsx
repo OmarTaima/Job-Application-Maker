@@ -26,6 +26,11 @@ const navItems: NavItem[] = [
   },
   {
     icon: <TaskIcon />,
+    name: "Mail Preview",
+    path: "/applicants/mail-preview",
+  },
+  {
+    icon: <TaskIcon />,
     name: "Company Management",
     subItems: [
       { name: "Create Company", path: "/recruiting", pro: false },
@@ -171,6 +176,7 @@ const AppSidebar: React.FC = () => {
       return subItems.filter((subItem) => {
         // Map menu items to their required permissions
         if (subItem.path === "/applicants") return hasPermission("Applicant Management", "read");
+        if (subItem.path === "/applicants/mail-preview") return hasPermission("Mail Management", "read");
         if (subItem.path === "/recruiting") return hasPermission("Company Management", "create");
         if (subItem.path === "/companies") return hasPermission("Company Management", "read");
         if (subItem.path === "/recruiting/company-settings") return hasPermission("Mail Management", "read");

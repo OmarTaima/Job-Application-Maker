@@ -117,10 +117,10 @@ export default function InterviewScheduleModal(props: Props) {
 
 
   // Template generation: build a default message depending on chosen notification channel(s)
-  const generateMessageTemplate = () => {
+  const generateMessageTemplate = (channels: typeof notificationChannels = notificationChannels) => {
     if (!applicant) return '';
 
-    const applicantName = applicant.fullName;
+    const applicantName = (applicant.fullName || '').trim() || 'Candidate';
     const interviewDate = interviewForm.date
       ? new Date(interviewForm.date).toLocaleDateString('en-US', {
           weekday: 'long',
@@ -130,45 +130,62 @@ export default function InterviewScheduleModal(props: Props) {
         })
       : '[Interview Date]';
     const interviewTime = interviewForm.time || '[Interview Time]';
-    const interviewType = interviewForm.type;
-    const location = interviewForm.location || 'our office';
-    const link = interviewForm.link || '[Video Link]';
+    const interviewType = interviewForm.type || 'phone';
+    const typeLabel = interviewType.charAt(0).toUpperCase() + interviewType.slice(1);
+    const location = (interviewForm.location || '').trim() || '[Location]';
+    const link = (interviewForm.link || '').trim();
+    const interviewDescription = (interviewForm.description || '').trim();
+    const interviewComment = (interviewForm.comment || '').trim();
 
     // Only one channel can be active at a time
-    if (notificationChannels.email) {
+    if (channels.email) {
       // Return HTML so Quill renders multiline content correctly
       const esc = escapeHtml;
-      const typeLabel = interviewType.charAt(0).toUpperCase() + interviewType.slice(1);
-      const detailItems = [
-        `<li>Date: ${esc(interviewDate)}</li>`,
-        `<li>Time: ${esc(interviewTime)}</li>`,
-        `<li>Type: ${esc(typeLabel)}</li>`,
+      const detailLines = [
+        `Date: ${esc(interviewDate)}`,
+        `Time: ${esc(interviewTime)}`,
+        `Type: ${esc(typeLabel)}`,
+        `Location: ${esc(location)}`,
       ];
-      if (interviewType === 'video') detailItems.push(`<li>Link: <a href="${esc(link)}">${esc(link)}</a></li>`);
-      if (interviewType === 'in-person') detailItems.push(`<li>Location: ${esc(location)}</li>`);
+      if (link) detailLines.push(`Video Link: ${esc(link)}`);
+      if (interviewDescription) detailLines.push(`Description: ${esc(interviewDescription)}`);
+      if (interviewComment) detailLines.push(`Comment: ${esc(interviewComment)}`);
+      const detailsBlock = detailLines.map((line) => `<p>${line}</p>`).join('');
 
       return (
         `<p>Dear ${esc(applicantName)},</p>` +
         `<p>We are pleased to invite you for an interview for the position you applied for.</p>` +
-        `<p><strong>Interview Details:</strong></p><ul>${detailItems.join('')}</ul>` +
+        `<p><strong>Interview Details:</strong></p>${detailsBlock}` +
         `<p>Please confirm your availability at your earliest convenience.</p>` +
         `<p>Best regards,<br/>HR Team</p>`
       );
-    } else if (notificationChannels.whatsapp) {
-      return `Hi ${applicantName}! 👋\n\nGreat news! We'd like to invite you for an interview:\n\n📅 ${interviewDate}\n⏰ ${interviewTime}\n${
-        interviewType === 'video'
-          ? `🎥 ${link}`
-          : interviewType === 'in-person'
-          ? `📍 ${location}`
-          : `📞 Phone Interview`
-      }\n\nPlease confirm if you're available. Looking forward to meeting you!`;
-    } else if (notificationChannels.sms) {
-      return `Hi ${applicantName}, You're invited for a ${interviewType} interview on ${interviewDate} at ${interviewTime}. ${
-        interviewType === 'in-person' ? `Location: ${location}` : ''
-      }Please confirm. - HR Team`;
+    } else if (channels.whatsapp) {
+      const detailLines = [
+        `📅 Date: ${interviewDate}`,
+        `⏰ Time: ${interviewTime}`,
+        `🧭 Type: ${typeLabel}`,
+        `📍 Location: ${location}`,
+      ];
+      if (link) detailLines.push(`🎥 Video Link: ${link}`);
+      if (interviewDescription) detailLines.push(`📝 Description: ${interviewDescription}`);
+      if (interviewComment) detailLines.push(`💬 Comment: ${interviewComment}`);
+
+      return `Hi ${applicantName}! 👋\n\nGreat news! We'd like to invite you for an interview.\n\nInterview details:\n${detailLines.join('\n')}\n\nPlease confirm if you're available. Looking forward to meeting you!`;
+    } else if (channels.sms) {
+      const detailParts = [`Date: ${interviewDate}`, `Time: ${interviewTime}`, `Type: ${typeLabel}`, `Location: ${location}`];
+      if (link) detailParts.push(`Video Link: ${link}`);
+      if (interviewDescription) detailParts.push(`Description: ${interviewDescription}`);
+
+      return `Hi ${applicantName}, you're invited for an interview. Interview details: ${detailParts.join(' | ')}.${
+        interviewComment ? ` Comment: ${interviewComment}.` : ''
+      } Please confirm. - HR Team`;
     }
 
     return '';
+  };
+
+  const handleRegenerateTemplate = () => {
+    setMessageTemplate(generateMessageTemplate());
   };
 
   const company = (applicant && (applicant.company || applicant.companyObj)) || null;
@@ -488,17 +505,17 @@ export default function InterviewScheduleModal(props: Props) {
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-400">Send notification via:</label>
               <div className="flex flex-wrap gap-3">
                 <label className="group relative inline-flex items-center gap-3 cursor-pointer rounded-lg border border-gray-300 bg-white px-4 py-2.5 transition-all hover:border-brand-400 hover:bg-brand-50/50 dark:border-gray-600 dark:bg-gray-800 dark:hover:border-brand-600 dark:hover:bg-brand-900/20">
-                  <input type="radio" name="notificationChannel" checked={notificationChannels.email} onChange={() => { setNotificationChannels({ email: true, sms: false, whatsapp: false }); setEmailOption('company'); setMessageTemplate(generateMessageTemplate()); }} className="peer sr-only" />
+                  <input type="radio" name="notificationChannel" checked={notificationChannels.email} onChange={() => { const nextChannels = { email: true, sms: false, whatsapp: false }; setNotificationChannels(nextChannels); setEmailOption('company'); setMessageTemplate(generateMessageTemplate(nextChannels)); }} className="peer sr-only" />
                   <div className="h-5 w-5 rounded-full border-2 border-gray-300 bg-white transition-all peer-checked:border-brand-600 peer-checked:bg-brand-600 dark:border-gray-600 dark:bg-gray-700 dark:peer-checked:border-brand-500 dark:peer-checked:bg-brand-500 flex items-center justify-center"><div className="h-2 w-2 rounded-full bg-white scale-0 peer-checked:scale-100 transition-transform"></div></div>
                   <span className="text-sm font-medium text-gray-700 dark:text-gray-300">📧 Email</span>
                 </label>
                 <label className="group relative inline-flex items-center gap-3 cursor-pointer rounded-lg border border-gray-300 bg-white px-4 py-2.5 transition-all hover:border-brand-400 hover:bg-brand-50/50 dark:border-gray-600 dark:bg-gray-800 dark:hover:border-brand-600 dark:hover:bg-brand-900/20">
-                  <input type="radio" name="notificationChannel" checked={notificationChannels.sms} onChange={() => { setNotificationChannels({ email: false, sms: true, whatsapp: false }); setPhoneOption('company'); setMessageTemplate(generateMessageTemplate()); }} className="peer sr-only" />
+                  <input type="radio" name="notificationChannel" checked={notificationChannels.sms} onChange={() => { const nextChannels = { email: false, sms: true, whatsapp: false }; setNotificationChannels(nextChannels); setPhoneOption('company'); setMessageTemplate(generateMessageTemplate(nextChannels)); }} className="peer sr-only" />
                   <div className="h-5 w-5 rounded-full border-2 border-gray-300 bg-white transition-all peer-checked:border-brand-600 peer-checked:bg-brand-600 dark:border-gray-600 dark:bg-gray-700 dark:peer-checked:border-brand-500 dark:peer-checked:bg-brand-500 flex items-center justify-center"><div className="h-2 w-2 rounded-full bg-white scale-0 peer-checked:scale-100 transition-transform"></div></div>
                   <span className="text-sm font-medium text-gray-700 dark:text-gray-300">💬 SMS<span className="ml-2 inline-block rounded px-1.5 py-0.5 text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700">Soon</span></span>
                 </label>
                 <label className="group relative inline-flex items-center gap-3 cursor-pointer rounded-lg border border-gray-300 bg-white px-4 py-2.5 transition-all hover:border-brand-400 hover:bg-brand-50/50 dark:border-gray-600 dark:bg-gray-800 dark:hover:border-brand-600 dark:hover:bg-brand-900/20">
-                  <input type="radio" name="notificationChannel" checked={notificationChannels.whatsapp} onChange={() => { setNotificationChannels({ email: false, sms: false, whatsapp: true }); setMessageTemplate(generateMessageTemplate()); }} className="peer sr-only" />
+                  <input type="radio" name="notificationChannel" checked={notificationChannels.whatsapp} onChange={() => { const nextChannels = { email: false, sms: false, whatsapp: true }; setNotificationChannels(nextChannels); setMessageTemplate(generateMessageTemplate(nextChannels)); }} className="peer sr-only" />
                   <div className="h-5 w-5 rounded-full border-2 border-gray-300 bg-white transition-all peer-checked:border-brand-600 peer-checked:bg-brand-600 dark:border-gray-600 dark:bg-gray-700 dark:peer-checked:border-brand-500 dark:peer-checked:bg-brand-500 flex items-center justify-center"><div className="h-2 w-2 rounded-full bg-white scale-0 peer-checked:scale-100 transition-transform"></div></div>
                   <span className="text-sm font-medium text-gray-700 dark:text-gray-300">📱 WhatsApp<span className="ml-2 inline-block rounded px-1.5 py-0.5 text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700">Soon</span></span>
                 </label>
@@ -584,7 +601,7 @@ export default function InterviewScheduleModal(props: Props) {
             {(notificationChannels.email || notificationChannels.sms || notificationChannels.whatsapp) && (
               <div className="mt-4">
                 <Label htmlFor="message-template">Message Template
-                  <button type="button" onClick={() => setMessageTemplate(generateMessageTemplate())} className="ml-2 text-xs text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300">🔄 Regenerate</button>
+                  <button type="button" onClick={handleRegenerateTemplate} className="ml-2 text-xs text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300">🔄 Regenerate</button>
                 </Label>
                 {notificationChannels.email ? (
                   <>

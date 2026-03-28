@@ -330,7 +330,7 @@ const Applicants = () => {
     isFetching: isCompaniesFetching,
     isFetched: isCompaniesFetched,
   } = useCompanies(companyId as any);
-  const selectedApplicantEmails = useMemo(() => {
+  const selectedApplicantRecipients = useMemo(() => {
     try {
       const ids = new Set(selectedApplicantIds);
       return applicants
@@ -339,8 +339,18 @@ const Applicants = () => {
             typeof a._id === 'string' ? a._id : a._id?._id || a.id || a._id;
           return ids.has(id);
         })
-        .map((a: any) => a.email)
-        .filter(Boolean);
+        .map((a: any) => {
+          const applicantId =
+            typeof a._id === 'string' ? a._id : a._id?._id || a.id || undefined;
+          const email = typeof a.email === 'string' ? a.email.trim() : '';
+          let jobPositionId = a.jobPositionId || (a.jobPosition && typeof a.jobPosition === 'object' ? a.jobPosition._id : a.jobPosition);
+          if (jobPositionId && typeof jobPositionId === 'object') {
+            jobPositionId = jobPositionId._id || jobPositionId.id || String(jobPositionId);
+          }
+          const fullName = a.fullName || a.name || a.firstName || '';
+          return { email, applicant: applicantId, jobPositionId: typeof jobPositionId === 'string' ? jobPositionId : undefined, applicantName: fullName };
+        })
+        .filter((item: any) => Boolean(item.email));
     } catch (e) {
       return [];
     }
@@ -3524,11 +3534,11 @@ const Applicants = () => {
                   <button
                     onClick={() => setShowBulkModal(true)}
                     disabled={
-                      isProcessing || selectedApplicantEmails.length === 0
+                      isProcessing || selectedApplicantRecipients.length === 0
                     }
                     className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {`Send Mail (${selectedApplicantEmails.length})`}
+                    {`Send Mail (${selectedApplicantRecipients.length})`}
                   </button>
                   <button
                     onClick={handleBulkDelete}
@@ -3551,7 +3561,7 @@ const Applicants = () => {
             <BulkMessageModal
               isOpen={showBulkModal}
               onClose={() => setShowBulkModal(false)}
-              recipients={selectedApplicantEmails}
+              recipients={selectedApplicantRecipients}
               companyId={selectedApplicantCompanyId}
               company={selectedApplicantCompany}
               onSuccess={() => {

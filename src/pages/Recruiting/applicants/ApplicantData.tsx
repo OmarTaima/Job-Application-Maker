@@ -659,10 +659,10 @@ const ApplicantData = () => {
   const inlineStyleHtml = (html: string) => {
     if (!html) return '';
     let out = String(html);
-    out = out.replace(/<p(?![^>]*style)/g, '<p style="margin:0 0 12px;color:#444;">');
-    out = out.replace(/<ul(?![^>]*style)/g, '<ul style="margin:0 0 12px 18px;padding-left:18px;">');
-    out = out.replace(/<ol(?![^>]*style)/g, '<ol style="margin:0 0 12px 18px;padding-left:18px;">');
-    out = out.replace(/<li(?![^>]*style)/g, '<li style="margin-bottom:6px;">');
+    out = out.replace(/<p\b([^>]*)>/g, (match, attrs) => attrs.includes('style=') ? match : `<p style="margin:0 0 12px;color:#444;"${attrs}>`);
+    out = out.replace(/<ul\b([^>]*)>/g, (match, attrs) => attrs.includes('style=') ? match : `<ul style="margin:0 0 12px 18px;padding-left:18px;"${attrs}>`);
+    out = out.replace(/<ol\b([^>]*)>/g, (match, attrs) => attrs.includes('style=') ? match : `<ol style="margin:0 0 12px 18px;padding-left:18px;"${attrs}>`);
+    out = out.replace(/<li\b([^>]*)>/g, (match, attrs) => attrs.includes('style=') ? match : `<li style="margin-bottom:6px;"${attrs}>`);
     return out;
   };
 
@@ -723,8 +723,8 @@ const ApplicantData = () => {
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; background-color: #f5f5f5; margin:0; padding:0; }
     .container { max-width:600px; margin:24px auto; background:#fff; border-radius:8px; overflow:hidden; }
-    .header { padding:28px 30px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); text-align:center; }
-    .header h1 { color:#fff; margin:0; font-size:20px; font-weight:600; }
+    .header { padding:24px 30px; background:#fff; border-bottom:1px solid #e5e7eb; text-align:center; }
+    .header h1 { color:#111827; margin:0; font-size:20px; font-weight:700; }
     .content { padding:28px 30px; color:#222; }
     .footer { padding:18px 30px; color:#999; font-size:12px; text-align:center; }
   </style>
@@ -735,7 +735,6 @@ const ApplicantData = () => {
       <div class="content">
       <div style="margin-top:12px;margin-bottom:18px;">${bodyHtml}</div>
     </div>
-    <div class="footer">This is an automated message from our HR system. Please do not reply to this email.</div>
   </div>
 </body>
 </html>`;
@@ -916,13 +915,13 @@ const ApplicantData = () => {
             if (!html) return '';
             let out = String(html);
             // style paragraphs
-            out = out.replace(/<p(?![^>]*style)/g, '<p style="margin:0 0 12px;color:#444;">');
+            out = out.replace(/<p\b([^>]*)>/g, (match, attrs) => attrs.includes('style=') ? match : `<p style="margin:0 0 12px;color:#444;"${attrs}>`);
             // style unordered lists
-            out = out.replace(/<ul(?![^>]*style)/g, '<ul style="margin:0 0 12px 18px;padding-left:18px;">');
+            out = out.replace(/<ul\b([^>]*)>/g, (match, attrs) => attrs.includes('style=') ? match : `<ul style="margin:0 0 12px 18px;padding-left:18px;"${attrs}>`);
             // style ordered lists
-            out = out.replace(/<ol(?![^>]*style)/g, '<ol style="margin:0 0 12px 18px;padding-left:18px;">');
+            out = out.replace(/<ol\b([^>]*)>/g, (match, attrs) => attrs.includes('style=') ? match : `<ol style="margin:0 0 12px 18px;padding-left:18px;"${attrs}>`);
             // style list items
-            out = out.replace(/<li(?![^>]*style)/g, '<li style="margin-bottom:6px;">');
+            out = out.replace(/<li\b([^>]*)>/g, (match, attrs) => attrs.includes('style=') ? match : `<li style="margin-bottom:6px;"${attrs}>`);
             return out;
           };
 
@@ -985,8 +984,8 @@ const ApplicantData = () => {
 </head>
 <body style="font-family: Arial, sans-serif; padding: 20px; margin: 0; background-color: #f5f5f5;">
   <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden;">
-    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center;">
-      <h1 style="color: #ffffff; margin: 0; font-size: 24px;">${subject}</h1>
+    <div style="background-color: #ffffff; border-bottom: 1px solid #e5e7eb; padding: 24px 30px; text-align: center;">
+      <h1 style="color: #111827; margin: 0; font-size: 22px; font-weight: 700;">${subject}</h1>
     </div>
     <div style="padding: 30px;">
       <div style="font-size: 16px; line-height: 1.6; color: #444;">
@@ -998,9 +997,32 @@ const ApplicantData = () => {
 </html>
 `;
 
+          const resolveJobPositionId = (value: any): string | undefined => {
+            if (!value) return undefined;
+            if (Array.isArray(value)) {
+              for (const item of value) {
+                const id = resolveJobPositionId(item);
+                if (id) return id;
+              }
+              return undefined;
+            }
+            if (typeof value === 'string') return value;
+            if (typeof value === 'object') {
+              if (typeof value._id === 'string') return value._id;
+              if (typeof value.id === 'string') return value.id;
+            }
+            return undefined;
+          };
+
+          const jobPositionId =
+            resolveJobPositionId(applicant?.jobPositionId) ||
+            resolveJobPositionId(applicant?.jobPosition);
+
           // Send email via mutation; include company id per backend schema
           await sendEmailMutation.mutateAsync({
             company: companyObj?._id,
+            jobPosition: jobPositionId,
+            applicant: applicant?._id,
             to: toEmail,
             from: fromEmail,
             subject,

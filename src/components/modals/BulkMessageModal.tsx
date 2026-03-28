@@ -61,7 +61,7 @@ const BulkMessageModal = ({
 }: {
   isOpen: boolean;
   onClose: () => void;
-  recipients: string[];
+  recipients: Array<string | { email?: string; applicant?: string; _id?: string; id?: string; jobPositionId?: string; jobPosition?: any; applicantName?: string; name?: string; fullName?: string }>;
   companyId?: string | null;
   company?: any;
   onSuccess?: () => void;
@@ -74,6 +74,8 @@ const BulkMessageModal = ({
   const [newLocalEmail, setNewLocalEmail] = useState('');
   const [companySettings, setCompanySettings] = useState<any | null>(null);
   const [senderOptions, setSenderOptions] = useState<Array<{value:string;label:string}>>([]);
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewHtml, setPreviewHtml] = useState('');
 
   const sendBatch = useSendBatchEmail();
 
@@ -89,6 +91,31 @@ const BulkMessageModal = ({
     const parts = String(email).split('@');
     return parts.length > 1 ? parts.slice(1).join('@') : '';
   };
+
+  const buildEmailHtml = (subject: string, body: string, applicantName?: string) => `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+</head>
+<body style="font-family: Arial, sans-serif; padding: 20px; margin: 0; background-color: #f5f5f5;">
+  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden;">
+    <div style="background-color: #ffffff; border-bottom: 1px solid #e5e7eb; padding: 24px 30px; text-align: center;">
+      <h1 style="color: #111827; margin: 0; font-size: 22px; font-weight: 700;">${subject || 'No Subject'}</h1>
+    </div>
+    <div style="padding: 30px;">
+      <p style="font-size: 16px; color: #333; margin-bottom: 20px;">Dear ${applicantName || 'Applicant'},</p>
+      <div style="font-size: 16px; line-height: 1.6; color: #444;">
+        ${body || ''}
+      </div>
+      <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;"/>
+    </div>
+  </div>
+</body>
+</html>
+`;
 
   const companyDomain =
     companySettings?.mailSettings?.companyDomain ||
@@ -253,6 +280,16 @@ const BulkMessageModal = ({
     return () => { mounted = false; };
   }, [isOpen, companyId]);
 
+  const handlePreview = () => {
+    if (!form.body?.trim()) {
+      setError('Body is required to preview email');
+      return;
+    }
+    const html = buildEmailHtml(form.subject, form.body);
+    setPreviewHtml(html);
+    setShowPreview(true);
+  };
+
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!recipients || recipients.length === 0) {
@@ -345,16 +382,49 @@ const BulkMessageModal = ({
       }
 
       // Build simple HTML email similar to MessageModal
-      const batch = recipients.map((to) => ({
+      const normalizedRecipients = recipients
+        .map((item) => {
+          if (typeof item === 'string') {
+            return { to: item, applicant: undefined as string | undefined, jobPositionId: undefined as string | undefined };
+          }
+
+          let jobPositionId = item.jobPositionId || (item.jobPosition && typeof item.jobPosition === 'object' ? item.jobPosition._id : item.jobPosition);
+          
+          if (jobPositionId && typeof jobPositionId === 'object') {
+            jobPositionId = jobPositionId._id || jobPositionId.id || String(jobPositionId);
+          }
+
+          return {
+            to: String(item?.email || '').trim(),
+            applicant: item?.applicant || item?._id || item?.id,
+            jobPositionId: typeof jobPositionId === 'string' ? jobPositionId : undefined,
+            applicantName: item?.applicantName || item?.name || item?.fullName,
+          };
+        })
+        .filter((item) => item.to);
+
+      const batch = normalizedRecipients.map(({ to, applicant, jobPositionId, applicantName }) => ({
         to,
         from: (typeof fromAddress === 'string' && fromAddress.includes('<')) ? fromAddress.replace(/.*<\s*([^>]+)\s*>.*/, '$1') : String(fromAddress).replace(/[<>]/g, ''),
         subject: form.subject,
-        html: `<!doctype html><html><body>${form.body}</body></html>`,
+        html: buildEmailHtml(form.subject, form.body, applicantName),
+        applicant,
+        jobPosition: jobPositionId,
       }));
 
-      // Send the batch payload wrapped with company id as required by backend schema
-      const companyToSend = companyId ?? (company && (company._id || (company as any).id)) ?? undefined;
-      await sendBatch.mutateAsync({ company: companyToSend, batch });
+      const companyToSend =
+        companyId ||
+        (company && (company._id || company.id)) ||
+        (companySettings && (companySettings._id || companySettings.id));
+
+      if (!companyToSend) {
+        setError('Company is required to send batch email');
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Send payload as { company, batch } to match backend validation schema.
+      await sendBatch.mutateAsync({ company: String(companyToSend), batch });
 
       await Swal.fire({ title: 'Success', text: `Email queued for ${recipients.length} recipient(s)`, icon: 'success', timer: 2000, showConfirmButton: false });
       onClose();
@@ -368,6 +438,7 @@ const BulkMessageModal = ({
   };
 
   return (
+    <>
     <Modal isOpen={isOpen} onClose={() => { onClose(); setError(''); }} className="max-w-2xl p-6" closeOnBackdrop={false}>
       <form onSubmit={handleSubmit} className="space-y-6">
         <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Send Email To {recipients.length} recipient(s)</h2>
@@ -439,10 +510,47 @@ const BulkMessageModal = ({
 
         <div className="flex justify-end gap-3">
           <button type="button" onClick={() => onClose()} className="rounded-lg border border-stroke px-6 py-2" disabled={isSubmitting}>Cancel</button>
+
+          <button
+              type="button"
+              onClick={handlePreview}
+              className="rounded-lg border border-stroke px-6 py-2 hover:bg-gray-100 dark:border-strokedark dark:hover:bg-gray-800"
+              disabled={isSubmitting}
+            >
+              Preview Email
+          </button>
+
           <button type="submit" className="rounded-lg bg-purple-600 px-6 py-2 text-white" disabled={isSubmitting}>{isSubmitting ? 'Sending...' : `Send to ${recipients.length}`}</button>
         </div>
       </form>
     </Modal>
+
+    <Modal
+      isOpen={showPreview}
+      onClose={() => setShowPreview(false)}
+      className="max-w-3xl p-6"
+    >
+      <div className="space-y-4">
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Email Preview</h2>
+        <div className="border rounded p-2 bg-white dark:bg-gray-800" style={{ maxHeight: '70vh', overflow: 'auto' }}>
+          <iframe
+            srcDoc={previewHtml}
+            title="Message Email Preview"
+            className="w-full min-h-[560px] rounded border-none"
+          />
+        </div>
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={() => setShowPreview(false)}
+            className="rounded-lg border border-stroke px-4 py-2 hover:bg-gray-100 dark:border-strokedark dark:hover:bg-gray-800"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </Modal>
+    </>
   );
 };
 

@@ -84,6 +84,8 @@ const MessageModal = ({
   });
   const [messageError, setMessageError] = useState('');
   const [isSubmittingMessage, setIsSubmittingMessage] = useState(false);
+  const [showEmailPreview, setShowEmailPreview] = useState(false);
+  const [previewHtml, setPreviewHtml] = useState('');
 
   // Sender selection states
   const [senderOption, setSenderOption] = useState<'company' | 'available' | 'custom'>('company');
@@ -280,6 +282,51 @@ const MessageModal = ({
   const sendEmailMutation = useSendEmail(); // New email mutation
   const updateCompanySettings = useUpdateCompanySettings();
 
+  const buildEmailHtml = (subject: string, body: string, applicantName?: string) => `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+</head>
+<body style="font-family: Arial, sans-serif; padding: 20px; margin: 0; background-color: #f5f5f5;">
+  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden;">
+    <div style="background-color: #ffffff; border-bottom: 1px solid #e5e7eb; padding: 24px 30px; text-align: center;">
+      <h1 style="color: #111827; margin: 0; font-size: 22px; font-weight: 700;">${subject}</h1>
+    </div>
+    <div style="padding: 30px;">
+      <p style="font-size: 16px; color: #333; margin-bottom: 20px;">Dear ${applicantName || 'Applicant'},</p>
+      <div style="font-size: 16px; line-height: 1.6; color: #444;">
+        ${body || ''}
+      </div>
+      <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;"/>
+    </div>
+  </div>
+</body>
+</html>
+`;
+
+  const handlePreviewEmail = () => {
+    if (messageForm.type !== 'email') return;
+    if (!messageForm.body?.trim()) {
+      setMessageError('Message body is required to preview email');
+      return;
+    }
+
+    const subjectForPreview = messageForm.subject?.trim() || 'No Subject';
+    const html = buildEmailHtml(subjectForPreview, messageForm.body || '', applicant?.fullName);
+    setPreviewHtml(html);
+    setShowEmailPreview(true);
+  };
+
+  const handleCloseMessageModal = () => {
+    onClose();
+    setMessageError('');
+    setShowEmailPreview(false);
+    setPreviewHtml('');
+  };
+
   const handleMessageSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!id || !applicant) return;
@@ -389,53 +436,28 @@ const MessageModal = ({
         // Always use only the email address in the From header (no company name prefix)
         const companyConfig = (typeof fromAddr === 'string' && fromAddr.includes('<')) ? fromAddr.replace(/.*<\s*([^>]+)\s*>.*/, '$1') : String(fromAddr).replace(/[<>]/g, '');
 
-        // Replace your current emailHtml with this:
-        const emailHtml = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${messageForm.subject}</title>
-</head>
-<body style="font-family: Arial, sans-serif; padding: 20px; margin: 0; background-color: #f5f5f5;">
-  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden;">
-    <!-- Header -->
-    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center;">
-      <h1 style="color: #ffffff; margin: 0; font-size: 24px;">${messageForm.subject}</h1>
-    </div>
-    
-    <!-- Content -->
-    <div style="padding: 30px;">
-      <p style="font-size: 16px; color: #333; margin-bottom: 20px;">Dear ${applicant.fullName || 'Applicant'},</p>
-      
-        <div style="font-size: 16px; line-height: 1.6; color: #444;">
-          ${messageForm.body || ''}
-        </div>
-      
-      <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;"/>
-      
-      <p style="color: #999; font-size: 12px; text-align: center;">
-        This is an automated message from our HR system.<br/>
-        Please do not reply to this email.
-      </p>
-    </div>
-  </div>
-</body>
-</html>
-`;
+        const emailHtml = buildEmailHtml(messageForm.subject, messageForm.body || '', applicant?.fullName);
 
         // Send email via new service
         // include company id per backend schema
         const companyToSend = (company && (company._id || (company as any).id)) || companyIdForQuery || undefined;
+        let jobPositionId = applicant?.jobPositionId || (applicant?.jobPosition && typeof applicant.jobPosition === 'object' ? applicant.jobPosition._id : applicant?.jobPosition);
+        
+        // Ensure jobPositionId is sent as a string if it's an object somehow
+        if (jobPositionId && typeof jobPositionId === 'object') {
+          jobPositionId = jobPositionId._id || jobPositionId.id || String(jobPositionId);
+        }
+
         await sendEmailMutation.mutateAsync({
           company: companyToSend,
+          applicant: applicant?._id,
           to: applicant.email,
           from: companyConfig,
           subject: messageForm.subject,
           html: emailHtml,
-        });
-        console.debug('MessageModal: sendEmail payload:', { company: companyToSend, to: applicant.email, from: companyConfig, subject: messageForm.subject });
+          jobPosition: typeof jobPositionId === 'string' ? jobPositionId : undefined,
+        } as any);
+        console.debug('MessageModal: sendEmail payload:', { company: companyToSend, to: applicant.email, from: companyConfig, subject: messageForm.subject, jobPosition: jobPositionId });
       }
 
       // 3. Save to messages (old functionality)
@@ -478,12 +500,10 @@ const MessageModal = ({
   };
 
   return (
+    <>
     <Modal
       isOpen={isOpen}
-      onClose={() => {
-        onClose();
-        setMessageError('');
-      }}
+      onClose={handleCloseMessageModal}
       className="max-w-2xl p-6"
       closeOnBackdrop={false}
     >
@@ -642,12 +662,22 @@ const MessageModal = ({
         <div className="flex justify-end gap-3">
           <button
             type="button"
-            onClick={() => onClose()}
+            onClick={handleCloseMessageModal}
             className="rounded-lg border border-stroke px-6 py-2 hover:bg-gray-100 dark:border-strokedark dark:hover:bg-gray-800"
             disabled={isSubmittingMessage}
           >
             Cancel
           </button>
+          {messageForm.type === 'email' && (
+            <button
+              type="button"
+              onClick={handlePreviewEmail}
+              className="rounded-lg border border-stroke px-6 py-2 hover:bg-gray-100 dark:border-strokedark dark:hover:bg-gray-800"
+              disabled={isSubmittingMessage}
+            >
+              Preview Email
+            </button>
+          )}
           <button
             type="submit"
             className="rounded-lg bg-purple-600 px-6 py-2 text-white hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
@@ -688,6 +718,34 @@ const MessageModal = ({
         </div>
       </form>
     </Modal>
+    <Modal
+      isOpen={showEmailPreview}
+      onClose={() => {
+        setShowEmailPreview(false);
+      }}
+      className="max-w-3xl p-6"
+    >
+      <div className="space-y-4">
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Email Preview</h2>
+        <div className="border rounded p-2 bg-white dark:bg-gray-800" style={{ maxHeight: '70vh', overflow: 'auto' }}>
+          <iframe
+            srcDoc={previewHtml}
+            title="Message Email Preview"
+            className="w-full min-h-[560px] rounded border-none"
+          />
+        </div>
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={() => setShowEmailPreview(false)}
+            className="rounded-lg border border-stroke px-4 py-2 hover:bg-gray-100 dark:border-strokedark dark:hover:bg-gray-800"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </Modal>
+    </>
   );
 };
 

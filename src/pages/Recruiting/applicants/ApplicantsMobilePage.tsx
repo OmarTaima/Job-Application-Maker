@@ -714,13 +714,25 @@ export default function ApplicantsMobilePage(): JSX.Element {
   const deleteMutation = useDeleteApplicant();
   const updateStatusMutation = useUpdateApplicantStatus();
 
-  const selectedApplicantEmails = useMemo(() => {
+  const selectedApplicantRecipients = useMemo(() => {
     try {
       const ids = new Set(selectedApplicantIds);
       return (Array.isArray(applicants) ? applicants : [])
         .filter((a: any) => ids.has(normalizeIdGlobal(a._id) || normalizeIdGlobal(a.id)))
-        .map((a: any) => a.email)
-        .filter(Boolean);
+        .map((a: any) => {
+          let jobPositionId = a.jobPositionId || (a.jobPosition && typeof a.jobPosition === 'object' ? a.jobPosition._id : a.jobPosition);
+          if (jobPositionId && typeof jobPositionId === 'object') {
+            jobPositionId = jobPositionId._id || jobPositionId.id || String(jobPositionId);
+          }
+          const fullName = a.fullName || a.name || a.firstName || '';
+          return {
+            email: typeof a.email === 'string' ? a.email.trim() : '',
+            applicant: normalizeIdGlobal(a._id) || normalizeIdGlobal(a.id),
+            jobPositionId: typeof jobPositionId === 'string' ? jobPositionId : undefined,
+            applicantName: fullName,
+          }
+        })
+        .filter((item: any) => Boolean(item.email));
     } catch (e) { return []; }
   }, [selectedApplicantIds, applicants]);
 
@@ -1503,7 +1515,7 @@ export default function ApplicantsMobilePage(): JSX.Element {
       <BulkMessageModal
         isOpen={showBulkModal}
         onClose={() => setShowBulkModal(false)}
-        recipients={selectedApplicantEmails}
+        recipients={selectedApplicantRecipients}
         companyId={selectedApplicantCompanyId || undefined}
         company={selectedApplicantCompany}
         onSuccess={() => {

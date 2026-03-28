@@ -39,6 +39,7 @@ const CreateSavedField = lazy(() => import("./pages/Recruiting/savedFields/Creat
 const Applicants = lazy(() => import("./pages/Recruiting/applicants/Applicants"));
 const ApplicantData = lazy(() => import("./pages/Recruiting/applicants/ApplicantData"));
 const ApplicantsMobilePage = lazy(() => import("./pages/Recruiting/applicants/ApplicantsMobilePage"));
+const MailPreview = lazy(() => import("./pages/Recruiting/applicants/MailPreview"));
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import PermissionProtectedRoute from "./components/auth/PermissionProtectedRoute";
 
@@ -72,6 +73,16 @@ export default function App() {
               />
               <Route path="applicants" element={<Applicants />} />
               <Route path="applicants/mobile" element={<ApplicantsMobilePage />} />
+              <Route
+                element={
+                  <PermissionProtectedRoute
+                    requiredPermissions={["Mail Management"]}
+                    accessLevel="read"
+                  />
+                }
+              >
+                <Route path="applicants/mail-preview" element={<MailPreview />} />
+              </Route>
               <Route path="applicant-details/:id" element={<ApplicantData />} />
               <Route path="recruiting/saved-fields" element={<SavedFields />} />
               <Route path="recruiting/saved-fields/preview/:fieldId" element={<SavedFieldsPreview />} />
