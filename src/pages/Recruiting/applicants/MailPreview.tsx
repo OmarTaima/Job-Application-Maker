@@ -1,8 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
 	Building2,
 	Briefcase,
+	ChevronLeft,
+	ChevronRight,
 	Clock3,
 	Mail,
 	MessageSquareText,
@@ -118,6 +120,7 @@ const STATUS_OPTIONS: Array<{ key: 'all' | MailStatus; label: string }> = [
 ];
 
 const MAIL_POLL_INTERVAL_MS = 30 * 1000;
+const MAIL_LIST_PAGE_SIZE = 8;
 
 const formatDateTime = (value: string) =>
 	new Date(value).toLocaleString('en-US', {
@@ -307,6 +310,7 @@ export default function MailPreview() {
 	const [statusFilter, setStatusFilter] = useState<'all' | MailStatus>('all');
 	const [searchTerm, setSearchTerm] = useState('');
 	const [selectedMailId, setSelectedMailId] = useState('');
+	const [mailPage, setMailPage] = useState(1);
 
 	// Get user's assigned companies if not super admin
 	const assignedCompanyIds = useMemo(() => {
@@ -378,16 +382,50 @@ export default function MailPreview() {
 	const { data: apiResponse, isLoading } = useQuery<ApiMailResponse>({
 		queryKey: ['mail-logs', queryCompanyIds.join(',')],
 		queryFn: async () => {
-			const params: Record<string, any> = { PageCount: 'all' };
+			const baseParams: Record<string, string> = { PageCount: 'all' };
 
-			if (queryCompanyIds.length > 0) {
-				const companyIds = queryCompanyIds.join(',');
-				params.companyId = companyIds;
-				params.company = companyIds;
+			if (queryCompanyIds.length <= 1) {
+				if (queryCompanyIds.length === 1) {
+					const companyId = queryCompanyIds[0];
+					baseParams.companyId = companyId;
+				}
+
+				const res = await axiosInstance.get<ApiMailResponse>('/mail', { params: baseParams });
+				return res.data;
 			}
 
-			const res = await axiosInstance.get('/mail', { params });
-			return res.data;
+			// For multi-company users, request each company separately and merge on the client.
+			const responses = await Promise.all(
+				queryCompanyIds.map((companyId) =>
+					axiosInstance.get<ApiMailResponse>('/mail', {
+						params: {
+							...baseParams,
+							companyId,
+							company: companyId,
+						},
+					}),
+				),
+			);
+
+			const mergedMap = new Map<string, ApiMailRecord>();
+			responses.forEach((response) => {
+				(response.data?.data || []).forEach((mail) => {
+					mergedMap.set(mail._id, mail);
+				});
+			});
+
+			const data = Array.from(mergedMap.values()).sort(
+				(a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+			);
+			const firstResponse = responses[0]?.data;
+
+			return {
+				message: firstResponse?.message || 'success',
+				page: firstResponse?.page || 'all',
+				PageCount: firstResponse?.PageCount ?? null,
+				TotalCount: data.length,
+				data,
+			};
 		},
 		staleTime: 5 * 60 * 1000, // Cache data for 5 minutes without refetching globally
 		refetchInterval: MAIL_POLL_INTERVAL_MS,
@@ -472,13 +510,35 @@ export default function MailPreview() {
 		isApplicantsFetched,
 	]);
 	
-	const filteredMails = useMemo(() => uiRecords.filter(m => {
-		const matchesCompany = selectedCompanyId === 'all' || m.companyId === selectedCompanyId;
-		const matchesJob = selectedJobId === 'all' || m.applicantJobPositionId === selectedJobId;
-		const matchesStatus = statusFilter === 'all' || m.status === statusFilter;
-		const matchesSearch = !searchTerm || [m.applicantName, m.applicantEmail, m.subject].some(f => f.toLowerCase().includes(searchTerm.toLowerCase()));
-		return matchesCompany && matchesJob && matchesStatus && matchesSearch;
-	}), [uiRecords, selectedCompanyId, selectedJobId, statusFilter, searchTerm]);
+	const filteredMails = useMemo(() => uiRecords
+		.filter((m) => {
+			const matchesCompany = selectedCompanyId === 'all' || m.companyId === selectedCompanyId;
+			const matchesJob = selectedJobId === 'all' || m.applicantJobPositionId === selectedJobId;
+			const matchesStatus = statusFilter === 'all' || m.status === statusFilter;
+			const matchesSearch = !searchTerm || [m.applicantName, m.applicantEmail, m.subject].some((f) => f.toLowerCase().includes(searchTerm.toLowerCase()));
+			return matchesCompany && matchesJob && matchesStatus && matchesSearch;
+		})
+		.sort((a, b) => {
+			const createdDiff = new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+			if (createdDiff !== 0) return createdDiff;
+			return new Date(b.lastUpdateAt).getTime() - new Date(a.lastUpdateAt).getTime();
+		}),
+	[uiRecords, selectedCompanyId, selectedJobId, statusFilter, searchTerm]);
+
+	useEffect(() => {
+		setMailPage(1);
+	}, [selectedCompanyId, selectedJobId, statusFilter, searchTerm]);
+
+	const totalMailPages = useMemo(() => Math.max(1, Math.ceil(filteredMails.length / MAIL_LIST_PAGE_SIZE)), [filteredMails.length]);
+
+	useEffect(() => {
+		setMailPage((prev) => Math.min(prev, totalMailPages));
+	}, [totalMailPages]);
+
+	const paginatedMails = useMemo(() => {
+		const startIndex = (mailPage - 1) * MAIL_LIST_PAGE_SIZE;
+		return filteredMails.slice(startIndex, startIndex + MAIL_LIST_PAGE_SIZE);
+	}, [filteredMails, mailPage]);
 
 	const selectedMail = useMemo(() => filteredMails.find(m => m.id === selectedMailId) || (filteredMails.length > 0 ? filteredMails[0] : null), [filteredMails, selectedMailId]);
 
@@ -584,7 +644,7 @@ export default function MailPreview() {
 						</div>
 						<div className="h-[800px] overflow-y-auto p-4 custom-scrollbar">
 							<div className="space-y-2">
-								{filteredMails.map(m => (
+								{paginatedMails.map(m => (
 									<button key={m.id} onClick={() => setSelectedMailId(m.id)} className={`group relative w-full rounded-[1.8rem] border p-5 text-left transition-all ${selectedMail?.id === m.id ? 'border-brand-200 bg-brand-50/50 dark:border-brand-500/20 dark:bg-brand-900/10' : 'border-transparent hover:bg-gray-50/50 dark:hover:bg-gray-900/50'}`}>
 										<div className="flex items-start justify-between gap-4">
 											<div className="min-w-0">
@@ -598,6 +658,27 @@ export default function MailPreview() {
 								))}
 							</div>
 						</div>
+						{filteredMails.length > MAIL_LIST_PAGE_SIZE && (
+							<div className="flex items-center justify-center gap-3 border-t border-gray-100 p-4 dark:border-gray-800">
+								<button
+									disabled={mailPage === 1}
+									onClick={() => setMailPage((prev) => Math.max(1, prev - 1))}
+									className="flex h-10 w-10 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-600 transition-all hover:bg-brand-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
+								>
+									<ChevronLeft className="h-4 w-4" />
+								</button>
+								<div className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-xs font-black uppercase tracking-widest text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">
+									Phase {mailPage} <span className="mx-1 opacity-30">/</span> {totalMailPages}
+								</div>
+								<button
+									disabled={mailPage === totalMailPages}
+									onClick={() => setMailPage((prev) => Math.min(totalMailPages, prev + 1))}
+									className="flex h-10 w-10 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-600 transition-all hover:bg-brand-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
+								>
+									<ChevronRight className="h-4 w-4" />
+								</button>
+							</div>
+						)}
 					</div>
 				</aside>
 

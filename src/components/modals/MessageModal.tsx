@@ -296,7 +296,6 @@ const MessageModal = ({
       <h1 style="color: #111827; margin: 0; font-size: 22px; font-weight: 700;">${subject}</h1>
     </div>
     <div style="padding: 30px;">
-      <p style="font-size: 16px; color: #333; margin-bottom: 20px;">Dear ${applicantName || 'Applicant'},</p>
       <div style="font-size: 16px; line-height: 1.6; color: #444;">
         ${body || ''}
       </div>
