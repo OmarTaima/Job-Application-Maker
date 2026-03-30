@@ -324,6 +324,11 @@ export default function MailPreview() {
 
 	// Fetch Companies (for Filter)
 	const { data: companies } = useCompanies(isSuperAdmin ? undefined : assignedCompanyIds);
+	const availableCompanyIds = useMemo(
+		() => (companies || []).map((company: any) => extractId(company?._id || company?.id)).filter(Boolean) as string[],
+		[companies],
+	);
+	const shouldShowCompanyFilter = availableCompanyIds.length > 1;
 	const companyNameById = useMemo(() => {
 		const map = new Map<string, string>();
 		(companies || []).forEach((company: any) => {
@@ -332,13 +337,42 @@ export default function MailPreview() {
 		return map;
 	}, [companies]);
 
+	useEffect(() => {
+		if (availableCompanyIds.length === 1) {
+			const onlyCompanyId = availableCompanyIds[0];
+			if (selectedCompanyId !== onlyCompanyId) {
+				setSelectedCompanyId(onlyCompanyId);
+				setSelectedJobId('all');
+			}
+			return;
+		}
+
+		if (availableCompanyIds.length === 0 && selectedCompanyId !== 'all') {
+			setSelectedCompanyId('all');
+			setSelectedJobId('all');
+			return;
+		}
+
+		if (
+			availableCompanyIds.length > 1 &&
+			selectedCompanyId !== 'all' &&
+			!availableCompanyIds.includes(selectedCompanyId)
+		) {
+			setSelectedCompanyId('all');
+			setSelectedJobId('all');
+		}
+	}, [availableCompanyIds, selectedCompanyId]);
+
 	// Fetch Job Positions (for Filter)
 	const jobPositionParams = useMemo(() => {
 		if (isSuperAdmin) {
 			return selectedCompanyId !== 'all' ? [selectedCompanyId] : undefined;
 		}
+		if (availableCompanyIds.length === 1) {
+			return [availableCompanyIds[0]];
+		}
 		return assignedCompanyIds;
-	}, [isSuperAdmin, selectedCompanyId, assignedCompanyIds]);
+	}, [isSuperAdmin, selectedCompanyId, assignedCompanyIds, availableCompanyIds]);
 	const { data: jobPositions } = useJobPositions(jobPositionParams);
 
 	const scopedJobPositions = useMemo(() => {
@@ -572,23 +606,25 @@ export default function MailPreview() {
 
 				{/* Selection Tool Bar */}
 				<div className="mt-8 rounded-[2rem] border border-white/40 bg-white/20 p-3 shadow-lg backdrop-blur-xl">
-					<div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-						<div className="rounded-2xl border border-white/40 bg-gradient-to-r from-white/80 to-brand-50/70 p-4 dark:from-gray-900/70 dark:to-brand-900/20">
-							<p className="mb-2 text-[10px] font-black uppercase tracking-[0.22em] text-brand-600 dark:text-brand-400">Company Scope</p>
-							<div className="flex items-center gap-3 rounded-xl border border-brand-100/80 bg-white/70 px-3 py-2.5 shadow-sm dark:border-brand-800/40 dark:bg-gray-950/70">
-								<Building2 className="h-4 w-4 text-brand-500" />
-								<select
-									value={selectedCompanyId}
-									onChange={e => { setSelectedCompanyId(e.target.value); setSelectedJobId('all'); }}
-									className="w-full appearance-none border-0 bg-transparent p-0 text-sm font-bold tracking-tight text-gray-900 outline-none ring-0 shadow-none focus:outline-none focus:ring-0 dark:text-white dark:[&_option]:bg-gray-950"
-								>
-									<option value="all">Global Workspace (All Companies)</option>
-									{(companies || []).map(c => (
-										<option key={c._id} value={c._id}>{toDisplayText((c as any).name, 'Unnamed Company')}</option>
-									))}
-								</select>
+					<div className={`grid grid-cols-1 gap-3 ${shouldShowCompanyFilter ? 'lg:grid-cols-2' : 'lg:grid-cols-1'}`}>
+						{shouldShowCompanyFilter && (
+							<div className="rounded-2xl border border-white/40 bg-gradient-to-r from-white/80 to-brand-50/70 p-4 dark:from-gray-900/70 dark:to-brand-900/20">
+								<p className="mb-2 text-[10px] font-black uppercase tracking-[0.22em] text-brand-600 dark:text-brand-400">Company Scope</p>
+								<div className="flex items-center gap-3 rounded-xl border border-brand-100/80 bg-white/70 px-3 py-2.5 shadow-sm dark:border-brand-800/40 dark:bg-gray-950/70">
+									<Building2 className="h-4 w-4 text-brand-500" />
+									<select
+										value={selectedCompanyId}
+										onChange={e => { setSelectedCompanyId(e.target.value); setSelectedJobId('all'); }}
+										className="w-full appearance-none border-0 bg-transparent p-0 text-sm font-bold tracking-tight text-gray-900 outline-none ring-0 shadow-none focus:outline-none focus:ring-0 dark:text-white dark:[&_option]:bg-gray-950"
+									>
+										<option value="all">Global Workspace (All Companies)</option>
+										{(companies || []).map(c => (
+											<option key={c._id} value={c._id}>{toDisplayText((c as any).name, 'Unnamed Company')}</option>
+										))}
+									</select>
+								</div>
 							</div>
-						</div>
+						)}
 
 						<div className="rounded-2xl border border-white/40 bg-gradient-to-r from-white/80 to-orange-50/70 p-4 dark:from-gray-900/70 dark:to-orange-900/20">
 							<p className="mb-2 text-[10px] font-black uppercase tracking-[0.22em] text-orange-600 dark:text-orange-400">Job Scope</p>
@@ -600,9 +636,7 @@ export default function MailPreview() {
 									disabled={selectedCompanyId === 'all'}
 									className="w-full appearance-none border-0 bg-transparent p-0 text-sm font-bold tracking-tight text-gray-900 outline-none ring-0 shadow-none focus:outline-none focus:ring-0 dark:text-white dark:[&_option]:bg-gray-950"
 								>
-									{selectedCompanyId === 'all' ? (
-										<option value="all">Choose company first</option>
-									) : (
+									{selectedCompanyId === 'all' ? null : (
 										<>
 											<option value="all">Universal View (All Jobs)</option>
 											{scopedJobPositions.map(j => (
@@ -616,9 +650,11 @@ export default function MailPreview() {
 					</div>
 
 					<div className="mt-3 flex flex-wrap items-center gap-2 px-1">
-						<span className="rounded-full bg-brand-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-brand-700 dark:text-brand-300">
-							{selectedCompanyId === 'all' ? 'All Companies' : 'Company Filter Active'}
-						</span>
+						{shouldShowCompanyFilter && (
+							<span className="rounded-full bg-brand-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-brand-700 dark:text-brand-300">
+								{selectedCompanyId === 'all' ? 'All Companies' : 'Company Filter Active'}
+							</span>
+						)}
 						<span className="rounded-full bg-orange-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-orange-700 dark:text-orange-300">
 							{selectedJobId === 'all' ? 'All Jobs' : 'Job Filter Active'}
 						</span>
