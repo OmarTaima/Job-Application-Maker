@@ -387,7 +387,7 @@ export default function MailPreview() {
 			if (queryCompanyIds.length <= 1) {
 				if (queryCompanyIds.length === 1) {
 					const companyId = queryCompanyIds[0];
-					baseParams.companyId = companyId;
+					baseParams.company = companyId;
 				}
 
 				const res = await axiosInstance.get<ApiMailResponse>('/mail', { params: baseParams });
