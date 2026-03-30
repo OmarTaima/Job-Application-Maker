@@ -402,7 +402,7 @@ const BulkMessageModal = ({
         })
         .filter((item) => item.to);
 
-      const batch = normalizedRecipients.map(({ to, applicant, jobPositionId, applicantName }) => ({
+      const batch = normalizedRecipients.map(({ to, applicant, jobPositionId }) => ({
         to,
         from: (typeof fromAddress === 'string' && fromAddress.includes('<')) ? fromAddress.replace(/.*<\s*([^>]+)\s*>.*/, '$1') : String(fromAddress).replace(/[<>]/g, ''),
         subject: form.subject,
