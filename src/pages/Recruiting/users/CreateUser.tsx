@@ -271,7 +271,6 @@ export default function CreateUser() {
           return {
             companyId: assignment.companyId,
             departments: validDepartments,
-            isPrimary: assignment.isPrimary,
           };
         });
 
