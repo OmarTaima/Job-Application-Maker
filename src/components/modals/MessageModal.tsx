@@ -282,7 +282,7 @@ const MessageModal = ({
   const sendEmailMutation = useSendEmail(); // New email mutation
   const updateCompanySettings = useUpdateCompanySettings();
 
-  const buildEmailHtml = (subject: string, body: string, applicantName?: string) => `
+  const buildEmailHtml = (subject: string, body: string) => `
 <!DOCTYPE html>
 <html>
 <head>
@@ -314,7 +314,7 @@ const MessageModal = ({
     }
 
     const subjectForPreview = messageForm.subject?.trim() || 'No Subject';
-    const html = buildEmailHtml(subjectForPreview, messageForm.body || '', applicant?.fullName);
+    const html = buildEmailHtml(subjectForPreview, messageForm.body || '');
     setPreviewHtml(html);
     setShowEmailPreview(true);
   };
@@ -435,7 +435,7 @@ const MessageModal = ({
         // Always use only the email address in the From header (no company name prefix)
         const companyConfig = (typeof fromAddr === 'string' && fromAddr.includes('<')) ? fromAddr.replace(/.*<\s*([^>]+)\s*>.*/, '$1') : String(fromAddr).replace(/[<>]/g, '');
 
-        const emailHtml = buildEmailHtml(messageForm.subject, messageForm.body || '', applicant?.fullName);
+        const emailHtml = buildEmailHtml(messageForm.subject, messageForm.body || '');
 
         // Send email via new service
         // include company id per backend schema

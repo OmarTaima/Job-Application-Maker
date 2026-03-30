@@ -92,7 +92,7 @@ const BulkMessageModal = ({
     return parts.length > 1 ? parts.slice(1).join('@') : '';
   };
 
-  const buildEmailHtml = (subject: string, body: string, applicantName?: string) => `
+  const buildEmailHtml = (subject: string, body: string) => `
 <!DOCTYPE html>
 <html>
 <head>
@@ -406,7 +406,7 @@ const BulkMessageModal = ({
         to,
         from: (typeof fromAddress === 'string' && fromAddress.includes('<')) ? fromAddress.replace(/.*<\s*([^>]+)\s*>.*/, '$1') : String(fromAddress).replace(/[<>]/g, ''),
         subject: form.subject,
-        html: buildEmailHtml(form.subject, form.body, applicantName),
+        html: buildEmailHtml(form.subject, form.body),
         applicant,
         jobPosition: jobPositionId,
       }));
