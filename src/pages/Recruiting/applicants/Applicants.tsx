@@ -185,7 +185,7 @@ const APPLICANTS_DEFAULT_LAYOUT: TableLayout = {
 const Applicants = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { layout, saveLayout, isLoaded } = useTableLayout(
+  const { layout, saveLayout} = useTableLayout(
     'applicants_table',
     APPLICANTS_DEFAULT_LAYOUT
   );
@@ -224,8 +224,7 @@ const Applicants = () => {
     [user]
   );
 
-  const getApplicantStableId = (applicant: any) =>
-    String(applicant?._id || applicant?.id || '');
+  
 
   const getApplicantHref = (row: any) => {
     const orig: any = row?.original ?? row;
@@ -310,14 +309,12 @@ const Applicants = () => {
   const jobPositionCompanyParam = companyId;
   const {
     data: jobPositions = [],
-    isLoading: jobPositionsLoading,
     refetch: refetchJobPositions,
     isFetching: isJobPositionsFetching,
     isFetched: isJobPositionsFetched,
   } = useJobPositions(jobPositionCompanyParam);
   const {
     data: applicants = [],
-    isLoading: applicantsLoading,
     error,
     refetch: refetchApplicants,
     isFetching: isApplicantsFetching,
