@@ -144,9 +144,15 @@ export function useMarkApplicantSeen() {
         queryClient.setQueryData(applicantsKeys.detail(id as string), context.previous);
       }
     },
-    onSuccess: (_data, id) => {
-      queryClient.invalidateQueries({ queryKey: applicantsKeys.detail(id as string) });
-      queryClient.invalidateQueries({ queryKey: applicantsKeys.lists() });
+    onSuccess: (_data) => {
+      // No further refetch is required here because callers perform an
+      // optimistic update to the detail query prior to calling this
+      // mutation. Invalidating here causes an immediate GET refetch
+      // which results in duplicate requests (observed as two back-to-
+      // back GET /applicants/:id calls). To avoid that extra request
+      // we skip invalidation — if a full refresh is needed callers
+      // can explicitly invalidate queries themselves.
+      return;
     },
   });
 }

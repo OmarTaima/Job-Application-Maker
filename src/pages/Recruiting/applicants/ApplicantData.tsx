@@ -97,9 +97,30 @@ const ApplicantData = () => {
 
   // Related data hooks (job positions, company details)
   // Declared here to preserve hook order for React
-  const { data: jobPositionsFallback = [],  isFetched: isJobPositionsFallbackFetched } = useJobPositions();
-  const jobPosIdString = applicant && typeof applicant.jobPositionId === 'string' ? applicant.jobPositionId : '';
-  const { data: jobPositionDetail, isFetched: isJobPositionDetailFetched } = useJobPosition(jobPosIdString, { enabled: !!jobPosIdString });
+  // Avoid fetching all job positions on initial load — use sentinel to return empty list
+  const { data: jobPositionsFallback = [],  isFetched: isJobPositionsFallbackFetched } = useJobPositions(['__NO_COMPANY__']);
+  // Resolve a canonical job position id from the applicant payload. The applicant
+  // may include either a string id or a populated object; normalize both forms
+  // so `useJobPosition` always fetches the canonical job-position record when
+  // an id is available. This ensures we have access to `jobSpecs` from the
+  // job-position GET even for older applicants.
+  const resolvedJobPosId = useMemo(() => {
+    if (!applicant) return '';
+    const resolve = (val: any) => {
+      if (!val) return '';
+      if (typeof val === 'string') return val;
+      if (typeof val === 'object') return val._id || val.id || '';
+      return '';
+    };
+
+    // Try common fields that may contain the job position reference
+    const fromJobPositionId = resolve((applicant as any).jobPositionId);
+    if (fromJobPositionId) return fromJobPositionId;
+    const fromJobPosition = resolve((applicant as any).jobPosition);
+    return fromJobPosition || '';
+  }, [applicant]);
+
+  const { data: jobPositionDetail, isFetched: isJobPositionDetailFetched } = useJobPosition(resolvedJobPosId, { enabled: !!resolvedJobPosId });
   const jpCompanyId = jobPositionDetail && ((jobPositionDetail as any).companyId ? (typeof (jobPositionDetail as any).companyId === 'string' ? (jobPositionDetail as any).companyId : (jobPositionDetail as any).companyId?._id) : '');
   const { data: jobPosCompany, isFetched: isJobPosCompanyFetched } = useCompany(jpCompanyId || '', { enabled: !!jpCompanyId });
   const { data: companies = [],  isFetched: isCompaniesWithApplicantsFetched } = useCompaniesWithApplicants(
@@ -126,8 +147,12 @@ const ApplicantData = () => {
   // Use the '__NO_COMPANY__' sentinel to avoid fetching all positions during initial load.
   const jobPositionsFetchParam = useMemo(() => {
     if (!applicant) return ['__NO_COMPANY__'];
+    // If we already resolved a specific job position id for this applicant,
+    // don't fetch the full company job list — prefer the job-by-id GET
+    // (available via `useJobPosition`) to avoid fetching all jobs.
+    if (resolvedJobPosId) return ['__NO_COMPANY__'];
     return resolvedCompanyId ? [resolvedCompanyId] : ['__NO_COMPANY__'];
-  }, [applicant, resolvedCompanyId]);
+  }, [applicant, resolvedCompanyId, resolvedJobPosId]);
 
   // Replace the top-level job positions query with a company-scoped one.
   // This prevents listing job positions for other companies on page refresh.
@@ -281,6 +306,15 @@ const ApplicantData = () => {
       typeof applicant.jobPositionId === 'string'
         ? applicant.jobPositionId
         : (applicant.jobPositionId as any)?._id;
+    // Prefer the fetched jobPosition detail (single GET by id) when available
+    if (jobPositionDetail && ((jobPositionDetail as any)?._id || (jobPositionDetail as any)?.id)) {
+      const jpId = (jobPositionDetail as any)._id || (jobPositionDetail as any).id;
+      if (String(jpId) === String(jobPosId)) {
+        const t = (jobPositionDetail as any).title;
+        if (typeof t === 'string') return { en: t };
+        if (typeof t === 'object' && t?.en) return { en: t.en };
+      }
+    }
     const found = jobPositions.find((j: any) => j._id === jobPosId);
     return { en: found?.title?.en || '' };
   };
@@ -457,7 +491,6 @@ const ApplicantData = () => {
       ? (typeof addr === 'string' ? addr : toPlainString(addr.en ? addr.en : addr) || addr.location || '')
       : '';
 
-    console.debug('ApplicantData.getCompanyAddress', { companyId: company._id, resolved });
     return resolved || '';
   };
 
@@ -485,17 +518,13 @@ const ApplicantData = () => {
     try {
       const comp = (fetchedCompany as any && (fetchedCompany as any)?._id) ? (fetchedCompany as any) : companyObj;
       if (!comp) {
-        console.debug('fillCompanyAddress: no company available', { fetchedCompany, companyObj });
         return false;
       }
-
-      console.debug('fillCompanyAddress: company found', { companyId: comp._id, comp });
 
       const addrCandidates: any = comp.address ?? comp.addresses ?? comp.location ?? comp.locations ?? comp.officeAddress ?? null;
       let addr: any = null;
       if (addrCandidates) {
         addr = Array.isArray(addrCandidates) ? addrCandidates[0] : addrCandidates;
-        console.debug('fillCompanyAddress: address candidate', { addrCandidates, addr });
       }
 
       // fallback: search any key containing address/location
@@ -505,7 +534,6 @@ const ApplicantData = () => {
             const v = (comp as any)[key];
             if (!v) continue;
             addr = Array.isArray(v) ? v[0] : v;
-            console.debug('fillCompanyAddress: found via fallback', { key, addr });
             break;
           }
         }
@@ -526,7 +554,6 @@ const ApplicantData = () => {
         }
       }
 
-      console.debug('fillCompanyAddress: resolved', { companyId: comp._id, resolved });
       if (resolved && resolved.trim()) {
         setInterviewForm((prev) => ({ ...prev, location: resolved }));
         return true;
@@ -1579,98 +1606,179 @@ const ApplicantData = () => {
   </div>
 </div>
 
-            {/* Job Specs With Details (from applicant or populated jobPosition) */}
-        {(() => {
-          const specs: any[] = (applicant && Array.isArray((applicant as any).jobSpecsWithDetails))
-            ? (applicant as any).jobSpecsWithDetails
-            : (applicant && applicant.jobPositionId && Array.isArray((applicant.jobPositionId as any).jobSpecsWithDetails))
-              ? (applicant.jobPositionId as any).jobSpecsWithDetails
-              : [];
-          if (!specs || specs.length === 0) return null;
-          return (
-            <div className="mt-8 mb-8 relative overflow-hidden rounded-2xl bg-white shadow-xl">
-              {/* Decorative background matching Personal Info */}
-              <div className="absolute inset-0 bg-linear-to-br from-indigo-500/5 via-purple-500/5 to-blue-500/5" />
-              <div className="absolute -top-24 -right-24 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl" />
-              
-              <div className="relative p-8">
-                <div className="mb-6 flex items-start gap-4">
-                  <div className="shrink-0 p-3 bg-linear-to-br from-indigo-500 to-indigo-600 rounded-2xl shadow-lg">
-                    <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="text-2xl font-extrabold bg-linear-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
-                      Job Specifications
-                    </h3>
-                    <p className="text-sm text-gray-500 mt-1">Required skills and qualifications assessment</p>
-                  </div>
+            {/* Job Specs With Details (from jobPositionDetail) */}
+{(() => {
+  const specs: any[] = (() => {
+    if (jobPositionDetail) {
+      if (Array.isArray((jobPositionDetail as any).jobSpecsWithDetails) && (jobPositionDetail as any).jobSpecsWithDetails.length) {
+        return (jobPositionDetail as any).jobSpecsWithDetails;
+      }
+      if (Array.isArray((jobPositionDetail as any).jobSpecs) && (jobPositionDetail as any).jobSpecs.length) {
+        return (jobPositionDetail as any).jobSpecs;
+      }
+    }
+    const getSpecsFromPopulatedJobPos = (src: any) => {
+      if (!src) return [];
+      const jp = typeof src.jobPositionId === 'object' ? src.jobPositionId : src.jobPosition;
+      if (!jp) return [];
+      if (Array.isArray(jp.jobSpecsWithDetails) && jp.jobSpecsWithDetails.length) return jp.jobSpecsWithDetails;
+      if (Array.isArray(jp.jobSpecs) && jp.jobSpecs.length) return jp.jobSpecs;
+      return [];
+    };
+    const popFromFetched = getSpecsFromPopulatedJobPos(fetchedApplicant as any);
+    if (popFromFetched.length) return popFromFetched;
+    const popFromState = getSpecsFromPopulatedJobPos(stateApplicant as any);
+    if (popFromState.length) return popFromState;
+    try {
+      const _appSrc = (fetchedApplicant ?? stateApplicant) as any;
+      let resolvedId: string | undefined;
+      if (_appSrc) {
+        if (typeof _appSrc.jobPositionId === 'string') resolvedId = _appSrc.jobPositionId;
+        else if (typeof _appSrc.jobPositionId === 'object' && _appSrc.jobPositionId?._id) resolvedId = _appSrc.jobPositionId._id;
+      }
+      if (resolvedId && Array.isArray(jobPositions)) {
+        const found = jobPositions.find((j: any) => String(j._id) === String(resolvedId));
+        if (found) {
+          if (Array.isArray((found as any).jobSpecsWithDetails) && (found as any).jobSpecsWithDetails.length) return (found as any).jobSpecsWithDetails;
+          if (Array.isArray((found as any).jobSpecs) && (found as any).jobSpecs.length) return (found as any).jobSpecs;
+        }
+      }
+    } catch (e) {}
+    return [];
+  })();
+
+  // Build answer lookup from applicant's spec responses
+  // Try ID match first, fall back to positional match (spec arrays are ordered)
+  const appSrc = (fetchedApplicant ?? stateApplicant ?? applicant) as any;
+
+  const appSpecs: any[] = (() => {
+    if (Array.isArray(appSrc?.jobSpecsWithDetails) && appSrc.jobSpecsWithDetails.length) return appSrc.jobSpecsWithDetails;
+    if (Array.isArray(appSrc?.jobSpecs) && appSrc.jobSpecs.length) return appSrc.jobSpecs;
+    if (typeof appSrc?.jobPositionId === 'object') {
+      const jp = appSrc.jobPositionId;
+      if (Array.isArray(jp?.jobSpecsWithDetails) && jp.jobSpecsWithDetails.length) return jp.jobSpecsWithDetails;
+      if (Array.isArray(jp?.jobSpecs) && jp.jobSpecs.length) return jp.jobSpecs;
+    }
+    return [];
+  })();
+
+  // Build ID-based answer map from the applicant's own specs/responses
+  const applicantAnswerMap: Record<string, boolean> = {};
+  for (const s of appSpecs) {
+    if (!s) continue;
+    const ids = [s._id, s.id, s.jobSpecId].filter(Boolean).map((x: any) =>
+      typeof x === 'object' ? (x._id ?? x.id ?? String(x)) : String(x)
+    );
+    for (const id of ids) {
+      applicantAnswerMap[id] = typeof s.answer === 'boolean' ? s.answer : Boolean(s.answer);
+    }
+  }
+
+  // Helper: get answer for a spec entry — ID match first, positional fallback
+  const getAnswer = (specEntry: any, idx: number): boolean => {
+    if (!specEntry) return false;
+    const specId = String(specEntry._id ?? specEntry.id ?? '');
+    if (specId && applicantAnswerMap[specId] !== undefined) {
+      return applicantAnswerMap[specId];
+    }
+    if (appSpecs[idx] !== undefined) {
+      const a = appSpecs[idx].answer;
+      return typeof a === 'boolean' ? a : Boolean(a);
+    }
+    return false;
+  };
+
+  if (!specs || specs.length === 0) return null;
+
+  return (
+    <div className="mt-8 mb-8 relative overflow-hidden rounded-2xl bg-white shadow-xl">
+      <div className="absolute inset-0 bg-linear-to-br from-indigo-500/5 via-purple-500/5 to-blue-500/5" />
+      <div className="absolute -top-24 -right-24 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl" />
+      <div className="relative p-8">
+        <div className="mb-6 flex items-start gap-4">
+          <div className="shrink-0 p-3 bg-linear-to-br from-indigo-500 to-indigo-600 rounded-2xl shadow-lg">
+            <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <div className="flex-1">
+            <h3 className="text-2xl font-extrabold bg-linear-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
+              Job Specifications
+            </h3>
+            <p className="text-sm text-gray-500 mt-1">Required skills and qualifications assessment</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          {specs.map((s: any, idx: number) => {
+            const specText: string = (() => {
+              if (typeof s.spec === 'string') return s.spec;
+              if (s.spec && typeof s.spec === 'object') {
+                return s.spec.en ?? s.spec.ar ?? s.spec.value ?? '';
+              }
+              return '';
+            })();
+
+            const weight: number = typeof s.weight === 'number' ? s.weight : Number(s.weight ?? 0);
+
+            const answered: boolean = getAnswer(s, idx);
+
+            return (
+              <div
+                key={s.jobSpecId || s._id || idx}
+                className="group relative pl-5 pr-5 py-5 bg-white/60 backdrop-blur-sm rounded-xl border-l-4 border-indigo-500 hover:bg-white transition-all duration-200 hover:shadow-lg flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
+              >
+                <div className="flex-1 min-w-0">
+                  <p className={`text-base font-bold text-gray-900 ${isArabic(specText) ? 'text-right' : 'text-left'}`}>
+                    {specText || '(no spec)'}
+                  </p>
+                  {s.description && (
+                    <p className={`mt-1 text-sm text-gray-500 ${isArabic(s.description) ? 'text-right' : 'text-left'}`}>
+                      {String(s.description)}
+                    </p>
+                  )}
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  {specs.map((s: any, idx: number) => {
-                    const specText = typeof s.spec === 'string' ? s.spec : (s.spec && (s.spec.en || s.spec.value)) || '';
-                    const weight = typeof s.weight === 'number' ? s.weight : (s.weight ? Number(s.weight) : 0);
-                    const answered = typeof s.answer === 'boolean' ? s.answer : Boolean(s.answer);
-                    
-                    return (
-                      <div
-                        key={s.jobSpecId || s._id || idx}
-                        className="group relative pl-5 pr-5 py-5 bg-white/60 backdrop-blur-sm rounded-xl border-l-4 border-indigo-500 hover:bg-white transition-all duration-200 hover:shadow-lg flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
-                      >
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-base font-bold text-gray-900 ${isArabic(specText) ? 'text-right' : 'text-left'}`}>
-                            {specText || '(no spec)'}
-                          </p>
-                          {s.description && (
-                            <p className={`mt-1 text-sm text-gray-500 ${isArabic(s.description) ? 'text-right' : 'text-left'}`}>
-                              {String(s.description)}
-                            </p>
-                          )}
-                        </div>
+                <div className="flex items-center gap-3 shrink-0">
+                  <div className="inline-flex items-center px-3 py-1 rounded-full bg-indigo-50 text-xs font-bold text-indigo-700 border border-indigo-100">
+                    <svg className="w-3.5 h-3.5 mr-1.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                      <circle cx="12" cy="12" r="9" />
+                      <line x1="12" y1="8" x2="12" y2="16" />
+                      <line x1="8" y1="12" x2="16" y2="12" />
+                    </svg>
+                    Weight: {weight}
+                  </div>
 
-                        <div className="flex items-center gap-3 shrink-0">
-                          <div className="inline-flex items-center px-3 py-1 rounded-full bg-indigo-50 text-xs font-bold text-indigo-700 border border-indigo-100">
-                            <svg className="w-3.5 h-3.5 mr-1.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
-                              <circle cx="12" cy="12" r="9" />
-                              <line x1="12" y1="8" x2="12" y2="16" />
-                              <line x1="8" y1="12" x2="16" y2="12" />
-                            </svg>
-                            Weight: {weight}
-                          </div>
-
-                          <div className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold border transition-colors ${
-                            answered 
-                              ? 'bg-green-50 text-green-700 border-green-100' 
-                              : 'bg-gray-50 text-gray-500 border-gray-200'
-                          }`}>
-                            {answered ? (
-                              <>
-                                <svg className="w-3.5 h-3.5 mr-1.5 text-green-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                                </svg>
-                                <span>Met</span>
-                              </>
-                            ) : (
-                              <>
-                                <svg className="w-3.5 h-3.5 mr-1.5 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                                <span>Not met</span>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  <div className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold border transition-colors ${
+                    answered
+                      ? 'bg-green-50 text-green-700 border-green-100'
+                      : 'bg-gray-50 text-gray-500 border-gray-200'
+                  }`}>
+                    {answered ? (
+                      <>
+                        <svg className="w-3.5 h-3.5 mr-1.5 text-green-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                        <span>Met</span>
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-3.5 h-3.5 mr-1.5 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                        <span>Not met</span>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })()}
-
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+})()}
         <CustomResponses applicant={applicant} />
 
         

@@ -37,6 +37,12 @@ export type JobPosition = {
     spec: LocalizedString;
     weight: number;
   }>;
+  jobSpecsWithDetails?: Array<{
+    jobSpecId: string;
+    spec: string;
+    weight: number;
+    answer: boolean;
+  }>;
   customFields?: Array<{
     fieldId: string;
     label: LocalizedString;
@@ -162,7 +168,7 @@ export type UpdateJobPositionRequest = {
 
 export type Applicant = {
   _id: string;
-  jobPositionId: string;
+  jobPositionId: string | JobPosition;
   userId?: string;
   name: string;
   email: string;

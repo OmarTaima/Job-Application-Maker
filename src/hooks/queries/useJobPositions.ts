@@ -56,11 +56,15 @@ export function useJobPositions(companyId?: string[], deleted: boolean = false) 
 
 // Get job position by ID
 export function useJobPosition(id: string, options?: { enabled?: boolean }) {
-  return useQuery<import("../../services/jobPositionsService").JobPosition>({
+  return useQuery<import("../../services/jobPositionsService").JobPosition | null>({
     queryKey: jobPositionsKeys.detail(id),
-    queryFn: () => jobPositionsService.getJobPositionById(id),
+    queryFn: async () => {
+      if (!id) return null;
+      // Ensure the hook returns null instead of undefined when backend/hook returns no data
+      const res = await jobPositionsService.getJobPositionById(id);
+      return res ?? null;
+    },
     enabled: options?.enabled !== undefined ? options.enabled : !!id,
-    staleTime: 5 * 60 * 1000,
   });
 }
 
