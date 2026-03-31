@@ -2859,36 +2859,10 @@ const Applicants = () => {
         enableSorting: true,
         // Add a class to the head cell so we can hide MUI's default double-arrow icon
         muiTableHeadCellProps: { className: 'hide-default-sort-icon' },
-        // Sorting function compares ISO date strings safely
+        // Sorting function compares ISO date strings safely.
+        // Do NOT prioritize duplicates — sort only by submitted date.
+        // Return a stable ascending comparator; MRT will apply asc/desc.
         sortingFn: (rowA: any, rowB: any, columnId: string) => {
-          const scoreA =
-            duplicatePriorityLookup.get(
-              getApplicantStableId(rowA?.original)
-            )?.priorityScore ?? 0;
-          const scoreB =
-            duplicatePriorityLookup.get(
-              getApplicantStableId(rowB?.original)
-            )?.priorityScore ?? 0;
-          const isDupA =
-            duplicatePriorityLookup.get(
-              getApplicantStableId(rowA?.original)
-            )?.isDuplicate ?? false;
-          const isDupB =
-            duplicatePriorityLookup.get(
-              getApplicantStableId(rowB?.original)
-            )?.isDuplicate ?? false;
-          const submittedSortState = sorting.find((s: any) => s.id === columnId);
-          const isDesc = submittedSortState ? submittedSortState.desc : true;
-
-          // Duplicate applicants should be grouped at the top regardless of date.
-          if (isDupA !== isDupB) return isDupA ? 1 : -1;
-
-          // Inside duplicate groups, prioritize unseen and upcoming-interview rows.
-          if (scoreA !== scoreB) {
-            if (isDesc) return scoreA > scoreB ? 1 : -1;
-            return scoreA > scoreB ? -1 : 1;
-          }
-
           const getVal = (r: any) => {
             const v = r.getValue(columnId) ?? r.original?.submittedAt;
             const t = v ? new Date(v).getTime() : 0;
@@ -3188,13 +3162,28 @@ const Applicants = () => {
     manualPagination: false,
     manualFiltering: false,
     manualSorting: false,
-    rowCount: displayedApplicants.length,
-    // Default pagination and sorting: 10 rows per page, newest first
+    // Data passed to the table is `filteredApplicants`, so rowCount should match it
+    rowCount: filteredApplicants.length,
+    // Default pagination: 10 rows per page
     initialState: {
       pagination,
-      sorting,
       columnFilters,
     },
+    // Control table state from component so updates (from persisted state or programmatic
+    // changes) are reflected immediately in the table. MRT will still call the on* handlers
+    // when the user interacts, which update these values via the setters below.
+    state: {
+      sorting,
+      pagination,
+      columnFilters,
+      rowSelection,
+    },
+    // Keep table state synchronized with component state so our
+    // `sorting`/`pagination`/`columnFilters` values stay current
+    // (and are persisted to sessionStorage).
+    onSortingChange: setSorting,
+    onPaginationChange: setPagination,
+    onColumnFiltersChange: setColumnFilters,
     muiTablePaperProps: {
       sx: {
         backgroundColor: isDarkMode ? '#24303F' : '#FFFFFF',
@@ -3274,20 +3263,7 @@ const Applicants = () => {
         color: isDarkMode ? '#E4E7EC' : '#101828',
       },
     },
-    state: {
-      rowSelection,
-      columnFilters,
-      sorting,
-      pagination,
-      isLoading: applicantsLoading || jobPositionsLoading || !isLoaded,
-      showSkeletons: applicantsLoading || jobPositionsLoading,
-      showAlertBanner: false,
-      columnVisibility: layout.columnVisibility,
-      columnSizing: layout.columnSizing,
-      ...(layout.columnOrder.length > 0 && {
-        columnOrder: layout.columnOrder,
-      }),
-    },
+  
     onColumnVisibilityChange: (updater) => {
       const next =
         typeof updater === 'function'
@@ -3305,9 +3281,7 @@ const Applicants = () => {
         typeof updater === 'function' ? updater(layout.columnOrder) : updater;
       saveLayout({ columnOrder: next });
     },
-    onPaginationChange: setPagination,
-    onSortingChange: setSorting,
-    onColumnFiltersChange: setColumnFilters,
+   
     onRowSelectionChange: setRowSelection,
     getRowId: (row) => row._id,
     renderTopToolbarCustomActions: () => {
