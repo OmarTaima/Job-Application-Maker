@@ -2085,7 +2085,7 @@ const Applicants = () => {
       {
         accessorKey: 'applicantNo',
         header: 'ApplicantNo',
-        size: 100,
+        size: 80,
         enableColumnFilter: false,
         enableSorting: false,
         Cell: ({ row, table }) => {
@@ -2140,7 +2140,7 @@ const Applicants = () => {
       {
         accessorKey: 'profilePhoto',
         header: 'Photo',
-        size: 80,
+        size: 72,
         enableSorting: false,
         enableColumnFilter: false,
         Cell: ({ row }: { row: { original: Applicant } }) => {
@@ -2178,7 +2178,7 @@ const Applicants = () => {
       {
         accessorKey: 'fullName',
         header: 'Name',
-        size: 150,
+        size: 120,
         enableColumnFilter: true,
         enableSorting: false,
         Cell: ({ row }: { row: { original: Applicant } }) => {
@@ -2214,7 +2214,7 @@ const Applicants = () => {
       {
         accessorKey: 'email',
         header: 'Email',
-        size: 200,
+        size: 170,
         enableColumnFilter: true,
         enableSorting: false,
         Cell: ({ row }: { row: { original: Applicant } }) => {
@@ -2234,7 +2234,7 @@ const Applicants = () => {
       {
         accessorKey: 'phone',
         header: 'Phone',
-        size: 130,
+        size: 110,
         enableColumnFilter: true,
         enableSorting: false,
         Cell: ({ row }: { row: { original: Applicant } }) => {
@@ -2262,7 +2262,7 @@ const Applicants = () => {
               ''
           ),
         header: 'Gender',
-        size: 110,
+        size: 90,
         enableColumnFilter: true,
         enableSorting: false,
         Header: ({ column }: { column: any }) => {
@@ -2384,7 +2384,7 @@ const Applicants = () => {
             {
               id: 'companyId',
               header: 'Company',
-              size: 150,
+              size: 130,
               enableColumnFilter: true,
               enableSorting: false,
               accessorFn: (row: any) => {
@@ -2653,7 +2653,7 @@ const Applicants = () => {
           return vals.includes(cell);
         },
 
-        size: 200,
+        size: 160,
         enableColumnFilter: true,
 
         Cell: ({ row }: { row: { original: Applicant } }) => {
@@ -2793,7 +2793,7 @@ const Applicants = () => {
           return vals.includes(cell);
         },
 
-        size: 120,
+        size: 105,
         enableColumnFilter: true,
 
         Cell: ({ row }: { row: { original: Applicant } }) => {
@@ -2850,7 +2850,7 @@ const Applicants = () => {
             </button>
           );
         },
-        size: 120,
+        size: 110,
         enableColumnFilter: false,
         // Disable MRT's built-in sort UI for this column so we can render a single up/down arrow
         enableSorting: true,
@@ -2887,7 +2887,7 @@ const Applicants = () => {
       {
         id: 'actions',
         header: 'Actions',
-        size: 120,
+        size: 90,
         enableColumnFilter: false,
         enableSorting: false,
         Cell: ({ row }: any) => {
@@ -2979,6 +2979,31 @@ const Applicants = () => {
 
     return () => observer.disconnect();
   }, []);
+
+  const [isCompactDesktop, setIsCompactDesktop] = useState<boolean>(() =>
+    typeof window !== 'undefined' ? window.innerWidth < 1440 : false
+  );
+
+  useEffect(() => {
+    const onResize = () => setIsCompactDesktop(window.innerWidth < 1440);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  const responsiveColumnVisibility = useMemo(() => {
+    const saved = layout.columnVisibility || {};
+    if (!isCompactDesktop) return saved;
+
+    // Keep essential columns visible on laptop widths to avoid horizontal scrolling.
+    return {
+      ...saved,
+      email: false,
+      phone: false,
+      gender: false,
+      companyId: false,
+      actions: false,
+    };
+  }, [layout.columnVisibility, isCompactDesktop]);
 
   const muiTheme = useMemo(
     () =>
@@ -3102,23 +3127,23 @@ const Applicants = () => {
     data: filteredApplicants,
     displayColumnDefOptions: {
       'mrt-row-select': {
-        size: 90, // Even more width
+        size: 48,
         muiTableHeadCellProps: {
           align: 'center',
           sx: {
             padding: 0,
-            width: '90px',
-            minWidth: '90px',
-            maxWidth: '90px',
+            width: '48px',
+            minWidth: '48px',
+            maxWidth: '48px',
           },
         },
         muiTableBodyCellProps: {
           align: 'center',
           sx: {
             padding: 0,
-            width: '90px',
-            minWidth: '90px',
-            maxWidth: '90px',
+            width: '48px',
+            minWidth: '48px',
+            maxWidth: '48px',
           },
         },
         Cell: ({ row, table }: any) => {
@@ -3156,6 +3181,7 @@ const Applicants = () => {
     enableFullScreenToggle: false,
     enableSorting: true,
     enableColumnActions: false,
+    enableColumnResizing: true,
     manualPagination: false,
     manualFiltering: false,
     manualSorting: false,
@@ -3165,6 +3191,8 @@ const Applicants = () => {
     initialState: {
       pagination,
       columnFilters,
+      columnVisibility: responsiveColumnVisibility,
+      density: 'compact',
     },
     // Control table state from component so updates (from persisted state or programmatic
     // changes) are reflected immediately in the table. MRT will still call the on* handlers
@@ -3174,6 +3202,7 @@ const Applicants = () => {
       pagination,
       columnFilters,
       rowSelection,
+      columnVisibility: responsiveColumnVisibility,
     },
     // Keep table state synchronized with component state so our
     // `sorting`/`pagination`/`columnFilters` values stay current
@@ -3190,8 +3219,17 @@ const Applicants = () => {
     muiTableProps: {
       sx: {
         backgroundColor: isDarkMode ? '#24303F' : '#FFFFFF',
+        tableLayout: 'fixed',
+        width: '100%',
         fontFamily:
           "'Cairo', Outfit, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans'",
+        fontSize: '0.82rem',
+      },
+    },
+    muiTableContainerProps: {
+      sx: {
+        maxWidth: '100%',
+        overflowX: 'hidden',
       },
     },
     muiTableBodyProps: {
@@ -3209,17 +3247,19 @@ const Applicants = () => {
         backgroundColor: isDarkMode ? '#24303F' : '#FFFFFF',
         color: isDarkMode ? '#E4E7EC' : '#101828',
         borderColor: isDarkMode ? '#344054' : '#E4E7EC',
+        fontSize: '0.8rem',
+        lineHeight: 1.25,
+        padding: '6px 8px',
         fontFamily:
           "'Cairo', Outfit, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans'",
+        whiteSpace: 'normal',
+        overflowWrap: 'anywhere',
+        wordBreak: 'break-word',
         '& > a': {
           display: 'block',
-          width: 'calc(100% + 32px)',
-          height: 'calc(100% + 16px)',
-          margin: '-8px -16px',
-          padding: '8px 16px',
+          width: '100%',
           color: 'inherit',
           textDecoration: 'none',
-          boxSizing: 'border-box',
         },
       },
     },
@@ -3229,8 +3269,13 @@ const Applicants = () => {
         color: isDarkMode ? '#E4E7EC' : '#344054',
         borderColor: isDarkMode ? '#344054' : '#E4E7EC',
         fontWeight: 600,
+        fontSize: '0.78rem',
+        lineHeight: 1.2,
+        padding: '8px 8px',
         fontFamily:
           "'Cairo', Outfit, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans'",
+        whiteSpace: 'normal',
+        overflowWrap: 'anywhere',
         // Hide the default unsorted double-arrow icon; show icon only when active (sorted)
         '& .MuiTableSortLabel-icon': {
           opacity: 0,
@@ -3392,7 +3437,7 @@ const Applicants = () => {
           title="Job Applicants"
           desc="View and manage all applicants"
           actions={
-            <div className="flex items-center mr-30 gap-2">
+            <div className="flex flex-wrap items-center justify-start gap-2 lg:justify-end">
               <button
                 type="button"
                 onClick={async () => {
@@ -3527,7 +3572,9 @@ const Applicants = () => {
 
             {/* Material React Table */}
             <ThemeProvider theme={muiTheme}>
-              <MaterialReactTable table={table} />
+              <div className="mx-auto w-full max-w-[900px] lg:max-w-[980px] xl:max-w-[1080px] 2xl:max-w-[1180px]">
+                <MaterialReactTable table={table} />
+              </div>
             </ThemeProvider>
             <BulkMessageModal
               isOpen={showBulkModal}
