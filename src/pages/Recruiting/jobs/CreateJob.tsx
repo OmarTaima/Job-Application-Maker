@@ -2012,7 +2012,7 @@ export default function CreateJob() {
           </div>
 
           {/* Custom Fields */}
-          <div className="group relative overflow-hidden rounded-3xl border border-gray-200 bg-white p-6 shadow-sm transition-all hover:shadow-md dark:border-gray-800 dark:bg-gray-900">
+          <div className="group relative overflow-visible rounded-3xl border border-gray-200 bg-white p-6 shadow-sm transition-all hover:shadow-md dark:border-gray-800 dark:bg-gray-900">
             <div className="mb-6 flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-bold text-gray-900 dark:text-white">Custom Form Fields</h3>
