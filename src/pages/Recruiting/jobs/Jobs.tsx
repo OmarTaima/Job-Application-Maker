@@ -8,7 +8,6 @@ import {
   BriefcaseIcon,
   Building2Icon,
   MapPinIcon,
-  UsersIcon,
   CalendarIcon,
   ArrowRightIcon,
   LayoutGridIcon,
@@ -310,7 +309,30 @@ export default function Jobs() {
                 </div>
               </div>
 
-              
+              <div className="pt-4 flex items-center justify-between border-t border-slate-100 dark:border-slate-800">
+                <div className="flex items-center gap-2">
+                 
+                </div>
+                
+                <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                  {canWrite && (
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); navigate(`/create-job?id=${job._id}`, { state: { job } }); }}
+                      className="p-1.5 text-slate-400 hover:text-brand-600 transition-colors bg-white/80 rounded-lg dark:bg-slate-800"
+                    >
+                      <PencilIcon className="size-4" />
+                    </button>
+                  )}
+                  {canWrite && (
+                    <button 
+                      onClick={(e) => handleDelete(e, job._id)}
+                      className="p-1.5 text-slate-400 hover:text-red-600 transition-colors bg-white/80 rounded-lg dark:bg-slate-800"
+                    >
+                      <Trash2Icon className="size-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
           ))}
         </div>
