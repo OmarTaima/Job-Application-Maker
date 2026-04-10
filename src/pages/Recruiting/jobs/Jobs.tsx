@@ -302,7 +302,7 @@ export default function Jobs() {
                 </div>
                 <div className="flex items-center gap-2 text-sm text-slate-500">
                   <MapPinIcon className="size-4" />
-                  <span>{job.location || "Remote / Office"}</span>
+                  <span>{job.workArrangement || "Remote / Office"}</span>
                 </div>
                 <div className="flex items-center gap-2 text-sm text-slate-500">
                   <CalendarIcon className="size-4" />
@@ -310,37 +310,7 @@ export default function Jobs() {
                 </div>
               </div>
 
-              <div className="pt-4 flex items-center justify-between border-t border-slate-100 dark:border-slate-800">
-                <div className="flex items-center gap-2">
-                  <div className="flex -space-x-2">
-                    {[1, 2].map((i) => (
-                      <div key={i} className="size-7 rounded-full border-2 border-white bg-slate-200 dark:border-slate-900 dark:bg-slate-800 flex items-center justify-center">
-                        <UsersIcon className="size-3 text-slate-400" />
-                      </div>
-                    ))}
-                  </div>
-                  <span className="text-xs font-semibold text-slate-500">12 Applicants</span>
-                </div>
-                
-                <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                  {canWrite && (
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); navigate(`/create-job?id=${job._id}`, { state: { job } }); }}
-                      className="p-1.5 text-slate-400 hover:text-brand-600 transition-colors bg-white/80 rounded-lg dark:bg-slate-800"
-                    >
-                      <PencilIcon className="size-4" />
-                    </button>
-                  )}
-                  {canWrite && (
-                    <button 
-                      onClick={(e) => handleDelete(e, job._id)}
-                      className="p-1.5 text-slate-400 hover:text-red-600 transition-colors bg-white/80 rounded-lg dark:bg-slate-800"
-                    >
-                      <Trash2Icon className="size-4" />
-                    </button>
-                  )}
-                </div>
-              </div>
+              
             </div>
           ))}
         </div>
