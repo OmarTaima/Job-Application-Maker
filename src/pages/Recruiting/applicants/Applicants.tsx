@@ -271,7 +271,44 @@ const Applicants = () => {
   const [pagination, setPagination] = useState(
     () => persistedTableState?.pagination ?? { pageIndex: 0, pageSize: 10 }
   );
+  const [viewportWidth, setViewportWidth] = useState<number>(() =>
+    typeof window !== 'undefined' ? window.innerWidth : 1920
+  );
   // Sorting will be managed by MRT (default newest-first)
+
+  useEffect(() => {
+    const onResize = () => setViewportWidth(window.innerWidth);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  const isLaptopViewport = viewportWidth <= 1440;
+  const isNarrowDesktopViewport = viewportWidth <= 1024;
+
+  const tableMinWidth = isNarrowDesktopViewport
+    ? 820
+    : isLaptopViewport
+      ? 980
+      : 1160;
+
+  const selectColumnWidth = isLaptopViewport ? 36 : 48;
+
+  const columnSizeConfig = useMemo(
+    () => ({
+      applicantNo: isLaptopViewport ? 56 : 80,
+      profilePhoto: isLaptopViewport ? 52 : 72,
+      fullName: isLaptopViewport ? 92 : 120,
+      email: isLaptopViewport ? 128 : 170,
+      phone: isLaptopViewport ? 86 : 110,
+      gender: isLaptopViewport ? 70 : 90,
+      companyId: isLaptopViewport ? 96 : 130,
+      jobPositionId: isLaptopViewport ? 118 : 160,
+      status: isLaptopViewport ? 84 : 105,
+      submittedAt: isLaptopViewport ? 88 : 110,
+      actions: isLaptopViewport ? 58 : 90,
+    }),
+    [isLaptopViewport]
+  );
 
   // Get selected applicant IDs from row selection
   const selectedApplicantIds = useMemo(() => {
@@ -2084,8 +2121,8 @@ const Applicants = () => {
     () => [
       {
         accessorKey: 'applicantNo',
-        header: 'ApplicantNo',
-        size: 80,
+        header: isLaptopViewport ? 'ID' : 'ApplicantNo',
+        size: columnSizeConfig.applicantNo,
         enableColumnFilter: false,
         enableSorting: false,
         Cell: ({ row, table }) => {
@@ -2140,7 +2177,7 @@ const Applicants = () => {
       {
         accessorKey: 'profilePhoto',
         header: 'Photo',
-        size: 72,
+        size: columnSizeConfig.profilePhoto,
         enableSorting: false,
         enableColumnFilter: false,
         Cell: ({ row }: { row: { original: Applicant } }) => {
@@ -2178,7 +2215,7 @@ const Applicants = () => {
       {
         accessorKey: 'fullName',
         header: 'Name',
-        size: 120,
+        size: columnSizeConfig.fullName,
         enableColumnFilter: true,
         enableSorting: false,
         Cell: ({ row }: { row: { original: Applicant } }) => {
@@ -2214,7 +2251,7 @@ const Applicants = () => {
       {
         accessorKey: 'email',
         header: 'Email',
-        size: 170,
+        size: columnSizeConfig.email,
         enableColumnFilter: true,
         enableSorting: false,
         Cell: ({ row }: { row: { original: Applicant } }) => {
@@ -2234,7 +2271,7 @@ const Applicants = () => {
       {
         accessorKey: 'phone',
         header: 'Phone',
-        size: 110,
+        size: columnSizeConfig.phone,
         enableColumnFilter: true,
         enableSorting: false,
         Cell: ({ row }: { row: { original: Applicant } }) => {
@@ -2262,7 +2299,7 @@ const Applicants = () => {
               ''
           ),
         header: 'Gender',
-        size: 90,
+        size: columnSizeConfig.gender,
         enableColumnFilter: true,
         enableSorting: false,
         Header: ({ column }: { column: any }) => {
@@ -2298,15 +2335,21 @@ const Applicants = () => {
 
           return (
             <div onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center gap-2 -mt-1">
+              <div className="flex items-center gap-2">
                 <span className="text-sm font-medium">Gender</span>
                 <div>
                   <button
                     type="button"
                     onClick={handleClick}
-                    className="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-1 text-xs text-gray-700 dark:bg-gray-700 dark:text-gray-200"
+                    className={`inline-flex items-center gap-1 rounded bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200 ${
+                      isLaptopViewport ? 'px-1.5 py-0.5 text-[10px]' : 'px-2 py-1 text-xs'
+                    }`}
                   >
-                    {selected.length ? `${selected.length}` : 'Filter'}
+                    {selected.length
+                      ? `${selected.length}`
+                      : isLaptopViewport
+                        ? ''
+                        : 'Filter'}
                     <svg className="h-3 w-3" viewBox="0 0 20 20" fill="none">
                       <path
                         d="M6 8l4 4 4-4"
@@ -2384,7 +2427,7 @@ const Applicants = () => {
             {
               id: 'companyId',
               header: 'Company',
-              size: 130,
+              size: columnSizeConfig.companyId,
               enableColumnFilter: true,
               enableSorting: false,
               accessorFn: (row: any) => {
@@ -2435,15 +2478,21 @@ const Applicants = () => {
 
                 return (
                   <div onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center gap-2 -mt-1">
+                    <div className="flex items-center gap-2">
                       <span className="text-sm font-medium">Company</span>
                       <div>
                         <button
                           type="button"
                           onClick={handleClick}
-                          className="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-1 text-xs text-gray-700 dark:bg-gray-700 dark:text-gray-200"
+                          className={`inline-flex items-center gap-1 rounded bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200 ${
+                            isLaptopViewport ? 'px-1.5 py-0.5 text-[10px]' : 'px-2 py-1 text-xs'
+                          }`}
                         >
-                          {selected.length ? `${selected.length}` : 'Filter'}
+                          {selected.length
+                            ? `${selected.length}`
+                            : isLaptopViewport
+                              ? ''
+                              : 'Filter'}
                           <svg
                             className="h-3 w-3"
                             viewBox="0 0 20 20"
@@ -2587,15 +2636,23 @@ const Applicants = () => {
 
           return (
             <div onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center gap-2 -mt-1">
-                <span className="text-sm font-medium">Job Position</span>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium">
+                  {isLaptopViewport ? 'Job' : 'Job Position'}
+                </span>
 
                 <button
                   type="button"
                   onClick={handleClick}
-                  className="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-1 text-xs text-gray-700 dark:bg-gray-700 dark:text-gray-200"
+                  className={`inline-flex items-center gap-1 rounded bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200 ${
+                    isLaptopViewport ? 'px-1.5 py-0.5 text-[10px]' : 'px-2 py-1 text-xs'
+                  }`}
                 >
-                  {selected.length ? `${selected.length}` : 'Filter'}
+                  {selected.length
+                    ? `${selected.length}`
+                    : isLaptopViewport
+                      ? ''
+                      : 'Filter'}
                   <svg className="h-3 w-3" viewBox="0 0 20 20" fill="none">
                     <path
                       d="M6 8l4 4 4-4"
@@ -2653,7 +2710,7 @@ const Applicants = () => {
           return vals.includes(cell);
         },
 
-        size: 160,
+        size: columnSizeConfig.jobPositionId,
         enableColumnFilter: true,
 
         Cell: ({ row }: { row: { original: Applicant } }) => {
@@ -2718,7 +2775,7 @@ const Applicants = () => {
 
           return (
             <div onMouseDown={(e) => e.stopPropagation()}>
-              <div className="flex items-center gap-2 -mt-1">
+              <div className="flex items-center gap-2">
                 <span className="text-sm font-medium">Status</span>
 
                 <button
@@ -2734,9 +2791,15 @@ const Applicants = () => {
                     if (statusAnchorEl === target) setStatusAnchorEl(null);
                     else setStatusAnchorEl(target);
                   }}
-                  className="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-1 text-xs text-gray-700 dark:bg-gray-700 dark:text-gray-200"
+                  className={`inline-flex items-center gap-1 rounded bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200 ${
+                    isLaptopViewport ? 'px-1.5 py-0.5 text-[10px]' : 'px-2 py-1 text-xs'
+                  }`}
                 >
-                  {selected.length ? `${selected.length}` : 'Filter'}
+                  {selected.length
+                    ? `${selected.length}`
+                    : isLaptopViewport
+                      ? ''
+                      : 'Filter'}
                   <svg className="h-3 w-3" viewBox="0 0 20 20" fill="none">
                     <path
                       d="M6 8l4 4 4-4"
@@ -2793,7 +2856,7 @@ const Applicants = () => {
           return vals.includes(cell);
         },
 
-        size: 105,
+        size: columnSizeConfig.status,
         enableColumnFilter: true,
 
         Cell: ({ row }: { row: { original: Applicant } }) => {
@@ -2850,7 +2913,7 @@ const Applicants = () => {
             </button>
           );
         },
-        size: 110,
+        size: columnSizeConfig.submittedAt,
         enableColumnFilter: false,
         // Disable MRT's built-in sort UI for this column so we can render a single up/down arrow
         enableSorting: true,
@@ -2887,7 +2950,7 @@ const Applicants = () => {
       {
         id: 'actions',
         header: 'Actions',
-        size: 90,
+        size: columnSizeConfig.actions,
         enableColumnFilter: false,
         enableSorting: false,
         Cell: ({ row }: any) => {
@@ -2952,6 +3015,8 @@ const Applicants = () => {
       companyMap,
       jobPositionMap,
       jobOptions,
+      columnSizeConfig,
+      isLaptopViewport,
       getStatusColor,
       formatDate,
       statusAnchorEl,
@@ -2980,30 +3045,10 @@ const Applicants = () => {
     return () => observer.disconnect();
   }, []);
 
-  const [isCompactDesktop, setIsCompactDesktop] = useState<boolean>(() =>
-    typeof window !== 'undefined' ? window.innerWidth < 1440 : false
+  const responsiveColumnVisibility = useMemo(
+    () => layout.columnVisibility || {},
+    [layout.columnVisibility]
   );
-
-  useEffect(() => {
-    const onResize = () => setIsCompactDesktop(window.innerWidth < 1440);
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
-
-  const responsiveColumnVisibility = useMemo(() => {
-    const saved = layout.columnVisibility || {};
-    if (!isCompactDesktop) return saved;
-
-    // Keep essential columns visible on laptop widths to avoid horizontal scrolling.
-    return {
-      ...saved,
-      email: false,
-      phone: false,
-      gender: false,
-      companyId: false,
-      actions: false,
-    };
-  }, [layout.columnVisibility, isCompactDesktop]);
 
   const muiTheme = useMemo(
     () =>
@@ -3127,23 +3172,23 @@ const Applicants = () => {
     data: filteredApplicants,
     displayColumnDefOptions: {
       'mrt-row-select': {
-        size: 48,
+        size: selectColumnWidth,
         muiTableHeadCellProps: {
           align: 'center',
           sx: {
             padding: 0,
-            width: '48px',
-            minWidth: '48px',
-            maxWidth: '48px',
+            width: `${selectColumnWidth}px`,
+            minWidth: `${selectColumnWidth}px`,
+            maxWidth: `${selectColumnWidth}px`,
           },
         },
         muiTableBodyCellProps: {
           align: 'center',
           sx: {
             padding: 0,
-            width: '48px',
-            minWidth: '48px',
-            maxWidth: '48px',
+            width: `${selectColumnWidth}px`,
+            minWidth: `${selectColumnWidth}px`,
+            maxWidth: `${selectColumnWidth}px`,
           },
         },
         Cell: ({ row, table }: any) => {
@@ -3182,6 +3227,7 @@ const Applicants = () => {
     enableSorting: true,
     enableColumnActions: false,
     enableColumnResizing: true,
+    layoutMode: 'grid',
     manualPagination: false,
     manualFiltering: false,
     manualSorting: false,
@@ -3219,8 +3265,9 @@ const Applicants = () => {
     muiTableProps: {
       sx: {
         backgroundColor: isDarkMode ? '#24303F' : '#FFFFFF',
-        tableLayout: 'fixed',
+        tableLayout: 'auto',
         width: '100%',
+        minWidth: `${tableMinWidth}px`,
         fontFamily:
           "'Cairo', Outfit, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans'",
         fontSize: '0.82rem',
@@ -3229,7 +3276,7 @@ const Applicants = () => {
     muiTableContainerProps: {
       sx: {
         maxWidth: '100%',
-        overflowX: 'hidden',
+        overflowX: 'auto',
       },
     },
     muiTableBodyProps: {
@@ -3247,19 +3294,33 @@ const Applicants = () => {
         backgroundColor: isDarkMode ? '#24303F' : '#FFFFFF',
         color: isDarkMode ? '#E4E7EC' : '#101828',
         borderColor: isDarkMode ? '#344054' : '#E4E7EC',
-        fontSize: '0.8rem',
+        display: 'flex',
+        alignItems: 'center',
+        fontSize: isLaptopViewport ? '0.76rem' : '0.8rem',
         lineHeight: 1.25,
-        padding: '6px 8px',
+        padding: isLaptopViewport ? '5px 6px' : '6px 8px',
+        verticalAlign: 'middle',
         fontFamily:
           "'Cairo', Outfit, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans'",
-        whiteSpace: 'normal',
-        overflowWrap: 'anywhere',
-        wordBreak: 'break-word',
+        whiteSpace: 'nowrap',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
         '& > a': {
-          display: 'block',
+          display: 'flex',
+          alignItems: 'center',
           width: '100%',
+          height: '100%',
           color: 'inherit',
           textDecoration: 'none',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+        },
+        '& .Mui-TableBodyCell-Content': {
+          display: 'flex',
+          alignItems: 'center',
+          width: '100%',
+          minHeight: '100%',
         },
       },
     },
@@ -3268,14 +3329,27 @@ const Applicants = () => {
         backgroundColor: isDarkMode ? '#1C2434' : '#F9FAFB',
         color: isDarkMode ? '#E4E7EC' : '#344054',
         borderColor: isDarkMode ? '#344054' : '#E4E7EC',
+        display: 'flex',
+        alignItems: 'center',
         fontWeight: 600,
-        fontSize: '0.78rem',
+        fontSize: isLaptopViewport ? '0.74rem' : '0.78rem',
         lineHeight: 1.2,
-        padding: '8px 8px',
+        padding: isLaptopViewport ? '7px 6px' : '8px 8px',
+        verticalAlign: 'middle',
         fontFamily:
           "'Cairo', Outfit, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans'",
-        whiteSpace: 'normal',
-        overflowWrap: 'anywhere',
+        whiteSpace: 'nowrap',
+        '& .Mui-TableHeadCell-Content': {
+          display: 'flex',
+          alignItems: 'center',
+          width: '100%',
+          minHeight: '100%',
+        },
+        '& .Mui-TableHeadCell-Content-Wrapper': {
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+        },
         // Hide the default unsorted double-arrow icon; show icon only when active (sorted)
         '& .MuiTableSortLabel-icon': {
           opacity: 0,
@@ -3572,7 +3646,7 @@ const Applicants = () => {
 
             {/* Material React Table */}
             <ThemeProvider theme={muiTheme}>
-              <div className="mx-auto w-full max-w-[900px] lg:max-w-[980px] xl:max-w-[1080px] 2xl:max-w-[1180px]">
+              <div className="w-full overflow-x-auto custom-scrollbar">
                 <MaterialReactTable table={table} />
               </div>
             </ThemeProvider>
