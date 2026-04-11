@@ -1331,6 +1331,27 @@ const ApplicantData = () => {
           </div>
         </div>
 
+        {/* Status History moved to top and collapsed by default */}
+        <details className="group overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-4 sm:px-6 sm:py-5">
+            <div>
+              <h3 className="text-base font-bold text-gray-900 dark:text-white">Status History</h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Timeline, comments, interviews, and channel activity</p>
+            </div>
+            <svg
+              className="h-5 w-5 text-gray-500 transition-transform group-open:rotate-180"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </summary>
+          <div className="border-t border-gray-100 px-3 py-4 dark:border-gray-800 sm:px-5 sm:py-5">
+            <StatusHistory applicant={applicant} loading={loading} />
+          </div>
+        </details>
+
         {/* Personal Information Card
           Renders profile header, photo, name, contact details, job/company/department, address, status, submission date and resume actions */}
         <div className="relative overflow-hidden rounded-2xl bg-white dark:bg-gray-900 shadow-xl">
@@ -1783,9 +1804,6 @@ const ApplicantData = () => {
 
         
         
-
-      {/* Activity timeline (status, messages, comments, interviews) */}
-      <StatusHistory applicant={applicant} loading={loading} />
 
       {/* Photo Preview Modal */}
       <Modal

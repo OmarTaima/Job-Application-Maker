@@ -278,9 +278,9 @@ const getApplicantJobTitle = (applicantRecord: any): string | null => {
 };
 
 const MetricCard = ({ label, value, colorClass }: { label: string; value: string | number; colorClass: string }) => (
-	<div className="rounded-[2rem] border border-white/40 bg-white/40 p-5 shadow-sm backdrop-blur-md dark:border-white/5 dark:bg-gray-900/40">
-	  <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">{label}</p>
-	  <p className={`mt-1 text-xl font-black ${colorClass}`}>{value}</p>
+	<div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/60">
+	  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">{label}</p>
+	  <p className={`mt-1 text-2xl font-semibold tracking-tight ${colorClass}`}>{value}</p>
 	</div>
 );
 
@@ -569,38 +569,36 @@ export default function MailPreview() {
 	}, [uiRecords]);
 
 	return (
-		<div className="mx-auto max-w-[1600px] space-y-8 pb-20">
+		<div className="mx-auto max-w-[1600px] space-y-6 pb-14">
 			<PageMeta title="Mail IQ" description="Intelligence Center" />
 
-			<section className="relative overflow-hidden rounded-[3rem] border border-white/20 bg-gradient-to-br from-white/80 to-white/40 p-10 shadow-2xl backdrop-blur-3xl dark:from-gray-900/80 dark:to-gray-900/40">
-				<div className="absolute -left-20 -top-20 h-80 w-80 rounded-full bg-brand-500/10 blur-[100px]" />
-				<div className="relative flex flex-col items-center justify-between gap-10 lg:flex-row">
-					<div className="space-y-4">
-						<div className="inline-flex items-center gap-2 rounded-full border border-brand-200/50 bg-brand-50/50 px-4 py-1 text-[10px] font-black uppercase tracking-widest text-brand-600 dark:border-brand-800/50 dark:bg-brand-900/50 dark:text-brand-400">
+			<section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+				<div className="flex flex-col gap-6 border-b border-slate-200 p-6 dark:border-slate-800 lg:flex-row lg:items-center lg:justify-between lg:p-8">
+					<div className="space-y-3">
+						<div className="inline-flex items-center gap-2 rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-brand-600 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-300">
 							<Sparkles className="h-3.5 w-3.5" /> Intelligence Center
 						</div>
-						<h1 className="text-4xl font-black tracking-tighter text-gray-900 dark:text-white sm:text-5xl uppercase">Mail Intelligence</h1>
-						<p className="max-w-md text-sm text-gray-500 dark:text-gray-400 font-medium leading-relaxed">Advanced audit logs and real-time engagement tracking for applicant communications.</p>
+						<h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-4xl">Mail Intelligence</h1>
+						<p className="max-w-xl text-sm leading-relaxed text-slate-500 dark:text-slate-400">Advanced audit logs and real-time engagement tracking for applicant communications.</p>
 					</div>
-					<div className="grid w-full grid-cols-2 gap-4 sm:w-auto sm:grid-cols-3">
+					<div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-3 lg:w-auto">
 						<MetricCard label="Volume" value={metrics.total} colorClass="text-gray-900 dark:text-white" />
 						<MetricCard label="Delivered" value={`${metrics.delivery}%`} colorClass="text-green-600" />
 						<MetricCard label="Open Rate" value={`${metrics.open}%`} colorClass="text-brand-600" />
 					</div>
 				</div>
 
-				{/* Selection Tool Bar */}
-				<div className="mt-8 rounded-[2rem] border border-white/40 bg-white/20 p-3 shadow-lg backdrop-blur-xl">
+				<div className="space-y-4 p-6 lg:p-8">
 					<div className={`grid grid-cols-1 gap-3 ${shouldShowCompanyFilter ? 'lg:grid-cols-2' : 'lg:grid-cols-1'}`}>
 						{shouldShowCompanyFilter && (
-							<div className="rounded-2xl border border-white/40 bg-gradient-to-r from-white/80 to-brand-50/70 p-4 dark:from-gray-900/70 dark:to-brand-900/20">
-								<p className="mb-2 text-[10px] font-black uppercase tracking-[0.22em] text-brand-600 dark:text-brand-400">Company Scope</p>
-								<div className="flex items-center gap-3 rounded-xl border border-brand-100/80 bg-white/70 px-3 py-2.5 shadow-sm dark:border-brand-800/40 dark:bg-gray-950/70">
+							<div className="rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/60">
+								<p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Company Scope</p>
+								<div className="flex items-center gap-3 rounded-lg border border-slate-300 bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-900">
 									<Building2 className="h-4 w-4 text-brand-500" />
 									<select
 										value={selectedCompanyId}
 										onChange={e => { setSelectedCompanyId(e.target.value); setSelectedJobId('all'); }}
-										className="w-full appearance-none border-0 bg-transparent p-0 text-sm font-bold tracking-tight text-gray-900 outline-none ring-0 shadow-none focus:outline-none focus:ring-0 dark:text-white dark:[&_option]:bg-gray-950"
+										className="w-full appearance-none border-0 bg-transparent p-0 text-sm font-medium text-slate-900 outline-none ring-0 shadow-none focus:outline-none focus:ring-0 dark:text-slate-100 dark:[&_option]:bg-slate-900"
 									>
 										<option value="all">Global Workspace (All Companies)</option>
 										{(companies || []).map(c => (
@@ -611,15 +609,15 @@ export default function MailPreview() {
 							</div>
 						)}
 
-						<div className="rounded-2xl border border-white/40 bg-gradient-to-r from-white/80 to-orange-50/70 p-4 dark:from-gray-900/70 dark:to-orange-900/20">
-							<p className="mb-2 text-[10px] font-black uppercase tracking-[0.22em] text-orange-600 dark:text-orange-400">Job Scope</p>
-							<div className="flex items-center gap-3 rounded-xl border border-orange-100/80 bg-white/70 px-3 py-2.5 shadow-sm dark:border-orange-800/40 dark:bg-gray-950/70">
+						<div className="rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/60">
+							<p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Job Scope</p>
+							<div className="flex items-center gap-3 rounded-lg border border-slate-300 bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-900">
 								<Briefcase className="h-4 w-4 text-orange-500" />
 								<select
 									value={selectedJobId}
 									onChange={e => setSelectedJobId(e.target.value)}
 									disabled={selectedCompanyId === 'all'}
-									className="w-full appearance-none border-0 bg-transparent p-0 text-sm font-bold tracking-tight text-gray-900 outline-none ring-0 shadow-none focus:outline-none focus:ring-0 dark:text-white dark:[&_option]:bg-gray-950"
+									className="w-full appearance-none border-0 bg-transparent p-0 text-sm font-medium text-slate-900 outline-none ring-0 shadow-none focus:outline-none focus:ring-0 disabled:opacity-50 dark:text-slate-100 dark:[&_option]:bg-slate-900"
 								>
 									{selectedCompanyId === 'all' ? null : (
 										<>
@@ -634,67 +632,67 @@ export default function MailPreview() {
 						</div>
 					</div>
 
-					<div className="mt-3 flex flex-wrap items-center gap-2 px-1">
+					<div className="flex flex-wrap items-center gap-2">
 						{shouldShowCompanyFilter && (
-							<span className="rounded-full bg-brand-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-brand-700 dark:text-brand-300">
+							<span className="rounded-full border border-brand-200 bg-brand-50 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-brand-700 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-300">
 								{selectedCompanyId === 'all' ? 'All Companies' : 'Company Filter Active'}
 							</span>
 						)}
-						<span className="rounded-full bg-orange-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-orange-700 dark:text-orange-300">
+						<span className="rounded-full border border-orange-200 bg-orange-50 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-orange-700 dark:border-orange-500/30 dark:bg-orange-500/10 dark:text-orange-300">
 							{selectedJobId === 'all' ? 'All Jobs' : 'Job Filter Active'}
 						</span>
 					</div>
 				</div>
 			</section>
 
-			<div className="grid grid-cols-1 gap-8 xl:grid-cols-[400px_1fr]">
+			<div className="grid grid-cols-1 gap-6 xl:grid-cols-[380px_1fr]">
 				<aside className="space-y-6">
-					<div className="overflow-hidden rounded-[2.5rem] border border-gray-100 bg-white/50 shadow-xl backdrop-blur-xl dark:border-gray-800 dark:bg-gray-950/50">
-						<div className="space-y-6 border-b border-gray-50 p-6 dark:border-gray-800">
+					<div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+						<div className="space-y-4 border-b border-slate-200 p-5 dark:border-slate-800">
 							<div className="relative">
-								<Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-300" />
-								<input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Search transmissions..." className="w-full rounded-2xl border-none bg-gray-50 py-4 pl-12 pr-4 text-xs font-black uppercase tracking-tighter focus:ring-2 focus:ring-brand-500/20 dark:bg-gray-900" />
+								<Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+								<input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Search transmissions..." className="w-full rounded-lg border border-slate-300 bg-white py-3 pl-11 pr-4 text-sm font-medium text-slate-900 outline-none transition focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" />
 							</div>
-							<div className="flex flex-wrap gap-1.5 focus-within:ring-0">
+							<div className="flex flex-wrap gap-1.5">
 								{STATUS_OPTIONS.map(o => (
-									<button key={o.key} onClick={() => setStatusFilter(o.key as any)} className={`rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-tighter transition-all ${statusFilter === o.key ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900' : 'bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-gray-900 dark:hover:bg-gray-800'}`}>
+									<button key={o.key} onClick={() => setStatusFilter(o.key as any)} className={`rounded-lg px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.14em] transition ${statusFilter === o.key ? 'bg-brand-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'}`}>
 										{o.label}
 									</button>
 								))}
 							</div>
 						</div>
-						<div className="h-[800px] overflow-y-auto p-4 custom-scrollbar">
+						<div className="h-[760px] overflow-y-auto p-3 custom-scrollbar">
 							<div className="space-y-2">
 								{paginatedMails.map(m => (
-									<button key={m.id} onClick={() => setSelectedMailId(m.id)} className={`group relative w-full rounded-[1.8rem] border p-5 text-left transition-all ${selectedMail?.id === m.id ? 'border-brand-200 bg-brand-50/50 dark:border-brand-500/20 dark:bg-brand-900/10' : 'border-transparent hover:bg-gray-50/50 dark:hover:bg-gray-900/50'}`}>
+									<button key={m.id} onClick={() => setSelectedMailId(m.id)} className={`group relative w-full rounded-xl border p-4 text-left transition ${selectedMail?.id === m.id ? 'border-brand-300 bg-brand-50/60 dark:border-brand-500/30 dark:bg-brand-500/10' : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-slate-600 dark:hover:bg-slate-800/70'}`}>
 										<div className="flex items-start justify-between gap-4">
 											<div className="min-w-0">
-												<p className="text-sm font-black tracking-tight text-gray-900 dark:text-white truncate">{m.applicantName}</p>
-												<p className="text-[10px] font-bold text-gray-400 truncate uppercase mt-0.5">{m.applicantEmail}</p>
+												<p className="truncate text-sm font-semibold tracking-tight text-slate-900 dark:text-slate-100">{m.applicantName}</p>
+												<p className="mt-0.5 truncate text-[10px] font-medium uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">{m.applicantEmail}</p>
 											</div>
 											<span className={`rounded-full px-2 py-0.5 text-[8px] font-black uppercase tracking-wider ${statusChipClasses[m.status]}`}>{m.status}</span>
 										</div>
-										<p className="mt-3 line-clamp-1 text-[11px] font-bold text-gray-600 dark:text-gray-400">{m.subject}</p>
+										<p className="mt-2 line-clamp-1 text-[12px] font-medium text-slate-600 dark:text-slate-400">{m.subject}</p>
 									</button>
 								))}
 							</div>
 						</div>
 						{filteredMails.length > MAIL_LIST_PAGE_SIZE && (
-							<div className="flex items-center justify-center gap-3 border-t border-gray-100 p-4 dark:border-gray-800">
+							<div className="flex items-center justify-center gap-3 border-t border-slate-200 p-4 dark:border-slate-800">
 								<button
 									disabled={mailPage === 1}
 									onClick={() => setMailPage((prev) => Math.max(1, prev - 1))}
-									className="flex h-10 w-10 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-600 transition-all hover:bg-brand-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
+									className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 transition hover:bg-brand-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
 								>
 									<ChevronLeft className="h-4 w-4" />
 								</button>
-								<div className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-[11px] font-black uppercase tracking-widest text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">
-									Phase {mailPage} <span className="mx-1 opacity-30">/</span> {totalMailPages}
+								<div className="rounded-lg border border-slate-300 bg-slate-50 px-4 py-2 text-xs font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
+									Page {mailPage} <span className="mx-1 opacity-40">/</span> {totalMailPages}
 								</div>
 								<button
 									disabled={mailPage === totalMailPages}
 									onClick={() => setMailPage((prev) => Math.min(totalMailPages, prev + 1))}
-									className="flex h-10 w-10 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-600 transition-all hover:bg-brand-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
+									className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 transition hover:bg-brand-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
 								>
 									<ChevronRight className="h-4 w-4" />
 								</button>
@@ -705,16 +703,16 @@ export default function MailPreview() {
 
 				<main>
 					{selectedMail ? (
-						<article className="overflow-hidden rounded-[3rem] border border-gray-100 bg-white shadow-2xl dark:border-gray-800 dark:bg-gray-950">
-							<div className="border-b border-gray-50 p-10 dark:border-gray-800">
-								<div className="mb-10 flex flex-wrap items-center justify-between gap-6">
+						<article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+							<div className="border-b border-slate-200 p-6 dark:border-slate-800 lg:p-8">
+								<div className="mb-8 flex flex-wrap items-center justify-between gap-4">
 									<div className="space-y-2">
-										<p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.3em] text-brand-500">
+										<p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-600 dark:text-brand-300">
 											<span className="h-1 w-6 rounded-full bg-brand-500" /> Transmission Report
 										</p>
-										<h2 className="text-3xl font-black tracking-tighter text-gray-900 dark:text-white uppercase">{selectedMail.subject}</h2>
+										<h2 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100 lg:text-3xl">{selectedMail.subject}</h2>
 									</div>
-									<div className={`rounded-2xl px-6 py-3 text-[11px] font-black uppercase tracking-widest shadow-sm ${statusChipClasses[selectedMail.status]}`}>
+									<div className={`rounded-full px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] ${statusChipClasses[selectedMail.status]}`}>
 										{selectedMail.status}
 									</div>
 								</div>
@@ -725,56 +723,57 @@ export default function MailPreview() {
 										{ l: 'Assigned Job', v: selectedMail.applicantAssignedJobTitle, s: selectedMail.applicantAssignedJobId || 'No job match' },
 										{ l: 'Score', v: `${selectedMail.score}% Reliable`, s: 'Engagement index' }
 									].map((c, i) => (
-										<div key={i} className="rounded-[2rem] bg-gray-50/50 p-6 dark:bg-gray-900/50">
-											<p className="text-[9px] font-black uppercase tracking-widest text-gray-400">{c.l}</p>
-											<p className="mt-1 text-sm font-black text-gray-900 dark:text-white truncate">{c.v}</p>
+										<div key={i} className="rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/60">
+											<p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">{c.l}</p>
+											<p className="mt-1 truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{c.v}</p>
+											<p className="mt-1 truncate text-[11px] text-slate-500 dark:text-slate-400">{c.s}</p>
 										</div>
 									))}
 								</div>
 							</div>
 							<div className="grid grid-cols-1 lg:grid-cols-2">
-								<div className="p-10 border-b lg:border-b-0 lg:border-r border-gray-50 dark:border-gray-800">
-									<h3 className="mb-10 flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-gray-400"><Clock3 className="h-4 w-4" /> Activity Feed</h3>
+								<div className="border-b border-slate-200 p-6 dark:border-slate-800 lg:border-b-0 lg:border-r lg:p-8">
+									<h3 className="mb-6 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500"><Clock3 className="h-4 w-4" /> Activity Feed</h3>
 									<div className="space-y-8 pl-4">
 										{selectedMail.events.map((e, i) => (
 											<div key={i} className="relative pl-8">
 												<div className="absolute left-0 top-1 h-3 w-3 rounded-full bg-brand-500 ring-4 ring-brand-500/10" />
-												<p className="text-[9px] font-black text-gray-400 opacity-60 uppercase">{formatDateTime(e.at)}</p>
-												<p className="text-xs font-black text-gray-900 dark:text-white uppercase tracking-tight">{e.type.replace(/_/g, ' ')}</p>
-												<p className="text-[11px] font-medium text-gray-500 mt-0.5">{e.detail}</p>
+												<p className="text-[10px] font-medium uppercase tracking-[0.14em] text-slate-500">{formatDateTime(e.at)}</p>
+												<p className="mt-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-900 dark:text-slate-100">{e.type.replace(/_/g, ' ')}</p>
+												<p className="mt-1 text-[12px] text-slate-600 dark:text-slate-400">{e.detail}</p>
 											</div>
 										))}
 									</div>
 								</div>
-								<div className="p-10 flex flex-col h-full">
-									<div className="mb-10 flex items-center justify-between">
-										<h3 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-gray-400"><MessageSquareText className="h-4 w-4" /> Payload Body</h3>
-										<div className="h-1 w-10 rounded-full bg-gray-100 dark:bg-gray-800" />
+								<div className="flex h-full flex-col p-6 lg:p-8">
+									<div className="mb-6 flex items-center justify-between">
+										<h3 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500"><MessageSquareText className="h-4 w-4" /> Payload Body</h3>
+										<div className="h-1 w-10 rounded-full bg-slate-200 dark:bg-slate-700" />
 									</div>
-									<div className="flex-1 rounded-[2.5rem] border border-gray-50 bg-gray-50 p-2 dark:border-gray-800 dark:bg-gray-900/50">
-										<iframe srcDoc={selectedMail.bodyHtml} title="Mail Preview" className="w-full h-full min-h-[500px] rounded-[2rem] border-none" />
+									<div className="flex-1 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-800/60">
+										<iframe srcDoc={selectedMail.bodyHtml} title="Mail Preview" className="h-full min-h-[500px] w-full rounded-lg border-none bg-white dark:bg-slate-900" />
 									</div>
 								</div>
 							</div>
-							<div className="bg-gray-50/50 p-10 dark:bg-gray-900/20 border-t border-gray-50 dark:border-gray-800">
+							<div className="border-t border-slate-200 bg-slate-50 p-6 dark:border-slate-800 dark:bg-slate-900/40 lg:p-8">
 								<details className="group">
-									<summary className="flex cursor-pointer list-none items-center justify-between text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-black dark:hover:text-white transition-colors">
+									<summary className="flex cursor-pointer list-none items-center justify-between text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 transition hover:text-slate-800 dark:hover:text-slate-100">
 										<div className="flex items-center gap-2"><ServerCog className="h-4 w-4" /> Metadata Trace</div>
 										<div className="h-4 w-4 transition-transform group-open:rotate-90">→</div>
 									</summary>
-									<pre className="mt-8 rounded-[2rem] bg-gray-900 p-8 text-[9px] font-mono text-brand-400 overflow-auto dark:bg-black/40 leading-relaxed shadow-2xl">
+									<pre className="mt-5 max-h-[420px] overflow-auto rounded-xl bg-slate-900 p-5 font-mono text-[10px] leading-relaxed text-brand-300">
 										{JSON.stringify(selectedMail.raw, null, 2)}
 									</pre>
 								</details>
 							</div>
 						</article>
 					) : (
-						<div className="flex h-[800px] flex-col items-center justify-center rounded-[3.5rem] border-2 border-dashed border-gray-100 dark:border-gray-800">
+						<div className="flex h-[760px] flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900">
 							<div className="relative">
-								<Mail className="h-20 w-20 text-gray-100 dark:text-gray-800" />
+								<Mail className="h-16 w-16 text-slate-300 dark:text-slate-600" />
 								<div className="absolute inset-0 animate-ping rounded-full bg-brand-500/5" />
 							</div>
-							<p className="mt-8 text-lg font-black tracking-tight text-gray-300 dark:text-gray-700 uppercase">Select transmission to decode</p>
+							<p className="mt-6 text-sm font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Select transmission to inspect</p>
 						</div>
 					)}
 				</main>
