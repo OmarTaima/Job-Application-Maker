@@ -197,7 +197,7 @@ export default function Home() {
             <div className="flex items-center gap-3 ml-4">
               <div className="text-sm text-gray-500">Showing</div>
               <div className="font-semibold text-gray-800">
-                {loading ? "Loading..." : `${filteredNonTrashed.length} applicants`}
+                {loading ? "Loading..." : `${countsFromServer.total - countsFromServer.trashed} applicants`}
               </div>
               <div className="lg:ml-130">
                 <button

@@ -728,7 +728,6 @@ export default function MailPreview() {
 										<div key={i} className="rounded-[2rem] bg-gray-50/50 p-6 dark:bg-gray-900/50">
 											<p className="text-[9px] font-black uppercase tracking-widest text-gray-400">{c.l}</p>
 											<p className="mt-1 text-sm font-black text-gray-900 dark:text-white truncate">{c.v}</p>
-											<p className="text-[10px] font-bold text-gray-400 mt-0.5 truncate uppercase tracking-tighter">{c.s}</p>
 										</div>
 									))}
 								</div>

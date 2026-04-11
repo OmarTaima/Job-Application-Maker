@@ -65,7 +65,7 @@ export default function CustomResponses({ applicant }: Props) {
           </div>
         </div>
       </div>
-      <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-5">
+      <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-5 items-start">
         {Object.entries(applicant.customResponses).map(
           ([key, value]) => {
             // If backend now exposes expected salary as a top-level field, skip
@@ -284,8 +284,8 @@ export default function CustomResponses({ applicant }: Props) {
             const isCoverText = typeof value === 'string' && /cover/.test(normalizedKey);
 
             return (
-              <div key={key} className={`group p-4 bg-white dark:bg-gray-800 rounded-xl hover:shadow-md transition-all duration-200 border-l-4 border-blue-500`}>
-                <div className="flex items-center gap-4">
+              <div key={key} className={`group self-start p-4 bg-white dark:bg-gray-800 rounded-xl hover:shadow-md transition-all duration-200 border-l-4 border-blue-500`}>
+                <div className="flex items-start gap-4">
                   <span className={`text-xs font-extrabold text-blue-600 dark:text-blue-400 uppercase tracking-wider whitespace-nowrap font-cairo`}>
                     {key
                       .replace(/_/g, ' ')

@@ -303,6 +303,8 @@ const Applicants = () => {
       gender: isLaptopViewport ? 70 : 90,
       companyId: isLaptopViewport ? 96 : 130,
       jobPositionId: isLaptopViewport ? 118 : 160,
+      expectedSalary: isLaptopViewport ? 104 : 140,
+      sscore: isLaptopViewport ? 72 : 96,
       status: isLaptopViewport ? 84 : 105,
       submittedAt: isLaptopViewport ? 88 : 110,
       actions: isLaptopViewport ? 58 : 90,
@@ -2021,6 +2023,316 @@ const Applicants = () => {
     });
   }, []);
 
+  const parseComparableNumber = useCallback((value: any): number | null => {
+    if (value === null || value === undefined || value === '') return null;
+    if (typeof value === 'number') {
+      return Number.isFinite(value) ? value : null;
+    }
+
+    const normalizeDigits = (input: string) => {
+      const map: Record<string, string> = {
+        '\u0660': '0',
+        '\u0661': '1',
+        '\u0662': '2',
+        '\u0663': '3',
+        '\u0664': '4',
+        '\u0665': '5',
+        '\u0666': '6',
+        '\u0667': '7',
+        '\u0668': '8',
+        '\u0669': '9',
+        '\u06F0': '0',
+        '\u06F1': '1',
+        '\u06F2': '2',
+        '\u06F3': '3',
+        '\u06F4': '4',
+        '\u06F5': '5',
+        '\u06F6': '6',
+        '\u06F7': '7',
+        '\u06F8': '8',
+        '\u06F9': '9',
+      };
+      return input.replace(/[\u0660-\u0669\u06F0-\u06F9]/g, (ch) => map[ch] || ch);
+    };
+
+    if (Array.isArray(value)) {
+      const nums = value
+        .map((item) => parseComparableNumber(item))
+        .filter((n): n is number => typeof n === 'number' && Number.isFinite(n));
+      if (!nums.length) return null;
+      return Math.max(...nums);
+    }
+
+    if (typeof value === 'object') {
+      const candidates = [
+        (value as any).expectedSalary,
+        (value as any).salary,
+        (value as any).amount,
+        (value as any).value,
+        (value as any).val,
+        (value as any).max,
+        (value as any).min,
+      ];
+
+      const nums = candidates
+        .map((item) => parseComparableNumber(item))
+        .filter((n): n is number => typeof n === 'number' && Number.isFinite(n));
+
+      if (nums.length) return Math.max(...nums);
+
+      const nestedNums = Object.values(value)
+        .map((item) => parseComparableNumber(item))
+        .filter((n): n is number => typeof n === 'number' && Number.isFinite(n));
+      if (nestedNums.length) return Math.max(...nestedNums);
+      return null;
+    }
+
+    const text = normalizeDigits(String(value));
+    const matches = text.match(/-?\d+(?:[.,]\d+)?/g);
+    if (!matches?.length) return null;
+
+    const nums = matches
+      .map((m) => Number(m.replace(/,/g, '')))
+      .filter((n) => Number.isFinite(n));
+    if (!nums.length) return null;
+    return Math.max(...nums);
+  }, []);
+
+  const resolveAnyId = useCallback((value: any): string => {
+    if (!value) return '';
+    if (typeof value === 'string' || typeof value === 'number') {
+      return String(value);
+    }
+    if (typeof value === 'object') {
+      const nested = value._id ?? value.id ?? value.jobSpecId ?? value.specId;
+      if (nested === undefined || nested === null) return '';
+      if (typeof nested === 'string' || typeof nested === 'number') {
+        return String(nested);
+      }
+      return String((nested as any)?._id ?? (nested as any)?.id ?? '');
+    }
+    return '';
+  }, []);
+
+  const getExpectedSalaryDisplay = useCallback((applicant: any): string => {
+    const toText = (value: any): string => {
+      if (value === null || value === undefined) return '';
+      if (typeof value === 'string' || typeof value === 'number') {
+        return String(value).trim();
+      }
+      if (Array.isArray(value)) {
+        const joined = value
+          .map((item) => toText(item))
+          .filter(Boolean)
+          .join(', ')
+          .trim();
+        return joined;
+      }
+      if (typeof value === 'object') {
+        const candidateKeys = [
+          'expectedSalary',
+          'salary',
+          'amount',
+          'value',
+          'val',
+          'label',
+          'name',
+          'title',
+          'en',
+          'ar',
+          'text',
+          '0',
+        ];
+        for (const key of candidateKeys) {
+          if (Object.prototype.hasOwnProperty.call(value, key)) {
+            const nested = toText((value as any)[key]);
+            if (nested) return nested;
+          }
+        }
+      }
+      return '';
+    };
+
+    const directCandidates = [
+      applicant?.expectedSalary,
+      applicant?.expected_salary,
+      applicant?.salaryExpectation,
+      applicant?.desiredSalary,
+    ];
+    for (const candidate of directCandidates) {
+      const text = toText(candidate);
+      if (text) return text;
+    }
+
+    const responses = applicant?.customResponses || applicant?.customFieldResponses || {};
+    const normalizeKey = (key: any) =>
+      String(key || '')
+        .replace(/[\s_-]+/g, '')
+        .toLowerCase();
+
+    const expectedKeyMatchers = [
+      'expectedsalary',
+      'salary',
+      'salaryexpectation',
+      'desiredsalary',
+      'الراتب',
+      'راتب',
+      'الراتبالمتوقع',
+    ];
+
+    for (const [key, value] of Object.entries(responses || {})) {
+      const normalized = normalizeKey(key);
+      const isSalaryKey = expectedKeyMatchers.some((matcher) =>
+        normalized.includes(normalizeKey(matcher))
+      );
+      if (!isSalaryKey) continue;
+      const text = toText(value);
+      if (text) return text;
+    }
+
+    return '-';
+  }, []);
+
+  const getApplicantSScore = useCallback(
+    (applicant: any): number | null => {
+      const parseAnswer = (value: any): boolean => {
+        if (typeof value === 'boolean') return value;
+        if (typeof value === 'number') return value > 0;
+        if (typeof value === 'string') {
+          const normalized = value.trim().toLowerCase();
+          if (['true', '1', 'yes', 'y', 'accepted', 'met', 'pass', 'passed'].includes(normalized)) {
+            return true;
+          }
+          if (['false', '0', 'no', 'n', 'rejected', 'failed', 'not met'].includes(normalized)) {
+            return false;
+          }
+        }
+        return Boolean(value);
+      };
+
+      const getApplicantSpecResponses = (): any[] => {
+        if (Array.isArray(applicant?.jobSpecsWithDetails) && applicant.jobSpecsWithDetails.length) {
+          return applicant.jobSpecsWithDetails;
+        }
+        if (Array.isArray(applicant?.jobSpecsResponses) && applicant.jobSpecsResponses.length) {
+          return applicant.jobSpecsResponses;
+        }
+        if (Array.isArray(applicant?.jobSpecs) && applicant.jobSpecs.length) {
+          return applicant.jobSpecs;
+        }
+        if (typeof applicant?.jobPositionId === 'object' && applicant.jobPositionId) {
+          if (
+            Array.isArray(applicant.jobPositionId.jobSpecsWithDetails) &&
+            applicant.jobPositionId.jobSpecsWithDetails.length
+          ) {
+            return applicant.jobPositionId.jobSpecsWithDetails;
+          }
+          if (Array.isArray(applicant.jobPositionId.jobSpecsResponses) && applicant.jobPositionId.jobSpecsResponses.length) {
+            return applicant.jobPositionId.jobSpecsResponses;
+          }
+          if (Array.isArray(applicant.jobPositionId.jobSpecs) && applicant.jobPositionId.jobSpecs.length) {
+            return applicant.jobPositionId.jobSpecs;
+          }
+        }
+        return [];
+      };
+
+      const getJobSpecs = (): any[] => {
+        const rawJob = applicant?.jobPositionId;
+        const jobId = resolveAnyId(rawJob);
+        const mapped = jobId ? jobPositionMap[jobId] : undefined;
+        const source =
+          mapped ||
+          (typeof rawJob === 'object' ? rawJob : undefined) ||
+          applicant?.jobPosition;
+
+        if (source && Array.isArray(source.jobSpecsWithDetails) && source.jobSpecsWithDetails.length) {
+          return source.jobSpecsWithDetails;
+        }
+        if (source && Array.isArray(source.jobSpecs) && source.jobSpecs.length) {
+          return source.jobSpecs;
+        }
+
+        const fallbackSpecs = getApplicantSpecResponses();
+        return Array.isArray(fallbackSpecs) ? fallbackSpecs : [];
+      };
+
+      const specs = getJobSpecs();
+      if (!specs.length) return null;
+
+      const applicantResponses = getApplicantSpecResponses();
+      const answerById: Record<string, boolean> = {};
+
+      applicantResponses.forEach((entry: any) => {
+        if (!entry || typeof entry !== 'object') return;
+        const answerRaw =
+          entry.answer ?? entry.accepted ?? entry.isAccepted ?? entry.met ?? entry.match ?? entry.selected;
+        const answer = parseAnswer(answerRaw);
+        [entry.jobSpecId, entry.specId, entry._id, entry.id]
+          .map((id) => resolveAnyId(id))
+          .filter(Boolean)
+          .forEach((id) => {
+            answerById[id] = answer;
+          });
+      });
+
+      let totalWeight = 0;
+      let acceptedWeight = 0;
+      let totalCount = 0;
+      let acceptedCount = 0;
+
+      specs.forEach((spec: any, idx: number) => {
+        totalCount += 1;
+
+        const rawWeight = Number(spec?.weight ?? 0);
+        const weight = Number.isFinite(rawWeight) && rawWeight > 0 ? rawWeight : 0;
+        totalWeight += weight;
+
+        const specIds = [spec?.jobSpecId, spec?.specId, spec?._id, spec?.id]
+          .map((id) => resolveAnyId(id))
+          .filter(Boolean);
+
+        let accepted: boolean | undefined;
+        for (const specId of specIds) {
+          if (answerById[specId] !== undefined) {
+            accepted = answerById[specId];
+            break;
+          }
+        }
+
+        if (accepted === undefined) {
+          const fallback = applicantResponses[idx];
+          if (fallback !== undefined) {
+            const fallbackRaw =
+              fallback?.answer ??
+              fallback?.accepted ??
+              fallback?.isAccepted ??
+              fallback?.met ??
+              fallback?.match ??
+              fallback?.selected;
+            accepted = parseAnswer(fallbackRaw);
+          } else {
+            accepted = false;
+          }
+        }
+
+        if (accepted) {
+          acceptedCount += 1;
+          acceptedWeight += weight;
+        }
+      });
+
+      if (totalWeight > 0) {
+        return Math.round((acceptedWeight / totalWeight) * 100);
+      }
+      if (totalCount > 0) {
+        return Math.round((acceptedCount / totalCount) * 100);
+      }
+      return null;
+    },
+    [jobPositionMap, resolveAnyId]
+  );
+
   const handleBulkChangeStatus = useCallback(async () => {
     if (selectedApplicantIds.length === 0 || !bulkAction) return;
 
@@ -2746,6 +3058,66 @@ const Applicants = () => {
         },
       },
       {
+        id: 'expectedSalary',
+        header: 'Expected Salary',
+        size: columnSizeConfig.expectedSalary,
+        enableColumnFilter: false,
+        enableSorting: true,
+        accessorFn: (row: any) => getExpectedSalaryDisplay(row),
+        sortingFn: (rowA: any, rowB: any) => {
+          const a = parseComparableNumber(getExpectedSalaryDisplay(rowA.original));
+          const b = parseComparableNumber(getExpectedSalaryDisplay(rowB.original));
+          const va = a ?? -1;
+          const vb = b ?? -1;
+          if (va === vb) return 0;
+          return va > vb ? 1 : -1;
+        },
+        Cell: ({ row }: { row: { original: Applicant } }) => {
+          const href = getApplicantHref(row);
+          const expectedSalary = getExpectedSalaryDisplay(row.original);
+          return (
+            <a
+              href={href}
+              className="block h-full w-full text-inherit"
+              onClick={(e) => handleApplicantLinkClick(e, row)}
+              onAuxClick={handleApplicantLinkAuxClick}
+            >
+              {expectedSalary || '-'}
+            </a>
+          );
+        },
+      },
+      {
+        id: 'sscore',
+        header: 'Score',
+        size: columnSizeConfig.sscore,
+        enableColumnFilter: false,
+        enableSorting: true,
+        accessorFn: (row: any) => getApplicantSScore(row),
+        sortingFn: (rowA: any, rowB: any, columnId: string) => {
+          const a = Number(rowA.getValue(columnId));
+          const b = Number(rowB.getValue(columnId));
+          const scoreA = Number.isFinite(a) ? a : -1;
+          const scoreB = Number.isFinite(b) ? b : -1;
+          if (scoreA === scoreB) return 0;
+          return scoreA > scoreB ? 1 : -1;
+        },
+        Cell: ({ row }: { row: { original: Applicant } }) => {
+          const href = getApplicantHref(row);
+          const score = getApplicantSScore(row.original);
+          return (
+            <a
+              href={href}
+              className="block h-full w-full text-inherit"
+              onClick={(e) => handleApplicantLinkClick(e, row)}
+              onAuxClick={handleApplicantLinkAuxClick}
+            >
+              {score === null ? '-' : `${score}%`}
+            </a>
+          );
+        },
+      },
+      {
         accessorKey: 'status',
         header: 'Status',
         enableSorting: false,
@@ -3019,8 +3391,11 @@ const Applicants = () => {
       isLaptopViewport,
       getStatusColor,
       formatDate,
+      parseComparableNumber,
       statusAnchorEl,
       jobAnchorEl,
+      getExpectedSalaryDisplay,
+      getApplicantSScore,
       duplicatePriorityLookup,
       sorting,
     ]

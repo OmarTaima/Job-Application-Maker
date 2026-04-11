@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import ComponentCard from '../../../components/common/ComponentCard';
 import { useAuth } from '../../../context/AuthContext';
 import { toPlainString } from '../../../utils/strings';
@@ -119,19 +119,33 @@ export default function StatusHistory({ applicant, loading = false }: Props) {
           </nav>
         </div>
 
-        <div className="flex flex-wrap gap-4">
+        <div className="w-full">
           {loading ? (
-            <div className="w-full space-y-3">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="cursor-pointer rounded-lg border border-stroke p-4 transition hover:bg-gray-50 dark:border-strokedark dark:hover:bg-gray-800/50"
-                >
-                  <div className="h-4 w-1/3 rounded bg-gray-200 dark:bg-gray-700 animate-pulse" />
-                  <div className="mt-3 h-3 w-1/2 rounded bg-gray-200 dark:bg-gray-700 animate-pulse" />
-                  <div className="mt-2 h-3 w-2/3 rounded bg-gray-200 dark:bg-gray-700 animate-pulse" />
-                </div>
-              ))}
+            <div className="overflow-x-auto rounded-lg border border-stroke dark:border-strokedark">
+              <table className="min-w-full">
+                <thead className="bg-gray-50 dark:bg-gray-800/60">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Type</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Date</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">By</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Summary</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Channels</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Details</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <tr key={i}>
+                      <td className="px-4 py-3"><div className="h-4 w-20 rounded bg-gray-200 dark:bg-gray-700 animate-pulse" /></td>
+                      <td className="px-4 py-3"><div className="h-4 w-28 rounded bg-gray-200 dark:bg-gray-700 animate-pulse" /></td>
+                      <td className="px-4 py-3"><div className="h-4 w-24 rounded bg-gray-200 dark:bg-gray-700 animate-pulse" /></td>
+                      <td className="px-4 py-3"><div className="h-4 w-64 rounded bg-gray-200 dark:bg-gray-700 animate-pulse" /></td>
+                      <td className="px-4 py-3"><div className="h-4 w-14 rounded bg-gray-200 dark:bg-gray-700 animate-pulse" /></td>
+                      <td className="px-4 py-3"><div className="h-4 w-16 rounded bg-gray-200 dark:bg-gray-700 animate-pulse" /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           ) : (
             (() => {
@@ -185,142 +199,319 @@ export default function StatusHistory({ applicant, loading = false }: Props) {
                 return false;
               });
 
-              return filteredActivities.map((activity, index) => {
+              if (filteredActivities.length === 0) {
+                return (
+                  <div className="rounded-lg border border-dashed border-stroke p-6 text-center text-sm text-gray-500 dark:border-strokedark dark:text-gray-400">
+                    No activity records found for this tab.
+                  </div>
+                );
+              }
+
+              const getChannels = (activity: any) => {
+                if (activity.type === 'status' || activity.type === 'interview') {
+                  return activity.data?.notifications?.channels;
+                }
+                return null;
+              };
+
+              const getActorName = (activity: any): string => {
+                if (activity.type === 'status') {
+                  const history = activity.data;
+                  let actorName: string | null = null;
+
+                  if (history.changedBy && typeof history.changedBy === 'string' && history.changedBy.toLowerCase() !== 'system') {
+                    actorName = history.changedBy;
+                  }
+
+                  if (!actorName && history.changedBy && typeof history.changedBy === 'object') {
+                    actorName = history.changedBy.fullName || history.changedBy.email || null;
+                  }
+
+                  if (!actorName) {
+                    const histTime = history.changedAt ? new Date(history.changedAt).getTime() : null;
+                    const withinWindow = (time?: string) => {
+                      if (!histTime || !time) return false;
+                      const t = new Date(time).getTime();
+                      return Math.abs(t - histTime) <= 2 * 60 * 1000;
+                    };
+
+                    if (!actorName && applicant?.messages) {
+                      const match = applicant.messages.find((m: any) => (withinWindow(m.sentAt) || withinWindow(m.createdAt)) && m.sentBy);
+                      if (match) {
+                        actorName = typeof match.sentBy === 'string' ? match.sentBy : (match.sentBy?.fullName || match.sentBy?.email || null);
+                      }
+                    }
+
+                    if (!actorName && applicant?.comments) {
+                      const match = applicant.comments.find((c: any) => (withinWindow(c.changedAt) || withinWindow(c.commentedAt) || withinWindow(c.createdAt)) && (c.changedBy || c.author));
+                      if (match) {
+                        actorName = typeof match.changedBy === 'string' ? match.changedBy : (match.changedBy?.fullName || match.changedBy?.email || match.author || null);
+                      }
+                    }
+
+                    if (!actorName && applicant?.interviews) {
+                      const match = applicant.interviews.find((iv: any) => (withinWindow(iv.scheduledAt) || withinWindow(iv.createdAt) || withinWindow(iv.issuedAt)) && iv.issuedBy);
+                      if (match) {
+                        actorName = typeof match.issuedBy === 'string' ? match.issuedBy : (match.issuedBy?.fullName || match.issuedBy?.email || null);
+                      }
+                    }
+                  }
+
+                  const currentUserLabel = user?.fullName || user?.email || 'Current User';
+                  return (
+                    actorName ||
+                    (typeof history.changedBy === 'string' && history.changedBy.toLowerCase() !== 'system'
+                      ? history.changedBy
+                      : (history.changedBy as any)?.fullName || (history.changedBy as any)?.email || currentUserLabel)
+                  );
+                }
+
+                if (activity.type === 'message') {
+                  const sentBy = activity.data?.sentBy;
+                  if (typeof sentBy === 'string') return sentBy;
+                  return sentBy?.fullName || sentBy?.email || 'Unknown';
+                }
+
+                if (activity.type === 'comment') {
+                  const comment = activity.data;
+                  const author = comment.commentedBy || comment.changedBy || comment.author || comment.createdBy;
+                  if (typeof author === 'string') return author;
+                  if (author && typeof author === 'object') {
+                    return author.fullName || (typeof author.name === 'object' ? toPlainString(author.name) : author.name) || author.email || author.username || 'User';
+                  }
+                  return 'Unknown';
+                }
+
+                if (activity.type === 'interview') {
+                  const issuedBy = activity.data?.issuedBy;
+                  if (typeof issuedBy === 'string') return issuedBy;
+                  return issuedBy?.fullName || issuedBy?.email || user?.fullName || user?.email || 'System';
+                }
+
+                return '-';
+              };
+
+              const getTypeBadge = (activity: any) => {
+                if (activity.type === 'status') {
+                  const status = activity.data?.status || 'status';
+                  return {
+                    label: status.charAt(0).toUpperCase() + status.slice(1),
+                    className: getStatusColor(status),
+                  };
+                }
+
+                if (activity.type === 'message') {
+                  return {
+                    label: 'Message',
+                    className: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
+                  };
+                }
+
+                if (activity.type === 'comment') {
+                  return {
+                    label: 'Comment',
+                    className: 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400',
+                  };
+                }
+
+                const interviewStatus = String(activity.data?.status || '').toLowerCase();
+                if (interviewStatus === 'completed') {
+                  return {
+                    label: 'Interview (Completed)',
+                    className: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+                  };
+                }
+                if (interviewStatus === 'cancelled') {
+                  return {
+                    label: 'Interview (Cancelled)',
+                    className: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+                  };
+                }
+                if (interviewStatus === 'rescheduled') {
+                  return {
+                    label: 'Interview (Rescheduled)',
+                    className: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
+                  };
+                }
+                return {
+                  label: 'Interview',
+                  className: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+                };
+              };
+
+              const getSummary = (activity: any): string => {
+                if (activity.type === 'status') {
+                  return activity.data?.notes || 'Status updated.';
+                }
+                if (activity.type === 'message') {
+                  const message = activity.data;
+                  const content = getReadableMessageText(message.content || message.body || message.message);
+                  return message.subject || content || 'Message sent.';
+                }
+                if (activity.type === 'comment') {
+                  return activity.data?.comment || activity.data?.text || 'Comment added.';
+                }
+                const interview = activity.data;
+                if (interview?.scheduledAt) {
+                  return `Scheduled for ${formatDate(interview.scheduledAt)}`;
+                }
+                return interview?.notes || interview?.comment || 'Interview activity.';
+              };
+
+              const renderDetails = (activity: any) => {
                 if (activity.type === 'status') {
                   const history = activity.data;
                   return (
-                    <div
-                      key={`status-${index}`}
-                      onClick={() => setExpandedHistory(expandedHistory === `status-${index}` ? null : `status-${index}`)}
-                      className="cursor-pointer rounded-lg border border-stroke p-4 transition hover:bg-gray-50 dark:border-strokedark dark:hover:bg-gray-800/50"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${getStatusColor(history.status)}`}>
-                            {history.status?.charAt(0).toUpperCase() + history.status?.slice(1)}
-                          </span>
-                          <div className="flex items-center gap-1">
-                            <span title="Email" className={`text-sm ${(history as any).notifications?.channels?.email ? 'opacity-100' : 'opacity-30 grayscale'}`}>📧</span>
-                            <span title="SMS" className={`text-sm ${(history as any).notifications?.channels?.sms ? 'opacity-100' : 'opacity-30 grayscale'}`}>💬</span>
-                            <span title="WhatsApp" className={`text-sm ${(history as any).notifications?.channels?.whatsapp ? 'opacity-100' : 'opacity-30 grayscale'}`}>📱</span>
-                          </div>
-                        </div>
-                        <svg className={`h-4 w-4 transition-transform ${expandedHistory === `status-${index}` ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                        </svg>
-                      </div>
-                      <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">{formatDate(history.changedAt)}</p>
-                      {(() => {
-                        let actorName: string | null = null;
-                        if (history.changedBy && typeof history.changedBy === 'string' && history.changedBy.toLowerCase() !== 'system') actorName = history.changedBy;
-                        if (!actorName && history.changedBy && typeof history.changedBy === 'object') actorName = history.changedBy.fullName || history.changedBy.email || null;
-
-                        if (!actorName) {
-                          const histTime = history.changedAt ? new Date(history.changedAt).getTime() : null;
-                          const withinWindow = (time?: string) => { if (!histTime || !time) return false; const t = new Date(time).getTime(); return Math.abs(t - histTime) <= 2 * 60 * 1000; };
-
-                          if (!actorName && applicant?.messages) {
-                            const match = applicant.messages.find((m: any) => (withinWindow(m.sentAt) || withinWindow(m.createdAt)) && (m.sentBy));
-                            if (match) actorName = typeof match.sentBy === 'string' ? match.sentBy : (match.sentBy?.fullName || match.sentBy?.email || null);
-                          }
-
-                          if (!actorName && applicant?.comments) {
-                            const match = applicant.comments.find((c: any) => (withinWindow(c.changedAt) || withinWindow(c.commentedAt) || withinWindow(c.createdAt)) && (c.changedBy || c.author));
-                            if (match) actorName = typeof match.changedBy === 'string' ? match.changedBy : (match.changedBy?.fullName || match.changedBy?.email || match.author || null);
-                          }
-
-                          if (!actorName && applicant?.interviews) {
-                            const match = applicant.interviews.find((iv: any) => (withinWindow(iv.scheduledAt) || withinWindow(iv.createdAt) || withinWindow(iv.issuedAt)) && (iv.issuedBy));
-                            if (match) actorName = typeof match.issuedBy === 'string' ? match.issuedBy : (match.issuedBy?.fullName || match.issuedBy?.email || null);
-                          }
-                        }
-
-                        const currentUserLabel = (user?.fullName || user?.email) ? (user?.fullName || user?.email) : 'Current User';
-                        return <p className="text-sm text-gray-600 dark:text-gray-400">By: {actorName || (typeof history.changedBy === 'string' && history.changedBy.toLowerCase() !== 'system' ? history.changedBy : (history.changedBy as any)?.fullName || (history.changedBy as any)?.email || currentUserLabel)}</p>;
-                      })()}
-
-                      {expandedHistory === `status-${index}` && history.notes && (
-                        <div className="mt-3 border-t border-stroke pt-3 dark:border-strokedark">
-                          <p className="text-sm text-gray-700 dark:text-gray-300">{history.notes}</p>
-                        </div>
-                      )}
-                    </div>
-                  );
-                } else if (activity.type === 'message') {
-                  const message = activity.data;
-                  const messageContent = getReadableMessageText(message.content || message.body || message.message);
-                  return (
-                    <div key={`message-${index}`} onClick={() => setExpandedHistory(expandedHistory === `message-${index}` ? null : `message-${index}`)} className="cursor-pointer rounded-lg border border-stroke p-4 transition hover:bg-gray-50 dark:border-strokedark dark:hover:bg-gray-800/50">
-                      <div className="flex items-center justify-between">
-                        <span className="rounded-full bg-purple-100 px-3 py-1 text-xs font-semibold text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">💌 Message</span>
-                        <svg className={`h-4 w-4 transition-transform ${expandedHistory === `message-${index}` ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                      </div>
-                      <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">{formatDate(message.sentAt)}</p>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">By: {typeof message.sentBy === 'string' ? message.sentBy : message.sentBy?.fullName || message.sentBy?.email || 'Unknown'}</p>
-                      {message.subject && <p className="mt-1 text-sm font-medium text-gray-700 dark:text-gray-300">{message.subject}</p>}
-                      {expandedHistory === `message-${index}` && messageContent && (
-                        <div className="mt-3 border-t border-stroke pt-3 dark:border-strokedark"><p className="whitespace-pre-line text-sm text-gray-700 dark:text-gray-300">{messageContent}</p></div>
-                      )}
-                    </div>
-                  );
-                } else if (activity.type === 'comment') {
-                  const comment = activity.data;
-                  return (
-                    <div key={`comment-${index}`} onClick={() => setExpandedHistory(expandedHistory === `comment-${index}` ? null : `comment-${index}`)} className="cursor-pointer rounded-lg border border-stroke p-4 transition hover:bg-gray-50 dark:border-strokedark dark:hover:bg-gray-800/50">
-                      <div className="flex items-center justify-between">
-                        <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700 dark:bg-gray-900/30 dark:text-gray-400">💬 Comment</span>
-                        <svg className={`h-4 w-4 transition-transform ${expandedHistory === `comment-${index}` ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                      </div>
-                      <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">{formatDate(comment.commentedAt || comment.changedAt || comment.createdAt || new Date().toISOString())}</p>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">By: {(() => {
-                        const author = comment.commentedBy || comment.changedBy || comment.author || comment.createdBy;
-                        if (typeof author === 'string') return author;
-                        if (author && typeof author === 'object') return author.fullName || (typeof author.name === 'object' ? toPlainString(author.name) : author.name) || author.email || author.username || 'User';
-                        return 'Unknown';
-                      })()}</p>
-                      {expandedHistory === `comment-${index}` && (comment.comment || comment.text) && (
-                        <div className="mt-3 border-t border-stroke pt-3 dark:border-strokedark"><p className="text-sm text-gray-700 dark:text-gray-300">{comment.comment || comment.text}</p></div>
-                      )}
-                    </div>
-                  );
-                } else if (activity.type === 'interview') {
-                  const interview = activity.data;
-                  return (
-                    <div key={`interview-${index}`} onClick={() => setExpandedHistory(expandedHistory === `interview-${index}` ? null : `interview-${index}`)} className="cursor-pointer rounded-lg border border-stroke p-4 transition hover:bg-gray-50 dark:border-strokedark dark:hover:bg-gray-800/50">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${interview.status?.toLowerCase() === 'completed' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : interview.status?.toLowerCase() === 'cancelled' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' : interview.status?.toLowerCase() === 'rescheduled' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}`}>📅 Interview {interview.status ? `- ${interview.status.charAt(0).toUpperCase() + interview.status.slice(1)}` : 'Scheduled'}</span>
-                          <div className="flex items-center gap-1">
-                            <span title="Email" className={`text-sm ${(interview as any).notifications?.channels?.email ? 'opacity-100' : 'opacity-30 grayscale'}`}>📧</span>
-                            <span title="SMS" className={`text-sm ${(interview as any).notifications?.channels?.sms ? 'opacity-100' : 'opacity-30 grayscale'}`}>💬</span>
-                            <span title="WhatsApp" className={`text-sm ${(interview as any).notifications?.channels?.whatsapp ? 'opacity-100' : 'opacity-30 grayscale'}`}>📱</span>
-                          </div>
-                        </div>
-                        <svg className={`h-4 w-4 transition-transform ${expandedHistory === `interview-${index}` ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                      </div>
-                      <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">{formatDate(interview.createdAt || interview.scheduledAt || interview.issuedAt || new Date().toISOString())}</p>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">By: {typeof interview.issuedBy === 'string' ? interview.issuedBy : interview.issuedBy?.fullName || interview.issuedBy?.email || user?.fullName || user?.email || 'System'}</p>
-                      {interview.scheduledAt && <p className="mt-1 text-sm font-medium text-blue-600 dark:text-blue-400">📅 Scheduled: {formatDate(interview.scheduledAt)}</p>}
-                      {interview.status && <p className="mt-1 text-xs font-medium text-gray-500 dark:text-gray-400">Status: <span className="capitalize">{interview.status}</span></p>}
-
-                      {expandedHistory === `interview-${index}` && (
-                        <div className="mt-3 space-y-2 border-t border-stroke pt-3 dark:border-strokedark">
-                          {interview.scheduledAt && (
-                            <div className="flex items-start gap-2"><span className="text-xs font-semibold text-gray-500 dark:text-gray-400 min-w-[80px]">Scheduled:</span><span className="text-sm text-gray-700 dark:text-gray-300">{new Date(interview.scheduledAt).toLocaleString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span></div>
-                          )}
-                          {interview.type && (<div className="flex items-start gap-2"><span className="text-xs font-semibold text-gray-500 dark:text-gray-400 min-w-[80px]">Type:</span><span className="text-sm text-gray-700 dark:text-gray-300 capitalize">{interview.type}</span></div>)}
-                          {interview.location && (<div className="flex items-start gap-2"><span className="text-xs font-semibold text-gray-500 dark:text-gray-400 min-w-[80px]">Location:</span><span className="text-sm text-gray-700 dark:text-gray-300">{interview.location}</span></div>)}
-                          {interview.videoLink && (<div className="flex items-start gap-2"><span className="text-xs font-semibold text-gray-500 dark:text-gray-400 min-w-[80px]">Video Link:</span><a href={interview.videoLink} target="_blank" rel="noopener noreferrer" className="text-sm text-brand-600 hover:underline dark:text-brand-400">{interview.videoLink}</a></div>)}
-                          {interview.description && (<div className="flex items-start gap-2"><span className="text-xs font-semibold text-gray-500 dark:text-gray-400 min-w-[80px]">Description:</span><span className="text-sm text-gray-700 dark:text-gray-300">{interview.description}</span></div>)}
-                          {(interview.notes || interview.comment) && (<div className="flex items-start gap-2"><span className="text-xs font-semibold text-gray-500 dark:text-gray-400 min-w-[80px]">Notes:</span><span className="text-sm text-gray-700 dark:text-gray-300">{interview.notes || interview.comment}</span></div>)}
-                          {interview.createdAt && (<div className="flex items-start gap-2"><span className="text-xs font-semibold text-gray-500 dark:text-gray-400 min-w-[80px]">Created:</span><span className="text-sm text-gray-700 dark:text-gray-300">{new Date(interview.createdAt).toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span></div>)}
-                        </div>
+                    <div className="space-y-2">
+                      {history.notes ? (
+                        <p className="whitespace-pre-line text-sm text-gray-700 dark:text-gray-300">{history.notes}</p>
+                      ) : (
+                        <p className="text-sm text-gray-500 dark:text-gray-400">No additional notes.</p>
                       )}
                     </div>
                   );
                 }
-                return null;
-              });
+
+                if (activity.type === 'message') {
+                  const message = activity.data;
+                  const messageContent = getReadableMessageText(message.content || message.body || message.message);
+                  return (
+                    <div className="space-y-2">
+                      {message.subject && (
+                        <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Subject: {message.subject}</p>
+                      )}
+                      {messageContent ? (
+                        <p className="whitespace-pre-line text-sm text-gray-700 dark:text-gray-300">{messageContent}</p>
+                      ) : (
+                        <p className="text-sm text-gray-500 dark:text-gray-400">No message body available.</p>
+                      )}
+                    </div>
+                  );
+                }
+
+                if (activity.type === 'comment') {
+                  const comment = activity.data;
+                  return (
+                    <p className="whitespace-pre-line text-sm text-gray-700 dark:text-gray-300">{comment.comment || comment.text || 'No comment text available.'}</p>
+                  );
+                }
+
+                const interview = activity.data;
+                return (
+                  <div className="grid grid-cols-1 gap-2 text-sm text-gray-700 dark:text-gray-300 md:grid-cols-2">
+                    {interview.scheduledAt && (
+                      <div>
+                        <span className="font-semibold text-gray-500 dark:text-gray-400">Scheduled:</span>{' '}
+                        {new Date(interview.scheduledAt).toLocaleString('en-US', {
+                          weekday: 'short',
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </div>
+                    )}
+                    {interview.type && (
+                      <div>
+                        <span className="font-semibold text-gray-500 dark:text-gray-400">Type:</span> {interview.type}
+                      </div>
+                    )}
+                    {interview.location && (
+                      <div>
+                        <span className="font-semibold text-gray-500 dark:text-gray-400">Location:</span> {interview.location}
+                      </div>
+                    )}
+                    {interview.videoLink && (
+                      <div>
+                        <span className="font-semibold text-gray-500 dark:text-gray-400">Video:</span>{' '}
+                        <a href={interview.videoLink} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline dark:text-brand-400">
+                          {interview.videoLink}
+                        </a>
+                      </div>
+                    )}
+                    {(interview.notes || interview.comment) && (
+                      <div className="md:col-span-2">
+                        <span className="font-semibold text-gray-500 dark:text-gray-400">Notes:</span>{' '}
+                        <span className="whitespace-pre-line">{interview.notes || interview.comment}</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              };
+
+              return (
+                <div className="overflow-x-auto rounded-lg border border-stroke dark:border-strokedark">
+                  <table className="min-w-full">
+                    <thead className="bg-gray-50 dark:bg-gray-800/60">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Type</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Date</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">By</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Summary</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Channels</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Details</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
+                      {filteredActivities.map((activity, index) => {
+                        const rowKey = `${activity.type}-${activity.data?._id || activity.date}-${index}`;
+                        const isExpanded = expandedHistory === rowKey;
+                        const typeBadge = getTypeBadge(activity);
+                        const channels = getChannels(activity);
+
+                        return (
+                          <Fragment key={rowKey}>
+                            <tr className="hover:bg-gray-50 dark:hover:bg-gray-800/30">
+                              <td className="px-4 py-3 align-top">
+                                <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${typeBadge.className}`}>
+                                  {typeBadge.label}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 align-top text-sm text-gray-600 dark:text-gray-400">
+                                {formatDate(activity.date)}
+                              </td>
+                              <td className="px-4 py-3 align-top text-sm text-gray-700 dark:text-gray-300">
+                                {getActorName(activity)}
+                              </td>
+                              <td className="px-4 py-3 align-top text-sm text-gray-700 dark:text-gray-300">
+                                <p className="max-w-[420px] truncate">{getSummary(activity)}</p>
+                              </td>
+                              <td className="px-4 py-3 align-top text-sm text-gray-600 dark:text-gray-400">
+                                {channels ? (
+                                  <div className="flex items-center gap-1">
+                                    <span title="Email" className={`${channels.email ? 'opacity-100' : 'opacity-30 grayscale'}`}>📧</span>
+                                    <span title="SMS" className={`${channels.sms ? 'opacity-100' : 'opacity-30 grayscale'}`}>💬</span>
+                                    <span title="WhatsApp" className={`${channels.whatsapp ? 'opacity-100' : 'opacity-30 grayscale'}`}>📱</span>
+                                  </div>
+                                ) : (
+                                  '-'
+                                )}
+                              </td>
+                              <td className="px-4 py-3 align-top">
+                                <button
+                                  type="button"
+                                  onClick={() => setExpandedHistory(isExpanded ? null : rowKey)}
+                                  className="text-xs font-semibold text-brand-600 hover:underline dark:text-brand-400"
+                                >
+                                  {isExpanded ? 'Hide' : 'View'}
+                                </button>
+                              </td>
+                            </tr>
+                            {isExpanded && (
+                              <tr className="bg-gray-50/60 dark:bg-gray-800/40">
+                                <td colSpan={6} className="px-4 py-4">
+                                  {renderDetails(activity)}
+                                </td>
+                              </tr>
+                            )}
+                          </Fragment>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              );
             })()
           )}
         </div>
