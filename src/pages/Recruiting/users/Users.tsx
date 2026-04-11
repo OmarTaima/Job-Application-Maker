@@ -26,7 +26,7 @@ import {
   UserMinus,
   ArrowRight
 } from "lucide-react";
-import Swal from "sweetalert2";
+import Swal from '../../../utils/swal';
 
 export default function Users() {
   const navigate = useNavigate();
@@ -83,9 +83,7 @@ export default function Users() {
       icon: "warning",
       showCancelButton: true,
       confirmButtonColor: "#ef4444",
-      confirmButtonText: "Yes, deactivate",
-      background: "#1e293b",
-      color: "#fff"
+      confirmButtonText: "Yes, deactivate"
     });
 
     if (result.isConfirmed) {

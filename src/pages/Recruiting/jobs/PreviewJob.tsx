@@ -1,5 +1,5 @@
 ﻿import { useMemo, useState, useEffect } from "react";
-import Swal from "sweetalert2";
+import Swal from '../../../utils/swal';
 import { useParams, useNavigate, useLocation } from "react-router";
 import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
 import PageMeta from "../../../components/common/PageMeta";
@@ -375,7 +375,7 @@ export default function PreviewJob() {
           </section>
 
           {/* Requirements & Terms (Consolidated) */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 gap-6 items-start md:grid-cols-2">
             {job.requirements && job.requirements.length > 0 && (
               <section className="rounded-3xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900">
                 <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Requirements</h3>
@@ -404,6 +404,27 @@ export default function PreviewJob() {
               </section>
             )}
           </div>
+
+          <section className="rounded-3xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900 md:p-7">
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white">Application Guidance</h3>
+            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+              Quick snapshot for recruiters and candidates before moving to the evaluation matrix.
+            </p>
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="rounded-2xl bg-gray-50 p-4 dark:bg-gray-800/60">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Open Seats</p>
+                <p className="mt-1 text-base font-black text-gray-900 dark:text-white">{job.openPositions || 0}</p>
+              </div>
+              <div className="rounded-2xl bg-gray-50 p-4 dark:bg-gray-800/60">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Form Inputs</p>
+                <p className="mt-1 text-base font-black text-gray-900 dark:text-white">{job.customFields?.length || 0}</p>
+              </div>
+              <div className="rounded-2xl bg-gray-50 p-4 dark:bg-gray-800/60">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Scoring Factors</p>
+                <p className="mt-1 text-base font-black text-gray-900 dark:text-white">{job.jobSpecs?.length || 0}</p>
+              </div>
+            </div>
+          </section>
         </div>
 
         {/* Sidebar info */}
@@ -417,7 +438,7 @@ export default function PreviewJob() {
                 className="flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-500 py-3.5 text-sm font-bold text-white shadow-brand-100 transition hover:bg-brand-600 hover:shadow-lg dark:shadow-none"
               >
                 <PencilIcon className="size-4" />
-                Edit Listing
+                Edit Job
               </button>
               <button
                 onClick={handleDelete}
@@ -425,7 +446,7 @@ export default function PreviewJob() {
                 className="flex w-full items-center justify-center gap-2 rounded-2xl border border-red-100 bg-red-50 py-3.5 text-sm font-bold text-red-600 transition hover:bg-red-100 dark:border-red-900/30 dark:bg-red-900/20 dark:text-red-400"
               >
                 <TrashBinIcon className="size-4" />
-                {isDeletingJob ? "Deleting..." : "Archive Job"}
+                {isDeletingJob ? "Deleting..." : "Delete Job"}
               </button>
             </div>
           </div>

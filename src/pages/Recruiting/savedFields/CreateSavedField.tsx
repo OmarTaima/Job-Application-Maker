@@ -10,7 +10,7 @@ import { PlusIcon, PencilIcon, TrashBinIcon, CheckCircleIcon } from "../../../ic
 import { useCreateSavedField, useUpdateSavedField } from "../../../hooks/queries";
 import { useQueryClient } from "@tanstack/react-query";
 import { savedFieldsKeys } from "../../../hooks/queries/useSavedFields";
-import Swal from "sweetalert2";
+import Swal from '../../../utils/swal';
 import { getErrorResponse} from "../../../utils/errorHandler";
 
 const inputTypeOptions = [
@@ -301,7 +301,7 @@ export default function CreateSavedField() {
                     <Switch 
                       checked={isRequired} 
                       onChange={(val: boolean) => setIsRequired(val)} 
-                      label="Mandatory Field"
+                      label="Required Field"
                     />
                     <p className="ml-11 mt-1 text-[11px] text-gray-500 opacity-70 group-hover/toggle:opacity-100 transition-opacity">
                       Applicants cannot submit the form without filling this field.
@@ -667,14 +667,14 @@ export default function CreateSavedField() {
             onClick={() => navigate(-1)}
             className="rounded-2xl bg-white/80 px-8 py-3 text-sm font-bold text-gray-700 shadow-lg backdrop-blur-md transition-all hover:bg-gray-50 dark:bg-gray-900/80 dark:text-gray-300 dark:hover:bg-gray-800"
           >
-            Discard
+            Cancel
           </button>
           <button
             type="submit"
             disabled={createMutation.isPending || updateMutation.isPending}
             className="flex items-center gap-2 rounded-2xl bg-brand-500 px-10 py-3 text-sm font-bold text-white shadow-xl shadow-brand-500/25 transition-all hover:bg-brand-600 hover:shadow-brand-500/40 active:scale-95 disabled:opacity-50"
           >
-            {createMutation.isPending || updateMutation.isPending ? "Syncing..." : (editingField ? "Update Template" : "Save Template")}
+            {createMutation.isPending || updateMutation.isPending ? "Saving..." : (editingField ? "Update Field" : "Save Field")}
           </button>
         </div>
       </form>

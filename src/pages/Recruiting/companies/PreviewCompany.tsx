@@ -1,6 +1,6 @@
 import type { ChangeEvent, FormEvent } from "react";
 import { useState, useEffect } from "react";
-import Swal from "sweetalert2";
+import Swal from '../../../utils/swal';
 import { useParams, useNavigate } from "react-router";
 import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
 import PageMeta from "../../../components/common/PageMeta";
@@ -231,7 +231,7 @@ export default function PreviewCompany() {
                 className={`flex items-center gap-2 px-8 py-4 rounded-[1.25rem] font-bold shadow-xl transition-all hover:scale-105 active:scale-95 ${isEditingCompany ? "bg-brand-500 text-white shadow-brand-500/20" : "bg-white dark:bg-white/5 border border-white/20 dark:border-white/10 shadow-sm"}`}
               >
                 {isSaving ? <div className="size-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : (isEditingCompany ? <Save className="size-5" /> : <Pencil className="size-5" />)}
-                {isEditingCompany ? "Finalize Profile" : "Modify Registry"}
+                {isEditingCompany ? "Save Changes" : "Edit"}
               </button>
             )}
             {isEditingCompany && (
@@ -337,14 +337,14 @@ export default function PreviewCompany() {
                   <div className="size-10 rounded-xl bg-orange-500/10 flex items-center justify-center text-orange-500">
                     <Building className="size-5" />
                   </div>
-                  <h3 className="text-xl font-black">Departmental Matrix</h3>
+                  <h3 className="text-xl font-black">Department Section</h3>
                 </div>
                 {canEdit && (
                   <button 
                     onClick={() => { setEditingDeptId(null); setDepartmentForm({ companyId: companyId!, name: { en: "", ar: "" }, description: { en: "", ar: "" } }); setShowDeptModal(true); }}
                     className="flex items-center gap-2 px-5 py-2.5 bg-brand-500 text-white rounded-xl text-xs font-black shadow-lg shadow-brand-500/20 hover:scale-105 active:scale-95 transition-all"
                   >
-                    <Plus className="size-4" /> Expand Org Chart
+                    <Plus className="size-4" /> Create Department
                   </button>
                 )}
               </div>
@@ -402,7 +402,7 @@ export default function PreviewCompany() {
                 <div className="size-10 rounded-xl bg-brand-500/10 flex items-center justify-center text-brand-500">
                   <Mail className="size-5" />
                 </div>
-                <h3 className="font-black text-lg">Communications</h3>
+                <h3 className="font-black text-lg">Contact</h3>
               </div>
 
               <div className="space-y-6">
@@ -451,7 +451,7 @@ export default function PreviewCompany() {
                 <div className="size-10 rounded-xl bg-brand-500/10 flex items-center justify-center text-brand-500">
                   <MapPin className="size-5" />
                 </div>
-                <h3 className="font-black text-lg">Geographic Reach</h3>
+                <h3 className="font-black text-lg">Location</h3>
               </div>
 
               <div className="space-y-4">
@@ -514,7 +514,7 @@ export default function PreviewCompany() {
                 
                 {isEditingCompany && (
                   <button onClick={handleAddAddress} className="w-full py-4 border-2 border-dashed border-slate-300 dark:border-white/10 rounded-2xl text-xs font-black text-slate-400 hover:border-brand-500/50 hover:text-brand-500 transition-all flex items-center justify-center gap-2">
-                    <Plus className="size-4" /> Expand Geographic Reach
+                    <Plus className="size-4" /> Add Location
                   </button>
                 )}
               </div>

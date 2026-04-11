@@ -154,7 +154,7 @@ export default function PreviewUser() {
             className="flex items-center gap-3 px-8 py-4 bg-brand-500 text-white rounded-[2rem] font-black tracking-widest uppercase text-xs shadow-xl shadow-brand-500/30 hover:scale-105 active:scale-95 transition-all"
           >
             <Pencil className="size-4" />
-            Modify Credentials
+            Edit
           </button>
         </div>
 

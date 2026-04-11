@@ -1,5 +1,5 @@
 ﻿import { useMemo, useState, useEffect, useRef } from "react";
-import Swal from "sweetalert2";
+import Swal from '../../../utils/swal';
 import { useNavigate, useSearchParams, useLocation } from "react-router";
 import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
 import PageMeta from "../../../components/common/PageMeta";
@@ -1769,7 +1769,7 @@ export default function CreateJob() {
                     className="inline-flex items-center gap-2 rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-brand-500/20 transition-all hover:bg-brand-600 hover:shadow-brand-500/40 active:scale-95"
                   >
                     <PlusIcon className="size-4" />
-                    Append to List
+                    Add Term
                   </button>
                 </div>
               </div>
@@ -2244,7 +2244,7 @@ export default function CreateJob() {
 
                           <div className="grid grid-cols-1 gap-6 md:grid-cols-3 items-end">
                             <div className="space-y-2">
-                              <Label htmlFor={`field-type-${fieldIndex}`}>Field Architecture</Label>
+                              <Label htmlFor={`field-type-${fieldIndex}`}>Field Type</Label>
                               <Select
                                 options={inputTypeOptions}
                                 value={field.inputType}
@@ -2267,7 +2267,7 @@ export default function CreateJob() {
                             </div>
                             <div className="flex h-[44px] items-center justify-center rounded-xl bg-gray-100/50 px-4 dark:bg-gray-800/50">
                               <Switch
-                                label="Mandatory Response"
+                                label="Required"
                                 checked={field.isRequired}
                                 onChange={(checked) => handleCustomFieldChange(fieldIndex, "isRequired", checked)}
                               />
@@ -2415,7 +2415,7 @@ export default function CreateJob() {
 
                                       <div className="grid grid-cols-2 gap-4 items-end">
                                         <div className="space-y-1">
-                                          <Label className="text-[11px] font-bold text-gray-500">Input Architecture</Label>
+                                          <Label className="text-[11px] font-bold text-gray-500">Input Type</Label>
                                           <Select
                                             options={subFieldTypeOptions}
                                             value={subField.inputType}

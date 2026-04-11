@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router";
-import Swal from "sweetalert2";
+import Swal from '../../../utils/swal';
 import PageMeta from "../../../components/common/PageMeta";
 import { ValidationErrorAlert } from "../../../components/common/ValidationErrorAlert";
 import {
@@ -428,7 +428,7 @@ export default function CreateUser() {
                       onChange={(e) => handleRoleChange(e.target.value)}
                       className="w-full px-6 py-4 bg-white dark:bg-slate-900 border-2 border-slate-100 dark:border-white/5 rounded-2xl focus:border-purple-500 outline-none transition-all font-bold dark:text-white appearance-none cursor-pointer"
                     >
-                      <option value="">Select Clearance Level</option>
+                      <option value="">Select Role Level</option>
                       {roles.map((r: any) => (
                         <option key={r._id} value={r._id}>
                           {toPlainString(r.name)}

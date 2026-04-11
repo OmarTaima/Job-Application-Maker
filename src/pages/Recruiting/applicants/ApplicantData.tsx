@@ -1,7 +1,7 @@
 // Core React imports
 import { useState, useMemo, useEffect } from 'react';
 // UI helpers and third-party utilities
-import Swal from 'sweetalert2';
+import Swal from '../../../utils/swal';
 import { useParams, useNavigate, useLocation } from 'react-router';
 import PageBreadcrumb from '../../../components/common/PageBreadCrumb';
 import PageMeta from '../../../components/common/PageMeta';

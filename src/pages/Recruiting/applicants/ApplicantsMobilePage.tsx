@@ -13,7 +13,7 @@ import {
   sortApplicantsByDuplicatePriority,
 } from '../../../utils/applicantDuplicateSort';
 import CustomFilterModal from "../../../components/modals/CustomFilterModal";
-import Swal from 'sweetalert2';
+import Swal from '../../../utils/swal';
 import BulkMessageModal from '../../../components/modals/BulkMessageModal';
 import { useDeleteApplicant, useUpdateApplicantStatus } from '../../../hooks/queries/useApplicants';
 

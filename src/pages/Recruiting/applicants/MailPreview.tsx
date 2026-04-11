@@ -19,24 +19,9 @@ import { useJobPositions } from '../../../hooks/queries/useJobPositions';
 import { useApplicants } from '../../../hooks/queries/useApplicants';
 import { useAppSelector } from '../../../store/hooks';
 
-type MailStatus =
-	| 'queued'
-	| 'sending'
-	| 'delivered'
-	| 'opened'
-	| 'clicked'
-	| 'bounced'
-	| 'failed';
+type MailStatus = 'queued' | 'sending' | 'delivered' | 'opened' | 'clicked' | 'bounced' | 'failed';
 
-type MailEventType =
-	| 'queued'
-	| 'provider_accepted'
-	| 'delivered'
-	| 'open'
-	| 'click'
-	| 'bounce'
-	| 'complaint'
-	| 'custom';
+type MailEventType = 'queued' | 'provider_accepted' | 'delivered' | 'open' | 'click' | 'bounce' | 'complaint' | 'custom';
 
 type MailEvent = {
 	id: string;
@@ -295,7 +280,7 @@ const getApplicantJobTitle = (applicantRecord: any): string | null => {
 const MetricCard = ({ label, value, colorClass }: { label: string; value: string | number; colorClass: string }) => (
 	<div className="rounded-[2rem] border border-white/40 bg-white/40 p-5 shadow-sm backdrop-blur-md dark:border-white/5 dark:bg-gray-900/40">
 	  <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">{label}</p>
-	  <p className={`mt-1 text-2xl font-black ${colorClass}`}>{value}</p>
+	  <p className={`mt-1 text-xl font-black ${colorClass}`}>{value}</p>
 	</div>
 );
 
@@ -594,8 +579,8 @@ export default function MailPreview() {
 						<div className="inline-flex items-center gap-2 rounded-full border border-brand-200/50 bg-brand-50/50 px-4 py-1 text-[10px] font-black uppercase tracking-widest text-brand-600 dark:border-brand-800/50 dark:bg-brand-900/50 dark:text-brand-400">
 							<Sparkles className="h-3.5 w-3.5" /> Intelligence Center
 						</div>
-						<h1 className="text-5xl font-black tracking-tighter text-gray-900 dark:text-white sm:text-6xl uppercase">Mail Intelligence</h1>
-						<p className="max-w-md text-gray-500 dark:text-gray-400 font-medium leading-relaxed">Advanced audit logs and real-time engagement tracking for applicant communications.</p>
+						<h1 className="text-4xl font-black tracking-tighter text-gray-900 dark:text-white sm:text-5xl uppercase">Mail Intelligence</h1>
+						<p className="max-w-md text-sm text-gray-500 dark:text-gray-400 font-medium leading-relaxed">Advanced audit logs and real-time engagement tracking for applicant communications.</p>
 					</div>
 					<div className="grid w-full grid-cols-2 gap-4 sm:w-auto sm:grid-cols-3">
 						<MetricCard label="Volume" value={metrics.total} colorClass="text-gray-900 dark:text-white" />
@@ -668,7 +653,7 @@ export default function MailPreview() {
 						<div className="space-y-6 border-b border-gray-50 p-6 dark:border-gray-800">
 							<div className="relative">
 								<Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-300" />
-								<input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Search transmissions..." className="w-full rounded-2xl border-none bg-gray-50 py-4 pl-12 pr-4 text-sm font-black uppercase tracking-tighter focus:ring-2 focus:ring-brand-500/20 dark:bg-gray-900" />
+								<input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Search transmissions..." className="w-full rounded-2xl border-none bg-gray-50 py-4 pl-12 pr-4 text-xs font-black uppercase tracking-tighter focus:ring-2 focus:ring-brand-500/20 dark:bg-gray-900" />
 							</div>
 							<div className="flex flex-wrap gap-1.5 focus-within:ring-0">
 								{STATUS_OPTIONS.map(o => (
@@ -684,12 +669,12 @@ export default function MailPreview() {
 									<button key={m.id} onClick={() => setSelectedMailId(m.id)} className={`group relative w-full rounded-[1.8rem] border p-5 text-left transition-all ${selectedMail?.id === m.id ? 'border-brand-200 bg-brand-50/50 dark:border-brand-500/20 dark:bg-brand-900/10' : 'border-transparent hover:bg-gray-50/50 dark:hover:bg-gray-900/50'}`}>
 										<div className="flex items-start justify-between gap-4">
 											<div className="min-w-0">
-												<p className="text-base font-black tracking-tight text-gray-900 dark:text-white truncate">{m.applicantName}</p>
+												<p className="text-sm font-black tracking-tight text-gray-900 dark:text-white truncate">{m.applicantName}</p>
 												<p className="text-[10px] font-bold text-gray-400 truncate uppercase mt-0.5">{m.applicantEmail}</p>
 											</div>
 											<span className={`rounded-full px-2 py-0.5 text-[8px] font-black uppercase tracking-wider ${statusChipClasses[m.status]}`}>{m.status}</span>
 										</div>
-										<p className="mt-3 line-clamp-1 text-xs font-bold text-gray-600 dark:text-gray-400">{m.subject}</p>
+										<p className="mt-3 line-clamp-1 text-[11px] font-bold text-gray-600 dark:text-gray-400">{m.subject}</p>
 									</button>
 								))}
 							</div>
@@ -703,7 +688,7 @@ export default function MailPreview() {
 								>
 									<ChevronLeft className="h-4 w-4" />
 								</button>
-								<div className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-xs font-black uppercase tracking-widest text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">
+								<div className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-[11px] font-black uppercase tracking-widest text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">
 									Phase {mailPage} <span className="mx-1 opacity-30">/</span> {totalMailPages}
 								</div>
 								<button
@@ -727,9 +712,9 @@ export default function MailPreview() {
 										<p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.3em] text-brand-500">
 											<span className="h-1 w-6 rounded-full bg-brand-500" /> Transmission Report
 										</p>
-										<h2 className="text-4xl font-black tracking-tighter text-gray-900 dark:text-white uppercase">{selectedMail.subject}</h2>
+										<h2 className="text-3xl font-black tracking-tighter text-gray-900 dark:text-white uppercase">{selectedMail.subject}</h2>
 									</div>
-									<div className={`rounded-2xl px-6 py-3 text-xs font-black uppercase tracking-widest shadow-sm ${statusChipClasses[selectedMail.status]}`}>
+									<div className={`rounded-2xl px-6 py-3 text-[11px] font-black uppercase tracking-widest shadow-sm ${statusChipClasses[selectedMail.status]}`}>
 										{selectedMail.status}
 									</div>
 								</div>
@@ -742,7 +727,7 @@ export default function MailPreview() {
 									].map((c, i) => (
 										<div key={i} className="rounded-[2rem] bg-gray-50/50 p-6 dark:bg-gray-900/50">
 											<p className="text-[9px] font-black uppercase tracking-widest text-gray-400">{c.l}</p>
-											<p className="mt-1 font-black text-gray-900 dark:text-white truncate">{c.v}</p>
+											<p className="mt-1 text-sm font-black text-gray-900 dark:text-white truncate">{c.v}</p>
 											<p className="text-[10px] font-bold text-gray-400 mt-0.5 truncate uppercase tracking-tighter">{c.s}</p>
 										</div>
 									))}
@@ -756,8 +741,8 @@ export default function MailPreview() {
 											<div key={i} className="relative pl-8">
 												<div className="absolute left-0 top-1 h-3 w-3 rounded-full bg-brand-500 ring-4 ring-brand-500/10" />
 												<p className="text-[9px] font-black text-gray-400 opacity-60 uppercase">{formatDateTime(e.at)}</p>
-												<p className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-tight">{e.type.replace(/_/g, ' ')}</p>
-												<p className="text-xs font-medium text-gray-500 mt-0.5">{e.detail}</p>
+												<p className="text-xs font-black text-gray-900 dark:text-white uppercase tracking-tight">{e.type.replace(/_/g, ' ')}</p>
+												<p className="text-[11px] font-medium text-gray-500 mt-0.5">{e.detail}</p>
 											</div>
 										))}
 									</div>
@@ -778,7 +763,7 @@ export default function MailPreview() {
 										<div className="flex items-center gap-2"><ServerCog className="h-4 w-4" /> Metadata Trace</div>
 										<div className="h-4 w-4 transition-transform group-open:rotate-90">→</div>
 									</summary>
-									<pre className="mt-8 rounded-[2rem] bg-gray-900 p-8 text-[10px] font-mono text-brand-400 overflow-auto dark:bg-black/40 leading-relaxed shadow-2xl">
+									<pre className="mt-8 rounded-[2rem] bg-gray-900 p-8 text-[9px] font-mono text-brand-400 overflow-auto dark:bg-black/40 leading-relaxed shadow-2xl">
 										{JSON.stringify(selectedMail.raw, null, 2)}
 									</pre>
 								</details>
@@ -790,7 +775,7 @@ export default function MailPreview() {
 								<Mail className="h-20 w-20 text-gray-100 dark:text-gray-800" />
 								<div className="absolute inset-0 animate-ping rounded-full bg-brand-500/5" />
 							</div>
-							<p className="mt-8 text-xl font-black tracking-tight text-gray-300 dark:text-gray-700 uppercase">Select transmission to decode</p>
+							<p className="mt-8 text-lg font-black tracking-tight text-gray-300 dark:text-gray-700 uppercase">Select transmission to decode</p>
 						</div>
 					)}
 				</main>

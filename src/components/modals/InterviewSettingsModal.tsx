@@ -1,4 +1,4 @@
-import Swal from 'sweetalert2';
+import Swal from '../../utils/swal';
 import { Modal } from '../ui/modal';
 import Label from '../form/Label';
 import Select from '../form/Select';

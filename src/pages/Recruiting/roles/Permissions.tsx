@@ -2,7 +2,7 @@ import type { ChangeEvent, FormEvent } from "react";
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router";
 import { useAuth } from "../../../context/AuthContext";
-import Swal from "sweetalert2";
+import Swal from '../../../utils/swal';
 import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
 import PageMeta from "../../../components/common/PageMeta";
 import LoadingSpinner from "../../../components/common/LoadingSpinner";
@@ -438,9 +438,7 @@ export default function Permissions() {
                                   icon: "error",
                                   showCancelButton: true,
                                   confirmButtonColor: "#ef4444",
-                                  confirmButtonText: "Proceed",
-                                  background: "#1e293b",
-                                  color: "#fff"
+                                  confirmButtonText: "Proceed"
                                 });
 
                                 if (result.isConfirmed) {

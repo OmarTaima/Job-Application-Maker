@@ -1,4 +1,4 @@
-import Swal from 'sweetalert2';
+import Swal from '../../utils/swal';
 import { Modal } from '../ui/modal';
 import { useState, useRef, useEffect } from 'react';
 import useSendBatchEmail from '../../hooks/queries/useSendBatchEmail';

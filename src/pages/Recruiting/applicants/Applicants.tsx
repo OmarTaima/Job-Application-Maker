@@ -137,7 +137,7 @@ function ImageThumbnail({ src, alt }: { src?: string | null; alt?: string }) {
     />
   );
 }
-import Swal from 'sweetalert2';
+import Swal from '../../../utils/swal';
 import ApplicantsMobilePage from './ApplicantsMobilePage';
 import { useNavigate } from 'react-router';
 import {

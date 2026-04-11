@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import Swal from "sweetalert2";
+import Swal from '../../../utils/swal';
 import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
 import PageMeta from "../../../components/common/PageMeta";
 import LoadingSpinner from "../../../components/common/LoadingSpinner";
@@ -85,9 +85,7 @@ export default function Companies() {
       icon: "warning",
       showCancelButton: true,
       confirmButtonColor: "#ef4444",
-      confirmButtonText: "Yes, delete it",
-      background: "#1e293b",
-      color: "#fff"
+      confirmButtonText: "Yes, delete it"
     });
 
     if (result.isConfirmed) {

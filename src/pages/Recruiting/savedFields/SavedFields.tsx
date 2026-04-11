@@ -4,7 +4,7 @@ import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
 import PageMeta from "../../../components/common/PageMeta";
 import LoadingSpinner from "../../../components/common/LoadingSpinner";
 import { useSavedFields, useDeleteSavedField } from "../../../hooks/queries";
-import Swal from "sweetalert2";
+import Swal from '../../../utils/swal';
 import { PencilIcon, TrashBinIcon, PlusIcon } from "../../../icons";
 import { useQueryClient } from "@tanstack/react-query";
 import { savedFieldsKeys } from "../../../hooks/queries/useSavedFields";
@@ -79,7 +79,7 @@ export default function SavedFields() {
           className="inline-flex items-center gap-2 rounded-2xl bg-brand-500 px-6 py-3 text-sm font-bold text-white shadow-xl shadow-brand-500/25 transition-all hover:bg-brand-600 hover:shadow-brand-500/40 active:scale-95"
         >
           <PlusIcon className="size-5" />
-          Create New Template
+          Create New Saved Field
         </button>
       </div>
 
@@ -87,7 +87,7 @@ export default function SavedFields() {
         <div className="p-8">
             <div className="mb-8 flex items-center justify-between">
                 <div>
-                <h3 className="text-2xl font-bold text-gray-900 dark:text-white">Field Repository</h3>
+                <h3 className="text-2xl font-bold text-gray-900 dark:text-white">Saved Fields</h3>
                 <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Total of {activeFields.length} reusable field templates found</p>
                 </div>
                 <div className="h-12 w-12 rounded-2xl bg-brand-50 flex items-center justify-center dark:bg-brand-500/10">
@@ -104,7 +104,7 @@ export default function SavedFields() {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
                     </svg>
                 </div>
-                <h4 className="mt-6 text-lg font-bold text-gray-900 dark:text-white">Empty Repository</h4>
+                <h4 className="mt-6 text-lg font-bold text-gray-900 dark:text-white">You Didn't Create Saved Fields Yet</h4>
                 <p className="mt-2 text-sm text-gray-500 dark:text-gray-400 max-w-xs text-center">Start by creating your first reusable field template for job applications.</p>
                 </div>
             ) : (

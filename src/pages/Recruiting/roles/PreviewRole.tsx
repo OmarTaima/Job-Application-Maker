@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate, useLocation } from "react-router";
 import { useAuth } from "../../../context/AuthContext";
-import Swal from "sweetalert2";
+import Swal from '../../../utils/swal';
 import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
 import PageMeta from "../../../components/common/PageMeta";
 import LoadingSpinner from "../../../components/common/LoadingSpinner";
@@ -149,9 +149,7 @@ export default function PreviewRole() {
       icon: "warning",
       showCancelButton: true,
       confirmButtonColor: "#ef4444",
-      confirmButtonText: "Decommission",
-      background: "#1e293b",
-      color: "#fff"
+      confirmButtonText: "Decommission"
     });
 
     if (result.isConfirmed) {
@@ -205,7 +203,7 @@ export default function PreviewRole() {
                 className="flex items-center gap-2 px-6 py-3 bg-brand-500 text-white rounded-[1.25rem] font-bold shadow-xl shadow-brand-500/20 hover:scale-105 transition-all"
               >
                 <Pencil className="size-4" />
-                Modify Company
+                Edit
               </button>
             )}
             {!isEditing && canDelete && (

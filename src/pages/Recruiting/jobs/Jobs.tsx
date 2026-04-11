@@ -17,7 +17,7 @@ import {
   PencilIcon,
   RefreshCwIcon,
 } from "lucide-react";
-import Swal from "sweetalert2";
+import Swal from '../../../utils/swal';
 import { 
   useJobPositions, 
   useDeleteJobPosition,

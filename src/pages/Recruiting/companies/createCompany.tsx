@@ -4,7 +4,7 @@ import { useNavigate } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
 import PageMeta from "../../../components/common/PageMeta";
-import Swal from "sweetalert2";
+import Swal from '../../../utils/swal';
 import { useAppDispatch } from "../../../store/hooks";
 import { createCompany } from "../../../store/slices/companiesSlice";
 import { companiesKeys } from "../../../hooks/queries/useCompanies";
@@ -131,9 +131,7 @@ export default function CreateCompany() {
         text: "Registering new corporate Company",
         icon: "info",
         showConfirmButton: false,
-        timer: 1000,
-        background: "#1e293b",
-        color: "#fff"
+        timer: 1000
       });
 
       const promise = dispatch(createCompany(companyForm)) as any;
@@ -188,7 +186,7 @@ export default function CreateCompany() {
             className="flex items-center justify-center gap-2 px-8 py-4 bg-brand-500 text-white rounded-[1.25rem] font-bold shadow-xl shadow-brand-500/20 hover:scale-105 active:scale-95 disabled:opacity-50 transition-all"
           >
             {isSubmitting ? <div className="size-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="size-5" />}
-            Authenticate & Save
+            Save Company
           </button>
         </div>
 
@@ -251,7 +249,7 @@ export default function CreateCompany() {
                   <div className="size-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-500">
                     <MapPin className="size-5" />
                   </div>
-                  <h2 className="text-xl font-black tracking-tight">Deployment Locations</h2>
+                  <h2 className="text-xl font-black tracking-tight">Locations</h2>
                 </div>
                 <button
                   type="button"
@@ -343,7 +341,7 @@ export default function CreateCompany() {
                 <div className="size-10 rounded-xl bg-purple-500/10 flex items-center justify-center text-purple-500">
                   <Mail className="size-5" />
                 </div>
-                <h2 className="text-xl font-black tracking-tight">Communication</h2>
+                <h2 className="text-xl font-black tracking-tight">Contact</h2>
               </div>
 
               <div className="space-y-6">
