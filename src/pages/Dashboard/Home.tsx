@@ -143,7 +143,6 @@ export default function Home() {
   }, [applicants, filtered, countsFromServer]);
 
   // Exclude trashed applicants for total calculations
-  const filteredNonTrashed = useMemo(() => filtered.filter((a) => a.status !== 'trashed'), [filtered]);
   const applicantsNonTrashed = useMemo(() => applicants.filter((a) => a.status !== 'trashed'), [applicants]);
 
   const STATUS_ICON: Record<Applicant['status'] | 'total', any> = {
