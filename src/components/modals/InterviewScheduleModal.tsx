@@ -113,6 +113,11 @@ export default function InterviewScheduleModal(props: Props) {
     buildInterviewEmailHtml,
     getJobTitle,
     applicant,
+    bulkMode = false,
+    bulkCount = 0,
+    intervalMinutes = 15,
+    setIntervalMinutes,
+    onPreview,
   } = props;
 
 
@@ -120,7 +125,9 @@ export default function InterviewScheduleModal(props: Props) {
   const generateMessageTemplate = (channels: typeof notificationChannels = notificationChannels) => {
     if (!applicant) return '';
 
-    const applicantName = (applicant.fullName || '').trim() || 'Candidate';
+    const applicantName = bulkMode
+      ? '{{candidateName}}'
+      : (applicant.fullName || '').trim() || 'Candidate';
     const interviewDate = interviewForm.date
       ? new Date(interviewForm.date).toLocaleDateString('en-US', {
           weekday: 'long',
@@ -129,7 +136,9 @@ export default function InterviewScheduleModal(props: Props) {
           day: 'numeric',
         })
       : '[Interview Date]';
-    const interviewTime = interviewForm.time || '[Interview Time]';
+    const interviewTime = bulkMode
+      ? '{{interviewTime}}'
+      : interviewForm.time || '[Interview Time]';
     const interviewType = interviewForm.type || 'phone';
     const typeLabel = interviewType.charAt(0).toUpperCase() + interviewType.slice(1);
     const location = (interviewForm.location || '').trim() || '[Location]';
@@ -418,16 +427,12 @@ export default function InterviewScheduleModal(props: Props) {
 
     // finally delegate to parent submit handler
     try {
-      // Disabled actual send during local testing: log and simulate async success
-      try {
-        // eslint-disable-next-line no-console
-        console.debug('InterviewScheduleModal: Skipping handleInterviewSubmit (dev).', { interviewForm, notificationChannels, customEmail, newLocalEmail });
-        await Promise.resolve();
-      } catch (e) { /* ignore */ }
-      // If you want to call the real handler, uncomment the line below
       await handleInterviewSubmit(e);
-    } catch (err) {
-      // parent handler will set errors as needed
+    } catch (err: any) {
+      const msg =
+        (err && (err.message || err.response?.data?.message)) ||
+        'Failed to schedule interview.';
+      setInterviewError(String(msg));
     }
   };
   
@@ -435,8 +440,14 @@ export default function InterviewScheduleModal(props: Props) {
     <Modal isOpen={isOpen} onClose={onClose} className="max-w-[1100px] p-6 lg:p-10" closeOnBackdrop={false}>
       <form key={`interview-form-${formResetKey}`} onSubmit={onSubmit} className="flex flex-col px-2">
         <div>
-          <h5 className="mb-2 font-semibold text-gray-800 text-xl dark:text-white/90 lg:text-2xl">Schedule Interview</h5>
-          <p className="text-sm text-gray-500 dark:text-gray-400">Set up an interview and choose notification preferences</p>
+            <h5 className="mb-2 font-semibold text-gray-800 text-xl dark:text-white/90 lg:text-2xl">
+              {bulkMode ? `Schedule Interviews (${bulkCount})` : 'Schedule Interview'}
+            </h5>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              {bulkMode
+                ? 'Set up interview timing and notifications for all selected applicants'
+                : 'Set up an interview and choose notification preferences'}
+            </p>
         </div>
 
         {interviewError && (
@@ -449,7 +460,7 @@ export default function InterviewScheduleModal(props: Props) {
         )}
 
         <div className="mt-6 space-y-4">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className={`grid grid-cols-1 gap-4 ${bulkMode ? 'sm:grid-cols-4' : 'sm:grid-cols-3'}`}>
             <div>
               <DatePicker id="interview-date" label="Interview Date" placeholder="Select interview date" onChange={(selectedDates: Date[]) => {
                 if (selectedDates.length > 0) {
@@ -473,13 +484,37 @@ export default function InterviewScheduleModal(props: Props) {
               <Label htmlFor="interview-type">Interview Type</Label>
               <Select options={[{ value: 'phone', label: 'Phone' },{ value: 'video', label: 'Video' },{ value: 'in-person', label: 'In-Person' }]} placeholder="Select interview type" onChange={(value: any) => setInterviewForm({ ...interviewForm, type: value })} />
             </div>
+            {bulkMode && (
+              <div>
+                <Label htmlFor="interview-interval">Interval (minutes)</Label>
+                <Input
+                  id="interview-interval"
+                  type="number"
+                  min="1"
+                  value={intervalMinutes}
+                  onChange={(e: any) => {
+                    if (!setIntervalMinutes) return;
+                    const next = Number(e.target.value);
+                    setIntervalMinutes(Number.isFinite(next) && next > 0 ? next : 1);
+                  }}
+                  placeholder="15"
+                />
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <Label htmlFor="interview-location">Location (Optional)</Label>
               <Input id="interview-location" type="text" value={interviewForm.location} onChange={(e: any) => setInterviewForm({ ...interviewForm, location: e.target.value })} placeholder="Office address or meeting room" />
-              <div className="mt-2"><button type="button" onClick={() => fillCompanyAddress()} className="text-sm text-brand-600 hover:underline">Use company address</button></div>
+              <div className="mt-2"><button type="button" onClick={() => {
+                const result = fillCompanyAddress?.();
+                if (result === false) {
+                  setInterviewError('No company address found for this company.');
+                } else {
+                  setInterviewError('');
+                }
+              }} className="text-sm text-brand-600 hover:underline">Use company address</button></div>
             </div>
             <div>
               <Label htmlFor="interview-link">Video Link (Optional)</Label>
@@ -621,12 +656,16 @@ export default function InterviewScheduleModal(props: Props) {
         <div className="flex items-center gap-3 mt-6 sm:justify-end">
           <button type="button" onClick={onClose} disabled={isSubmittingInterview} className="flex w-full justify-center rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-white/[0.03] sm:w-auto">Cancel</button>
           <button type="button" onClick={() => {
+            if (typeof onPreview === 'function') {
+              onPreview();
+              return;
+            }
             const subject = interviewEmailSubject || 'Interview Invitation';
             const jobTitle = getJobTitle().en || '';
             const preview = buildInterviewEmailHtml({ subject, jobTitle, interview: interviewForm, rawMessage: messageTemplate, applicantName: applicant.fullName });
             setPreviewHtml(preview);
             setShowPreviewModal(true);
-          }} className="flex w-full justify-center rounded-lg border border-stroke px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:border-strokedark dark:hover:bg-gray-800 sm:w-auto">Preview Email</button>
+          }} className="flex w-full justify-center rounded-lg border border-stroke px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:border-strokedark dark:hover:bg-gray-800 sm:w-auto">{bulkMode ? 'Preview All Emails' : 'Preview Email'}</button>
           <button type="submit" disabled={isSubmittingInterview} className="flex w-full justify-center items-center gap-2 rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50 disabled:cursor-not-allowed sm:w-auto">{isSubmittingInterview ? (<><svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Scheduling...</span></>) : (<span>Schedule Interview</span>)}</button>
         </div>
 

@@ -226,7 +226,7 @@ export default function PreviewRole() {
                   onClick={handleSave}
                   className="px-8 py-3 bg-brand-500 text-white rounded-[1.25rem] font-black tracking-widest uppercase shadow-xl shadow-brand-500/20 hover:scale-105 transition-all"
                 >
-                  Commit Changes
+                  Save Changes
                 </button>
               </div>
             )}

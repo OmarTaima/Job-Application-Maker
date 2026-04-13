@@ -438,6 +438,14 @@ const ApplicantData = () => {
     return s.charAt(0).toUpperCase() + s.slice(1);
   };
 
+  const isInvalidAddressString = (value: string) => {
+    const s = String(value || '').trim();
+    if (!s) return true;
+    if (/^[a-f0-9]{24}$/i.test(s)) return true;
+    if ((s.startsWith('{') && s.endsWith('}')) || (s.startsWith('[') && s.endsWith(']'))) return true;
+    return false;
+  };
+
   // Resolve and normalize an address string for the applicant's company
   const getCompanyAddress = () => {
     if (!applicant) return '';
@@ -487,11 +495,12 @@ const ApplicantData = () => {
       }
     }
 
-    const resolved = addr
-      ? (typeof addr === 'string' ? addr : toPlainString(addr.en ? addr.en : addr) || addr.location || '')
-      : '';
+    const resolved = addr ? toPlainString(addr) : '';
 
-    return resolved || '';
+    if (resolved && resolved.trim() && !isInvalidAddressString(resolved)) {
+      return resolved.trim();
+    }
+    return '';
   };
 
   // Clear persisted localStorage state when navigating away from Applicants/ApplicantData pages
@@ -539,23 +548,10 @@ const ApplicantData = () => {
         }
       }
 
-      let resolved = '';
-      if (addr) {
-        if (typeof addr === 'string') {
-          resolved = addr;
-        } else if (addr.en && typeof addr.en === 'string') {
-          resolved = addr.en;
-        } else if (addr.ar && typeof addr.ar === 'string') {
-          resolved = addr.ar;
-        } else if (addr.location && typeof addr.location === 'string') {
-          resolved = addr.location;
-        } else {
-          resolved = toPlainString(addr) || '';
-        }
-      }
+      const resolved = addr ? toPlainString(addr) : '';
 
-      if (resolved && resolved.trim()) {
-        setInterviewForm((prev) => ({ ...prev, location: resolved }));
+      if (resolved && resolved.trim() && !isInvalidAddressString(resolved)) {
+        setInterviewForm((prev) => ({ ...prev, location: resolved.trim() }));
         return true;
       }
       return false;
@@ -803,7 +799,6 @@ const ApplicantData = () => {
   // Status options used in the change-status flow
   const statusOptions = [
     { value: 'pending', label: 'Pending' },
-    { value: 'interview', label: 'Interview' },
     { value: 'interviewed', label: 'Interviewed' },
     { value: 'approved', label: 'Approved' },
     { value: 'rejected', label: 'Rejected' },

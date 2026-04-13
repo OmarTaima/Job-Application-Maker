@@ -173,7 +173,7 @@ export default function CreateCompany() {
             </button>
             <div>
               <h1 className="text-3xl font-black bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-400 bg-clip-text text-transparent tracking-tight">
-                New Company Registry
+                Company Information
               </h1>
               <p className="text-gray-500 dark:text-gray-400 font-medium italic">Initialize a new corporate Company within the ecosystem</p>
             </div>
@@ -231,7 +231,7 @@ export default function CreateCompany() {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-xs font-black uppercase tracking-widest text-slate-400">Mission Statement (English)</label>
+                  <label className="text-xs font-black uppercase tracking-widest text-slate-400">Company Description (English)</label>
                   <textarea
                     rows={4}
                     value={companyForm.description.en}

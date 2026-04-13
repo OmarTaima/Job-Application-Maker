@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router";
 
 // Assume these icons are imported from an icon library
@@ -31,11 +31,11 @@ const navItems: NavItem[] = [
   },
   {
     icon: <TaskIcon />,
-    name: "Company Management",
+    name: "Company Settings",
     subItems: [
       { name: "Create Company", path: "/recruiting", pro: false },
       { name: "Companies", path: "/companies", pro: false },
-      { name: "Company Settings", path: "/recruiting/company-settings", pro: false },
+      { name: "Mail Settings", path: "/recruiting/company-settings", pro: false },
     ],
   },
   {
@@ -95,8 +95,32 @@ const adminItems: NavItem[] = [
 
 const AppSidebar: React.FC = () => {
   const { isExpanded, isMobileOpen, isHovered, setIsHovered } = useSidebar();
-  const { hasPermission } = useAuth();
+  const { hasPermission, user } = useAuth();
   const location = useLocation();
+
+  const hasSingleAssignedCompany = useMemo(() => {
+    const roleName = user?.roleId?.name?.toLowerCase?.();
+    const isAdminRole = roleName === "admin" || roleName === "super admin";
+    if (isAdminRole) return false;
+
+    const fromCompanies = Array.isArray(user?.companies)
+      ? user.companies
+          .map((c: any) =>
+            typeof c?.companyId === "string" ? c.companyId : c?.companyId?._id
+          )
+          .filter(Boolean)
+      : [];
+
+    const fromAssigned = Array.isArray((user as any)?.assignedcompanyId)
+      ? (user as any).assignedcompanyId.filter(Boolean)
+      : [];
+
+    const mergedIds = Array.from(
+      new Set([...fromCompanies, ...fromAssigned].map(String))
+    );
+
+    return mergedIds.length === 1;
+  }, [user]);
 
   // Check if user has read access to admin features
   const hasUserManagementRead = hasPermission("User Management", "read");
@@ -269,7 +293,7 @@ const AppSidebar: React.FC = () => {
                     >
                       <ul className="mt-2 space-y-1 ml-9">
                         {visibleSubItems.map((subItem) => (
-                          <li key={subItem.name}>
+                          <li key={subItem.path}>
                             <Link
                               to={subItem.path}
                               className={`menu-dropdown-item ${
@@ -278,7 +302,9 @@ const AppSidebar: React.FC = () => {
                                   : "menu-dropdown-item-inactive"
                               }`}
                             >
-                              {subItem.name}
+                              {hasSingleAssignedCompany && subItem.path === "/companies"
+                                ? "Company Data"
+                                : subItem.name}
                               <span className="flex items-center gap-1 ml-auto">
                                 {subItem.new && (
                                   <span

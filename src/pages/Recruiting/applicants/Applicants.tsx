@@ -152,6 +152,7 @@ import { ThemeProvider, createTheme } from '@mui/material';
 import ComponentCard from '../../../components/common/ComponentCard';
 import PageBreadcrumb from '../../../components/common/PageBreadCrumb';
 import PageMeta from '../../../components/common/PageMeta';
+import { Modal } from '../../../components/ui/modal';
 import { TrashBinIcon } from '../../../icons';
 import { useAuth } from '../../../context/AuthContext';
 import {
@@ -159,9 +160,12 @@ import {
   useJobPositions,
   useUpdateApplicantStatus,
   useCompanies,
+  useScheduleInterview,
 } from '../../../hooks/queries';
 import BulkMessageModal from '../../../components/modals/BulkMessageModal';
-import { Menu, MenuItem, Checkbox, ListItemText } from '@mui/material';
+import InterviewScheduleModal from '../../../components/modals/InterviewScheduleModal';
+import { Menu, MenuItem, Checkbox, ListItemText, Skeleton } from '@mui/material';
+import useSendBatchEmail from '../../../hooks/queries/useSendBatchEmail';
 import {
   normalizeLabelSimple,
   canonicalMap,
@@ -258,6 +262,58 @@ const Applicants = () => {
   const [bulkAction, setBulkAction] = useState<string>('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [showBulkModal, setShowBulkModal] = useState(false);
+  const [showBulkInterviewModal, setShowBulkInterviewModal] = useState(false);
+  const [showBulkInterviewPreviewModal, setShowBulkInterviewPreviewModal] =
+    useState(false);
+  const [bulkFormResetKey, setBulkFormResetKey] = useState(0);
+  const [isSubmittingBulkInterview, setIsSubmittingBulkInterview] =
+    useState(false);
+  const [bulkInterviewError, setBulkInterviewError] = useState('');
+  const [bulkInterviewIntervalMinutes, setBulkInterviewIntervalMinutes] =
+    useState(15);
+  const [bulkInterviewForm, setBulkInterviewForm] = useState({
+    date: '',
+    time: '',
+    description: '',
+    comment: '',
+    location: '',
+    link: '',
+    type: 'phone' as 'phone' | 'video' | 'in-person',
+  });
+  const [bulkNotificationChannels, setBulkNotificationChannels] = useState({
+    email: true,
+    sms: false,
+    whatsapp: false,
+  });
+  const [bulkEmailOption, setBulkEmailOption] = useState<'company' | 'new'>(
+    'company'
+  );
+  const [bulkCustomEmail, setBulkCustomEmail] = useState('');
+  const [bulkPhoneOption, setBulkPhoneOption] = useState<
+    'company' | 'user' | 'whatsapp' | 'custom'
+  >('company');
+  const [bulkCustomPhone, setBulkCustomPhone] = useState('');
+  const [bulkMessageTemplate, setBulkMessageTemplate] = useState('');
+  const [bulkInterviewEmailSubject, setBulkInterviewEmailSubject] =
+    useState('Interview Invitation');
+  const [bulkPreviewHtml, setBulkPreviewHtml] = useState('');
+  const [showBulkPreviewFallbackModal, setShowBulkPreviewFallbackModal] =
+    useState(false);
+  const [bulkInterviewPreviewItems, setBulkInterviewPreviewItems] = useState<
+    Array<{
+      applicantId: string;
+      applicantName: string;
+      applicantNo: string;
+      to: string;
+      companyId: string;
+      jobPositionId?: string;
+      scheduledAt: string;
+      scheduledLabel: string;
+      subject: string;
+      html: string;
+      status?: string;
+    }>
+  >([]);
   // MRT will manage pagination internally (page size set in initialState)
   const [rowSelection, setRowSelection] = useState<MRT_RowSelectionState>({});
   const [columnFilters, setColumnFilters] = useState<MRT_ColumnFiltersState>(
@@ -391,6 +447,75 @@ const Applicants = () => {
       return [];
     }
   }, [selectedApplicantIds, applicants]);
+
+  const selectedApplicantsForInterview = useMemo(() => {
+    try {
+      const ids = new Set(selectedApplicantIds);
+      const mapped = applicants
+        .filter((a: any) => {
+          const id =
+            typeof a._id === 'string' ? a._id : a._id?._id || a.id || a._id;
+          return ids.has(id);
+        })
+        .map((a: any) => {
+          const applicantId =
+            typeof a._id === 'string' ? a._id : a._id?._id || a.id || '';
+          let jobPositionId =
+            a.jobPositionId ||
+            (a.jobPosition && typeof a.jobPosition === 'object'
+              ? a.jobPosition._id
+              : a.jobPosition);
+          if (jobPositionId && typeof jobPositionId === 'object') {
+            jobPositionId =
+              jobPositionId._id || jobPositionId.id || String(jobPositionId);
+          }
+
+          const companyRef =
+            a.company ||
+            a.companyObj ||
+            (a.jobPositionId &&
+              (a.jobPositionId.companyId ||
+                a.jobPositionId.company ||
+                a.jobPositionId.companyObj));
+          const companyId = companyRef
+            ? typeof companyRef === 'string'
+              ? companyRef
+              : companyRef._id || companyRef.id || ''
+            : '';
+
+          const applicantNoRaw =
+            a.applicantNo ?? a.applicantNumber ?? a.no ?? a.number;
+          const parsedApplicantNo = Number(applicantNoRaw);
+          const applicantNo = Number.isFinite(parsedApplicantNo)
+            ? parsedApplicantNo
+            : null;
+
+          return {
+            applicantId: String(applicantId),
+            applicantName:
+              String(a.fullName || a.name || a.firstName || 'Candidate').trim(),
+            email: String(a.email || '').trim(),
+            applicantNo,
+            jobPositionId:
+              typeof jobPositionId === 'string' ? jobPositionId : undefined,
+            companyId: String(companyId || ''),
+            status: String(a.status || ''),
+          };
+        })
+        .filter((item: any) => item.applicantId);
+
+      mapped.sort((a: any, b: any) => {
+        const noA = typeof a.applicantNo === 'number' ? a.applicantNo : Infinity;
+        const noB = typeof b.applicantNo === 'number' ? b.applicantNo : Infinity;
+        if (noA !== noB) return noA - noB;
+        return String(a.applicantName).localeCompare(String(b.applicantName));
+      });
+
+      return mapped;
+    } catch (e) {
+      return [];
+    }
+  }, [selectedApplicantIds, applicants]);
   // If we already loaded companies, resolve the full company object for the selected applicants
   // If all selected applicants belong to the same company, provide that company id
   const selectedApplicantCompanyId = useMemo(() => {
@@ -438,8 +563,20 @@ const Applicants = () => {
     }
   }, [selectedApplicantCompanyId, allCompaniesRaw]);
   const updateStatusMutation = useUpdateApplicantStatus();
+  const scheduleInterviewMutation = useScheduleInterview();
+  const sendBatchEmailMutation = useSendBatchEmail();
+  // Mounted ref to avoid state updates after unmount
+  const mountedRef = useRef(false);
+
   const [lastRefetch, setLastRefetch] = useState<Date | null>(null);
   const [elapsed, setElapsed] = useState<string | null>(null);
+  // mark mounted state
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
   const [statusAnchorEl, setStatusAnchorEl] = useState<HTMLElement | null>(
     null
   );
@@ -452,10 +589,12 @@ const Applicants = () => {
       !lastRefetch &&
       (isJobPositionsFetched || isApplicantsFetched || isCompaniesFetched)
     ) {
-      setLastRefetch(new Date());
+      if (mountedRef.current) setLastRefetch(new Date());
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isJobPositionsFetched, isApplicantsFetched, isCompaniesFetched]);
+  }, [isJobPositionsFetched, isApplicantsFetched, isCompaniesFetched, lastRefetch]);
+
+  
 
   useEffect(() => {
     if (!lastRefetch) {
@@ -475,7 +614,10 @@ const Applicants = () => {
       return d.toLocaleDateString();
     };
 
-    const update = () => setElapsed(formatRelative(lastRefetch));
+    const update = () => {
+      if (!mountedRef.current) return;
+      setElapsed(formatRelative(lastRefetch));
+    };
     update();
     const id = setInterval(update, 30 * 1000);
     return () => clearInterval(id);
@@ -676,10 +818,7 @@ const Applicants = () => {
     return map;
   }, [jobPositions]);
 
-  // Field-exclusion and canonical helpers are provided by CustomFilterModal
-  // via named exports. See src/components/modals/CustomFilterModal.tsx
-
-  // Which job positions are currently selected in the Job Position column filter
+  
 
   // Map normalized field keys -> set of jobPosition ids that declare that field
   const fieldToJobIds = useMemo(
@@ -2333,6 +2472,433 @@ const Applicants = () => {
     [jobPositionMap, resolveAnyId]
   );
 
+  const getSelectedCompanyAddress = () => {
+    const c: any = selectedApplicantCompany || {};
+    const isInvalidAddressString = (value: string) => {
+      const s = String(value || '').trim();
+      if (!s) return true;
+      if (/^[a-f0-9]{24}$/i.test(s)) return true;
+      if ((s.startsWith('{') && s.endsWith('}')) || (s.startsWith('[') && s.endsWith(']'))) return true;
+      return false;
+    };
+    const candidates = [
+      c.address,
+      c.location,
+      c.officeAddress,
+      c.contactAddress,
+      c.settings?.address,
+      c.settings?.companyAddress,
+    ];
+
+    for (const value of candidates) {
+      const plain = toPlainString(value);
+      if (plain && plain.trim() && !isInvalidAddressString(plain)) {
+        return plain.trim();
+      }
+    }
+
+    for (const [key, value] of Object.entries(c)) {
+      if (!/address|location/i.test(key)) continue;
+      const plain = toPlainString(value);
+      if (plain && plain.trim() && !isInvalidAddressString(plain)) {
+        return plain.trim();
+      }
+    }
+
+    return '';
+  };
+
+  const getDefaultBulkInterviewTemplate = () => {
+    return (
+      '<p>Dear {{candidateName}},</p>' +
+      '<p>We are pleased to invite you for an interview for the position you applied for.</p>' +
+      '<p><strong>Interview Details:</strong></p>' +
+      '<p>Date: {{interviewDate}}</p>' +
+      '<p>Time: {{interviewTime}}</p>' +
+      '<p>Type: {{interviewType}}</p>' +
+      '<p>Location: {{interviewLocation}}</p>' +
+      '<p>Video Link: {{interviewLink}}</p>' +
+      '<p>Description: {{interviewDescription}}</p>' +
+      '<p>Comment: {{interviewComment}}</p>' +
+      '<p>Please confirm your availability at your earliest convenience.</p>' +
+      '<p>Best regards,<br/>HR Team</p>'
+    );
+  };
+
+  const inlineStyleHtml = (html: string) => {
+    if (!html) return '';
+    let out = String(html);
+    out = out.replace(/<p\b([^>]*)>/g, (match, attrs) =>
+      attrs.includes('style=')
+        ? match
+        : `<p style="margin:0 0 12px;color:#444;"${attrs}>`
+    );
+    out = out.replace(/<ul\b([^>]*)>/g, (match, attrs) =>
+      attrs.includes('style=')
+        ? match
+        : `<ul style="margin:0 0 12px 18px;padding-left:18px;"${attrs}>`
+    );
+    out = out.replace(/<ol\b([^>]*)>/g, (match, attrs) =>
+      attrs.includes('style=')
+        ? match
+        : `<ol style="margin:0 0 12px 18px;padding-left:18px;"${attrs}>`
+    );
+    out = out.replace(/<li\b([^>]*)>/g, (match, attrs) =>
+      attrs.includes('style=')
+        ? match
+        : `<li style="margin-bottom:6px;"${attrs}>`
+    );
+    return out;
+  };
+
+  const escapeHtml = (value: string) =>
+    String(value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+
+  const buildInterviewEmailHtml = (subject: string, rawBody: string) => {
+    const body = String(rawBody || '').trim();
+    const hasHtmlTags = /<[^>]+>/.test(body);
+    const normalizedBody = hasHtmlTags
+      ? inlineStyleHtml(body)
+      : String(body)
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .map(
+            (line) =>
+              `<p style="margin:0 0 12px;color:#444;">${escapeHtml(line)}</p>`
+          )
+          .join('');
+
+    return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(subject)}</title>
+</head>
+<body style="font-family: Arial, sans-serif; padding: 20px; margin: 0; background-color: #f5f5f5;">
+  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden;">
+    <div style="background-color: #ffffff; border-bottom: 1px solid #e5e7eb; padding: 24px 30px; text-align: center;">
+      <h1 style="color: #111827; margin: 0; font-size: 22px; font-weight: 700;">${escapeHtml(subject)}</h1>
+    </div>
+    <div style="padding: 30px;">
+      <div style="font-size: 16px; line-height: 1.6; color: #444;">
+        ${normalizedBody}
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+  };
+
+  const toLocalIsoWithoutTimezone = (d: Date) => {
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const hh = String(d.getHours()).padStart(2, '0');
+    const min = String(d.getMinutes()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}T${hh}:${min}:00`;
+  };
+
+  const buildBulkInterviewPreview = () => {
+    if (selectedApplicantsForInterview.length === 0) {
+      return { error: 'Please select at least one applicant.', items: [] as any[] };
+    }
+    if (!bulkInterviewForm.date || !bulkInterviewForm.time) {
+      return {
+        error: 'Interview date and time are required.',
+        items: [] as any[],
+      };
+    }
+
+    const baseDate = new Date(
+      `${bulkInterviewForm.date}T${bulkInterviewForm.time}:00`
+    );
+    if (Number.isNaN(baseDate.getTime())) {
+      return { error: 'Invalid interview date/time.', items: [] as any[] };
+    }
+
+    const interval = Math.max(1, Number(bulkInterviewIntervalMinutes) || 1);
+    const typeLabel = String(bulkInterviewForm.type || 'phone')
+      .charAt(0)
+      .toUpperCase() + String(bulkInterviewForm.type || 'phone').slice(1);
+    const subject =
+      String(bulkInterviewEmailSubject || '').trim() || 'Interview Invitation';
+    const sourceTemplate =
+      String(bulkMessageTemplate || '').trim() || getDefaultBulkInterviewTemplate();
+
+    const items = selectedApplicantsForInterview.map((candidate, index) => {
+      const scheduled = new Date(baseDate.getTime() + index * interval * 60000);
+      const interviewDate = scheduled.toLocaleDateString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      });
+      const interviewTime = scheduled.toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+      });
+      const scheduledAt = toLocalIsoWithoutTimezone(scheduled);
+
+      const replacements: Record<string, string> = {
+        '{{candidateName}}': candidate.applicantName || 'Candidate',
+        '{{applicantNo}}':
+          typeof candidate.applicantNo === 'number'
+            ? String(candidate.applicantNo)
+            : '-',
+        '{{interviewDate}}': interviewDate,
+        '{{interviewTime}}': interviewTime,
+        '{{interviewType}}': typeLabel,
+        '{{interviewLocation}}': String(
+          bulkInterviewForm.location || '[Location]'
+        ),
+        '{{interviewLink}}': String(bulkInterviewForm.link || ''),
+        '{{interviewDescription}}': String(bulkInterviewForm.description || ''),
+        '{{interviewComment}}': String(bulkInterviewForm.comment || ''),
+      };
+
+      let messageBody = sourceTemplate;
+      Object.entries(replacements).forEach(([token, value]) => {
+        messageBody = messageBody.split(token).join(value);
+      });
+
+      const html = buildInterviewEmailHtml(subject, messageBody);
+
+      return {
+        applicantId: candidate.applicantId,
+        applicantName: candidate.applicantName,
+        applicantNo:
+          typeof candidate.applicantNo === 'number'
+            ? String(candidate.applicantNo)
+            : '-',
+        to: candidate.email || '',
+        companyId: candidate.companyId || selectedApplicantCompanyId || '',
+        jobPositionId: candidate.jobPositionId,
+        scheduledAt,
+        scheduledLabel: `${interviewDate} at ${interviewTime}`,
+        subject,
+        html,
+        status: candidate.status,
+      };
+    });
+
+    return { error: '', items };
+  };
+
+  const handlePreviewBulkInterviews = () => {
+    setBulkInterviewError('');
+    const built = buildBulkInterviewPreview();
+    if (built.error) {
+      setBulkInterviewError(built.error);
+      return;
+    }
+    setBulkInterviewPreviewItems(built.items as any);
+    setShowBulkInterviewPreviewModal(true);
+  };
+
+  const fillBulkCompanyAddress = () => {
+    const address = getSelectedCompanyAddress();
+    if (!address) return false;
+    setBulkInterviewForm((prev) => ({ ...prev, location: address }));
+    return true;
+  };
+
+  const resetBulkInterviewModal = () => {
+    setBulkInterviewError('');
+    setBulkInterviewIntervalMinutes(15);
+    setBulkInterviewForm({
+      date: '',
+      time: '',
+      description: '',
+      comment: '',
+      location: getSelectedCompanyAddress(),
+      link: '',
+      type: 'phone',
+    });
+    setBulkNotificationChannels({ email: true, sms: false, whatsapp: false });
+    setBulkEmailOption('company');
+    setBulkCustomEmail('');
+    setBulkPhoneOption('company');
+    setBulkCustomPhone('');
+    setBulkInterviewEmailSubject('Interview Invitation');
+    setBulkMessageTemplate(getDefaultBulkInterviewTemplate());
+    setBulkInterviewPreviewItems([]);
+    setShowBulkInterviewPreviewModal(false);
+    setBulkFormResetKey((prev) => prev + 1);
+  };
+
+  const openBulkInterviewModal = async () => {
+    if (selectedApplicantsForInterview.length === 0) return;
+
+    if (!selectedApplicantCompanyId) {
+      await Swal.fire({
+        title: 'Single Company Required',
+        text: 'Please select applicants from one company to schedule interviews together.',
+        icon: 'warning',
+      });
+      return;
+    }
+
+    resetBulkInterviewModal();
+    setShowBulkInterviewModal(true);
+  };
+
+  const handleBulkInterviewSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBulkInterviewError('');
+
+    const built = buildBulkInterviewPreview();
+    if (built.error) {
+      setBulkInterviewError(built.error);
+      return;
+    }
+
+    const previewItems = built.items;
+    const missingEmails = previewItems.filter((item: any) => !item.to);
+
+    const fallbackFromEmail =
+      String(
+        (selectedApplicantCompany as any)?.settings?.mailSettings?.defaultMail ||
+          (selectedApplicantCompany as any)?.mailSettings?.defaultMail ||
+          (selectedApplicantCompany as any)?.contactEmail ||
+          (selectedApplicantCompany as any)?.email ||
+          ''
+      ).trim() || '';
+    const fromEmail = String(bulkCustomEmail || fallbackFromEmail || '').trim();
+
+    let shouldSendEmail = Boolean(bulkNotificationChannels.email);
+    let emailResultNote = '';
+
+    if (shouldSendEmail && !fromEmail) {
+      shouldSendEmail = false;
+      emailResultNote =
+        'Email sending was skipped because no sender address is configured.';
+    }
+
+    if (shouldSendEmail && !selectedApplicantCompanyId) {
+      shouldSendEmail = false;
+      emailResultNote =
+        'Email sending was skipped because selected applicants are not from one company.';
+    }
+
+    const emailableItems = previewItems.filter((item: any) => Boolean(item.to));
+    if (shouldSendEmail && emailableItems.length === 0) {
+      shouldSendEmail = false;
+      emailResultNote =
+        'Email sending was skipped because selected applicants do not have email addresses.';
+    }
+
+    try {
+      setIsSubmittingBulkInterview(true);
+
+      for (const item of previewItems) {
+        const payload: any = {
+          scheduledAt: item.scheduledAt,
+          description: bulkInterviewForm.description || undefined,
+          type: bulkInterviewForm.type || undefined,
+          location: bulkInterviewForm.location || undefined,
+          videoLink: bulkInterviewForm.link || undefined,
+          notes: bulkInterviewForm.comment || undefined,
+          companyId: item.companyId || selectedApplicantCompanyId || undefined,
+          notifications: {
+            channels: {
+              email: bulkNotificationChannels.email,
+              sms: bulkNotificationChannels.sms,
+              whatsapp: bulkNotificationChannels.whatsapp,
+            },
+            emailOption: bulkNotificationChannels.email
+              ? bulkEmailOption || 'company'
+              : undefined,
+            customEmail: bulkNotificationChannels.email
+              ? fromEmail || undefined
+              : undefined,
+            phoneOption:
+              bulkNotificationChannels.sms || bulkNotificationChannels.whatsapp
+                ? bulkPhoneOption
+                : undefined,
+            customPhone:
+              bulkPhoneOption === 'custom'
+                ? bulkCustomPhone || undefined
+                : undefined,
+          },
+        };
+
+        await scheduleInterviewMutation.mutateAsync({
+          id: item.applicantId,
+          data: payload,
+        });
+
+        if (item.status !== 'interview') {
+          updateStatusMutation.mutate({
+            id: item.applicantId,
+            data: {
+              status: 'interview' as any,
+              notes: `Status updated to interview on ${new Date().toLocaleDateString()} (bulk interview scheduling)`,
+            },
+          });
+        }
+      }
+
+      if (shouldSendEmail) {
+        const batch = emailableItems.map((item: any) => ({
+          to: item.to,
+          from: fromEmail,
+          subject: item.subject,
+          html: item.html,
+          applicant: item.applicantId,
+          jobPosition: item.jobPositionId,
+        }));
+
+        await sendBatchEmailMutation.mutateAsync({
+          company: String(selectedApplicantCompanyId),
+          batch,
+        });
+
+        if (missingEmails.length > 0) {
+          emailResultNote = `Email sent to ${emailableItems.length} applicant(s); ${missingEmails.length} without email were skipped.`;
+        }
+      }
+
+      const successMessageBase = `Interviews scheduled for ${previewItems.length} applicant(s).`;
+      const successText = emailResultNote
+        ? `${successMessageBase} ${emailResultNote}`
+        : successMessageBase;
+
+      await Swal.fire({
+        title: 'Success!',
+        text: successText,
+        icon: 'success',
+        position: 'center',
+        timer: 2000,
+        showConfirmButton: false,
+      });
+
+      if (mountedRef.current) {
+        setRowSelection({});
+        setShowBulkInterviewModal(false);
+        setShowBulkInterviewPreviewModal(false);
+        resetBulkInterviewModal();
+      }
+
+      try {
+        await refetchApplicants();
+      } catch (err) {
+        // ignore refresh errors after successful scheduling
+      }
+    } catch (err: any) {
+      console.error('Error scheduling bulk interviews:', err);
+      setBulkInterviewError(getErrorMessage(err));
+    } finally {
+      if (mountedRef.current) setIsSubmittingBulkInterview(false);
+    }
+  };
+
   const handleBulkChangeStatus = useCallback(async () => {
     if (selectedApplicantIds.length === 0 || !bulkAction) return;
 
@@ -2369,15 +2935,16 @@ const Applicants = () => {
         timer: 2000,
         showConfirmButton: false,
       });
-
-      setRowSelection({});
-      setBulkAction('');
+      if (mountedRef.current) {
+        setRowSelection({});
+        setBulkAction('');
+      }
     } catch (err: any) {
       console.error('Error changing status:', err);
       const errorMsg = getErrorMessage(err);
-      setBulkStatusError(errorMsg);
+      if (mountedRef.current) setBulkStatusError(errorMsg);
     } finally {
-      setIsProcessing(false);
+      if (mountedRef.current) setIsProcessing(false);
     }
   }, [selectedApplicantIds, bulkAction, updateStatusMutation]);
 
@@ -2417,18 +2984,36 @@ const Applicants = () => {
         timer: 2000,
         showConfirmButton: false,
       });
-
-      setRowSelection({});
+      if (mountedRef.current) setRowSelection({});
     } catch (err: any) {
       console.error('Error deleting applicants:', err);
       const errorMsg = getErrorMessage(err);
-      setBulkDeleteError(errorMsg);
+      if (mountedRef.current) setBulkDeleteError(errorMsg);
     } finally {
-      setIsDeleting(false);
+      if (mountedRef.current) setIsDeleting(false);
     }
   }, [selectedApplicantIds, updateStatusMutation]);
 
   // Define table columns
+  const isTableLoading = Boolean(
+    isJobPositionsFetching || isApplicantsFetching || isCompaniesFetching
+  );
+
+  const renderCellSkeleton = (
+    variant: 'text' | 'circular' | 'rectangular' = 'text',
+    width?: number | string,
+    height?: number
+  ) => {
+    if (variant === 'circular') {
+      return (
+        <div className="flex items-center justify-center h-10 w-10">
+          <Skeleton variant="circular" width={width || 40} height={height || 40} />
+        </div>
+      );
+    }
+    return <Skeleton variant={variant as any} width={width || '60%'} height={height} />;
+  };
+
   const columns = useMemo<MRT_ColumnDef<Applicant>[]>(
     () => [
       {
@@ -2438,6 +3023,7 @@ const Applicants = () => {
         enableColumnFilter: false,
         enableSorting: false,
         Cell: ({ row, table }) => {
+          if (isTableLoading) return renderCellSkeleton('text', '40%');
           const orig: any = row.original as any;
           const href = getApplicantHref(row);
           const possible =
@@ -2493,6 +3079,7 @@ const Applicants = () => {
         enableSorting: false,
         enableColumnFilter: false,
         Cell: ({ row }: { row: { original: Applicant } }) => {
+          if (isTableLoading) return renderCellSkeleton('circular', 40, 40);
           const href = getApplicantHref(row);
           return (
             <a
@@ -2531,6 +3118,7 @@ const Applicants = () => {
         enableColumnFilter: true,
         enableSorting: false,
         Cell: ({ row }: { row: { original: Applicant } }) => {
+          if (isTableLoading) return renderCellSkeleton('text');
           const orig: any = row.original;
           const href = getApplicantHref(row);
           const seenBy = orig?.seenBy ?? [];
@@ -2567,6 +3155,7 @@ const Applicants = () => {
         enableColumnFilter: true,
         enableSorting: false,
         Cell: ({ row }: { row: { original: Applicant } }) => {
+          if (isTableLoading) return renderCellSkeleton('text');
           const href = getApplicantHref(row);
           return (
             <a
@@ -2587,6 +3176,7 @@ const Applicants = () => {
         enableColumnFilter: true,
         enableSorting: false,
         Cell: ({ row }: { row: { original: Applicant } }) => {
+          if (isTableLoading) return renderCellSkeleton('text');
           const href = getApplicantHref(row);
           return (
             <a
@@ -2661,7 +3251,7 @@ const Applicants = () => {
                       ? `${selected.length}`
                       : isLaptopViewport
                         ? ''
-                        : 'Filter'}
+                        : ''}
                     <svg className="h-3 w-3" viewBox="0 0 20 20" fill="none">
                       <path
                         d="M6 8l4 4 4-4"
@@ -2714,6 +3304,7 @@ const Applicants = () => {
           return vals.includes(cell);
         },
         Cell: ({ row }: { row: { original: any } }) => {
+          if (isTableLoading) return renderCellSkeleton('text');
           const raw =
             row.original.gender ||
             row.original.customResponses?.gender ||
@@ -2804,7 +3395,7 @@ const Applicants = () => {
                             ? `${selected.length}`
                             : isLaptopViewport
                               ? ''
-                              : 'Filter'}
+                              : ''}
                           <svg
                             className="h-3 w-3"
                             viewBox="0 0 20 20"
@@ -2863,6 +3454,7 @@ const Applicants = () => {
                 return vals.includes(cell);
               },
               Cell: ({ row }: { row: { original: Applicant } }) => {
+                if (isTableLoading) return renderCellSkeleton('text');
                 // display company name via job position
                 const jobPositionId = row.original.jobPositionId;
                 const getId = (v: any) =>
@@ -2964,7 +3556,7 @@ const Applicants = () => {
                     ? `${selected.length}`
                     : isLaptopViewport
                       ? ''
-                      : 'Filter'}
+                      : ''}
                   <svg className="h-3 w-3" viewBox="0 0 20 20" fill="none">
                     <path
                       d="M6 8l4 4 4-4"
@@ -3026,6 +3618,7 @@ const Applicants = () => {
         enableColumnFilter: true,
 
         Cell: ({ row }: { row: { original: Applicant } }) => {
+          if (isTableLoading) return renderCellSkeleton('text');
           const raw = row.original.jobPositionId;
           const href = getApplicantHref(row);
 
@@ -3073,6 +3666,7 @@ const Applicants = () => {
           return va > vb ? 1 : -1;
         },
         Cell: ({ row }: { row: { original: Applicant } }) => {
+          if (isTableLoading) return renderCellSkeleton('text');
           const href = getApplicantHref(row);
           const expectedSalary = getExpectedSalaryDisplay(row.original);
           return (
@@ -3103,6 +3697,7 @@ const Applicants = () => {
           return scoreA > scoreB ? 1 : -1;
         },
         Cell: ({ row }: { row: { original: Applicant } }) => {
+          if (isTableLoading) return renderCellSkeleton('text');
           const href = getApplicantHref(row);
           const score = getApplicantSScore(row.original);
           return (
@@ -3171,7 +3766,7 @@ const Applicants = () => {
                     ? `${selected.length}`
                     : isLaptopViewport
                       ? ''
-                      : 'Filter'}
+                      : ''}
                   <svg className="h-3 w-3" viewBox="0 0 20 20" fill="none">
                     <path
                       d="M6 8l4 4 4-4"
@@ -3232,6 +3827,7 @@ const Applicants = () => {
         enableColumnFilter: true,
 
         Cell: ({ row }: { row: { original: Applicant } }) => {
+          if (isTableLoading) return renderCellSkeleton('text', '80px');
           const colors = getStatusColor(row.original.status);
           const href = getApplicantHref(row);
 
@@ -3306,6 +3902,7 @@ const Applicants = () => {
           return a > b ? 1 : -1;
         },
         Cell: ({ row }: any) => {
+          if (isTableLoading) return renderCellSkeleton('text');
           const href = getApplicantHref(row);
           return (
             <a
@@ -3326,6 +3923,7 @@ const Applicants = () => {
         enableColumnFilter: false,
         enableSorting: false,
         Cell: ({ row }: any) => {
+          if (isTableLoading) return renderCellSkeleton('text');
           const orig = row.original as any;
           const hasCv = Boolean(resolveCvPath(orig));
           const href = getApplicantHref(row);
@@ -3397,6 +3995,9 @@ const Applicants = () => {
       getExpectedSalaryDisplay,
       getApplicantSScore,
       duplicatePriorityLookup,
+      isJobPositionsFetching,
+      isApplicantsFetching,
+      isCompaniesFetching,
       sorting,
     ]
   );
@@ -3541,10 +4142,16 @@ const Applicants = () => {
     [isDarkMode]
   );
 
+  const tableData = isTableLoading
+    ? Array.from({ length: (pagination?.pageSize as number) || 10 }).map(
+        (_: any, i: number) => ({ _id: `skeleton-${i}`, _skeleton: true })
+      )
+    : filteredApplicants;
+
   const table = useMaterialReactTable({
     columns,
     // Pass the filteredApplicants list (applies custom filters on top of displayedApplicants)
-    data: filteredApplicants,
+    data: tableData as any,
     displayColumnDefOptions: {
       'mrt-row-select': {
         size: selectColumnWidth,
@@ -3589,7 +4196,7 @@ const Applicants = () => {
         },
       },
     },
-    enableRowSelection: true,
+    enableRowSelection: !isTableLoading,
     enablePagination: true,
     enableBatchRowSelection: false,
     enableBottomToolbar: true,
@@ -3606,8 +4213,8 @@ const Applicants = () => {
     manualPagination: false,
     manualFiltering: false,
     manualSorting: false,
-    // Data passed to the table is `filteredApplicants`, so rowCount should match it
-    rowCount: filteredApplicants.length,
+    // Data passed to the table is `filteredApplicants` (or placeholder during loading), so rowCount should match it
+    rowCount: isTableLoading ? tableData.length : filteredApplicants.length,
     // Default pagination: 10 rows per page
     initialState: {
       pagination,
@@ -3879,53 +4486,73 @@ const Applicants = () => {
   return (
     <>
       <PageMeta title="Applicants" description="Manage job applicants" />
-      <PageBreadcrumb pageTitle="Applicants" />
-
+      <PageBreadcrumb
+        pageTitle="Applicants"
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  const promises: Promise<any>[] = [];
+                  if (isJobPositionsFetched && refetchJobPositions)
+                    promises.push(refetchJobPositions());
+                  if (isApplicantsFetched && refetchApplicants)
+                    promises.push(refetchApplicants());
+                  if (isCompaniesFetched && refetchCompanies)
+                    promises.push(refetchCompanies());
+                  if (promises.length === 0) return;
+                  await Promise.all(promises);
+                  if (mountedRef.current) setLastRefetch(new Date());
+                } catch (e) {
+                  // ignore
+                }
+              }}
+              disabled={
+                isJobPositionsFetching ||
+                isApplicantsFetching ||
+                isCompaniesFetching
+              }
+              className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-3 py-1 text-sm font-semibold text-white shadow-sm hover:bg-brand-600 disabled:opacity-50"
+            >
+              {isJobPositionsFetching ||
+              isApplicantsFetching ||
+              isCompaniesFetching
+                ? 'Updating Data'
+                : 'Update Data'}
+            </button>
+            <div className="text-sm text-gray-500">
+              {elapsed ? `Last Update: ${elapsed}` : 'Not updated yet'}
+            </div>
+          </div>
+        }
+      />
       <div className="grid gap-6">
         <ComponentCard
           title="Job Applicants"
           desc="View and manage all applicants"
-          actions={
-            <div className="flex flex-wrap items-center justify-start gap-2 lg:justify-end">
-              <button
-                type="button"
-                onClick={async () => {
-                  try {
-                    const promises: Promise<any>[] = [];
-                    if (isJobPositionsFetched && refetchJobPositions)
-                      promises.push(refetchJobPositions());
-                    if (isApplicantsFetched && refetchApplicants)
-                      promises.push(refetchApplicants());
-                    if (isCompaniesFetched && refetchCompanies)
-                      promises.push(refetchCompanies());
-                    if (promises.length === 0) return;
-                    await Promise.all(promises);
-                    setLastRefetch(new Date());
-                  } catch (e) {
-                    // ignore
-                  }
-                }}
-                disabled={
-                  isJobPositionsFetching ||
-                  isApplicantsFetching ||
-                  isCompaniesFetching
-                }
-                className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-3 py-1 text-sm font-semibold text-white shadow-sm hover:bg-brand-600 disabled:opacity-50"
-              >
-                {isJobPositionsFetching ||
-                isApplicantsFetching ||
-                isCompaniesFetching
-                  ? 'Updating Data'
-                  : 'Update Data'}
-              </button>
-              <div className="text-sm text-gray-500">
-                {elapsed ? `Last Update: ${elapsed}` : 'Not updated yet'}
-              </div>
-            </div>
-          }
+      
         >
           <>
             {/* Error Messages */}
+            {bulkInterviewError && (
+              <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                <div className="flex items-start justify-between">
+                  <p className="text-sm text-red-600 dark:text-red-400">
+                    <strong>Error scheduling interviews:</strong>{' '}
+                    {bulkInterviewError}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setBulkInterviewError('')}
+                    className="ml-3 text-red-400 hover:text-red-600 dark:hover:text-red-300"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            )}
+
             {bulkStatusError && (
               <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
                 <div className="flex items-start justify-between">
@@ -3984,7 +4611,6 @@ const Applicants = () => {
                       <option value="">Select Status</option>
                       <option value="pending">Pending</option>
                       <option value="approved">Approved</option>
-                      <option value="interview">Interview</option>
                       <option value="interviewed">Interviewed</option>
                       <option value="rejected">Rejected</option>
                     </select>
@@ -4004,6 +4630,18 @@ const Applicants = () => {
                     className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {`Send Mail (${selectedApplicantRecipients.length})`}
+                  </button>
+                  <button
+                    onClick={openBulkInterviewModal}
+                    disabled={
+                      isSubmittingBulkInterview ||
+                      selectedApplicantsForInterview.length === 0
+                    }
+                    className="inline-flex items-center gap-2 rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isSubmittingBulkInterview
+                      ? 'Scheduling...'
+                      : `Schedule Interviews (${selectedApplicantsForInterview.length})`}
                   </button>
                   <button
                     onClick={handleBulkDelete}
@@ -4036,6 +4674,122 @@ const Applicants = () => {
                 setShowBulkModal(false);
               }}
             />
+
+            <InterviewScheduleModal
+              isOpen={showBulkInterviewModal}
+              onClose={() => {
+                setShowBulkInterviewModal(false);
+                setBulkInterviewError('');
+                resetBulkInterviewModal();
+              }}
+              formResetKey={bulkFormResetKey}
+              interviewForm={bulkInterviewForm}
+              setInterviewForm={setBulkInterviewForm}
+              interviewError={bulkInterviewError}
+              setInterviewError={setBulkInterviewError}
+              handleInterviewSubmit={handleBulkInterviewSubmit}
+              fillCompanyAddress={fillBulkCompanyAddress}
+              notificationChannels={bulkNotificationChannels}
+              setNotificationChannels={setBulkNotificationChannels}
+              emailOption={bulkEmailOption}
+              setEmailOption={setBulkEmailOption}
+              customEmail={bulkCustomEmail}
+              setCustomEmail={setBulkCustomEmail}
+              phoneOption={bulkPhoneOption}
+              setPhoneOption={setBulkPhoneOption}
+              customPhone={bulkCustomPhone}
+              setCustomPhone={setBulkCustomPhone}
+              messageTemplate={bulkMessageTemplate}
+              setMessageTemplate={setBulkMessageTemplate}
+              interviewEmailSubject={bulkInterviewEmailSubject}
+              setInterviewEmailSubject={setBulkInterviewEmailSubject}
+              isSubmittingInterview={isSubmittingBulkInterview}
+              setShowPreviewModal={setShowBulkPreviewFallbackModal}
+              setPreviewHtml={setBulkPreviewHtml}
+              buildInterviewEmailHtml={({ subject, rawMessage }: any) =>
+                buildInterviewEmailHtml(String(subject || ''), String(rawMessage || ''))
+              }
+              getJobTitle={() => ({ en: '' })}
+              applicant={{
+                fullName: '{{candidateName}}',
+                company:
+                  selectedApplicantCompany ||
+                  (selectedApplicantCompanyId
+                    ? { _id: selectedApplicantCompanyId }
+                    : null),
+                companyObj:
+                  selectedApplicantCompany ||
+                  (selectedApplicantCompanyId
+                    ? { _id: selectedApplicantCompanyId }
+                    : null),
+              }}
+              bulkMode
+              bulkCount={selectedApplicantsForInterview.length}
+              intervalMinutes={bulkInterviewIntervalMinutes}
+              setIntervalMinutes={setBulkInterviewIntervalMinutes}
+              onPreview={handlePreviewBulkInterviews}
+            />
+
+            <Modal
+              isOpen={showBulkInterviewPreviewModal}
+              onClose={() => setShowBulkInterviewPreviewModal(false)}
+              className="max-w-5xl p-6"
+            >
+              <div className="space-y-4">
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+                  Interview Email Preview ({bulkInterviewPreviewItems.length})
+                </h2>
+                <div className="max-h-[70vh] space-y-4 overflow-auto pr-1">
+                  {bulkInterviewPreviewItems.map((item, index) => (
+                    <div
+                      key={`${item.applicantId}-${index}`}
+                      className="rounded-lg border border-gray-200 p-3 dark:border-gray-700"
+                    >
+                      <div className="mb-2 text-sm font-semibold text-gray-800 dark:text-white/90">
+                        Applicant #{item.applicantNo} - {item.applicantName}
+                      </div>
+                      <div className="mb-3 text-xs text-gray-600 dark:text-gray-300">
+                        <span className="mr-4">To: {item.to || 'No email'}</span>
+                        <span>Scheduled: {item.scheduledLabel}</span>
+                      </div>
+                      <iframe
+                        srcDoc={item.html}
+                        title={`Interview Preview ${item.applicantId}`}
+                        className="min-h-[360px] w-full rounded border-none bg-white"
+                      />
+                    </div>
+                  ))}
+                </div>
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setShowBulkInterviewPreviewModal(false)}
+                    className="rounded-lg border border-stroke px-4 py-2 hover:bg-gray-100 dark:border-strokedark dark:hover:bg-gray-800"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </Modal>
+
+            <Modal
+              isOpen={showBulkPreviewFallbackModal}
+              onClose={() => setShowBulkPreviewFallbackModal(false)}
+              className="max-w-3xl p-6"
+            >
+              <div className="space-y-3">
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                  Preview
+                </h2>
+                <div className="border rounded p-2 bg-white dark:bg-gray-800" style={{ maxHeight: '70vh', overflow: 'auto' }}>
+                  <iframe
+                    srcDoc={bulkPreviewHtml}
+                    title="Bulk Interview Preview"
+                    className="w-full min-h-[480px] rounded border-none"
+                  />
+                </div>
+              </div>
+            </Modal>
 
             {/* MRT handles pagination in its bottom toolbar (10 rows per page) */}
           </>

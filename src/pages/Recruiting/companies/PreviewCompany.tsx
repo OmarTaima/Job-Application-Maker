@@ -215,7 +215,7 @@ export default function PreviewCompany() {
                 </h1>
                 <div className="flex items-center gap-3 mt-2">
                   <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${companyForm.isActive ? "bg-green-500/10 text-green-500" : "bg-red-500/10 text-red-500"}`}>
-                    {companyForm.isActive ? "Operational" : "Terminated"}
+                    {companyForm.isActive ? "Active" : "Disabled"}
                   </span>
                   <span className="text-gray-400 text-xs font-bold italic">{departments.length} Active Departments</span>
                 </div>
@@ -253,8 +253,7 @@ export default function PreviewCompany() {
                   <Building2 className="size-6" />
                 </div>
                 <div>
-                  <h2 className="text-2xl font-black tracking-tight">Company Registry</h2>
-                  <p className="text-xs text-gray-500">Official corporate identification and mission</p>
+                  <h2 className="text-2xl font-black tracking-tight">Company Information</h2>
                 </div>
               </div>
 
@@ -307,7 +306,7 @@ export default function PreviewCompany() {
 
               <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div>
-                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Mission Statement (EN)</label>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Company Description (EN)</label>
                   <textarea 
                     readOnly={!isEditingCompany}
                     value={companyForm.description.en}
@@ -317,7 +316,7 @@ export default function PreviewCompany() {
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">وصف المهمة (AR)</label>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">وصف الشركة (AR)</label>
                   <textarea 
                     readOnly={!isEditingCompany}
                     dir="rtl"
@@ -407,7 +406,7 @@ export default function PreviewCompany() {
 
               <div className="space-y-6">
                 <div>
-                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Corporate Mail</label>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Mail Adress</label>
                   <div className="flex items-center gap-3 bg-slate-100/50 dark:bg-white/5 p-4 rounded-2xl">
                     <Mail className="size-4 text-slate-400" />
                     <input 
@@ -419,7 +418,7 @@ export default function PreviewCompany() {
                   </div>
                 </div>
                 <div>
-                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Hotline</label>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Phone</label>
                   <div className="flex items-center gap-3 bg-slate-100/50 dark:bg-white/5 p-4 rounded-2xl">
                     <Phone className="size-4 text-slate-400" />
                     <input 
@@ -431,7 +430,7 @@ export default function PreviewCompany() {
                   </div>
                 </div>
                 <div>
-                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Web Portal</label>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Website</label>
                   <div className="flex items-center gap-3 bg-slate-100/50 dark:bg-white/5 p-4 rounded-2xl">
                     <Globe className="size-4 text-slate-400" />
                     <input 
@@ -460,7 +459,7 @@ export default function PreviewCompany() {
                     {isEditingCompany ? (
                       <div className="space-y-3">
                         <input 
-                          placeholder="Operational Address (EN)" 
+                          placeholder="Company Address (EN)" 
                           value={addr.en} 
                           onChange={(e) => {
                             const newAddrs = [...companyForm.address];
@@ -471,7 +470,7 @@ export default function PreviewCompany() {
                         />
                         <input 
                           dir="rtl"
-                          placeholder="عنوان العمليات (AR)" 
+                          placeholder="عنوان الشركة (AR)" 
                           value={addr.ar} 
                           onChange={(e) => {
                             const newAddrs = [...companyForm.address];
@@ -531,8 +530,7 @@ export default function PreviewCompany() {
             <div className="p-10">
               <div className="flex items-center justify-between mb-8">
                 <div>
-                  <h3 className="text-2xl font-black">{editingDeptId ? "Optimize Unit" : "Initialize Unit"}</h3>
-                  <p className="text-xs text-slate-500 font-bold">Strategic structural definition</p>
+                  <h3 className="text-2xl font-black">{editingDeptId ? "Edit Department" : "Create Department"}</h3>
                 </div>
                 <button onClick={() => setShowDeptModal(false)} className="size-12 rounded-2xl bg-slate-100 dark:bg-white/5 flex items-center justify-center hover:scale-110 active:scale-90 transition-all">
                   <X className="size-5" />
@@ -564,7 +562,7 @@ export default function PreviewCompany() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
-                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Strategic Overview (EN)</label>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Desciption (EN)</label>
                     <textarea 
                       value={departmentForm.description.en}
                       onChange={(e) => setDepartmentForm(p => ({ ...p, description: { ...p.description, en: e.target.value } }))}
@@ -573,7 +571,7 @@ export default function PreviewCompany() {
                     />
                   </div>
                   <div>
-                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">نظرة عامة استراتيجية (AR)</label>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">وصف  (AR) </label>
                     <textarea 
                       dir="rtl"
                       value={departmentForm.description.ar}
@@ -591,7 +589,7 @@ export default function PreviewCompany() {
                     className="flex-1 py-4 bg-brand-500 text-white rounded-2xl font-bold shadow-xl shadow-brand-500/30 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2"
                   >
                     {isSaving ? <div className="size-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="size-5" />}
-                    {editingDeptId ? "Commit Changes" : "Initialize Unit"}
+                    {editingDeptId ? "Save Changes" : "Create Department"}
                   </button>
                   <button 
                     type="button" 

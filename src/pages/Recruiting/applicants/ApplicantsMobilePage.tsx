@@ -207,6 +207,17 @@ export default function ApplicantsMobilePage(): JSX.Element {
     return usercompanyId?.length ? usercompanyId : undefined;
   }, [user?._id, user?.roleId?.name, user?.companies]);
 
+  const singleAssignedCompanyId = useMemo(() => {
+    if (!Array.isArray(companyId) || companyId.length !== 1) return undefined;
+    return String(companyId[0]);
+  }, [companyId]);
+
+  useEffect(() => {
+    if (!singleAssignedCompanyId) return;
+    if (companyFilters.length === 1 && companyFilters[0] === singleAssignedCompanyId) return;
+    setCompanyFilters([singleAssignedCompanyId]);
+  }, [singleAssignedCompanyId, companyFilters]);
+
   const availableCompanyIds = useMemo(() => (companies || []).map((c: any) => c._id || c.id).filter(Boolean), [companies]);
 
   const primarySelectedCompany =
@@ -1305,17 +1316,25 @@ export default function ApplicantsMobilePage(): JSX.Element {
               <label className="block text-sm font-medium text-gray-700 mb-2">Company</label>
               <div className="rounded-xl border border-gray-200 bg-gray-50 p-2">
                 <p className="mb-2 text-xs text-gray-500">
-                  {companyFilters.length ? `${companyFilters.length} selected` : 'All companies'}
+                  {singleAssignedCompanyId
+                    ? '1 selected (auto)'
+                    : companyFilters.length
+                      ? `${companyFilters.length} selected`
+                      : 'All companies'}
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {companies.map((c: any) => {
                     const cid = String(c._id || c.id || '');
                     const selected = companyFilters.includes(cid);
+                    const isLockedSingleCompany =
+                      !!singleAssignedCompanyId && cid === singleAssignedCompanyId;
                     return (
                       <button
                         key={cid}
                         type="button"
+                        disabled={isLockedSingleCompany}
                         onClick={() => {
+                          if (isLockedSingleCompany) return;
                           setCompanyFilters((prev) => {
                             if (selected) return prev.filter((id) => id !== cid);
                             return [...prev, cid];
@@ -1325,7 +1344,7 @@ export default function ApplicantsMobilePage(): JSX.Element {
                           selected
                             ? 'border-brand-500 bg-brand-50 text-brand-700'
                             : 'border-gray-300 bg-white text-gray-700'
-                        }`}
+                        } ${isLockedSingleCompany ? 'cursor-not-allowed opacity-80' : ''}`}
                       >
                         {toPlainString(c?.name) || toPlainString(c?.companyName) || toPlainString(c?.title)}
                       </button>
@@ -1454,7 +1473,7 @@ export default function ApplicantsMobilePage(): JSX.Element {
             {/* Clear Filters Button */}
             <button
               onClick={() => {
-                setCompanyFilters([]);
+                setCompanyFilters(singleAssignedCompanyId ? [singleAssignedCompanyId] : []);
                 setJobFilters([]);
                 setStatusFilters([]);
                 setGenderFilters([]);

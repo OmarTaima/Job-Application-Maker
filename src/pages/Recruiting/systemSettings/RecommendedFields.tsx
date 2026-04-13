@@ -346,8 +346,11 @@ const RecommendedFields = () => {
                 {form.options?.map((opt, i) => (
                   <div key={i} className="flex items-center justify-between rounded-2xl border border-gray-100 bg-gray-50/50 p-4 dark:border-gray-800 dark:bg-gray-800/20">
                     <div className="overflow-hidden">
-                      <div className="font-bold truncate text-gray-900 dark:text-white">{opt}</div>
-                      <div className="text-xs text-gray-500 truncate text-right">{form.optionsAr?.[i]}</div>
+                      <div className="font-bold truncate text-gray-900 dark:text-white">{typeof opt === 'string' ? opt : ((opt as any)?.en || '')}</div>
+                      <div className="text-xs text-gray-500 truncate text-right">{(() => {
+                        const a = form.optionsAr?.[i];
+                        return typeof a === 'string' ? a : ((a as any)?.ar || '');
+                      })()}</div>
                     </div>
                     <button type="button" onClick={() => handleInputChange("options", form.options?.filter((_, idx) => idx !== i))} className="text-error-500 hover:bg-error-50 p-2 rounded-lg transition-colors">
                       <TrashBinIcon className="size-4" />
@@ -378,7 +381,7 @@ const RecommendedFields = () => {
                           className="flex cursor-pointer items-center justify-between p-4"
                           onClick={() => toggleSubFieldCollapse(idx)}
                         >
-                          <span className="font-bold text-gray-700 dark:text-gray-300">{(gf.label as any)?.en || gf.label || "Unnamed Nested Field"} <span className="text-[10px] font-black opacity-50 ml-2 uppercase tracking-widest">{gf.inputType}</span></span>
+                          <span className="font-bold text-gray-700 dark:text-gray-300">{typeof gf.label === 'string' ? gf.label : ((gf.label as any)?.en || 'Unnamed Nested Field')} <span className="text-[10px] font-black opacity-50 ml-2 uppercase tracking-widest">{gf.inputType}</span></span>
                           <div className="flex items-center gap-2">
                             <button type="button" onClick={(e) => { e.stopPropagation(); handleInputChange("groupFields", form.groupFields?.filter((_, i) => i !== idx)); }} className="p-2 text-gray-400 hover:text-error-600"><TrashBinIcon className="size-4" /></button>
                             <svg className={`size-5 transform transition-transform ${collapsedSubFields.has(idx) ? "" : "rotate-180"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
@@ -386,8 +389,8 @@ const RecommendedFields = () => {
                         </div>
                         {!collapsedSubFields.has(idx) && (
                           <div className="p-5 pt-0 border-t border-gray-100 dark:border-gray-800 grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 animate-in fade-in">
-                            <Input placeholder="Label (EN)" value={(gf.label as any)?.en || gf.label} onChange={(e: any) => { const next = [...(form.groupFields || [])]; next[idx].label = e.target.value; handleInputChange("groupFields", next); }} />
-                            <Input placeholder="Label (AR)" value={(gf.label as any)?.ar || gf.labelAr} onChange={(e: any) => { const next = [...(form.groupFields || [])]; next[idx].labelAr = e.target.value; handleInputChange("groupFields", next); }} className="text-right" />
+                            <Input placeholder="Label (EN)" value={typeof gf.label === 'string' ? (gf.label as string) : ((gf.label as any)?.en || '')} onChange={(e: any) => { const next = [...(form.groupFields || [])]; next[idx].label = e.target.value; handleInputChange("groupFields", next); }} />
+                            <Input placeholder="Label (AR)" value={typeof gf.label === 'string' ? (gf.labelAr || '') : ((gf.label as any)?.ar || '')} onChange={(e: any) => { const next = [...(form.groupFields || [])]; next[idx].labelAr = e.target.value; handleInputChange("groupFields", next); }} className="text-right" />
                             <Select options={subFieldTypeOptions} value={gf.inputType} onChange={(val: string) => { const next = [...(form.groupFields || [])]; (next[idx].inputType as any) = val; handleInputChange("groupFields", next); }} />
                             <div className="pt-2"><Switch checked={gf.isRequired} onChange={(val) => { const next = [...(form.groupFields || [])]; next[idx].isRequired = val; handleInputChange("groupFields", next); }} label="Required" /></div>
                           </div>
@@ -401,7 +404,7 @@ const RecommendedFields = () => {
           <div className="flex justify-end gap-4">
             <button type="button" onClick={resetForm} className="rounded-2xl bg-white px-8 py-3 text-sm font-bold text-gray-700 shadow-lg dark:bg-gray-800 dark:text-gray-300">Cancel</button>
             <button type="submit" className="rounded-2xl bg-brand-500 px-10 py-3 text-sm font-bold text-white shadow-xl shadow-brand-500/25 hover:bg-brand-600">
-              {editFieldId ? "Commit Changes" : "Save Preset"}
+              {editFieldId ? "Save Changes" : "Create Preset"}
             </button>
           </div>
         </form>

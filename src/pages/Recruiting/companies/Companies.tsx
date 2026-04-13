@@ -3,7 +3,7 @@ import Swal from '../../../utils/swal';
 import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
 import PageMeta from "../../../components/common/PageMeta";
 import LoadingSpinner from "../../../components/common/LoadingSpinner";
-import { useNavigate } from "react-router";
+import { Navigate, useNavigate } from "react-router";
 import { useAuth } from "../../../context/AuthContext";
 import {
   useCompanies,
@@ -41,7 +41,7 @@ export default function Companies() {
   const pageSize = 8;
 
   // Memoize user-derived values
-  const { companyId } = useMemo(() => {
+  const { companyId, isAdmin } = useMemo(() => {
     if (!user) return { isAdmin: false, companyId: undefined };
 
     const isAdminResult = user?.roleId?.name?.toLowerCase().includes("admin");
@@ -54,6 +54,14 @@ export default function Companies() {
 
     return { isAdmin: isAdminResult, companyId: companyIdFiltered };
   }, [user]);
+
+  const singleAssignedCompanyId = useMemo(() => {
+    if (isAdmin || !Array.isArray(companyId) || companyId.length !== 1) {
+      return undefined;
+    }
+
+    return companyId[0];
+  }, [companyId, isAdmin]);
 
   // Use React Query hooks for data fetching
   const {
@@ -125,6 +133,10 @@ export default function Companies() {
         </div>
       </div>
     );
+  }
+
+  if (singleAssignedCompanyId) {
+    return <Navigate to={`/company/${singleAssignedCompanyId}`} replace />;
   }
 
   return (
