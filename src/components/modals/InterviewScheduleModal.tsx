@@ -7,6 +7,7 @@ import Label from '../form/Label';
 import Input from '../form/input/InputField';
 import TextArea from '../form/input/TextArea';
 import Select from '../form/Select';
+import { toPlainString } from '../../utils/strings';
 
 // Simple HTML escape utility
 function escapeHtml(str: string) {
@@ -113,6 +114,7 @@ export default function InterviewScheduleModal(props: Props) {
     buildInterviewEmailHtml,
     getJobTitle,
     applicant,
+    companyData,
     bulkMode = false,
     bulkCount = 0,
     intervalMinutes = 15,
@@ -120,6 +122,118 @@ export default function InterviewScheduleModal(props: Props) {
     onPreview,
   } = props;
 
+  // Helper: detect URL-like location strings
+  const isUrl = (s?: string): boolean => {
+    if (!s) return false;
+    const t = String(s).trim();
+    if (!t) return false;
+    const l = t.toLowerCase();
+    return l.startsWith('http://') || l.startsWith('https://') || t.startsWith('//') || l.startsWith('www.');
+  };
+
+  const normalizeUrl = (value: string): string => {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    if (!isUrl(raw)) return raw;
+    if (raw.startsWith('//')) return `https:${raw}`;
+    const lower = raw.toLowerCase();
+    if (!lower.startsWith('http://') && !lower.startsWith('https://') && lower.startsWith('www.')) return `https://${raw}`;
+    return raw;
+  };
+
+  const getCompanyAddressEntries = (): Array<{ label: string; url: string }> => {
+    try {
+      const fallbackComp =
+        (applicant && (applicant.company || applicant.companyObj)) ||
+        (applicant as any)?.jobPositionId?.companyId ||
+        (applicant as any)?.jobPositionId?.company ||
+        null;
+      const comp = companyData || fallbackComp;
+      if (!comp) return [];
+
+      const source = (comp as any).address ?? (comp as any).addresses ?? [];
+      const list = Array.isArray(source) ? source : [source];
+      const seen = new Set<string>();
+      const out: Array<{ label: string; url: string }> = [];
+
+      for (const item of list) {
+        if (!item) continue;
+
+        if (typeof item === 'string') {
+          if (!isUrl(item)) continue;
+          const url = normalizeUrl(item);
+          if (!url || seen.has(url)) continue;
+          seen.add(url);
+          out.push({ label: url, url });
+          continue;
+        }
+
+        if (typeof item === 'object') {
+          const urlRaw =
+            (typeof (item as any).location === 'string' && (item as any).location.trim()) ||
+            (typeof (item as any).url === 'string' && (item as any).url.trim()) ||
+            '';
+          if (!urlRaw || !isUrl(urlRaw)) continue;
+
+          const url = normalizeUrl(urlRaw);
+          if (!url || seen.has(url)) continue;
+
+          const en = typeof (item as any).en === 'string' ? (item as any).en.trim() : '';
+          const ar = typeof (item as any).ar === 'string' ? (item as any).ar.trim() : '';
+          const text = en || ar || toPlainString((item as any).address || (item as any).name || '');
+          const label = text && !isUrl(text) ? text : url;
+
+          seen.add(url);
+          out.push({ label, url });
+        }
+      }
+
+      return out;
+    } catch (e) {
+      return [];
+    }
+  };
+
+  const areSameUrls = (a: string, b: string): boolean => {
+    const na = normalizeUrl(a || '');
+    const nb = normalizeUrl(b || '');
+    if (!na || !nb) return false;
+    if (na === nb) return true;
+    try {
+      return decodeURIComponent(na) === decodeURIComponent(nb);
+    } catch {
+      return false;
+    }
+  };
+
+  const formatTime12Hour = (value: string): string => {
+    const raw = String(value || '').trim();
+    if (!raw) return '[Interview Time]';
+    if (raw.startsWith('{{') && raw.endsWith('}}')) return raw;
+    if (raw.startsWith('[') && raw.endsWith(']')) return raw;
+
+    const hhmmMatch = raw.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+    if (hhmmMatch) {
+      const hours = Number(hhmmMatch[1]);
+      const minutes = Number(hhmmMatch[2]);
+      if (!Number.isNaN(hours) && !Number.isNaN(minutes) && hours >= 0 && hours < 24 && minutes >= 0 && minutes < 60) {
+        const period = hours >= 12 ? 'PM' : 'AM';
+        const hour12 = hours % 12 === 0 ? 12 : hours % 12;
+        return `${hour12}:${String(minutes).padStart(2, '0')} ${period}`;
+      }
+    }
+
+    const parsed = new Date(`1970-01-01T${raw}`);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+      });
+    }
+
+    return raw;
+  };
 
   // Template generation: build a default message depending on chosen notification channel(s)
   const generateMessageTemplate = (channels: typeof notificationChannels = notificationChannels) => {
@@ -128,6 +242,18 @@ export default function InterviewScheduleModal(props: Props) {
     const applicantName = bulkMode
       ? '{{candidateName}}'
       : (applicant.fullName || '').trim() || 'Candidate';
+    const positionTitle = (() => {
+      try {
+        const title = getJobTitle?.();
+        if (!title) return '';
+        if (typeof title === 'string') return title.trim();
+        const en = typeof (title as any).en === 'string' ? (title as any).en.trim() : '';
+        const ar = typeof (title as any).ar === 'string' ? (title as any).ar.trim() : '';
+        return en || ar || '';
+      } catch {
+        return '';
+      }
+    })();
     const interviewDate = interviewForm.date
       ? new Date(interviewForm.date).toLocaleDateString('en-US', {
           weekday: 'long',
@@ -138,7 +264,7 @@ export default function InterviewScheduleModal(props: Props) {
       : '[Interview Date]';
     const interviewTime = bulkMode
       ? '{{interviewTime}}'
-      : interviewForm.time || '[Interview Time]';
+      : formatTime12Hour(interviewForm.time || '[Interview Time]');
     const interviewType = interviewForm.type || 'phone';
     const typeLabel = interviewType.charAt(0).toUpperCase() + interviewType.slice(1);
     const location = (interviewForm.location || '').trim() || '[Location]';
@@ -146,24 +272,77 @@ export default function InterviewScheduleModal(props: Props) {
     const interviewDescription = (interviewForm.description || '').trim();
     const interviewComment = (interviewForm.comment || '').trim();
 
+    const makeLocationHtml = (loc: string) => {
+      const esc = escapeHtml;
+      if (isUrl(loc)) {
+        let href = loc;
+        if (href.startsWith('//')) href = 'https:' + href;
+        else if (!href.toLowerCase().startsWith('http://') && !href.toLowerCase().startsWith('https://') && href.toLowerCase().startsWith('www.')) href = 'https://' + href;
+        const hrefEsc = esc(href);
+        const textEsc = esc(loc);
+        return `<a href="${hrefEsc}" target="_blank" rel="noopener noreferrer">${textEsc}</a>`;
+      }
+      return esc(loc);
+    };
+
+    const resolveAddressAndUrl = () => {
+      const raw = (interviewForm.location || '').trim();
+      const normalizedRaw = raw && isUrl(raw) ? normalizeUrl(raw) : raw;
+      const entries = getCompanyAddressEntries();
+
+      if (normalizedRaw) {
+        const matched = entries.find((entry) => areSameUrls(entry.url, normalizedRaw));
+        if (matched) {
+          return { addressValue: matched.label, locationUrl: matched.url };
+        }
+      }
+
+      if (normalizedRaw && isUrl(normalizedRaw)) {
+        return { addressValue: '[Address]', locationUrl: normalizedRaw };
+      }
+
+      if (normalizedRaw) {
+        return { addressValue: normalizedRaw, locationUrl: '' };
+      }
+
+      return { addressValue: '[Address]', locationUrl: '' };
+    };
+    
+    const makeLinkHtml = (lnk: string) => {
+      const esc = escapeHtml;
+      if (!lnk) return '';
+      if (isUrl(lnk)) {
+        let href = lnk;
+        if (href.startsWith('//')) href = 'https:' + href;
+        else if (!href.toLowerCase().startsWith('http://') && !href.toLowerCase().startsWith('https://') && href.toLowerCase().startsWith('www.')) href = 'https://' + href;
+        const hrefEsc = esc(href);
+        const textEsc = esc(lnk);
+        return `<a href="${hrefEsc}" target="_blank" rel="noopener noreferrer">${textEsc}</a>`;
+      }
+      return esc(lnk);
+    };
+
     // Only one channel can be active at a time
     if (channels.email) {
       // Return HTML so Quill renders multiline content correctly
       const esc = escapeHtml;
+      const { addressValue, locationUrl } = resolveAddressAndUrl();
+      const locationHtml = locationUrl ? makeLocationHtml(locationUrl) : '';
       const detailLines = [
         `Date: ${esc(interviewDate)}`,
         `Time: ${esc(interviewTime)}`,
         `Type: ${esc(typeLabel)}`,
-        `Location: ${esc(location)}`,
+        `Address: ${esc(addressValue)}`,
       ];
-      if (link) detailLines.push(`Video Link: ${esc(link)}`);
+      if (locationHtml) detailLines.push(`Location: ${locationHtml}`);
+      if (link) detailLines.push(`Video Link: ${makeLinkHtml(link)}`);
       if (interviewDescription) detailLines.push(`Description: ${esc(interviewDescription)}`);
       if (interviewComment) detailLines.push(`Comment: ${esc(interviewComment)}`);
       const detailsBlock = detailLines.map((line) => `<p>${line}</p>`).join('');
 
       return (
         `<p>Dear ${esc(applicantName)},</p>` +
-        `<p>We are pleased to invite you for an interview for the position you applied for.</p>` +
+        `<p>We are pleased to invite you for an interview for the position of ${esc(positionTitle)}.</p>` +
         `<p><strong>Interview Details:</strong></p>${detailsBlock}` +
         `<p>Please confirm your availability at your earliest convenience.</p>` +
         `<p>Best regards,<br/>HR Team</p>`
@@ -197,9 +376,14 @@ export default function InterviewScheduleModal(props: Props) {
     setMessageTemplate(generateMessageTemplate());
   };
 
-  const company = (applicant && (applicant.company || applicant.companyObj)) || null;
+  const company = companyData || (applicant && (applicant.company || applicant.companyObj)) || null;
   // If company not present directly on applicant, try nested jobPosition/companyId paths
   const companyCompany = company || (applicant as any)?.jobPositionId?.companyId || (applicant as any)?.jobPositionId?.company || (applicant as any)?.jobPositionId?.companyObj || null;
+
+  const getCompanyIdVal = () => {
+    const c = companyCompany as any;
+    return c?._id || c?.id || c?.company || (c?.companyId && (typeof c.companyId === 'string' ? c.companyId : c.companyId._id)) || null;
+  };
 
   // Debug: log company shape when modal opens to help diagnose missing sender entries
   // Remove this log once the issue is confirmed
@@ -278,77 +462,41 @@ export default function InterviewScheduleModal(props: Props) {
   // New-local-email state: user will type only the local part (before the @domain)
   const [newLocalEmail, setNewLocalEmail] = useState('');
 
-  // Hold fetched company settings so we can read authoritative companyDomain
-  const [companySettings, setCompanySettings] = useState<any | null>(null);
-
-
-  // Fetch latest company settings when modal opens so we can use companyDomain from server
-  useEffect(() => {
-    let mounted = true;
-    const cid = (companyCompany as any)?._id || (companyCompany as any)?.id || (companyCompany as any)?.company || ((companyCompany as any)?.companyId && (typeof (companyCompany as any).companyId === 'string' ? (companyCompany as any).companyId : (companyCompany as any).companyId?._id)) || null;
-    if (!isOpen || !cid) {
-      if (mounted) setCompanySettings(null);
-      return;
-    }
-    (async () => {
-      try {
-        const response = await companiesService.getCompanySettingsByCompany(cid);
-        if (mounted) {
-          try { console.debug('Company settings response:', response); } catch (e) { /* ignore */ }
-          setCompanySettings(response);
-        }
-      } catch (e) {
-        try { console.error('Failed to fetch company settings:', e); } catch (ee) { /* ignore */ }
-        if (mounted) setCompanySettings(null);
-      }
-    })();
-    return () => { mounted = false; };
-  }, [isOpen, companyCompany]);
-
-  // Extract domain from the response structure: company.settings.mailSettings.companyDomain
+  // Resolve domain from already available company payload (avoid extra modal fetches).
   const getCompanyDomain = () => {
-    try { console.debug && console.debug('Extracting domain from:', { companySettings, companyCompany }); } catch (e) { /* ignore */ }
-
     const domainFromResponse =
-      companySettings?.company?.settings?.mailSettings?.companyDomain ||
-      companySettings?.settings?.mailSettings?.companyDomain ||
       (companyCompany as any)?.settings?.mailSettings?.companyDomain ||
       (companyCompany as any)?.mailSettings?.companyDomain ||
+      (companyCompany as any)?.company?.settings?.mailSettings?.companyDomain ||
       '';
 
     if (domainFromResponse) {
-      try { console.debug && console.debug('Found company domain:', domainFromResponse); } catch (e) { /* ignore */ }
       return domainFromResponse;
     }
 
     const defaultMail =
-      companySettings?.company?.settings?.mailSettings?.defaultMail ||
-      companySettings?.settings?.mailSettings?.defaultMail ||
       (companyCompany as any)?.settings?.mailSettings?.defaultMail ||
       (companyCompany as any)?.mailSettings?.defaultMail ||
+      (companyCompany as any)?.company?.settings?.mailSettings?.defaultMail ||
       (companyCompany as any)?.contactEmail ||
       (companyCompany as any)?.email ||
       '';
 
     if (defaultMail && defaultMail.includes('@')) {
       const extractedDomain = defaultMail.split('@')[1];
-      try { console.debug && console.debug('Extracted domain from default mail:', extractedDomain); } catch (e) { /* ignore */ }
       return extractedDomain;
     }
 
     const firstAvailableMail =
-      companySettings?.company?.settings?.mailSettings?.availableMails?.[0] ||
-      companySettings?.settings?.mailSettings?.availableMails?.[0] ||
       (companyCompany as any)?.settings?.mailSettings?.availableMails?.[0] ||
-      (companyCompany as any)?.mailSettings?.availableMails?.[0];
+      (companyCompany as any)?.mailSettings?.availableMails?.[0] ||
+      (companyCompany as any)?.company?.settings?.mailSettings?.availableMails?.[0];
 
     if (firstAvailableMail && firstAvailableMail.includes('@')) {
       const extractedDomain = firstAvailableMail.split('@')[1];
-      try { console.debug && console.debug('Extracted domain from available mail:', extractedDomain); } catch (e) { /* ignore */ }
       return extractedDomain;
     }
 
-    try { console.debug && console.debug('No domain found'); } catch (e) { /* ignore */ }
     return '';
   };
 
@@ -356,12 +504,6 @@ export default function InterviewScheduleModal(props: Props) {
 
   // For the domain display in UI
   const domainForDisplay = companyDomain;
-
-  // helper to get a candidate company id string for settings API
-  const getCompanyIdVal = () => {
-    const c = companyCompany as any;
-    return c?._id || c?.id || c?.company || (c?.companyId && (typeof c.companyId === 'string' ? c.companyId : c.companyId._id)) || null;
-  };
 
   // Intercept submit: if user entered a new local email, add it to company's availableMails first
   const onSubmit = async (e: any) => {
@@ -436,6 +578,63 @@ export default function InterviewScheduleModal(props: Props) {
     }
   };
   
+  const companyAddressEntries = getCompanyAddressEntries();
+  const companyAddressOptions = companyAddressEntries.map((entry) => ({
+    value: entry.url,
+    label: entry.label,
+  }));
+
+  const fallbackAddressInputValue = (() => {
+    const raw = String(interviewForm.location || '').trim();
+    if (!raw) return '';
+    // Do not show raw URL in the address text field after refresh.
+    if (isUrl(raw)) return '';
+    return raw;
+  })();
+
+  const currentLocationHref = (() => {
+    const s = (interviewForm.location || '').trim();
+    if (!isUrl(s)) return '';
+    return normalizeUrl(s);
+  })();
+
+  const currentVideoHref = (() => {
+    const s = (interviewForm.link || '').trim();
+    if (!isUrl(s)) return '';
+    return normalizeUrl(s);
+  })();
+
+  // When company has multiple addresses, default location to the first URL
+  // so the template can always map URL -> address label (`en`).
+  useEffect(() => {
+    if (!isOpen || companyAddressEntries.length === 0) return;
+    const current = String(interviewForm.location || '').trim();
+    const hasMatch = !!current && companyAddressEntries.some((entry) => areSameUrls(entry.url, current));
+    if (hasMatch) return;
+    const firstUrl = companyAddressEntries[0]?.url || '';
+    if (!firstUrl) return;
+    setInterviewForm((prev: any) => ({ ...prev, location: firstUrl }));
+  }, [isOpen, companyAddressEntries, interviewForm.location, setInterviewForm]);
+
+  // If template was generated before address options were ready,
+  // regenerate once we can resolve `Address` from the selected URL.
+  useEffect(() => {
+    if (!isOpen || !notificationChannels.email) return;
+    if (!messageTemplate) return;
+    if (!/Address:\s*(?:\[Address\]|https?:\/\/|www\.)/i.test(messageTemplate)) return;
+    const next = generateMessageTemplate(notificationChannels);
+    if (next && next !== messageTemplate) {
+      setMessageTemplate(next);
+    }
+  }, [
+    isOpen,
+    notificationChannels,
+    messageTemplate,
+    interviewForm.location,
+    companyAddressEntries.length,
+    setMessageTemplate,
+  ]);
+
   return (
     <Modal isOpen={isOpen} onClose={onClose} className="max-w-[1100px] p-6 lg:p-10" closeOnBackdrop={false}>
       <form key={`interview-form-${formResetKey}`} onSubmit={onSubmit} className="flex flex-col px-2">
@@ -505,21 +704,53 @@ export default function InterviewScheduleModal(props: Props) {
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <Label htmlFor="interview-location">Location (Optional)</Label>
-              <Input id="interview-location" type="text" value={interviewForm.location} onChange={(e: any) => setInterviewForm({ ...interviewForm, location: e.target.value })} placeholder="Office address or meeting room" />
-              <div className="mt-2"><button type="button" onClick={() => {
-                const result = fillCompanyAddress?.();
-                if (result === false) {
-                  setInterviewError('No company address found for this company.');
-                } else {
-                  setInterviewError('');
-                }
-              }} className="text-sm text-brand-600 hover:underline">Use company address</button></div>
+              <Label htmlFor="interview-location-select">Address (Optional)</Label>
+              {companyAddressOptions.length > 0 ? (
+                <>
+                  <Select
+                    options={companyAddressOptions}
+                    value={currentLocationHref || ''}
+                    placeholder="Select company address"
+                    onChange={(value: any) => {
+                      setInterviewForm({ ...interviewForm, location: value });
+                      setInterviewError('');
+                    }}
+                  />
+                  <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">Selecting an address will automatically use its location URL in the email.</p>
+                </>
+              ) : (
+                <>
+                  <Input id="interview-location-select" type="text" value={fallbackAddressInputValue} onChange={(e: any) => setInterviewForm({ ...interviewForm, location: e.target.value })} placeholder="Office address or meeting room" />
+                  <div className="mt-2">
+                    <button type="button" onClick={() => {
+                      const result = fillCompanyAddress?.();
+                      if (result === false) {
+                        setInterviewError('No company address found for this company.');
+                      } else {
+                        setInterviewError('');
+                      }
+                    }} className="text-sm text-brand-600 hover:underline">Use company address</button>
+                  </div>
+                </>
+              )}
+
+              {currentLocationHref ? (
+                <div className="mt-2">
+                  <a href={currentLocationHref} target="_blank" rel="noopener noreferrer" className="text-sm text-brand-600 hover:underline">Open location</a>
+                </div>
+              ) : null}
             </div>
-            <div>
-              <Label htmlFor="interview-link">Video Link (Optional)</Label>
-              <Input id="interview-link" type="url" value={interviewForm.link} onChange={(e: any) => setInterviewForm({ ...interviewForm, link: e.target.value })} placeholder="https://meet.example.com/..." />
-            </div>
+            {interviewForm.type === 'video' && (
+              <div>
+                <Label htmlFor="interview-link">Video Link (Optional)</Label>
+                <div className="flex items-center gap-3">
+                  <Input id="interview-link" type="url" value={interviewForm.link} onChange={(e: any) => setInterviewForm({ ...interviewForm, link: e.target.value })} placeholder="https://meet.example.com/..." />
+                  {currentVideoHref ? (
+                    <a href={currentVideoHref} target="_blank" rel="noopener noreferrer" className="text-sm text-brand-600 hover:underline">Open video</a>
+                  ) : null}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

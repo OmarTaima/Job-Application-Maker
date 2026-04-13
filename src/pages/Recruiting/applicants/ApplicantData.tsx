@@ -1853,6 +1853,7 @@ const ApplicantData = () => {
               buildInterviewEmailHtml={buildInterviewEmailHtml}
               getJobTitle={getJobTitle}
               applicant={applicant}
+              companyData={companyObj}
             />
 
       <InterviewSettingsModal

@@ -4710,6 +4710,7 @@ const Applicants = () => {
                 buildInterviewEmailHtml(String(subject || ''), String(rawMessage || ''))
               }
               getJobTitle={() => ({ en: '' })}
+              companyData={selectedApplicantCompany || null}
               applicant={{
                 fullName: '{{candidateName}}',
                 company:
