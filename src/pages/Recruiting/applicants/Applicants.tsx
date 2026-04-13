@@ -4221,6 +4221,14 @@ const Applicants = () => {
       columnFilters,
       columnVisibility: responsiveColumnVisibility,
       density: 'compact',
+      columnOrder:
+        Array.isArray(layout.columnOrder) && layout.columnOrder.length
+          ? layout.columnOrder
+          : Array.from(
+              new Set(
+                ['mrt-row-select', ...columns.map((c) => (c as any).id ?? (c as any).accessorKey).filter(Boolean)]
+              )
+            ),
     },
     // Control table state from component so updates (from persisted state or programmatic
     // changes) are reflected immediately in the table. MRT will still call the on* handlers
@@ -4611,6 +4619,7 @@ const Applicants = () => {
                       <option value="">Select Status</option>
                       <option value="pending">Pending</option>
                       <option value="approved">Approved</option>
+                      <option value="interview">Interview</option>
                       <option value="interviewed">Interviewed</option>
                       <option value="rejected">Rejected</option>
                     </select>

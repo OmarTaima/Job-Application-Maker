@@ -799,6 +799,7 @@ const ApplicantData = () => {
   // Status options used in the change-status flow
   const statusOptions = [
     { value: 'pending', label: 'Pending' },
+    { value: 'interview', label: 'Interview' },
     { value: 'interviewed', label: 'Interviewed' },
     { value: 'approved', label: 'Approved' },
     { value: 'rejected', label: 'Rejected' },
