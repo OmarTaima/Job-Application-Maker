@@ -54,7 +54,7 @@ export type RecommendedField = {
   minValue?: number;
   maxValue?: number;
   defaultValue?: string;
-  displayOrder?: number;
+  order?: number;
   description?: BilingualString;
   // Support grouped sub-fields (API may return groupFields or subFields)
   groupFields?: Array<{
@@ -63,7 +63,7 @@ export type RecommendedField = {
     inputType: FieldType;
     isRequired?: boolean;
     choices?: BilingualChoice[];
-    displayOrder?: number;
+    order?: number;
     defaultValue?: string;
     minValue?: number;
     maxValue?: number;
@@ -75,7 +75,7 @@ export type RecommendedField = {
     inputType: FieldType;
     isRequired?: boolean;
     choices?: BilingualChoice[];
-    displayOrder?: number;
+    order?: number;
     defaultValue?: string;
     minValue?: number;
     maxValue?: number;
@@ -87,7 +87,7 @@ export type CreateRecommendedFieldRequest = {
   label: BilingualString;
   inputType: FieldType;
   isRequired: boolean;
-  displayOrder?: number;
+  order?: number;
   choices?: BilingualChoice[];
   minValue?: number;
   maxValue?: number;
@@ -102,7 +102,7 @@ export type UpdateRecommendedFieldRequest = {
   minValue?: number;
   maxValue?: number;
   defaultValue?: string;
-  displayOrder?: number;
+  order?: number;
 };
 
 // Service Class

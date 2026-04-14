@@ -58,12 +58,12 @@ export type JobPosition = {
       inputType: string;
       isRequired: boolean;
       choices?: Array<LocalizedString>;
-      displayOrder?: number;
+      order?: number;
       defaultValue?: string;
       minValue?: number;
       maxValue?: number;
     }>;
-    displayOrder: number;
+    order: number;
   }>;
   createdAt?: string;
   updatedAt?: string;
@@ -109,12 +109,12 @@ export type CreateJobPositionRequest = {
       inputType: string;
       isRequired: boolean;
       choices?: Array<LocalizedString>;
-      displayOrder?: number;
+      order?: number;
       defaultValue?: string;
       minValue?: number;
       maxValue?: number;
     }>;
-    displayOrder: number;
+    order: number;
   }>;
 };
 
@@ -138,6 +138,9 @@ export type UpdateJobPositionRequest = {
   jobCode?: string;
   requirements?: string[];
   status?: string;
+  order?: number;
+  sortOrder?: number;
+  position?: number;
   jobSpecs?: Array<{
     spec: LocalizedString;
     weight: number;
@@ -157,12 +160,12 @@ export type UpdateJobPositionRequest = {
       inputType: string;
       isRequired: boolean;
       choices?: Array<LocalizedString>;
-      displayOrder?: number;
+      order?: number;
       defaultValue?: string;
       minValue?: number;
       maxValue?: number;
     }>;
-    displayOrder: number;
+    order: number;
   }>;
 };
 
@@ -179,6 +182,11 @@ export type Applicant = {
   status: "pending" | "reviewed" | "shortlisted" | "rejected" | "hired";
   appliedAt: string;
   reviewedAt?: string;
+};
+
+export type ReorderJobPositionsRequestItem = {
+  id: string;
+  order: number;
 };
 
 class JobPositionsService {
@@ -408,6 +416,61 @@ class JobPositionsService {
   }
 
   /**
+   * Reorder job positions and persist display sequence in backend
+   */
+  async reorderJobPositions(
+    items: ReorderJobPositionsRequestItem[],
+    basePayloadById?: Record<string, UpdateJobPositionRequest>
+  ): Promise<void> {
+    const normalizedItems = (items || [])
+      .map((item) => ({
+        id: String(item?.id || "").trim(),
+        order: Number(item?.order),
+      }))
+      .filter((item) => item.id && Number.isFinite(item.order));
+
+    if (normalizedItems.length === 0) return;
+
+ 
+
+  
+
+  
+
+    const orderFieldCandidates: Array<"order" | "sortOrder" | "order" | "position"> = [
+      "order",
+      "sortOrder",
+      "order",
+      "position",
+    ];
+
+    let lastError: any;
+    for (const fieldName of orderFieldCandidates) {
+      try {
+        for (const item of normalizedItems) {
+          const basePayload = basePayloadById?.[item.id] || {};
+          const payload = {
+            ...basePayload,
+            [fieldName]: item.order,
+          } as UpdateJobPositionRequest;
+
+          await this.updateJobPosition(item.id, payload);
+        }
+
+        return;
+      } catch (error: any) {
+        lastError = error;
+      }
+    }
+
+    throw new ApiError(
+      getErrorMessage(lastError),
+      lastError?.response?.status,
+      lastError?.response?.data?.details
+    );
+  }
+
+  /**
    * Update a job position
    */
   async updateJobPosition(
@@ -437,6 +500,10 @@ class JobPositionsService {
       if (data.workArrangement) payload.workArrangement = data.workArrangement;
       if (data.status) payload.status = data.status;
       if (data.openPositions) payload.openPositions = data.openPositions;
+      if (data.order !== undefined) payload.order = data.order;
+      if (data.sortOrder !== undefined) payload.sortOrder = data.sortOrder;
+      if (data.order !== undefined) payload.order = data.order;
+      if (data.position !== undefined) payload.position = data.position;
       if (data.registrationStart)
         payload.registrationStart = data.registrationStart;
       if (data.registrationEnd) payload.registrationEnd = data.registrationEnd;

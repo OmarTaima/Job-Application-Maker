@@ -70,7 +70,7 @@ type CustomField = {
   choices?: string[];
   choicesAr?: string[];
   subFields?: SubField[];
-  displayOrder: number;
+  order: number;
 };
 
 type EmploymentType = 'full-time' | 'part-time' | 'contract' | 'internship';
@@ -423,7 +423,7 @@ export default function CreateJob() {
                       : [],
                   }))
                 : [],
-              displayOrder: cf.displayOrder || 0,
+              order: cf.order || 0,
             }))
           : [],
         employmentType: selectedJob.employmentType || 'full-time',
@@ -554,7 +554,7 @@ export default function CreateJob() {
                           : [],
                       }))
                     : [],
-                  displayOrder: cf.displayOrder || 0,
+                  order: cf.order || 0,
                 }))
               : [],
             employmentType: normalizeEmploymentType(job.employmentType) || 'full-time',
@@ -695,7 +695,7 @@ export default function CreateJob() {
       label: "",
       inputType: "text",
       isRequired: false,
-      displayOrder: jobForm.customFields.length + 1,
+      order: jobForm.customFields.length + 1,
     };
     setJobForm((prev) => ({
       ...prev,
@@ -773,7 +773,7 @@ export default function CreateJob() {
     const currentFieldCount = jobForm.customFields.length;
     setJobForm((prev) => {
       const additions: CustomField[] = [];
-      let currentMax = prev.customFields.reduce((m, cf) => Math.max(m, cf.displayOrder || 0), 0);
+      let currentMax = prev.customFields.reduce((m, cf) => Math.max(m, cf.order || 0), 0);
       selectedSaved.forEach((fieldId) => {
         if (prev.customFields.some((cf) => cf.fieldId === `sav_${fieldId}` || cf.fieldId === fieldId)) return;
         const sf = (savedFields as any).find((s: any) => s.fieldId === fieldId);
@@ -799,7 +799,7 @@ export default function CreateJob() {
                 choices: Array.isArray(g.choices) ? g.choices.map((c: any) => (typeof c === 'object' && c.en ? c.en : convertToString(c))) : [],
               }))
             : undefined,
-          displayOrder: currentMax,
+          order: currentMax,
         };
         additions.push(newField);
       });
@@ -840,7 +840,7 @@ export default function CreateJob() {
     const currentFieldCount = jobForm.customFields.length;
     setJobForm((prev) => {
       const additions: CustomField[] = [];
-      let currentMax = prev.customFields.reduce((m, cf) => Math.max(m, cf.displayOrder || 0), 0);
+      let currentMax = prev.customFields.reduce((m, cf) => Math.max(m, cf.order || 0), 0);
       selectedRecommended.forEach((fieldId) => {
         if (prev.customFields.some((cf) => cf.fieldId === `rec_${fieldId}` || cf.fieldId === fieldId)) return;
         const rf = recommendedFields.find((r: any) => r.fieldId === fieldId);
@@ -866,7 +866,7 @@ export default function CreateJob() {
                 choices: Array.isArray(g.choices) ? g.choices.map((c: any) => (typeof c === 'object' && c.en ? c.en : convertToString(c))) : [],
               }))
             : undefined,
-          displayOrder: currentMax,
+          order: currentMax,
         };
         additions.push(newField);
       });
@@ -1264,7 +1264,7 @@ export default function CreateJob() {
               choices: buildChoices(sf.choices, sf.choicesAr),
             }))
           : [],
-        displayOrder: cf.displayOrder,
+        order: cf.order,
       }));
       payload.employmentType = jobForm.employmentType;
       payload.workArrangement = jobForm.workArrangement;
@@ -2259,8 +2259,8 @@ export default function CreateJob() {
                                   id={`field-order-${fieldIndex}`}
                                   type="number"
                                   className="text-center w-24"
-                                  value={field.displayOrder}
-                                  onChange={(e) => handleCustomFieldChange(fieldIndex, "displayOrder", Number(e.target.value))}
+                                  value={field.order}
+                                  onChange={(e) => handleCustomFieldChange(fieldIndex, "order", Number(e.target.value))}
                                   min="1"
                                 />
                               </div>

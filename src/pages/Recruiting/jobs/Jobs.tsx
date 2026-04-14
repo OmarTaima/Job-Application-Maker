@@ -1,4 +1,4 @@
-﻿import { useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
 import PageMeta from "../../../components/common/PageMeta";
@@ -12,6 +12,7 @@ import {
   ArrowRightIcon,
   LayoutGridIcon,
   MenuIcon as ListIcon,
+  GripVerticalIcon,
   
   Trash2Icon,
   PencilIcon,
@@ -27,6 +28,7 @@ import LoadingSpinner from "../../../components/common/LoadingSpinner";
 import { useAuth } from "../../../context/AuthContext";
 import { toPlainString } from "../../../utils/strings";
 import Switch from "../../../components/form/switch/Switch";
+import { jobPositionsService } from "../../../services/jobPositionsService";
 
 // Helper to handle multilingual objects or strings and always return plain text
 const getTranslation = (value: any, defaultValue = ""): string => {
@@ -65,6 +67,12 @@ export default function Jobs() {
   const [searchTerm, setSearchTerm] = useState("");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [orderedJobIds, setOrderedJobIds] = useState<string[]>([]);
+  const [draggedJobId, setDraggedJobId] = useState<string | null>(null);
+  const [dropTargetJobId, setDropTargetJobId] = useState<string | null>(null);
+  const [isSavingOrder, setIsSavingOrder] = useState(false);
+  const suppressNavigateRef = useRef(false);
+  const orderSyncVersionRef = useRef(0);
 
   // Memoize user-derived values for the query
   const jobQueryCompanyParam = useMemo(() => {
@@ -84,11 +92,219 @@ export default function Jobs() {
     isFetching: isJobFetching
   } = useJobPositions(jobQueryCompanyParam as any);
 
+  const jobsOrderStorageKey = useMemo(() => {
+    const scope = Array.isArray(jobQueryCompanyParam)
+      ? [...jobQueryCompanyParam].sort().join(",") || "none"
+      : jobQueryCompanyParam ?? "all";
+    return `jobs-order:${user?._id ?? "anonymous"}:${scope}`;
+  }, [jobQueryCompanyParam, user?._id]);
+
   const deleteJobMutation = useDeleteJobPosition();
   const updateJobMutation = useUpdateJobPosition();
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(jobsOrderStorageKey);
+      if (!raw) return;
+
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        setOrderedJobIds(parsed.filter((id): id is string => typeof id === "string"));
+      }
+    } catch {
+      // Ignore malformed persisted ordering and fallback to API ordering.
+    }
+  }, [jobsOrderStorageKey]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (orderedJobIds.length === 0) {
+      window.localStorage.removeItem(jobsOrderStorageKey);
+      return;
+    }
+
+    window.localStorage.setItem(jobsOrderStorageKey, JSON.stringify(orderedJobIds));
+  }, [jobsOrderStorageKey, orderedJobIds]);
+
+  useEffect(() => {
+    setOrderedJobIds((prevIds) => {
+      const incomingIds = jobPositions
+        .map((job: any) => job?._id)
+        .filter(Boolean) as string[];
+
+      if (incomingIds.length === 0) return [];
+
+      const incomingSet = new Set(incomingIds);
+      const keptIds = prevIds.filter((id) => incomingSet.has(id));
+      const keptSet = new Set(keptIds);
+      const newIds = incomingIds.filter((id) => !keptSet.has(id));
+      const nextIds = [...keptIds, ...newIds];
+
+      const unchanged =
+        nextIds.length === prevIds.length &&
+        nextIds.every((id, index) => id === prevIds[index]);
+
+      return unchanged ? prevIds : nextIds;
+    });
+  }, [jobPositions]);
+
+  const orderedJobs = useMemo(() => {
+    if (!Array.isArray(jobPositions) || jobPositions.length === 0) return [];
+    if (orderedJobIds.length === 0) return jobPositions;
+
+    const jobsById = new Map(jobPositions.map((job: any) => [job._id, job]));
+    const prioritized = orderedJobIds
+      .map((id) => jobsById.get(id))
+      .filter(Boolean) as any[];
+
+    const prioritizedIds = new Set(prioritized.map((job: any) => job._id));
+    const remaining = jobPositions.filter((job: any) => !prioritizedIds.has(job._id));
+
+    return [...prioritized, ...remaining];
+  }, [jobPositions, orderedJobIds]);
+
+  const moveIdBeforeTarget = (ids: string[], sourceJobId: string, targetJobId: string) => {
+    const sourceIndex = ids.indexOf(sourceJobId);
+    const targetIndex = ids.indexOf(targetJobId);
+
+    if (sourceIndex === -1 || targetIndex === -1 || sourceIndex === targetIndex) {
+      return ids;
+    }
+
+    const next = [...ids];
+    const [movedId] = next.splice(sourceIndex, 1);
+    const insertIndex = sourceIndex < targetIndex ? targetIndex - 1 : targetIndex;
+    next.splice(insertIndex, 0, movedId);
+
+    return next;
+  };
+
+  const buildOrderPayload = (job: any, order: number) => {
+    const payload: any = {
+      title: toLocalized(job.title, "Untitled Role"),
+      description: toLocalized(job.description, ""),
+      employmentType: job.employmentType || "full-time",
+      workArrangement: job.workArrangement || "on-site",
+      order: order,
+    };
+
+    if (typeof job.isActive === "boolean") payload.isActive = job.isActive;
+    if (typeof job.salary === "number") payload.salary = job.salary;
+    if (typeof job.salaryVisible === "boolean") payload.salaryVisible = job.salaryVisible;
+    if (typeof job.bilingual === "boolean") payload.bilingual = job.bilingual;
+
+    return payload;
+  };
+
+  const syncOrderToBackend = async (previousOrderIds: string[], nextOrderIds: string[]) => {
+    const changedIds = nextOrderIds.filter((id, index) => previousOrderIds[index] !== id);
+    if (changedIds.length === 0) return;
+
+    const jobsById = new Map(jobPositions.map((job: any) => [job._id, job]));
+    const changedSet = new Set(changedIds);
+    const basePayloadById: Record<string, any> = {};
+    const reorderItems = nextOrderIds
+      .map((id, index) => {
+        if (!changedSet.has(id)) return null;
+        const job = jobsById.get(id);
+        if (!job) return null;
+
+        const order = index + 1;
+        basePayloadById[id] = buildOrderPayload(job, order);
+
+        return { id, order };
+      })
+      .filter(Boolean) as Array<{ id: string; order: number }>;
+
+    if (reorderItems.length === 0) return;
+
+    const requestVersion = ++orderSyncVersionRef.current;
+    setIsSavingOrder(true);
+
+    try {
+      await jobPositionsService.reorderJobPositions(reorderItems, basePayloadById);
+      if (requestVersion === orderSyncVersionRef.current) {
+        await refetchJobs();
+      }
+    } catch (err: any) {
+      if (requestVersion === orderSyncVersionRef.current) {
+        setOrderedJobIds(previousOrderIds);
+        const details = err?.response?.data?.details;
+        const detailMessage = Array.isArray(details) && details.length > 0 ? details[0]?.message : "";
+        Swal.fire("Reorder Failed", detailMessage || err?.message || "Failed to persist job ordering.", "error");
+      }
+    } finally {
+      if (requestVersion === orderSyncVersionRef.current) {
+        setIsSavingOrder(false);
+      }
+    }
+  };
+
+  const clearDragState = () => {
+    setDraggedJobId(null);
+    setDropTargetJobId(null);
+  };
+
+  const handleJobDragStart = (
+    event: React.DragEvent<HTMLElement>,
+    jobId: string
+  ) => {
+    event.stopPropagation();
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", jobId);
+    setDraggedJobId(jobId);
+    setDropTargetJobId(jobId);
+  };
+
+  const handleJobDragOver = (
+    event: React.DragEvent<HTMLElement>,
+    jobId: string
+  ) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    if (dropTargetJobId !== jobId) {
+      setDropTargetJobId(jobId);
+    }
+  };
+
+  const handleJobDrop = (
+    event: React.DragEvent<HTMLElement>,
+    targetJobId: string
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const sourceJobId = draggedJobId || event.dataTransfer.getData("text/plain");
+    if (sourceJobId && sourceJobId !== targetJobId) {
+      const baselineOrderIds =
+        orderedJobIds.length > 0 ? [...orderedJobIds] : orderedJobs.map((job: any) => job._id);
+      const nextOrderIds = moveIdBeforeTarget(baselineOrderIds, sourceJobId, targetJobId);
+      const hasChanged =
+        nextOrderIds.length !== baselineOrderIds.length ||
+        nextOrderIds.some((id, index) => id !== baselineOrderIds[index]);
+
+      if (hasChanged) {
+        setOrderedJobIds(nextOrderIds);
+        void syncOrderToBackend(baselineOrderIds, nextOrderIds);
+      }
+
+      suppressNavigateRef.current = true;
+      window.setTimeout(() => {
+        suppressNavigateRef.current = false;
+      }, 0);
+    }
+
+    clearDragState();
+  };
+
+  const handleJobClick = (job: any) => {
+    if (suppressNavigateRef.current) return;
+    navigate(`/job/${job._id}`, { state: { job } });
+  };
+
   const filteredJobs = useMemo(() => {
-    return jobPositions.filter((job: any) => {
+    return orderedJobs.filter((job: any) => {
       const title = getTranslation(job.title).toLowerCase();
       const company = job.companyId?.name ? getTranslation(job.companyId.name).toLowerCase() : "";
       const matchesSearch = title.includes(searchTerm.toLowerCase()) || company.includes(searchTerm.toLowerCase());
@@ -100,7 +316,7 @@ export default function Jobs() {
       
       return matchesSearch && matchesStatus;
     });
-  }, [jobPositions, searchTerm, statusFilter]);
+  }, [orderedJobs, searchTerm, statusFilter]);
 
   const formatDate = (dateString?: string) => {
     if (!dateString) return "N/A";
@@ -246,6 +462,12 @@ export default function Jobs() {
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
           </select>
+
+          {isSavingOrder && (
+            <span className="text-xs font-semibold text-brand-600 dark:text-brand-400">
+              Saving order...
+            </span>
+          )}
         </div>
       </div>
 
@@ -263,12 +485,26 @@ export default function Jobs() {
           {filteredJobs.map((job: any) => (
             <div
               key={job._id}
-              onClick={() => navigate(`/job/${job._id}`, { state: { job } })}
-              className="group relative cursor-pointer space-y-4 rounded-3xl border border-white/20 bg-white/60 p-6 backdrop-blur-xl transition-all hover:scale-[1.02] hover:shadow-2xl hover:shadow-brand-500/10 dark:border-slate-800/50 dark:bg-slate-900/60"
+              draggable
+              onDragStart={(event) => handleJobDragStart(event, job._id)}
+              onDragOver={(event) => handleJobDragOver(event, job._id)}
+              onDrop={(event) => handleJobDrop(event, job._id)}
+              onDragEnd={clearDragState}
+              onClick={() => handleJobClick(job)}
+              className={`group relative cursor-grab space-y-4 rounded-3xl border border-white/20 bg-white/60 p-6 backdrop-blur-xl transition-all hover:scale-[1.02] hover:shadow-2xl hover:shadow-brand-500/10 active:cursor-grabbing dark:border-slate-800/50 dark:bg-slate-900/60 ${
+                draggedJobId === job._id ? "opacity-60" : ""
+              } ${
+                dropTargetJobId === job._id && draggedJobId !== job._id
+                  ? "ring-2 ring-brand-400"
+                  : ""
+              }`}
             >
               <div className="flex items-start justify-between">
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
+                    <span className="inline-flex items-center text-slate-400" title="Drag to reorder">
+                      <GripVerticalIcon className="size-4" />
+                    </span>
                     <span className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
                       job.isActive !== false ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400" :
                       "bg-slate-100 text-slate-700 dark:bg-slate-500/10 dark:text-slate-400"
@@ -352,11 +588,25 @@ export default function Jobs() {
               {filteredJobs.map((job: any) => (
                 <tr
                   key={job._id}
-                  onClick={() => navigate(`/job/${job._id}`, { state: { job } })}
-                  className="group cursor-pointer transition-colors hover:bg-slate-50/50 dark:hover:bg-slate-800/30"
+                  draggable
+                  onDragStart={(event) => handleJobDragStart(event, job._id)}
+                  onDragOver={(event) => handleJobDragOver(event, job._id)}
+                  onDrop={(event) => handleJobDrop(event, job._id)}
+                  onDragEnd={clearDragState}
+                  onClick={() => handleJobClick(job)}
+                  className={`group cursor-grab transition-colors hover:bg-slate-50/50 active:cursor-grabbing dark:hover:bg-slate-800/30 ${
+                    draggedJobId === job._id ? "opacity-60" : ""
+                  } ${
+                    dropTargetJobId === job._id && draggedJobId !== job._id
+                      ? "bg-brand-50/70 dark:bg-brand-500/10"
+                      : ""
+                  }`}
                 >
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
+                      <span className="text-slate-400" title="Drag to reorder">
+                        <GripVerticalIcon className="size-4" />
+                      </span>
                       <div className="rounded-xl bg-brand-50 p-2.5 dark:bg-brand-500/10">
                         <BriefcaseIcon className="size-5 text-brand-600" />
                       </div>
