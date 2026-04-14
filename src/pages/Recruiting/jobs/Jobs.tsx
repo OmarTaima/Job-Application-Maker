@@ -54,6 +54,23 @@ const toLocalized = (value: any, fallback = ""): { en: string; ar: string } => {
   return { en: fallback, ar: fallback };
 };
 
+const getJobOrderValue = (job: any): number => {
+  const rawOrder = job?.order;
+  const parsedOrder = typeof rawOrder === "number" ? rawOrder : Number(rawOrder);
+  return Number.isFinite(parsedOrder) ? parsedOrder : Number.MAX_SAFE_INTEGER;
+};
+
+const sortJobsByOrder = (jobs: any[]): any[] => {
+  return [...jobs].sort((a, b) => {
+    const orderDiff = getJobOrderValue(a) - getJobOrderValue(b);
+    if (orderDiff !== 0) return orderDiff;
+
+    const createdA = a?.createdAt ? new Date(a.createdAt).getTime() : Number.MAX_SAFE_INTEGER;
+    const createdB = b?.createdAt ? new Date(b.createdAt).getTime() : Number.MAX_SAFE_INTEGER;
+    return createdA - createdB;
+  });
+};
+
 
 
 export default function Jobs() {
@@ -92,66 +109,28 @@ export default function Jobs() {
     isFetching: isJobFetching
   } = useJobPositions(jobQueryCompanyParam as any);
 
-  const jobsOrderStorageKey = useMemo(() => {
-    const scope = Array.isArray(jobQueryCompanyParam)
-      ? [...jobQueryCompanyParam].sort().join(",") || "none"
-      : jobQueryCompanyParam ?? "all";
-    return `jobs-order:${user?._id ?? "anonymous"}:${scope}`;
-  }, [jobQueryCompanyParam, user?._id]);
-
   const deleteJobMutation = useDeleteJobPosition();
   const updateJobMutation = useUpdateJobPosition();
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const raw = window.localStorage.getItem(jobsOrderStorageKey);
-      if (!raw) return;
-
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        setOrderedJobIds(parsed.filter((id): id is string => typeof id === "string"));
-      }
-    } catch {
-      // Ignore malformed persisted ordering and fallback to API ordering.
-    }
-  }, [jobsOrderStorageKey]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (orderedJobIds.length === 0) {
-      window.localStorage.removeItem(jobsOrderStorageKey);
-      return;
-    }
-
-    window.localStorage.setItem(jobsOrderStorageKey, JSON.stringify(orderedJobIds));
-  }, [jobsOrderStorageKey, orderedJobIds]);
-
-  useEffect(() => {
     setOrderedJobIds((prevIds) => {
-      const incomingIds = jobPositions
+      const incomingIds = sortJobsByOrder(jobPositions)
         .map((job: any) => job?._id)
         .filter(Boolean) as string[];
 
       if (incomingIds.length === 0) return [];
 
-      const incomingSet = new Set(incomingIds);
-      const keptIds = prevIds.filter((id) => incomingSet.has(id));
-      const keptSet = new Set(keptIds);
-      const newIds = incomingIds.filter((id) => !keptSet.has(id));
-      const nextIds = [...keptIds, ...newIds];
-
       const unchanged =
-        nextIds.length === prevIds.length &&
-        nextIds.every((id, index) => id === prevIds[index]);
+        incomingIds.length === prevIds.length &&
+        incomingIds.every((id, index) => id === prevIds[index]);
 
-      return unchanged ? prevIds : nextIds;
+      return unchanged ? prevIds : incomingIds;
     });
   }, [jobPositions]);
 
   const orderedJobs = useMemo(() => {
     if (!Array.isArray(jobPositions) || jobPositions.length === 0) return [];
-    if (orderedJobIds.length === 0) return jobPositions;
+    if (orderedJobIds.length === 0) return sortJobsByOrder(jobPositions);
 
     const jobsById = new Map(jobPositions.map((job: any) => [job._id, job]));
     const prioritized = orderedJobIds
@@ -159,7 +138,9 @@ export default function Jobs() {
       .filter(Boolean) as any[];
 
     const prioritizedIds = new Set(prioritized.map((job: any) => job._id));
-    const remaining = jobPositions.filter((job: any) => !prioritizedIds.has(job._id));
+    const remaining = sortJobsByOrder(
+      jobPositions.filter((job: any) => !prioritizedIds.has(job._id))
+    );
 
     return [...prioritized, ...remaining];
   }, [jobPositions, orderedJobIds]);
@@ -197,36 +178,34 @@ export default function Jobs() {
     return payload;
   };
 
-  const syncOrderToBackend = async (previousOrderIds: string[], nextOrderIds: string[]) => {
-    const changedIds = nextOrderIds.filter((id, index) => previousOrderIds[index] !== id);
-    if (changedIds.length === 0) return;
+  const syncMovedJobOrderToBackend = async ({
+    movedJobId,
+    previousOrderIds,
+    nextOrderIds,
+  }: {
+    movedJobId: string;
+    previousOrderIds: string[];
+    nextOrderIds: string[];
+  }) => {
+    const movedIndex = nextOrderIds.indexOf(movedJobId);
+    if (movedIndex === -1) return;
 
-    const jobsById = new Map(jobPositions.map((job: any) => [job._id, job]));
-    const changedSet = new Set(changedIds);
-    const basePayloadById: Record<string, any> = {};
-    const reorderItems = nextOrderIds
-      .map((id, index) => {
-        if (!changedSet.has(id)) return null;
-        const job = jobsById.get(id);
-        if (!job) return null;
+    const movedJob = jobPositions.find((job: any) => job?._id === movedJobId);
+    if (!movedJob) return;
 
-        const order = index + 1;
-        basePayloadById[id] = buildOrderPayload(job, order);
-
-        return { id, order };
-      })
-      .filter(Boolean) as Array<{ id: string; order: number }>;
-
-    if (reorderItems.length === 0) return;
+    const movedOrder = movedIndex + 1;
+    const basePayloadById: Record<string, any> = {
+      [movedJobId]: buildOrderPayload(movedJob, movedOrder),
+    };
 
     const requestVersion = ++orderSyncVersionRef.current;
     setIsSavingOrder(true);
 
     try {
-      await jobPositionsService.reorderJobPositions(reorderItems, basePayloadById);
-      if (requestVersion === orderSyncVersionRef.current) {
-        await refetchJobs();
-      }
+      await jobPositionsService.reorderJobPositions(
+        [{ id: movedJobId, order: movedOrder }],
+        basePayloadById
+      );
     } catch (err: any) {
       if (requestVersion === orderSyncVersionRef.current) {
         setOrderedJobIds(previousOrderIds);
@@ -286,7 +265,11 @@ export default function Jobs() {
 
       if (hasChanged) {
         setOrderedJobIds(nextOrderIds);
-        void syncOrderToBackend(baselineOrderIds, nextOrderIds);
+        void syncMovedJobOrderToBackend({
+          movedJobId: sourceJobId,
+          previousOrderIds: baselineOrderIds,
+          nextOrderIds,
+        });
       }
 
       suppressNavigateRef.current = true;
