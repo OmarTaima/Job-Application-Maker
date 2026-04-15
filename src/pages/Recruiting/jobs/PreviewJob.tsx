@@ -593,7 +593,7 @@ export default function PreviewJob() {
                 )}
                 
                 <div className="mt-4 pt-4 border-t border-gray-50 dark:border-gray-800 flex items-center justify-between opacity-50 group-hover:opacity-100 transition-opacity">
-                   <span className="text-[10px] text-gray-400">Display Order: {field.order}</span>
+                   <span className="text-[10px] text-gray-400">Display Order: {field.displayOrder ?? field.order ?? 0}</span>
                    <div className="flex gap-2">
                       {field.minValue !== undefined && <span className="text-[10px] text-gray-400 italic">Min: {field.minValue}</span>}
                       {field.maxValue !== undefined && <span className="text-[10px] text-gray-400 italic">Max: {field.maxValue}</span>}

@@ -70,7 +70,7 @@ type CustomField = {
   choices?: string[];
   choicesAr?: string[];
   subFields?: SubField[];
-  order: number;
+  displayOrder: number;
 };
 
 type EmploymentType = 'full-time' | 'part-time' | 'contract' | 'internship';
@@ -293,6 +293,42 @@ export default function CreateJob() {
 
   const departmentSelectDisabled = departmentsLoading || (!jobForm.companyId && shouldFetchAllDepartments);
 
+  const getJobCompanyId = (job: any): string => {
+    const companyValue = job?.companyId;
+    if (typeof companyValue === "string") return companyValue;
+    if (companyValue && typeof companyValue === "object") {
+      return companyValue._id || companyValue.id || "";
+    }
+    return "";
+  };
+
+  const nextCompanyOrder = useMemo(() => {
+    if (!jobForm.companyId) return 1;
+
+    const sameCompanyJobs = (allJobs as any[]).filter((job: any) => {
+      const jobCompanyId = getJobCompanyId(job);
+      if (!jobCompanyId || jobCompanyId !== jobForm.companyId) return false;
+      if (editJobId && job?._id === editJobId) return false;
+      return true;
+    });
+
+    const usedOrders = new Set(
+      sameCompanyJobs
+        .map((job: any) => Number(job?.order))
+        .filter((value) => Number.isFinite(value) && value > 0)
+    );
+
+    // Business rule: next order should follow same-company count (2 jobs -> next is 3).
+    let nextOrder = sameCompanyJobs.length + 1;
+
+    // Safety guard if data already contains conflicting order values.
+    while (usedOrders.has(nextOrder)) {
+      nextOrder += 1;
+    }
+
+    return nextOrder;
+  }, [allJobs, editJobId, jobForm.companyId]);
+
   // Helper function to extract detailed error messages
   const getErrorMessage = (err: any): string => {
     // Check for validation errors in 'details' array (new format)
@@ -423,7 +459,7 @@ export default function CreateJob() {
                       : [],
                   }))
                 : [],
-              order: cf.order || 0,
+              displayOrder: cf.displayOrder ?? cf.order ?? 0,
             }))
           : [],
         employmentType: selectedJob.employmentType || 'full-time',
@@ -554,7 +590,7 @@ export default function CreateJob() {
                           : [],
                       }))
                     : [],
-                  order: cf.order || 0,
+                  displayOrder: cf.displayOrder ?? cf.order ?? 0,
                 }))
               : [],
             employmentType: normalizeEmploymentType(job.employmentType) || 'full-time',
@@ -695,7 +731,7 @@ export default function CreateJob() {
       label: "",
       inputType: "text",
       isRequired: false,
-      order: jobForm.customFields.length + 1,
+      displayOrder: jobForm.customFields.length + 1,
     };
     setJobForm((prev) => ({
       ...prev,
@@ -773,7 +809,7 @@ export default function CreateJob() {
     const currentFieldCount = jobForm.customFields.length;
     setJobForm((prev) => {
       const additions: CustomField[] = [];
-      let currentMax = prev.customFields.reduce((m, cf) => Math.max(m, cf.order || 0), 0);
+      let currentMax = prev.customFields.reduce((m, cf) => Math.max(m, cf.displayOrder || 0), 0);
       selectedSaved.forEach((fieldId) => {
         if (prev.customFields.some((cf) => cf.fieldId === `sav_${fieldId}` || cf.fieldId === fieldId)) return;
         const sf = (savedFields as any).find((s: any) => s.fieldId === fieldId);
@@ -799,7 +835,7 @@ export default function CreateJob() {
                 choices: Array.isArray(g.choices) ? g.choices.map((c: any) => (typeof c === 'object' && c.en ? c.en : convertToString(c))) : [],
               }))
             : undefined,
-          order: currentMax,
+          displayOrder: currentMax,
         };
         additions.push(newField);
       });
@@ -840,7 +876,7 @@ export default function CreateJob() {
     const currentFieldCount = jobForm.customFields.length;
     setJobForm((prev) => {
       const additions: CustomField[] = [];
-      let currentMax = prev.customFields.reduce((m, cf) => Math.max(m, cf.order || 0), 0);
+      let currentMax = prev.customFields.reduce((m, cf) => Math.max(m, cf.displayOrder || 0), 0);
       selectedRecommended.forEach((fieldId) => {
         if (prev.customFields.some((cf) => cf.fieldId === `rec_${fieldId}` || cf.fieldId === fieldId)) return;
         const rf = recommendedFields.find((r: any) => r.fieldId === fieldId);
@@ -866,7 +902,7 @@ export default function CreateJob() {
                 choices: Array.isArray(g.choices) ? g.choices.map((c: any) => (typeof c === 'object' && c.en ? c.en : convertToString(c))) : [],
               }))
             : undefined,
-          order: currentMax,
+          displayOrder: currentMax,
         };
         additions.push(newField);
       });
@@ -1153,6 +1189,20 @@ export default function CreateJob() {
         return;
       }
 
+      if (!isEditMode && jobsLoading) {
+        const errorMsg = "Please wait, loading existing company jobs to assign order.";
+        setFormError(errorMsg);
+        setJobStatus(`Error: ${errorMsg}`);
+        setIsSubmitting(false);
+        await Swal.fire({
+          title: "Please wait",
+          text: errorMsg,
+          icon: "info",
+          confirmButtonText: "OK",
+        });
+        return;
+      }
+
       if (!jobForm.registrationStart) {
         const errorMsg = "Registration start date is required.";
         setFormError(errorMsg);
@@ -1227,6 +1277,7 @@ export default function CreateJob() {
       if (!isEditMode) {
         payload.companyId = jobForm.companyId;
         if (jobForm.jobCode) payload.jobCode = jobForm.jobCode;
+        payload.order = nextCompanyOrder;
       }
       payload.title = makeBilingualObject(jobForm.title, jobForm.titleAr);
       payload.description = makeBilingualObject(jobForm.description, jobForm.descriptionAr);
@@ -1264,7 +1315,7 @@ export default function CreateJob() {
               choices: buildChoices(sf.choices, sf.choicesAr),
             }))
           : [],
-        order: cf.order,
+        displayOrder: cf.displayOrder,
       }));
       payload.employmentType = jobForm.employmentType;
       payload.workArrangement = jobForm.workArrangement;
@@ -2253,14 +2304,14 @@ export default function CreateJob() {
                               />
                             </div>
                             <div className="space-y-2 text-center">
-                              <Label htmlFor={`field-order-${fieldIndex}`}>Sequence</Label>
+                              <Label htmlFor={`field-display-order-${fieldIndex}`}>Sequence</Label>
                               <div className="flex justify-center">
                                 <Input
-                                  id={`field-order-${fieldIndex}`}
+                                  id={`field-display-order-${fieldIndex}`}
                                   type="number"
                                   className="text-center w-24"
-                                  value={field.order}
-                                  onChange={(e) => handleCustomFieldChange(fieldIndex, "order", Number(e.target.value))}
+                                  value={field.displayOrder}
+                                  onChange={(e) => handleCustomFieldChange(fieldIndex, "displayOrder", Number(e.target.value))}
                                   min="1"
                                 />
                               </div>

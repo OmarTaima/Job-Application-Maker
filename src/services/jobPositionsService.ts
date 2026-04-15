@@ -19,6 +19,7 @@ export type JobPosition = {
   companyId: string;
   departmentId: string;
   jobCode: string;
+  order?: number;
   title: LocalizedString;
   description?: LocalizedString;
   bilingual?: boolean;
@@ -73,6 +74,7 @@ export type CreateJobPositionRequest = {
   companyId: string;
   departmentId: string;
   jobCode: string;
+  order?: number;
   title: LocalizedString;
   description?: LocalizedString;
   bilingual?: boolean;
@@ -381,6 +383,7 @@ class JobPositionsService {
       if ((data as any).createdBy) payload.createdBy = (data as any).createdBy;
       if (data.status) payload.status = data.status;
       if (data.openPositions) payload.openPositions = data.openPositions;
+      if (data.order !== undefined) payload.order = data.order;
       if (data.registrationStart)
         payload.registrationStart = data.registrationStart;
       if (data.registrationEnd) payload.registrationEnd = data.registrationEnd;
