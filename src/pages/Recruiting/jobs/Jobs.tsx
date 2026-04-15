@@ -93,6 +93,7 @@ export default function Jobs() {
   const [searchTerm, setSearchTerm] = useState("");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [companyFilter, setCompanyFilter] = useState<string>("all");
   const [orderedJobIds, setOrderedJobIds] = useState<string[]>([]);
   const [draggedJobId, setDraggedJobId] = useState<string | null>(null);
   const [dropTargetJobId, setDropTargetJobId] = useState<string | null>(null);
@@ -103,13 +104,13 @@ export default function Jobs() {
 
   // Memoize user-derived values for the query
   const jobQueryCompanyParam = useMemo(() => {
-    if (!user) return "none";
+    if (!user) return ['__NO_COMPANY__'];
     if (isAdmin) return undefined;
 
     const usercompanyIds = user?.companies?.map((c: any) =>
       typeof c.companyId === "string" ? c.companyId : c.companyId._id
     );
-    return usercompanyIds?.length ? usercompanyIds : "none";
+    return usercompanyIds?.length ? usercompanyIds : ['__NO_COMPANY__'];
   }, [user, isAdmin]);
 
   const { 
@@ -200,10 +201,12 @@ export default function Jobs() {
     previousOrderIds,
     nextOrderIds,
     companyId,
+    sourceJobId,
   }: {
     previousOrderIds: string[];
     nextOrderIds: string[];
     companyId: string;
+    sourceJobId?: string;
   }) => {
     if (!companyId) return;
 
@@ -214,21 +217,41 @@ export default function Jobs() {
     });
     if (normalizedCompanyOrderIds.length === 0) return;
 
-    const reorderItems = normalizedCompanyOrderIds.map((id, index) => ({
+    const previousCompanyOrderIds = previousOrderIds.filter((id) => {
+      const job = jobsById.get(id);
+      return Boolean(job) && getJobCompanyId(job) === companyId;
+    });
+
+    const prevIndexById = new Map(previousCompanyOrderIds.map((id, idx) => [id, idx]));
+
+    // Prefer updating only the source job if provided — this avoids touching
+    // every job when the user moved just one item. Otherwise, compute the
+    // minimal set of ids whose index changed.
+    const changedCompanyIds = (() => {
+      if (sourceJobId && normalizedCompanyOrderIds.includes(sourceJobId)) {
+        const newIndex = normalizedCompanyOrderIds.indexOf(sourceJobId);
+        const oldIndex = prevIndexById.get(sourceJobId);
+        if (oldIndex === undefined || oldIndex !== newIndex) return [sourceJobId];
+        return [] as string[];
+      }
+
+      return normalizedCompanyOrderIds.filter((id, idx) => prevIndexById.get(id) !== idx);
+    })();
+
+    if (changedCompanyIds.length === 0) return;
+
+    const reorderItems = changedCompanyIds.map((id) => ({
       id,
-      order: index + 1,
+      order: normalizedCompanyOrderIds.indexOf(id) + 1,
     }));
 
-    const basePayloadById = normalizedCompanyOrderIds.reduce(
-      (acc, id, index) => {
-        const job = jobsById.get(id);
-        if (job) {
-          acc[id] = buildOrderPayload(job, index + 1);
-        }
-        return acc;
-      },
-      {} as Record<string, any>
-    );
+    const basePayloadById = changedCompanyIds.reduce((acc, id) => {
+      const job = jobsById.get(id);
+      if (job) {
+        acc[id] = buildOrderPayload(job, normalizedCompanyOrderIds.indexOf(id) + 1);
+      }
+      return acc;
+    }, {} as Record<string, any>);
 
     const requestVersion = ++orderSyncVersionRef.current;
     setIsSavingOrder(true);
@@ -253,10 +276,12 @@ export default function Jobs() {
     previousOrderIds,
     nextOrderIds,
     companyId,
+    sourceJobId,
   }: {
     previousOrderIds: string[];
     nextOrderIds: string[];
     companyId: string;
+    sourceJobId?: string;
   }) => {
     if (orderSyncDebounceRef.current !== null) {
       window.clearTimeout(orderSyncDebounceRef.current);
@@ -264,7 +289,7 @@ export default function Jobs() {
 
     orderSyncDebounceRef.current = window.setTimeout(() => {
       orderSyncDebounceRef.current = null;
-      void syncJobOrderToBackend({ previousOrderIds, nextOrderIds, companyId });
+      void syncJobOrderToBackend({ previousOrderIds, nextOrderIds, companyId, sourceJobId });
     }, 250);
   };
 
@@ -362,6 +387,7 @@ export default function Jobs() {
           previousOrderIds: baselineOrderIds,
           nextOrderIds,
           companyId: sourceCompanyId,
+          sourceJobId,
         });
       }
     }
@@ -374,6 +400,17 @@ export default function Jobs() {
     navigate(`/job/${job._id}`, { state: { job } });
   };
 
+  const companyOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    (orderedJobs || []).forEach((job: any) => {
+      const cid = getJobCompanyId(job) || "unassigned";
+      if (!map.has(cid)) {
+        map.set(cid, job?.companyId?.name || (cid === "unassigned" ? "Unassigned" : "Company"));
+      }
+    });
+    return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
+  }, [orderedJobs]);
+
   const filteredJobs = useMemo(() => {
     return orderedJobs.filter((job: any) => {
       const title = getTranslation(job.title).toLowerCase();
@@ -384,10 +421,13 @@ export default function Jobs() {
       const matchesStatus = statusFilter === "all" || 
                            (statusFilter === "active" && isActive) || 
                            (statusFilter === "inactive" && !isActive);
-      
-      return matchesSearch && matchesStatus;
+
+      const companyIdForJob = getJobCompanyId(job) || "unassigned";
+      const matchesCompany = companyFilter === "all" || companyIdForJob === companyFilter;
+
+      return matchesSearch && matchesStatus && matchesCompany;
     });
-  }, [orderedJobs, searchTerm, statusFilter]);
+  }, [orderedJobs, searchTerm, statusFilter, companyFilter]);
 
   const jobsGroupedByCompany = useMemo(() => {
     if (!Array.isArray(orderedJobs) || orderedJobs.length === 0) return [];
@@ -396,25 +436,39 @@ export default function Jobs() {
     // Map job id -> index in `orderedJobs` so we can preserve the UI ordering explicitly
     const indexById = new Map(orderedJobs.map((job: any, idx: number) => [job._id, idx]));
 
-    // Preserve company ordering based on the current orderedJobs sequence
-    const companyOrder = Array.from(new Set(orderedJobs.map((j: any) => getJobCompanyId(j))));
+    // Build counts and first-index for companies based on filteredJobs
+    const companyCounts = new Map<string, number>();
+    const companyFirstIndex = new Map<string, number>();
 
-    // Ensure we only include companies that have at least one filtered job
-    const companyIds = companyOrder.filter((cid) =>
-      (filteredJobs || []).some((j: any) => getJobCompanyId(j) === cid)
-    );
+    (filteredJobs || []).forEach((j: any) => {
+      const cid = getJobCompanyId(j) || "unassigned";
+      companyCounts.set(cid, (companyCounts.get(cid) || 0) + 1);
+      const idx = indexById.get(j._id);
+      if (idx !== undefined) {
+        const prev = companyFirstIndex.get(cid);
+        if (prev === undefined || idx < prev) companyFirstIndex.set(cid, idx);
+      }
+    });
 
-    // Add any remaining company ids that appear in filteredJobs but not in orderedJobs
-    const extraCompanyIds = Array.from(
-      new Set((filteredJobs || []).map((j: any) => getJobCompanyId(j)).filter((cid: string) => !companyIds.includes(cid)))
-    );
+    // If there are no filtered jobs (rare), fall back to all companies present in orderedJobs
+    const allCompanyIds = companyCounts.size > 0
+      ? Array.from(companyCounts.keys())
+      : Array.from(new Set(orderedJobs.map((j: any) => getJobCompanyId(j) || "unassigned")));
 
-    const allCompanyIds = [...companyIds, ...extraCompanyIds];
+    // Sort companies by descending job count, then by their first appearance in orderedJobs
+    allCompanyIds.sort((a, b) => {
+      const ca = companyCounts.get(a) || 0;
+      const cb = companyCounts.get(b) || 0;
+      if (cb !== ca) return cb - ca;
+      const ia = companyFirstIndex.get(a) ?? Number.MAX_SAFE_INTEGER;
+      const ib = companyFirstIndex.get(b) ?? Number.MAX_SAFE_INTEGER;
+      return ia - ib;
+    });
 
     return allCompanyIds
       .map((cid) => {
         const jobsForCompany = orderedJobs
-          .filter((j: any) => filteredIds.has(j._id) && getJobCompanyId(j) === cid)
+          .filter((j: any) => filteredIds.has(j._id) && (getJobCompanyId(j) || "unassigned") === cid)
           .sort((a: any, b: any) => {
             const ia = indexById.get(a._id);
             const ib = indexById.get(b._id);
@@ -569,6 +623,17 @@ export default function Jobs() {
           </div>
 
           <div className="h-6 w-px bg-slate-200 dark:bg-slate-700" />
+
+          <select
+            value={companyFilter}
+            onChange={(e) => setCompanyFilter(e.target.value)}
+            className="rounded-xl border-none bg-transparent py-2 pl-2 pr-8 text-sm font-medium text-slate-600 outline-none focus:ring-0 dark:text-slate-400"
+          >
+            <option value="all">All Companies</option>
+            {companyOptions.map((c: any) => (
+              <option key={c.id} value={c.id}>{getTranslation(c.name)}</option>
+            ))}
+          </select>
 
           <select
             value={statusFilter}

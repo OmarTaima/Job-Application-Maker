@@ -432,6 +432,9 @@ class JobPositionsService {
 
     if (normalizedItems.length === 0) return;
 
+    // Persist each changed job individually. Avoid relying on a bulk
+    // `/job-positions/reorder` endpoint so the client remains compatible
+    // with servers that don't expose a batch reorder API.
     await Promise.all(
       normalizedItems.map((item) => {
         const basePayload = basePayloadById?.[item.id] || {};
