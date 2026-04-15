@@ -1692,6 +1692,17 @@ const Applicants = () => {
 
           // RANGE / NUMBER
           if (f.type === 'range') {
+            // If this filter corresponds to a canonical salary field, prefer the
+            // top-level applicant expected salary properties which are not
+            // stored in customResponses/customFieldResponses.
+            try {
+              const canonical = getCanonicalType(f);
+              if (canonical === 'salary') {
+                raw = a?.expectedSalary ?? a?.expected_salary ?? a?.expected ?? raw;
+              }
+            } catch (e) {
+              // ignore
+            }
             let num: number | null = null;
             if (raw === null || raw === undefined || raw === '') return false;
             const toNum = (v: any) => {

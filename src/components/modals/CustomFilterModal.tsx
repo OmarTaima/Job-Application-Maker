@@ -582,7 +582,7 @@ const CustomFilterModal: React.FC<Props> = ({
         </Box>
 
         <Slider
-          step={null}
+          step={1}
           value={range}
           onChange={(_, val) => setRange(val as [number,number])}
           onChangeCommitted={(_, val) => {
