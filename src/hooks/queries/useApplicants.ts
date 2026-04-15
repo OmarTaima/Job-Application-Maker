@@ -292,10 +292,34 @@ export function useScheduleInterview() {
       }
     },
     onSuccess: (updatedApplicant, variables) => {
-      queryClient.setQueryData(applicantsKeys.detail(variables.id), updatedApplicant);
+      if (
+        updatedApplicant &&
+        typeof updatedApplicant === 'object' &&
+        (((updatedApplicant as any)._id && String((updatedApplicant as any)._id)) ||
+          ((updatedApplicant as any).id && String((updatedApplicant as any).id)))
+      ) {
+        queryClient.setQueryData(applicantsKeys.detail(variables.id), updatedApplicant);
+        return;
+      }
+
+      queryClient.invalidateQueries({ queryKey: applicantsKeys.detail(variables.id) });
     },
     onSettled: () => {
       // No refetch
+    },
+  });
+}
+
+// Schedule interviews in bulk
+export function useScheduleBulkInterviews() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: { interviews: Array<any> } | Array<any>) =>
+      applicantsService.scheduleBulkInterviews(payload as any),
+    onSuccess: () => {
+      // Keep table/detail data fresh after batch scheduling.
+      queryClient.invalidateQueries({ queryKey: applicantsKeys.lists() });
     },
   });
 }

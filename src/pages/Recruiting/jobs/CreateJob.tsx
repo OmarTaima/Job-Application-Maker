@@ -76,6 +76,143 @@ type CustomField = {
 type EmploymentType = 'full-time' | 'part-time' | 'contract' | 'internship';
 type WorkArrangement = 'on-site' | 'remote' | 'hybrid';
 
+type FieldConfigRule = {
+  visible: boolean;
+  required: boolean;
+};
+
+type FieldConfig = {
+  fullName: FieldConfigRule;
+  email: FieldConfigRule;
+  phone: FieldConfigRule;
+  gender: FieldConfigRule;
+  birthDate: FieldConfigRule;
+  address: FieldConfigRule;
+  profilePhoto: FieldConfigRule;
+  cvFilePath: FieldConfigRule;
+  expectedSalary: FieldConfigRule;
+};
+
+const getDefaultFieldConfig = (): FieldConfig => ({
+  fullName: { visible: true, required: true },
+  email: { visible: true, required: true },
+  phone: { visible: true, required: true },
+  gender: { visible: true, required: true },
+  birthDate: { visible: true, required: true },
+  address: { visible: true, required: true },
+  profilePhoto: { visible: true, required: true },
+  cvFilePath: { visible: true, required: false },
+  expectedSalary: { visible: false, required: false },
+});
+
+const applicantFieldConfigMeta: Array<{
+  key: keyof FieldConfig;
+  label: string;
+  description: string;
+}> = [
+  {
+    key: "fullName",
+    label: "Full Name",
+    description: "Candidate legal name field.",
+  },
+  {
+    key: "email",
+    label: "Email",
+    description: "Primary contact email address.",
+  },
+  {
+    key: "phone",
+    label: "Phone",
+    description: "Phone number used for recruiter outreach.",
+  },
+  {
+    key: "gender",
+    label: "Gender",
+    description: "Demographic gender selection field.",
+  },
+  {
+    key: "birthDate",
+    label: "Birth Date",
+    description: "Candidate date of birth field.",
+  },
+  {
+    key: "address",
+    label: "Address",
+    description: "Current residence details.",
+  },
+  {
+    key: "profilePhoto",
+    label: "Profile Photo",
+    description: "Profile image upload control.",
+  },
+  {
+    key: "cvFilePath",
+    label: "CV Upload",
+    description: "Resume or CV file attachment.",
+  },
+  {
+    key: "expectedSalary",
+    label: "Expected Salary",
+    description: "Candidate salary expectation input.",
+  },
+];
+
+const normalizeFieldConfig = (
+  value: any,
+  legacySalaryFieldVisible?: boolean
+): FieldConfig => {
+  const defaults = getDefaultFieldConfig();
+  const raw = value && typeof value === "object" ? value : {};
+
+  const withExpectedSalaryFallback = {
+    ...raw,
+    expectedSalary:
+      raw.expectedSalary && typeof raw.expectedSalary === "object"
+        ? raw.expectedSalary
+        : typeof legacySalaryFieldVisible === "boolean"
+        ? {
+            visible: legacySalaryFieldVisible,
+            required: false,
+          }
+        : raw.expectedSalary,
+  };
+
+  const normalizeRule = (
+    incoming: any,
+    fallback: FieldConfigRule
+  ): FieldConfigRule => {
+    const visible =
+      typeof incoming?.visible === "boolean" ? incoming.visible : fallback.visible;
+    const required =
+      typeof incoming?.required === "boolean"
+        ? incoming.required
+        : fallback.required;
+
+    return {
+      visible,
+      required: visible ? required : false,
+    };
+  };
+
+  return {
+    fullName: normalizeRule(withExpectedSalaryFallback.fullName, defaults.fullName),
+    email: normalizeRule(withExpectedSalaryFallback.email, defaults.email),
+    phone: normalizeRule(withExpectedSalaryFallback.phone, defaults.phone),
+    gender: normalizeRule(withExpectedSalaryFallback.gender, defaults.gender),
+    birthDate: normalizeRule(withExpectedSalaryFallback.birthDate, defaults.birthDate),
+    address: normalizeRule(withExpectedSalaryFallback.address, defaults.address),
+    profilePhoto: normalizeRule(
+      withExpectedSalaryFallback.profilePhoto,
+      defaults.profilePhoto
+    ),
+    cvFilePath: normalizeRule(withExpectedSalaryFallback.cvFilePath, defaults.cvFilePath),
+    expectedSalary: normalizeRule(
+      withExpectedSalaryFallback.expectedSalary,
+      defaults.expectedSalary
+    ),
+  };
+};
+
 type JobForm = {
   companyId: string;
   departmentId: string;
@@ -86,7 +223,7 @@ type JobForm = {
   descriptionAr: string;
   salary: number;
   salaryVisible: boolean;
-  salaryFieldVisible: boolean;
+  fieldConfig: FieldConfig;
   bilingual: boolean;
   openPositions: number;
   registrationStart: string;
@@ -194,7 +331,7 @@ export default function CreateJob() {
     descriptionAr: "",
     salary: 0,
     salaryVisible: true,
-    salaryFieldVisible: false,
+    fieldConfig: getDefaultFieldConfig(),
     bilingual: false,
     openPositions: 1,
     registrationStart: "",
@@ -379,7 +516,7 @@ export default function CreateJob() {
         descriptionAr: "",
         salary: 0,
         salaryVisible: true,
-        salaryFieldVisible: false,
+        fieldConfig: getDefaultFieldConfig(),
         bilingual: false,
         openPositions: 1,
         registrationStart: "",
@@ -411,7 +548,10 @@ export default function CreateJob() {
         descriptionAr: typeof selectedJob.description === 'object' ? selectedJob.description.ar || '' : '',
         salary: selectedJob.salary || 0,
         salaryVisible: selectedJob.salaryVisible ?? true,
-        salaryFieldVisible: selectedJob.salaryFieldVisible ?? false,
+        fieldConfig: normalizeFieldConfig(
+          (selectedJob as any).fieldConfig,
+          (selectedJob as any).salaryFieldVisible
+        ),
         bilingual: selectedJob.bilingual ?? false,
         openPositions: selectedJob.openPositions || 1,
         registrationStart: selectedJob.registrationStart ? new Date(selectedJob.registrationStart).toISOString().split("T")[0] : "",
@@ -519,7 +659,10 @@ export default function CreateJob() {
               (job.salary && typeof job.salary === "object" && (job.salary as any).min) ||
               (typeof job.salary === "number" ? job.salary : 0),
             salaryVisible: job.salaryVisible ?? true,
-            salaryFieldVisible: (job as any).salaryFieldVisible ?? false,
+            fieldConfig: normalizeFieldConfig(
+              (job as any).fieldConfig,
+              (job as any).salaryFieldVisible
+            ),
             bilingual: job.bilingual ?? false,
             openPositions: job.openPositions || 1,
             registrationStart: formatDateForInput(job.registrationStart),
@@ -662,6 +805,32 @@ export default function CreateJob() {
 
   const handleInputChange = (field: keyof JobForm, value: any) => {
     setJobForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleFieldConfigChange = (
+    field: keyof FieldConfig,
+    prop: keyof FieldConfigRule,
+    value: boolean
+  ) => {
+    setJobForm((prev) => {
+      const currentRule = prev.fieldConfig[field] ?? { visible: false, required: false };
+      const nextRule = {
+        ...currentRule,
+        [prop]: value,
+      };
+
+      if (prop === "visible" && !value) {
+        nextRule.required = false;
+      }
+
+      return {
+        ...prev,
+        fieldConfig: {
+          ...prev.fieldConfig,
+          [field]: nextRule,
+        },
+      };
+    });
   };
 
   // Normalize various possible employmentType formats to canonical values
@@ -1288,7 +1457,7 @@ export default function CreateJob() {
         .map((t, idx) => makeBilingualObject(t, jobForm.termsAndConditionsAr[idx] || t));
       payload.salary = isNaN(salaryValue) ? undefined : salaryValue;
       payload.salaryVisible = jobForm.salaryVisible;
-      payload.salaryFieldVisible = jobForm.salaryFieldVisible;
+      payload.fieldConfig = normalizeFieldConfig(jobForm.fieldConfig);
       payload.openPositions = jobForm.openPositions;
       payload.registrationStart = jobForm.registrationStart;
       payload.registrationEnd = jobForm.registrationEnd;
@@ -1690,18 +1859,60 @@ export default function CreateJob() {
                         Show the salary range on the public job listing page.
                       </p>
                     </div>
-
-                    <div className="group/toggle relative">
-                      <Switch
-                        label="Salary Field Visible"
-                        checked={jobForm.salaryFieldVisible}
-                        onChange={(checked) => handleInputChange("salaryFieldVisible", checked)}
-                      />
-                      <p className="mt-1.5 ml-11 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400 opacity-70 group-hover/toggle:opacity-100 transition-opacity">
-                        Include a "Current/Expected Salary" input field in the application form.
-                      </p>
-                    </div>
                   </div>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-gray-100 bg-white p-6 dark:border-gray-800 dark:bg-gray-800/30">
+                <div className="mb-2 flex items-center gap-2">
+                  <svg className="size-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M5 13l4 4L19 7"
+                    />
+                  </svg>
+                  <h4 className="font-semibold text-gray-900 dark:text-white text-sm uppercase tracking-wider">
+                    Applicant Base Field Configuration
+                  </h4>
+                </div>
+                <p className="mb-4 text-xs text-gray-500 dark:text-gray-400">
+                  Control which default applicant fields are shown in the application form and which ones are mandatory.
+                </p>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  {applicantFieldConfigMeta.map((item) => {
+                    const rule = jobForm.fieldConfig[item.key];
+
+                    return (
+                      <div
+                        key={item.key}
+                        className="rounded-xl border border-gray-100 bg-gray-50/80 p-4 dark:border-gray-700 dark:bg-gray-900/40"
+                      >
+                        <div className="mb-3">
+                          <p className="text-sm font-semibold text-gray-900 dark:text-white">{item.label}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">{item.description}</p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-4">
+                          <Switch
+                            label="Visible"
+                            checked={rule.visible}
+                            onChange={(checked) =>
+                              handleFieldConfigChange(item.key, "visible", checked)
+                            }
+                          />
+                          <Switch
+                            label="Required"
+                            checked={rule.required}
+                            disabled={!rule.visible}
+                            onChange={(checked) =>
+                              handleFieldConfigChange(item.key, "required", checked)
+                            }
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 

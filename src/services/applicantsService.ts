@@ -148,10 +148,23 @@ export type UpdateStatusRequest = {
 
 export type ScheduleInterviewRequest = {
   scheduledAt?: string;
+  conductedBy?: string;
+  description?: string | null;
+  location?: string | null;
   videoLink?: string;
+  address?: string | null;
+  type?: string | null;
   notes?: string;
   interviewers?: string[];
-  type?: string;
+  status?: "scheduled" | "completed" | "cancelled";
+};
+
+export type BulkScheduleInterviewItem = ScheduleInterviewRequest & {
+  applicantId: string;
+};
+
+export type BulkScheduleInterviewRequest = {
+  interviews: BulkScheduleInterviewItem[];
 };
 
 export type UpdateInterviewStatusRequest = {
@@ -173,6 +186,90 @@ export type SendMessageRequest = {
 };
 
 class ApplicantsService {
+  private toScheduleInterviewItem(
+    applicantId: any,
+    data: ScheduleInterviewRequest
+  ): BulkScheduleInterviewItem {
+    const rawApplicantId =
+      typeof applicantId === 'object'
+        ? applicantId?._id || applicantId?.id || ''
+        : applicantId;
+
+    const item: any = {
+      applicantId: String(rawApplicantId || '').trim(),
+    };
+
+    const allowedKeys: Array<
+      | 'scheduledAt'
+      | 'conductedBy'
+      | 'description'
+      | 'location'
+      | 'videoLink'
+      | 'address'
+      | 'type'
+      | 'notes'
+      | 'status'
+    > = [
+      'scheduledAt',
+      'conductedBy',
+      'description',
+      'location',
+      'videoLink',
+      'address',
+      'type',
+      'notes',
+      'status',
+    ];
+
+    allowedKeys.forEach((key) => {
+      const value = (data as any)?.[key];
+      if (value !== undefined) {
+        item[key] = value;
+      }
+    });
+
+    return item as BulkScheduleInterviewItem;
+  }
+
+  private extractApplicantFromSchedulePayload(
+    payload: any,
+    applicantId: string
+  ): any {
+    const targetId = String(applicantId || '');
+    const queue: any[] = [];
+
+    const pushCandidate = (value: any) => {
+      if (!value) return;
+      if (Array.isArray(value)) {
+        value.forEach(pushCandidate);
+        return;
+      }
+      if (typeof value === 'object') {
+        queue.push(value);
+      }
+    };
+
+    pushCandidate(payload);
+
+    for (const candidate of queue) {
+      const candidateId = String(candidate?._id || candidate?.id || '');
+      if (candidateId && candidateId === targetId) {
+        return candidate;
+      }
+
+      if (candidate?.applicant && typeof candidate.applicant === 'object') {
+        const nestedApplicantId = String(
+          candidate.applicant?._id || candidate.applicant?.id || ''
+        );
+        if (nestedApplicantId && nestedApplicantId === targetId) {
+          return candidate.applicant;
+        }
+      }
+    }
+
+    return queue.find((value: any) => Array.isArray(value?.interviews));
+  }
+
   /**
    * Get all applicants
    */
@@ -415,11 +512,74 @@ class ApplicantsService {
     data: ScheduleInterviewRequest
   ): Promise<Applicant> {
     try {
-      const response = await axios.post(
-        `/applicants/${applicantId}/interviews`,
-        data
+      const item = this.toScheduleInterviewItem(applicantId, data);
+      let response: any;
+
+      try {
+        response = await axios.post(`/applicants/interviews`, [item]);
+      } catch (error: any) {
+        const status = Number(error?.response?.status || 0);
+        if (![400, 404, 405, 422].includes(status)) {
+          throw error;
+        }
+
+        response = await axios.post(`/applicants/${applicantId}/interviews`, data);
+      }
+
+      const payload = response.data?.data ?? response.data;
+      const extractedApplicant = this.extractApplicantFromSchedulePayload(
+        payload,
+        applicantId
       );
-      return response.data.data;
+
+      if (extractedApplicant && typeof extractedApplicant === 'object') {
+        return extractedApplicant as Applicant;
+      }
+
+      if (Array.isArray(payload) && payload.length > 0) {
+        return payload[0] as Applicant;
+      }
+
+      if (payload && typeof payload === 'object') {
+        return payload as Applicant;
+      }
+
+      return { _id: applicantId } as Applicant;
+    } catch (error: any) {
+      throw new ApiError(
+        getErrorMessage(error),
+        error.response?.status,
+        error.response?.data?.details
+      );
+    }
+  }
+
+  /**
+   * Schedule interviews for multiple applicants in a single request.
+   * Supports common backend route/body variants to stay resilient.
+   */
+  async scheduleBulkInterviews(
+    payload: BulkScheduleInterviewRequest | BulkScheduleInterviewItem[]
+  ): Promise<any> {
+    try {
+      const sourceItems: any[] = Array.isArray(payload)
+        ? payload
+        : Array.isArray(payload?.interviews)
+        ? payload.interviews
+        : [];
+
+      const interviews = sourceItems
+        .map((item: any) =>
+          this.toScheduleInterviewItem(item?.applicantId, item || {})
+        )
+        .filter((item: any) => item.applicantId);
+
+      if (interviews.length === 0) {
+        throw new ApiError('At least one interview payload is required.');
+      }
+
+      const response = await axios.post('/applicants/interviews', interviews);
+      return response.data?.data ?? response.data;
     } catch (error: any) {
       throw new ApiError(
         getErrorMessage(error),

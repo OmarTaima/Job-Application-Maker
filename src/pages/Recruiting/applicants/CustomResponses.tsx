@@ -1,6 +1,9 @@
 import { useState } from 'react';
 
-type Props = { applicant: any };
+type Props = {
+  applicant: any;
+  customFields?: any[];
+};
 
 const isArabic = (text?: any) => {
   if (!text || typeof text !== 'string') return false;
@@ -43,12 +46,135 @@ const formatLabel = (key: string) => {
   return s;
 };
 
-export default function CustomResponses({ applicant }: Props) {
+const toPlainString = (value: any): string => {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (typeof value === 'object') {
+    if (typeof value.en === 'string') return value.en;
+    if (typeof value.ar === 'string') return value.ar;
+    if (typeof value.value === 'string') return value.value;
+  }
+  return String(value);
+};
+
+const normalizeLookupToken = (value: any): string => {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/\u200e|\u200f/g, '')
+    .replace(/[^\w\u0600-\u06FF\s]/g, ' ')
+    .replace(/[\s_-]+/g, '')
+    .trim();
+};
+
+const getCustomFieldLabel = (field: any): string => {
+  return toPlainString(field?.label) || field?.fieldId || 'Custom Field';
+};
+
+const findMatchingResponseKeyForField = (
+  field: any,
+  responses: Record<string, any>
+): string => {
+  if (!responses || typeof responses !== 'object') return '';
+
+  const fieldId = String(field?.fieldId || '');
+  if (fieldId && Object.prototype.hasOwnProperty.call(responses, fieldId)) {
+    return fieldId;
+  }
+
+  const directCandidates = [field?.label?.en, field?.label?.ar, toPlainString(field?.label)]
+    .filter(Boolean)
+    .map((v) => String(v));
+
+  for (const candidate of directCandidates) {
+    if (Object.prototype.hasOwnProperty.call(responses, candidate)) {
+      return candidate;
+    }
+  }
+
+  const normalizedTargets = new Set<string>();
+  [fieldId, ...directCandidates]
+    .filter(Boolean)
+    .forEach((token) => {
+      const normalized = normalizeLookupToken(token);
+      if (!normalized) return;
+      normalizedTargets.add(normalized);
+      normalizedTargets.add(normalized.replace(/^rec/, ''));
+      normalizedTargets.add(normalized.replace(/^sav/, ''));
+    });
+
+  for (const key of Object.keys(responses || {})) {
+    const normalizedKey = normalizeLookupToken(key);
+    if (!normalizedKey) continue;
+    if (normalizedTargets.has(normalizedKey)) return key;
+
+    for (const target of normalizedTargets) {
+      if (!target) continue;
+      if (normalizedKey.includes(target) || target.includes(normalizedKey)) {
+        return key;
+      }
+    }
+  }
+
+  return '';
+};
+
+export default function CustomResponses({ applicant, customFields }: Props) {
   const [expandedResponses, setExpandedResponses] = useState<Record<string, Set<number>>>({});
   const [expandedText, setExpandedText] = useState<Record<string, boolean>>({});
   const [expandedItemFields, setExpandedItemFields] = useState<Record<string, Record<number, Set<string>>>>({});
 
-  if (!applicant?.customResponses || Object.keys(applicant.customResponses).length === 0) return null;
+  const rawResponses: Record<string, any> =
+    applicant?.customResponses && typeof applicant.customResponses === 'object'
+      ? applicant.customResponses
+      : applicant?.customFieldResponses && typeof applicant.customFieldResponses === 'object'
+      ? applicant.customFieldResponses
+      : {};
+
+  const customResponseEntries: Array<{ key: string; label: string; value: any }> = (() => {
+    const entries: Array<{ key: string; label: string; value: any }> = [];
+    const usedKeys = new Set<string>();
+
+    if (Array.isArray(customFields) && customFields.length > 0) {
+      const orderedFields = [...customFields].sort((a: any, b: any) => {
+        const ao = Number(a?.displayOrder ?? a?.order ?? 0);
+        const bo = Number(b?.displayOrder ?? b?.order ?? 0);
+        return ao - bo;
+      });
+
+      orderedFields.forEach((field: any, index: number) => {
+        const fieldId = String(field?.fieldId || `field_${index}`);
+        const matchedKey = findMatchingResponseKeyForField(field, rawResponses);
+        const sourceKey =
+          matchedKey && Object.prototype.hasOwnProperty.call(rawResponses, matchedKey)
+            ? matchedKey
+            : fieldId;
+        const value = rawResponses[sourceKey];
+
+        if (matchedKey) usedKeys.add(matchedKey);
+        if (Object.prototype.hasOwnProperty.call(rawResponses, fieldId)) usedKeys.add(fieldId);
+
+        entries.push({
+          key: fieldId,
+          label: getCustomFieldLabel(field),
+          value,
+        });
+      });
+    }
+
+    Object.entries(rawResponses).forEach(([key, value]) => {
+      if (usedKeys.has(key)) return;
+      entries.push({
+        key,
+        label: formatLabel(key),
+        value,
+      });
+    });
+
+    return entries;
+  })();
+
+  if (customResponseEntries.length === 0) return null;
 
   return (
     <div className="rounded-2xl overflow-hidden bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-900 dark:to-gray-800 border-2 border-blue-200 dark:border-blue-900/50 shadow-lg">
@@ -66,8 +192,8 @@ export default function CustomResponses({ applicant }: Props) {
         </div>
       </div>
       <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-5 items-start">
-        {Object.entries(applicant.customResponses).map(
-          ([key, value]) => {
+        {customResponseEntries.map(
+          ({ key, label, value }) => {
             // If backend now exposes expected salary as a top-level field, skip
             // rendering any customResponses entry that represents expected salary
             // to avoid duplicate display in Personal Information.
@@ -98,7 +224,9 @@ export default function CustomResponses({ applicant }: Props) {
             };
 
             const renderValue = () => {
+              if (value === undefined || value === null) return '-';
               if (Array.isArray(value)) {
+                if (value.length === 0) return '-';
                 if (value.length > 0 && typeof value[0] === 'object' && value[0] !== null) {
                   return (
                     <div className="flex flex-wrap gap-2">
@@ -228,6 +356,7 @@ export default function CustomResponses({ applicant }: Props) {
                   );
                 }
                 const joined = value.join(', ');
+                if (!joined.trim()) return '-';
                 if (value.some((v: any) => isArabic(String(v)))) {
                   return (
                     <div dir="rtl" className="text-right text-gray-900 dark:text-white">
@@ -238,6 +367,7 @@ export default function CustomResponses({ applicant }: Props) {
                 return joined;
               }
               if (typeof value === 'string') {
+                if (!value.trim()) return '-';
                 const containsNewline = value.includes('\n');
                 if (isArabic(value)) {
                   return (
@@ -259,7 +389,8 @@ export default function CustomResponses({ applicant }: Props) {
                 }
                 return String(value);
               }
-              return String(value);
+              const asString = String(value);
+              return asString.trim() ? asString : '-';
             };
 
             const valueIsArabicOverall = (() => {
@@ -280,16 +411,14 @@ export default function CustomResponses({ applicant }: Props) {
               return false;
             })();
 
-            const normalizedKey = key.replace(/\s|_/g, '').toLowerCase();
+            const normalizedKey = `${key} ${label}`.replace(/\s|_/g, '').toLowerCase();
             const isCoverText = typeof value === 'string' && /cover/.test(normalizedKey);
 
             return (
               <div key={key} className={`group self-start p-4 bg-white dark:bg-gray-800 rounded-xl hover:shadow-md transition-all duration-200 border-l-4 border-blue-500`}>
                 <div className="flex items-start gap-4">
                   <span className={`text-xs font-extrabold text-blue-600 dark:text-blue-400 uppercase tracking-wider whitespace-nowrap font-cairo`}>
-                    {key
-                      .replace(/_/g, ' ')
-                      .replace(/\b\w/g, (c) => c.toUpperCase())}:
+                    {label}:
                   </span>
 
                   {isCoverText ? (

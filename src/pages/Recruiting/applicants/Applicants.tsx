@@ -160,7 +160,7 @@ import {
   useJobPositions,
   useUpdateApplicantStatus,
   useCompanies,
-  useScheduleInterview,
+  useScheduleBulkInterviews,
 } from '../../../hooks/queries';
 import BulkMessageModal from '../../../components/modals/BulkMessageModal';
 import InterviewScheduleModal from '../../../components/modals/InterviewScheduleModal';
@@ -563,7 +563,7 @@ const Applicants = () => {
     }
   }, [selectedApplicantCompanyId, allCompaniesRaw]);
   const updateStatusMutation = useUpdateApplicantStatus();
-  const scheduleInterviewMutation = useScheduleInterview();
+  const scheduleBulkInterviewsMutation = useScheduleBulkInterviews();
   const sendBatchEmailMutation = useSendBatchEmail();
   // Mounted ref to avoid state updates after unmount
   const mountedRef = useRef(false);
@@ -2797,43 +2797,22 @@ const Applicants = () => {
     try {
       setIsSubmittingBulkInterview(true);
 
-      for (const item of previewItems) {
-        const payload: any = {
-          scheduledAt: item.scheduledAt,
-          description: bulkInterviewForm.description || undefined,
-          type: bulkInterviewForm.type || undefined,
-          location: bulkInterviewForm.location || undefined,
-          videoLink: bulkInterviewForm.link || undefined,
-          notes: bulkInterviewForm.comment || undefined,
-          companyId: item.companyId || selectedApplicantCompanyId || undefined,
-          notifications: {
-            channels: {
-              email: bulkNotificationChannels.email,
-              sms: bulkNotificationChannels.sms,
-              whatsapp: bulkNotificationChannels.whatsapp,
-            },
-            emailOption: bulkNotificationChannels.email
-              ? bulkEmailOption || 'company'
-              : undefined,
-            customEmail: bulkNotificationChannels.email
-              ? fromEmail || undefined
-              : undefined,
-            phoneOption:
-              bulkNotificationChannels.sms || bulkNotificationChannels.whatsapp
-                ? bulkPhoneOption
-                : undefined,
-            customPhone:
-              bulkPhoneOption === 'custom'
-                ? bulkCustomPhone || undefined
-                : undefined,
-          },
-        };
+      const bulkInterviewPayload = previewItems.map((item: any) => ({
+        applicantId: item.applicantId,
+        scheduledAt: item.scheduledAt,
+        conductedBy: undefined,
+        description: bulkInterviewForm.description || undefined,
+        type: bulkInterviewForm.type || undefined,
+        location: bulkInterviewForm.location || undefined,
+        address: bulkInterviewForm.location || undefined,
+        videoLink: bulkInterviewForm.link || undefined,
+        notes: bulkInterviewForm.comment || undefined,
+        status: 'scheduled',
+      }));
 
-        await scheduleInterviewMutation.mutateAsync({
-          id: item.applicantId,
-          data: payload,
-        });
+      await scheduleBulkInterviewsMutation.mutateAsync(bulkInterviewPayload);
 
+      previewItems.forEach((item: any) => {
         if (item.status !== 'interview') {
           updateStatusMutation.mutate({
             id: item.applicantId,
@@ -2843,7 +2822,7 @@ const Applicants = () => {
             },
           });
         }
-      }
+      });
 
       if (shouldSendEmail) {
         const batch = emailableItems.map((item: any) => ({

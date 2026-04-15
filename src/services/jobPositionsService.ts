@@ -14,6 +14,94 @@ export class ApiError extends Error {
 
 export type LocalizedString = { en: string; ar: string };
 
+export type JobFieldConfigRule = {
+  visible: boolean;
+  required: boolean;
+};
+
+export type JobFieldConfig = {
+  fullName: JobFieldConfigRule;
+  email: JobFieldConfigRule;
+  phone: JobFieldConfigRule;
+  gender: JobFieldConfigRule;
+  birthDate: JobFieldConfigRule;
+  address: JobFieldConfigRule;
+  profilePhoto: JobFieldConfigRule;
+  cvFilePath: JobFieldConfigRule;
+  expectedSalary: JobFieldConfigRule;
+};
+
+const getDefaultFieldConfig = (): JobFieldConfig => ({
+  fullName: { visible: true, required: true },
+  email: { visible: true, required: true },
+  phone: { visible: true, required: true },
+  gender: { visible: true, required: true },
+  birthDate: { visible: true, required: true },
+  address: { visible: true, required: true },
+  profilePhoto: { visible: true, required: true },
+  cvFilePath: { visible: true, required: false },
+  expectedSalary: { visible: false, required: false },
+});
+
+const normalizeFieldConfig = (
+  value: any,
+  legacySalaryFieldVisible?: boolean
+): JobFieldConfig => {
+  const defaults = getDefaultFieldConfig();
+  const raw = value && typeof value === "object" ? value : {};
+
+  const withFallbackExpectedSalary = {
+    ...raw,
+    expectedSalary:
+      raw.expectedSalary && typeof raw.expectedSalary === "object"
+        ? raw.expectedSalary
+        : typeof legacySalaryFieldVisible === "boolean"
+        ? {
+            visible: legacySalaryFieldVisible,
+            required: false,
+          }
+        : raw.expectedSalary,
+  };
+
+  const normalizeRule = (
+    incoming: any,
+    fallback: JobFieldConfigRule
+  ): JobFieldConfigRule => {
+    const visible =
+      typeof incoming?.visible === "boolean" ? incoming.visible : fallback.visible;
+    const required =
+      typeof incoming?.required === "boolean"
+        ? incoming.required
+        : fallback.required;
+
+    return {
+      visible,
+      required: visible ? required : false,
+    };
+  };
+
+  return {
+    fullName: normalizeRule(withFallbackExpectedSalary.fullName, defaults.fullName),
+    email: normalizeRule(withFallbackExpectedSalary.email, defaults.email),
+    phone: normalizeRule(withFallbackExpectedSalary.phone, defaults.phone),
+    gender: normalizeRule(withFallbackExpectedSalary.gender, defaults.gender),
+    birthDate: normalizeRule(withFallbackExpectedSalary.birthDate, defaults.birthDate),
+    address: normalizeRule(withFallbackExpectedSalary.address, defaults.address),
+    profilePhoto: normalizeRule(
+      withFallbackExpectedSalary.profilePhoto,
+      defaults.profilePhoto
+    ),
+    cvFilePath: normalizeRule(
+      withFallbackExpectedSalary.cvFilePath,
+      defaults.cvFilePath
+    ),
+    expectedSalary: normalizeRule(
+      withFallbackExpectedSalary.expectedSalary,
+      defaults.expectedSalary
+    ),
+  };
+};
+
 export type JobPosition = {
   _id: string;
   companyId: string;
@@ -27,8 +115,8 @@ export type JobPosition = {
   employmentType: 'full-time' | 'part-time' | 'contract' | 'internship';
   workArrangement: 'on-site' | 'remote' | 'hybrid';
   salary?: number;
-  salaryFieldVisible?: boolean;
   salaryVisible?: boolean;
+  fieldConfig?: JobFieldConfig;
   openPositions?: number;
   registrationStart?: string;
   registrationEnd?: string;
@@ -87,7 +175,7 @@ export type CreateJobPositionRequest = {
   registrationStart: string;
   registrationEnd: string;
   termsAndConditions?: LocalizedString[];
-  salaryFieldVisible?: boolean;
+  fieldConfig?: JobFieldConfig;
   createdBy?: string;
   // optional legacy/extra fields
   requirements?: string[];
@@ -134,7 +222,7 @@ export type UpdateJobPositionRequest = {
   registrationStart?: string;
   registrationEnd?: string;
   termsAndConditions?: LocalizedString[];
-  salaryFieldVisible?: boolean;
+  fieldConfig?: JobFieldConfig;
   // allow updating these optional fields as well
   companyId?: string;
   jobCode?: string;
@@ -190,9 +278,67 @@ export type ReorderJobPositionsRequestItem = {
 };
 
 class JobPositionsService {
+  private looksLikeJobPositionEntity(value: any): boolean {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    return Boolean(
+      value._id ||
+      value.id ||
+      value.title ||
+      value.jobCode ||
+      value.companyId ||
+      value.fieldConfig ||
+      value.customFields ||
+      value.jobSpecs
+    );
+  }
+
+  private unwrapJobPositionPayload(payload: any): any {
+    if (!payload) return payload;
+
+    // Common direct wrappers used by backend responses
+    if (this.looksLikeJobPositionEntity(payload)) return payload;
+    if (this.looksLikeJobPositionEntity(payload?.jobPosition)) return payload.jobPosition;
+    if (this.looksLikeJobPositionEntity(payload?.item)) return payload.item;
+
+    let current = payload;
+    const visited = new Set<any>();
+
+    while (
+      current &&
+      typeof current === 'object' &&
+      !Array.isArray(current) &&
+      Object.prototype.hasOwnProperty.call(current, 'data') &&
+      current.data !== undefined &&
+      current.data !== null
+    ) {
+      if (visited.has(current)) break;
+      visited.add(current);
+
+      if (this.looksLikeJobPositionEntity(current)) return current;
+
+      const next = current.data;
+      if (this.looksLikeJobPositionEntity(next)) return next;
+
+      current = next;
+    }
+
+    if (Array.isArray(current)) {
+      return current[0];
+    }
+
+    return current;
+  }
+
   // Normalize job position shapes so callers always get `jobSpecsWithDetails`
   normalizeJobPosition(maybe: any): any {
     if (!maybe || typeof maybe !== 'object') return maybe;
+
+    maybe.fieldConfig = normalizeFieldConfig(
+      maybe.fieldConfig,
+      typeof maybe.salaryFieldVisible === "boolean"
+        ? maybe.salaryFieldVisible
+        : undefined
+    );
 
     // If already has jobSpecsWithDetails, ensure answers are boolean
     if (Array.isArray(maybe.jobSpecsWithDetails)) {
@@ -338,7 +484,8 @@ class JobPositionsService {
   async getJobPositionById(jobPositionId: string): Promise<JobPosition> {
     try {
       const response = await axios.get(`/job-positions/${jobPositionId}`);
-      const data = response.data.data;
+      const payload = response.data;
+      const data = this.unwrapJobPositionPayload(payload);
       return this.normalizeJobPosition(data);
     } catch (error: any) {
       throw new ApiError(
@@ -372,10 +519,10 @@ class JobPositionsService {
       if (data.termsAndConditions && data.termsAndConditions.length > 0)
         payload.termsAndConditions = data.termsAndConditions;
       if (data.salary !== undefined) payload.salary = data.salary;
-      if (data.salaryFieldVisible !== undefined)
-        payload.salaryFieldVisible = data.salaryFieldVisible;
       if (data.salaryVisible !== undefined)
         payload.salaryVisible = data.salaryVisible;
+      if (data.fieldConfig)
+        payload.fieldConfig = normalizeFieldConfig(data.fieldConfig);
       if (data.bilingual !== undefined) payload.bilingual = data.bilingual;
       if (data.isActive !== undefined) payload.isActive = data.isActive;
       if (data.employmentType) payload.employmentType = data.employmentType;
@@ -467,11 +614,11 @@ class JobPositionsService {
       if (data.requirements) payload.requirements = data.requirements;
       if (data.termsAndConditions)
         payload.termsAndConditions = data.termsAndConditions;
-      if (data.salary) payload.salary = data.salary;
-      if (data.salaryFieldVisible !== undefined)
-        payload.salaryFieldVisible = data.salaryFieldVisible;
+      if (data.salary !== undefined) payload.salary = data.salary;
       if (data.salaryVisible !== undefined)
         payload.salaryVisible = data.salaryVisible;
+      if (data.fieldConfig)
+        payload.fieldConfig = normalizeFieldConfig(data.fieldConfig);
       if (data.bilingual !== undefined) payload.bilingual = data.bilingual;
       if (data.isActive !== undefined) payload.isActive = data.isActive;
       if (data.employmentType) payload.employmentType = data.employmentType;

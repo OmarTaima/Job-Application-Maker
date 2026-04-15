@@ -80,6 +80,76 @@ const sortJobsByOrder = (jobs: any[]): any[] => {
   });
 };
 
+type FieldConfigRule = {
+  visible: boolean;
+  required: boolean;
+};
+
+type FieldConfig = {
+  fullName: FieldConfigRule;
+  email: FieldConfigRule;
+  phone: FieldConfigRule;
+  gender: FieldConfigRule;
+  birthDate: FieldConfigRule;
+  address: FieldConfigRule;
+  profilePhoto: FieldConfigRule;
+  cvFilePath: FieldConfigRule;
+  expectedSalary: FieldConfigRule;
+};
+
+const getDefaultFieldConfig = (): FieldConfig => ({
+  fullName: { visible: true, required: true },
+  email: { visible: true, required: true },
+  phone: { visible: true, required: true },
+  gender: { visible: true, required: true },
+  birthDate: { visible: true, required: true },
+  address: { visible: true, required: true },
+  profilePhoto: { visible: true, required: true },
+  cvFilePath: { visible: true, required: false },
+  expectedSalary: { visible: false, required: false },
+});
+
+const normalizeFieldConfig = (job: any): FieldConfig => {
+  const defaults = getDefaultFieldConfig();
+  const raw = job?.fieldConfig && typeof job.fieldConfig === "object" ? job.fieldConfig : {};
+
+  const expectedSalaryRaw =
+    raw.expectedSalary && typeof raw.expectedSalary === "object"
+      ? raw.expectedSalary
+      : typeof job?.salaryFieldVisible === "boolean"
+      ? {
+          visible: job.salaryFieldVisible,
+          required: false,
+        }
+      : raw.expectedSalary;
+
+  const normalizeRule = (incoming: any, fallback: FieldConfigRule): FieldConfigRule => {
+    const visible =
+      typeof incoming?.visible === "boolean" ? incoming.visible : fallback.visible;
+    const required =
+      typeof incoming?.required === "boolean"
+        ? incoming.required
+        : fallback.required;
+
+    return {
+      visible,
+      required: visible ? required : false,
+    };
+  };
+
+  return {
+    fullName: normalizeRule(raw.fullName, defaults.fullName),
+    email: normalizeRule(raw.email, defaults.email),
+    phone: normalizeRule(raw.phone, defaults.phone),
+    gender: normalizeRule(raw.gender, defaults.gender),
+    birthDate: normalizeRule(raw.birthDate, defaults.birthDate),
+    address: normalizeRule(raw.address, defaults.address),
+    profilePhoto: normalizeRule(raw.profilePhoto, defaults.profilePhoto),
+    cvFilePath: normalizeRule(raw.cvFilePath, defaults.cvFilePath),
+    expectedSalary: normalizeRule(expectedSalaryRaw, defaults.expectedSalary),
+  };
+};
+
 
 
 export default function Jobs() {
@@ -192,6 +262,7 @@ export default function Jobs() {
     if (typeof job.isActive === "boolean") payload.isActive = job.isActive;
     if (typeof job.salary === "number") payload.salary = job.salary;
     if (typeof job.salaryVisible === "boolean") payload.salaryVisible = job.salaryVisible;
+    payload.fieldConfig = normalizeFieldConfig(job);
     if (typeof job.bilingual === "boolean") payload.bilingual = job.bilingual;
 
     return payload;
@@ -513,6 +584,7 @@ export default function Jobs() {
 
       if (typeof job.salary === "number") payload.salary = job.salary;
       if (typeof job.salaryVisible === "boolean") payload.salaryVisible = job.salaryVisible;
+      payload.fieldConfig = normalizeFieldConfig(job);
       if (typeof job.bilingual === "boolean") payload.bilingual = job.bilingual;
 
       await updateJobMutation.mutateAsync({

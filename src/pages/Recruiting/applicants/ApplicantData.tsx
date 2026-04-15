@@ -15,6 +15,7 @@ import {
   useJobPosition,
   useCompaniesWithApplicants,
   useCompany,
+  useUpdateApplicant,
   useUpdateApplicantStatus,
   useScheduleInterview,
   useUpdateInterviewStatus,
@@ -92,8 +93,38 @@ const ApplicantData = () => {
     initialData: stateApplicant,
   });
   
-  // Prefer the fetched data, but fall back to navigation state if the fetch returns undefined
-  const applicant: any = (fetchedApplicant ?? stateApplicant) as any;
+  // Prefer fetched data, but preserve richer fields from navigation state when
+  // the detail payload omits them (observed with custom responses/populated refs).
+  const applicant: any = useMemo(() => {
+    const fetched = (fetchedApplicant as any) || undefined;
+    const state = (stateApplicant as any) || undefined;
+
+    if (!fetched && !state) return undefined;
+    if (!fetched) return state;
+    if (!state) return fetched;
+
+    const merged = {
+      ...state,
+      ...fetched,
+    } as any;
+
+    merged.customResponses =
+      fetched.customResponses ??
+      fetched.customFieldResponses ??
+      state.customResponses ??
+      state.customFieldResponses ??
+      {};
+
+    merged.jobPositionId =
+      fetched.jobPositionId ??
+      fetched.jobPosition ??
+      state.jobPositionId ??
+      state.jobPosition;
+
+    merged.jobPosition = fetched.jobPosition ?? state.jobPosition;
+
+    return merged;
+  }, [fetchedApplicant, stateApplicant]);
 
   // Related data hooks (job positions, company details)
   // Declared here to preserve hook order for React
@@ -234,6 +265,7 @@ const ApplicantData = () => {
   // (preview helper removed)
 
   // Mutation hooks
+  const updateApplicantMutation = useUpdateApplicant();
   const updateStatusMutation = useUpdateApplicantStatus();
   const scheduleInterviewMutation = useScheduleInterview();
   const updateInterviewMutation = useUpdateInterviewStatus();
@@ -675,6 +707,597 @@ const ApplicantData = () => {
   const [interviewError, setInterviewError] = useState('');
   const [commentError, setCommentError] = useState('');
   const [statusError, setStatusError] = useState('');
+
+  type InterviewEditFormState = {
+    fullName: string;
+    email: string;
+    phone: string;
+    gender: string;
+    birthDate: string;
+    address: string;
+    expectedSalary: string;
+    customResponses: Record<string, any>;
+    jobSpecsResponses: Array<{ jobSpecId: string; answer: boolean }>;
+  };
+
+  const toInputDate = (value: any): string => {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toISOString().slice(0, 10);
+  };
+
+  const normalizeSpecId = (value: any): string => {
+    if (!value) return '';
+    if (typeof value === 'string') return value;
+    if (typeof value === 'object') return value._id || value.id || '';
+    return '';
+  };
+
+  const normalizeLookupToken = (value: any): string => {
+    return String(value || '')
+      .toLowerCase()
+      .replace(/\u200e|\u200f/g, '')
+      .replace(/[^\w\u0600-\u06FF\s]/g, ' ')
+      .replace(/[\s_-]+/g, '')
+      .trim();
+  };
+
+  const getCustomFieldId = (field: any, index: number): string => {
+    return String(field?.fieldId || `field_${index}`);
+  };
+
+  const getCustomFieldLabelText = (field: any): string => {
+    return toPlainString(field?.label) || field?.fieldId || 'Custom Field';
+  };
+
+  const getCustomFieldChoices = (field: any): string[] => {
+    if (!Array.isArray(field?.choices)) return [];
+    return field.choices.map((choice: any) => toPlainString(choice)).filter(Boolean);
+  };
+
+  const getCustomFieldGroupFields = (field: any): any[] => {
+    if (Array.isArray(field?.groupFields)) return field.groupFields;
+    if (Array.isArray(field?.subFields)) return field.subFields;
+    return [];
+  };
+
+  const findMatchingResponseKeyForField = (
+    field: any,
+    responses: Record<string, any>
+  ): string => {
+    if (!responses || typeof responses !== 'object') return '';
+
+    const fieldId = String(field?.fieldId || '');
+    if (fieldId && Object.prototype.hasOwnProperty.call(responses, fieldId)) {
+      return fieldId;
+    }
+
+    const directCandidates = [
+      field?.label?.en,
+      field?.label?.ar,
+      toPlainString(field?.label),
+    ]
+      .filter(Boolean)
+      .map((v) => String(v));
+
+    for (const candidate of directCandidates) {
+      if (Object.prototype.hasOwnProperty.call(responses, candidate)) {
+        return candidate;
+      }
+    }
+
+    const normalizedTargets = new Set<string>();
+    [fieldId, ...directCandidates]
+      .filter(Boolean)
+      .forEach((token) => {
+        const normalized = normalizeLookupToken(token);
+        if (!normalized) return;
+        normalizedTargets.add(normalized);
+        normalizedTargets.add(normalized.replace(/^rec/, ''));
+        normalizedTargets.add(normalized.replace(/^sav/, ''));
+      });
+
+    for (const key of Object.keys(responses || {})) {
+      const normalizedKey = normalizeLookupToken(key);
+      if (!normalizedKey) continue;
+      if (normalizedTargets.has(normalizedKey)) return key;
+
+      for (const target of normalizedTargets) {
+        if (!target) continue;
+        if (normalizedKey.includes(target) || target.includes(normalizedKey)) {
+          return key;
+        }
+      }
+    }
+
+    return '';
+  };
+
+  const coerceCustomFieldValueForForm = (field: any, rawValue: any): any => {
+    const inputType = String(field?.inputType || 'text').toLowerCase();
+
+    if (inputType === 'repeatable_group') {
+      if (!Array.isArray(rawValue)) return [];
+      return rawValue.map((row: any) =>
+        row && typeof row === 'object' && !Array.isArray(row) ? { ...row } : {}
+      );
+    }
+
+    if (inputType === 'checkbox') {
+      const choices = getCustomFieldChoices(field);
+      if (choices.length === 0) {
+        if (typeof rawValue === 'boolean') return rawValue;
+        if (rawValue === undefined || rawValue === null || rawValue === '') return false;
+        return Boolean(rawValue);
+      }
+      if (Array.isArray(rawValue)) return rawValue.map((v: any) => String(v));
+      if (typeof rawValue === 'string') {
+        return rawValue
+          .split(',')
+          .map((v) => v.trim())
+          .filter(Boolean);
+      }
+      if (rawValue === undefined || rawValue === null || rawValue === '') return [];
+      return [String(rawValue)];
+    }
+
+    if (inputType === 'tags') {
+      if (Array.isArray(rawValue)) return rawValue.map((v: any) => String(v));
+      if (typeof rawValue === 'string') {
+        return rawValue
+          .split(',')
+          .map((v) => v.trim())
+          .filter(Boolean);
+      }
+      if (rawValue === undefined || rawValue === null || rawValue === '') return [];
+      return [String(rawValue)];
+    }
+
+    if (inputType === 'number') {
+      if (rawValue === undefined || rawValue === null || rawValue === '') return '';
+      return String(rawValue);
+    }
+
+    if (inputType === 'date') {
+      return rawValue ? toInputDate(rawValue) : '';
+    }
+
+    if (rawValue === undefined || rawValue === null) return '';
+    return String(rawValue);
+  };
+
+  const coerceCustomFieldValueForPayload = (field: any, rawValue: any): any => {
+    const inputType = String(field?.inputType || 'text').toLowerCase();
+
+    if (inputType === 'repeatable_group') {
+      const rows = Array.isArray(rawValue) ? rawValue : [];
+      const groupFields = getCustomFieldGroupFields(field);
+      return rows.map((row: any) => {
+        const normalizedRow =
+          row && typeof row === 'object' && !Array.isArray(row) ? { ...row } : {};
+        groupFields.forEach((subField: any, subIndex: number) => {
+          const subFieldId = getCustomFieldId(subField, subIndex);
+          normalizedRow[subFieldId] = coerceCustomFieldValueForPayload(
+            subField,
+            normalizedRow[subFieldId]
+          );
+        });
+        return normalizedRow;
+      });
+    }
+
+    if (inputType === 'checkbox') {
+      const choices = getCustomFieldChoices(field);
+      if (choices.length === 0) return Boolean(rawValue);
+      if (Array.isArray(rawValue)) return rawValue.map((v: any) => String(v));
+      if (typeof rawValue === 'string') {
+        return rawValue
+          .split(',')
+          .map((v) => v.trim())
+          .filter(Boolean);
+      }
+      if (rawValue === undefined || rawValue === null || rawValue === '') return [];
+      return [String(rawValue)];
+    }
+
+    if (inputType === 'tags') {
+      if (Array.isArray(rawValue)) return rawValue.map((v: any) => String(v));
+      if (typeof rawValue === 'string') {
+        return rawValue
+          .split(',')
+          .map((v) => v.trim())
+          .filter(Boolean);
+      }
+      if (rawValue === undefined || rawValue === null || rawValue === '') return [];
+      return [String(rawValue)];
+    }
+
+    if (inputType === 'number') {
+      if (rawValue === undefined || rawValue === null || rawValue === '') return '';
+      const parsed = Number(rawValue);
+      return Number.isFinite(parsed) ? parsed : rawValue;
+    }
+
+    if (inputType === 'date') {
+      return rawValue ? toInputDate(rawValue) : '';
+    }
+
+    if (rawValue === undefined || rawValue === null) return '';
+    return rawValue;
+  };
+
+  const extractArrayField = (source: any, key: string): any[] => {
+    if (!source || typeof source !== 'object') return [];
+    if (Array.isArray((source as any)?.[key])) return (source as any)[key];
+    if (Array.isArray((source as any)?.data?.[key])) return (source as any).data[key];
+    if (Array.isArray((source as any)?.data?.data?.[key])) return (source as any).data.data[key];
+    return [];
+  };
+
+  const getAvailableCustomFieldsForInterview = () => {
+    const fromDetail = extractArrayField(jobPositionDetail, 'customFields');
+    if (fromDetail.length > 0) {
+      return fromDetail;
+    }
+
+    const applicantCandidates = [applicant, fetchedApplicant, stateApplicant].filter(Boolean) as any[];
+
+    for (const candidate of applicantCandidates) {
+      const jobPosCandidates: any[] = [];
+
+      if (candidate?.jobPositionId && typeof candidate.jobPositionId === 'object') {
+        jobPosCandidates.push(candidate.jobPositionId);
+      }
+      if (candidate?.jobPosition && typeof candidate.jobPosition === 'object') {
+        jobPosCandidates.push(candidate.jobPosition);
+      }
+
+      for (const jobPos of jobPosCandidates) {
+        const fields = extractArrayField(jobPos, 'customFields');
+        if (fields.length > 0) {
+          return fields;
+        }
+      }
+    }
+
+    if (resolvedJobPosId && Array.isArray(jobPositions)) {
+      const found = jobPositions.find(
+        (j: any) => String(j?._id ?? j?.id ?? '') === String(resolvedJobPosId)
+      );
+      const fromList = extractArrayField(found, 'customFields');
+      if (fromList.length > 0) {
+        return fromList;
+      }
+    }
+
+    return [] as any[];
+  };
+
+  const getAvailableJobSpecsForInterview = () => {
+    if (jobPositionDetail) {
+      if (
+        Array.isArray((jobPositionDetail as any).jobSpecsWithDetails) &&
+        (jobPositionDetail as any).jobSpecsWithDetails.length
+      ) {
+        return (jobPositionDetail as any).jobSpecsWithDetails;
+      }
+      if (Array.isArray((jobPositionDetail as any).jobSpecs) && (jobPositionDetail as any).jobSpecs.length) {
+        return (jobPositionDetail as any).jobSpecs;
+      }
+    }
+
+    const populatedApplicant = (fetchedApplicant ?? stateApplicant ?? applicant) as any;
+    const populatedJobPos =
+      typeof populatedApplicant?.jobPositionId === 'object'
+        ? populatedApplicant.jobPositionId
+        : populatedApplicant?.jobPosition;
+
+    if (populatedJobPos) {
+      if (Array.isArray(populatedJobPos.jobSpecsWithDetails) && populatedJobPos.jobSpecsWithDetails.length) {
+        return populatedJobPos.jobSpecsWithDetails;
+      }
+      if (Array.isArray(populatedJobPos.jobSpecs) && populatedJobPos.jobSpecs.length) {
+        return populatedJobPos.jobSpecs;
+      }
+    }
+
+    if (resolvedJobPosId && Array.isArray(jobPositions)) {
+      const found = jobPositions.find((j: any) => String(j?._id) === String(resolvedJobPosId));
+      if (found) {
+        if (Array.isArray((found as any).jobSpecsWithDetails) && (found as any).jobSpecsWithDetails.length) {
+          return (found as any).jobSpecsWithDetails;
+        }
+        if (Array.isArray((found as any).jobSpecs) && (found as any).jobSpecs.length) {
+          return (found as any).jobSpecs;
+        }
+      }
+    }
+
+    return [] as any[];
+  };
+
+  const buildInitialJobSpecsResponses = (src: any, availableSpecs: any[] = []) => {
+    const answerMap = new Map<string, boolean>();
+
+    const direct = Array.isArray(src?.jobSpecsResponses) ? src.jobSpecsResponses : [];
+    const fromDirect = direct
+      .map((r: any) => ({
+        jobSpecId: normalizeSpecId(r?.jobSpecId ?? r?._id ?? r?.id),
+        answer: typeof r?.answer === 'boolean' ? r.answer : Boolean(r?.answer),
+      }))
+      .filter((r: any) => Boolean(r.jobSpecId));
+
+    fromDirect.forEach((r: any) => answerMap.set(String(r.jobSpecId), Boolean(r.answer)));
+
+    const fallbackSpecs = Array.isArray(src?.jobSpecsWithDetails)
+      ? src.jobSpecsWithDetails
+      : Array.isArray(src?.jobSpecs)
+      ? src.jobSpecs
+      : [];
+
+    const fromFallback = fallbackSpecs
+      .map((s: any) => ({
+        jobSpecId: normalizeSpecId(s?.jobSpecId ?? s?._id ?? s?.id),
+        answer: typeof s?.answer === 'boolean' ? s.answer : Boolean(s?.answer),
+      }))
+      .filter((r: any) => Boolean(r.jobSpecId));
+
+    fromFallback.forEach((r: any) => {
+      if (!answerMap.has(String(r.jobSpecId))) {
+        answerMap.set(String(r.jobSpecId), Boolean(r.answer));
+      }
+    });
+
+    (availableSpecs || []).forEach((s: any) => {
+      const specId = normalizeSpecId(s?.jobSpecId ?? s?._id ?? s?.id);
+      if (!specId) return;
+      if (!answerMap.has(String(specId))) {
+        answerMap.set(String(specId), false);
+      }
+    });
+
+    return Array.from(answerMap.entries()).map(([jobSpecId, answer]) => ({ jobSpecId, answer }));
+  };
+
+  const [isInterviewEditMode, setIsInterviewEditMode] = useState(false);
+  const [isSavingInterviewEdit, setIsSavingInterviewEdit] = useState(false);
+  const [interviewUnmappedCustomResponses, setInterviewUnmappedCustomResponses] =
+    useState<Record<string, any>>({});
+  const [interviewEditForm, setInterviewEditForm] = useState<InterviewEditFormState>({
+    fullName: '',
+    email: '',
+    phone: '',
+    gender: '',
+    birthDate: '',
+    address: '',
+    expectedSalary: '',
+    customResponses: {},
+    jobSpecsResponses: [],
+  });
+
+  const openInterviewEditMode = () => {
+    if (!applicant) return;
+
+    const availableCustomFields = getAvailableCustomFieldsForInterview();
+    const availableSpecs = getAvailableJobSpecsForInterview();
+
+    const rawCustomResponses =
+      applicant?.customResponses && typeof applicant.customResponses === 'object'
+        ? applicant.customResponses
+        : applicant?.customFieldResponses && typeof applicant.customFieldResponses === 'object'
+        ? applicant.customFieldResponses
+        : {};
+
+    const mappedResponseKeys = new Set<string>();
+    const nextCustomResponses: Record<string, any> = {};
+
+    availableCustomFields.forEach((field: any, fieldIndex: number) => {
+      const fieldId = getCustomFieldId(field, fieldIndex);
+      const matchedKey = findMatchingResponseKeyForField(field, rawCustomResponses);
+      if (matchedKey) mappedResponseKeys.add(matchedKey);
+      const rawValue =
+        matchedKey && Object.prototype.hasOwnProperty.call(rawCustomResponses, matchedKey)
+          ? rawCustomResponses[matchedKey]
+          : rawCustomResponses[fieldId];
+
+      nextCustomResponses[fieldId] = coerceCustomFieldValueForForm(field, rawValue);
+    });
+
+    const unmappedCustomResponses = Object.fromEntries(
+      Object.entries(rawCustomResponses).filter(([key]) => !mappedResponseKeys.has(key))
+    );
+
+    setInterviewUnmappedCustomResponses(unmappedCustomResponses);
+
+    setInterviewEditForm({
+      fullName: applicant?.fullName ? String(applicant.fullName) : '',
+      email: applicant?.email ? String(applicant.email) : '',
+      phone: applicant?.phone ? String(applicant.phone) : '',
+      gender: applicant?.gender ? normalizeGenderLocal(applicant.gender) : '',
+      birthDate: toInputDate(getBirthDateValue()),
+      address: applicant?.address ? String(applicant.address) : '',
+      expectedSalary:
+        applicant?.expectedSalary !== undefined && applicant?.expectedSalary !== null
+          ? String(applicant.expectedSalary)
+          : '',
+      customResponses: nextCustomResponses,
+      jobSpecsResponses: buildInitialJobSpecsResponses(applicant, availableSpecs),
+    });
+
+    setIsInterviewEditMode(true);
+  };
+
+  const setInterviewCustomFieldValue = (fieldId: string, value: any) => {
+    setInterviewEditForm((prev) => ({
+      ...prev,
+      customResponses: {
+        ...prev.customResponses,
+        [fieldId]: value,
+      },
+    }));
+  };
+
+  const addInterviewRepeatableRow = (field: any, fieldId: string) => {
+    setInterviewEditForm((prev) => {
+      const currentRows = Array.isArray(prev.customResponses[fieldId])
+        ? [...prev.customResponses[fieldId]]
+        : [];
+      const groupFields = getCustomFieldGroupFields(field);
+      const newRow: Record<string, any> = {};
+
+      groupFields.forEach((subField: any, subIndex: number) => {
+        const subFieldId = getCustomFieldId(subField, subIndex);
+        newRow[subFieldId] = coerceCustomFieldValueForForm(subField, undefined);
+      });
+
+      currentRows.push(newRow);
+      return {
+        ...prev,
+        customResponses: {
+          ...prev.customResponses,
+          [fieldId]: currentRows,
+        },
+      };
+    });
+  };
+
+  const removeInterviewRepeatableRow = (fieldId: string, rowIndex: number) => {
+    setInterviewEditForm((prev) => {
+      const currentRows = Array.isArray(prev.customResponses[fieldId])
+        ? [...prev.customResponses[fieldId]]
+        : [];
+      const nextRows = currentRows.filter((_, idx) => idx !== rowIndex);
+
+      return {
+        ...prev,
+        customResponses: {
+          ...prev.customResponses,
+          [fieldId]: nextRows,
+        },
+      };
+    });
+  };
+
+  const updateInterviewRepeatableCell = (
+    fieldId: string,
+    rowIndex: number,
+    subFieldId: string,
+    value: any
+  ) => {
+    setInterviewEditForm((prev) => {
+      const currentRows = Array.isArray(prev.customResponses[fieldId])
+        ? [...prev.customResponses[fieldId]]
+        : [];
+      const row =
+        currentRows[rowIndex] && typeof currentRows[rowIndex] === 'object'
+          ? { ...currentRows[rowIndex] }
+          : {};
+
+      row[subFieldId] = value;
+      currentRows[rowIndex] = row;
+
+      return {
+        ...prev,
+        customResponses: {
+          ...prev.customResponses,
+          [fieldId]: currentRows,
+        },
+      };
+    });
+  };
+
+  const updateInterviewJobSpecAnswer = (jobSpecId: string, answer: boolean) => {
+    if (!jobSpecId) return;
+    setInterviewEditForm((prev) => {
+      const nextResponses = [...prev.jobSpecsResponses];
+      const idx = nextResponses.findIndex((r) => String(r.jobSpecId) === String(jobSpecId));
+      if (idx >= 0) {
+        nextResponses[idx] = { ...nextResponses[idx], answer };
+      } else {
+        nextResponses.push({ jobSpecId, answer });
+      }
+      return { ...prev, jobSpecsResponses: nextResponses };
+    });
+  };
+
+  const handleInterviewEditSave = async () => {
+    if (!id || !applicant) return;
+
+    const expectedSalaryValue = interviewEditForm.expectedSalary.trim() === ''
+      ? undefined
+      : Number(interviewEditForm.expectedSalary);
+
+    if (
+      expectedSalaryValue !== undefined &&
+      (!Number.isFinite(expectedSalaryValue) || Number.isNaN(expectedSalaryValue))
+    ) {
+      Swal.fire('Invalid Salary', 'Expected salary must be a valid number.', 'error');
+      return;
+    }
+
+    const availableCustomFields = getAvailableCustomFieldsForInterview();
+    const customResponsesPayload: Record<string, any> = {
+      ...(interviewUnmappedCustomResponses || {}),
+    };
+
+    availableCustomFields.forEach((field: any, fieldIndex: number) => {
+      const fieldId = getCustomFieldId(field, fieldIndex);
+      customResponsesPayload[fieldId] = coerceCustomFieldValueForPayload(
+        field,
+        interviewEditForm.customResponses[fieldId]
+      );
+    });
+
+    const availableSpecs = getAvailableJobSpecsForInterview();
+    const jobSpecsResponseMap = new Map<string, boolean>();
+
+    interviewEditForm.jobSpecsResponses
+      .filter((r) => Boolean(r?.jobSpecId))
+      .forEach((r) => {
+        jobSpecsResponseMap.set(String(r.jobSpecId), Boolean(r.answer));
+      });
+
+    // Ensure every available job spec is sent with an explicit boolean answer.
+    (availableSpecs || []).forEach((s: any) => {
+      const specId = normalizeSpecId(s?.jobSpecId ?? s?._id ?? s?.id);
+      if (!specId) return;
+      if (!jobSpecsResponseMap.has(String(specId))) {
+        jobSpecsResponseMap.set(String(specId), false);
+      }
+    });
+
+    const payload: any = {
+      fullName: interviewEditForm.fullName.trim(),
+      email: interviewEditForm.email.trim(),
+      phone: interviewEditForm.phone.trim(),
+      gender: interviewEditForm.gender.trim(),
+      address: interviewEditForm.address.trim(),
+      customResponses: customResponsesPayload,
+      jobSpecsResponses: Array.from(jobSpecsResponseMap.entries()).map(([jobSpecId, answer]) => ({
+        jobSpecId: String(jobSpecId),
+        answer: Boolean(answer),
+      })),
+    };
+
+    if (interviewEditForm.birthDate) payload.birthDate = interviewEditForm.birthDate;
+    if (expectedSalaryValue !== undefined) payload.expectedSalary = expectedSalaryValue;
+
+    try {
+      setIsSavingInterviewEdit(true);
+      await updateApplicantMutation.mutateAsync({ id, data: payload });
+      setIsInterviewEditMode(false);
+      Swal.fire('Saved', 'Applicant interview data was updated successfully.', 'success');
+    } catch (err: any) {
+      Swal.fire('Update Failed', getErrorMessage(err), 'error');
+    } finally {
+      setIsSavingInterviewEdit(false);
+    }
+  };
+
+  const handleInterviewEditCancel = () => {
+    setIsInterviewEditMode(false);
+  };
 
   
 
@@ -1236,6 +1859,8 @@ const ApplicantData = () => {
     });
   };
 
+  const customFieldsForInterview = getAvailableCustomFieldsForInterview();
+
   return (
     <>
       <PageMeta
@@ -1260,6 +1885,34 @@ const ApplicantData = () => {
             >
               <span className="hidden sm:inline">{applicant.status.charAt(0).toUpperCase() + applicant.status.slice(1)}</span> 
             </button>
+            <button
+              onClick={openInterviewEditMode}
+              disabled={isInterviewEditMode}
+              className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-amber-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              <svg className="h-3 w-3 sm:h-4 sm:w-4" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+              Interview
+            </button>
+            {isInterviewEditMode && (
+              <>
+                <button
+                  onClick={handleInterviewEditSave}
+                  disabled={isSavingInterviewEdit}
+                  className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-emerald-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {isSavingInterviewEdit ? 'Saving...' : 'Save'}
+                </button>
+                <button
+                  onClick={handleInterviewEditCancel}
+                  disabled={isSavingInterviewEdit}
+                  className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-slate-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  Cancel
+                </button>
+              </>
+            )}
             <button
               onClick={() => {
                 setFormResetKey(prev => prev + 1); // Reset DatePickers
@@ -1403,9 +2056,21 @@ const ApplicantData = () => {
               </svg>
             </div>
             <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Full Name</Label>
-            <div dir={isArabic(applicant.fullName) ? 'rtl' : undefined} className={`text-base font-bold text-gray-900 dark:text-white ${isArabic(applicant.fullName) ? 'text-right' : ''}`}>
-              {applicant.fullName}
-            </div>
+            {isInterviewEditMode ? (
+              <input
+                type="text"
+                value={interviewEditForm.fullName}
+                onChange={(e) =>
+                  setInterviewEditForm((prev) => ({ ...prev, fullName: e.target.value }))
+                }
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-brand-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                placeholder="Full name"
+              />
+            ) : (
+              <div dir={isArabic(applicant.fullName) ? 'rtl' : undefined} className={`text-base font-bold text-gray-900 dark:text-white ${isArabic(applicant.fullName) ? 'text-right' : ''}`}>
+                {applicant.fullName}
+              </div>
+            )}
           </div>
         </div>
 
@@ -1418,7 +2083,17 @@ const ApplicantData = () => {
               </svg>
             </div>
             <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Email</Label>
-            {applicant.email ? (
+            {isInterviewEditMode ? (
+              <input
+                type="email"
+                value={interviewEditForm.email}
+                onChange={(e) =>
+                  setInterviewEditForm((prev) => ({ ...prev, email: e.target.value }))
+                }
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                placeholder="Email"
+              />
+            ) : applicant.email ? (
               <a
                 href={`mailto:${applicant.email}?subject=${encodeURIComponent('Regarding your application')}`}
                 target="_blank"
@@ -1443,7 +2118,17 @@ const ApplicantData = () => {
               </svg>
             </div>
             <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Phone</Label>
-            {applicant.phone ? (
+            {isInterviewEditMode ? (
+              <input
+                type="tel"
+                value={interviewEditForm.phone}
+                onChange={(e) =>
+                  setInterviewEditForm((prev) => ({ ...prev, phone: e.target.value }))
+                }
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-green-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                placeholder="Phone"
+              />
+            ) : applicant.phone ? (
               <a
                 href={`https://wa.me/${(applicant.phone || '').toString().replace(/\D/g, '')}`}
                 target="_blank"
@@ -1468,10 +2153,21 @@ const ApplicantData = () => {
                 </svg>
               </div>
               <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Birth Date</Label>
-              <p className="text-sm text-gray-900 dark:text-white">{(() => {
-                const bd = getBirthDateValue();
-                return bd ? new Date(bd).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '-';
-              })()}</p>
+              {isInterviewEditMode ? (
+                <input
+                  type="date"
+                  value={interviewEditForm.birthDate}
+                  onChange={(e) =>
+                    setInterviewEditForm((prev) => ({ ...prev, birthDate: e.target.value }))
+                  }
+                  className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-teal-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                />
+              ) : (
+                <p className="text-sm text-gray-900 dark:text-white">{(() => {
+                  const bd = getBirthDateValue();
+                  return bd ? new Date(bd).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '-';
+                })()}</p>
+              )}
             </div>
           </div>
 
@@ -1484,10 +2180,24 @@ const ApplicantData = () => {
                 </svg>
               </div>
               <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Gender</Label>
-              <p className="text-sm text-gray-900 dark:text-white">{(() => {
-                const g = getGenderValue();
-                return g ? normalizeGenderLocal(g) : '-';
-              })()}</p>
+              {isInterviewEditMode ? (
+                <select
+                  value={interviewEditForm.gender}
+                  onChange={(e) =>
+                    setInterviewEditForm((prev) => ({ ...prev, gender: e.target.value }))
+                  }
+                  className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-pink-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                >
+                  <option value="">Select</option>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                </select>
+              ) : (
+                <p className="text-sm text-gray-900 dark:text-white">{(() => {
+                  const g = getGenderValue();
+                  return g ? normalizeGenderLocal(g) : '-';
+                })()}</p>
+              )}
             </div>
           </div>
 
@@ -1500,12 +2210,25 @@ const ApplicantData = () => {
                     </svg>
                   </div>
                   <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Expected Salary</Label>
-                  <p dir={isArabic(String(applicant?.expectedSalary ?? '')) ? 'rtl' : undefined} className={`text-sm text-gray-900 dark:text-white break-words ${isArabic(String(applicant?.expectedSalary ?? '')) ? 'text-right' : ''}`}>
-                    {(() => {
-                      const val = applicant?.expectedSalary;
-                      return val !== undefined && val !== null ? toPlainString(val) : '-';
-                    })()}
-                  </p>
+                  {isInterviewEditMode ? (
+                    <input
+                      type="number"
+                      min="0"
+                      value={interviewEditForm.expectedSalary}
+                      onChange={(e) =>
+                        setInterviewEditForm((prev) => ({ ...prev, expectedSalary: e.target.value }))
+                      }
+                      className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                      placeholder="Expected salary"
+                    />
+                  ) : (
+                    <p dir={isArabic(String(applicant?.expectedSalary ?? '')) ? 'rtl' : undefined} className={`text-sm text-gray-900 dark:text-white break-words ${isArabic(String(applicant?.expectedSalary ?? '')) ? 'text-right' : ''}`}>
+                      {(() => {
+                        const val = applicant?.expectedSalary;
+                        return val !== undefined && val !== null ? toPlainString(val) : '-';
+                      })()}
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -1560,7 +2283,19 @@ const ApplicantData = () => {
               </div>
               <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Address</Label>
             </div>
-            <p dir={isArabic(applicant.address) ? 'rtl' : undefined} className={`text-sm text-gray-900 dark:text-white break-words ${isArabic(applicant.address) ? 'text-right' : ''}`}>{applicant.address}</p>
+            {isInterviewEditMode ? (
+              <input
+                type="text"
+                value={interviewEditForm.address}
+                onChange={(e) =>
+                  setInterviewEditForm((prev) => ({ ...prev, address: e.target.value }))
+                }
+                className="w-full max-w-md rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-teal-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                placeholder="Address"
+              />
+            ) : (
+              <p dir={isArabic(applicant.address) ? 'rtl' : undefined} className={`text-sm text-gray-900 dark:text-white break-words ${isArabic(applicant.address) ? 'text-right' : ''}`}>{applicant.address}</p>
+            )}
           </div>
         </div>
 
@@ -1705,6 +2440,33 @@ const ApplicantData = () => {
     return false;
   };
 
+  const getSpecResponseId = (specEntry: any): string => {
+    const direct = normalizeSpecId(specEntry?.jobSpecId ?? specEntry?._id ?? specEntry?.id);
+    if (direct) return direct;
+    if (specEntry?.jobSpecId && typeof specEntry.jobSpecId === 'object') {
+      return normalizeSpecId(specEntry.jobSpecId);
+    }
+    return '';
+  };
+
+  const interviewResponseMap = new Map<string, boolean>();
+  if (isInterviewEditMode) {
+    (interviewEditForm.jobSpecsResponses || []).forEach((r) => {
+      if (!r?.jobSpecId) return;
+      interviewResponseMap.set(String(r.jobSpecId), Boolean(r.answer));
+    });
+  }
+
+  const getEffectiveAnswer = (specEntry: any, idx: number): boolean => {
+    if (isInterviewEditMode) {
+      const specId = getSpecResponseId(specEntry);
+      if (specId && interviewResponseMap.has(specId)) {
+        return Boolean(interviewResponseMap.get(specId));
+      }
+    }
+    return getAnswer(specEntry, idx);
+  };
+
   if (!specs || specs.length === 0) return null;
 
   return (
@@ -1737,8 +2499,8 @@ const ApplicantData = () => {
             })();
 
             const weight: number = typeof s.weight === 'number' ? s.weight : Number(s.weight ?? 0);
-
-            const answered: boolean = getAnswer(s, idx);
+            const specResponseId = getSpecResponseId(s);
+            const answered: boolean = getEffectiveAnswer(s, idx);
 
             return (
               <div
@@ -1766,27 +2528,59 @@ const ApplicantData = () => {
                     Weight: {weight}
                   </div>
 
-                  <div className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold border transition-colors ${
-                    answered
-                      ? 'bg-green-50 text-green-700 border-green-100'
-                      : 'bg-gray-50 text-gray-500 border-gray-200'
-                  }`}>
-                    {answered ? (
-                      <>
-                        <svg className="w-3.5 h-3.5 mr-1.5 text-green-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                        </svg>
-                        <span>Met</span>
-                      </>
-                    ) : (
-                      <>
-                        <svg className="w-3.5 h-3.5 mr-1.5 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                        <span>Not met</span>
-                      </>
-                    )}
-                  </div>
+                  {isInterviewEditMode ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!specResponseId) return;
+                        updateInterviewJobSpecAnswer(specResponseId, !answered);
+                      }}
+                      disabled={!specResponseId}
+                      className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold border transition-colors ${
+                        answered
+                          ? 'bg-green-50 text-green-700 border-green-100'
+                          : 'bg-gray-50 text-gray-500 border-gray-200'
+                      } ${!specResponseId ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-90'}`}
+                    >
+                      {answered ? (
+                        <>
+                          <svg className="w-3.5 h-3.5 mr-1.5 text-green-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          </svg>
+                          <span>Met</span>
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-3.5 h-3.5 mr-1.5 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                          <span>Not met</span>
+                        </>
+                      )}
+                    </button>
+                  ) : (
+                    <div className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold border transition-colors ${
+                      answered
+                        ? 'bg-green-50 text-green-700 border-green-100'
+                        : 'bg-gray-50 text-gray-500 border-gray-200'
+                    }`}>
+                      {answered ? (
+                        <>
+                          <svg className="w-3.5 h-3.5 mr-1.5 text-green-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          </svg>
+                          <span>Met</span>
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-3.5 h-3.5 mr-1.5 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                          <span>Not met</span>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             );
@@ -1796,7 +2590,331 @@ const ApplicantData = () => {
     </div>
   );
 })()}
-        <CustomResponses applicant={applicant} />
+        {isInterviewEditMode ? (
+          <div className="rounded-2xl overflow-hidden bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-900 dark:to-gray-800 border-2 border-blue-200 dark:border-blue-900/50 shadow-lg">
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-700 dark:to-indigo-700 px-8 py-6">
+              <h3 className="text-2xl font-extrabold text-white">Custom Responses (Editable)</h3>
+              <p className="text-sm text-blue-100 mt-0.5">Edit applicant responses using this job&apos;s custom fields</p>
+            </div>
+            <div className="p-8 space-y-5">
+              {customFieldsForInterview.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-blue-200 bg-white/70 p-4 text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-300">
+                  No custom fields found for this job position.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  {[...customFieldsForInterview]
+                    .sort((a: any, b: any) => {
+                      const ao = Number(a?.displayOrder ?? a?.order ?? 0);
+                      const bo = Number(b?.displayOrder ?? b?.order ?? 0);
+                      return ao - bo;
+                    })
+                    .map((field: any, fieldIndex: number) => {
+                      const fieldId = getCustomFieldId(field, fieldIndex);
+                      const fieldLabel = getCustomFieldLabelText(field);
+                      const inputType = String(field?.inputType || 'text').toLowerCase();
+                      const choices = getCustomFieldChoices(field);
+                      const groupFields = getCustomFieldGroupFields(field);
+                      const rawValue = interviewEditForm.customResponses?.[fieldId];
+
+                      return (
+                        <div
+                          key={`custom_field_${fieldId}_${fieldIndex}`}
+                          className="rounded-xl border border-blue-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900"
+                        >
+                          <div className="mb-3 flex items-center justify-between gap-2">
+                            <Label className="text-xs text-blue-700 dark:text-blue-300 font-bold uppercase">
+                              {fieldLabel}
+                            </Label>
+                            <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-blue-700 dark:bg-blue-900/40 dark:text-blue-200">
+                              {inputType.replace(/_/g, ' ')}
+                            </span>
+                          </div>
+
+                          {inputType === 'repeatable_group' ? (
+                            <div className="space-y-3">
+                              <div className="flex items-center justify-between">
+                                <p className="text-xs text-gray-500 dark:text-gray-400">
+                                  Add multiple entries for this grouped field.
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={() => addInterviewRepeatableRow(field, fieldId)}
+                                  className="inline-flex items-center rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+                                >
+                                  <PlusIcon className="h-3 w-3 mr-1" />
+                                  Add Entry
+                                </button>
+                              </div>
+
+                              {Array.isArray(rawValue) && rawValue.length > 0 ? (
+                                <div className="space-y-3">
+                                  {rawValue.map((row: any, rowIndex: number) => (
+                                    <div key={`${fieldId}_row_${rowIndex}`} className="rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+                                      <div className="mb-3 flex items-center justify-between">
+                                        <p className="text-xs font-semibold text-gray-600 dark:text-gray-300">Entry #{rowIndex + 1}</p>
+                                        <button
+                                          type="button"
+                                          onClick={() => removeInterviewRepeatableRow(fieldId, rowIndex)}
+                                          className="text-xs font-semibold text-red-600 hover:text-red-700"
+                                        >
+                                          Remove
+                                        </button>
+                                      </div>
+
+                                      <div className="grid grid-cols-1 gap-3">
+                                        {groupFields.map((subField: any, subFieldIndex: number) => {
+                                          const subFieldId = getCustomFieldId(subField, subFieldIndex);
+                                          const subLabel = getCustomFieldLabelText(subField);
+                                          const subInputType = String(subField?.inputType || 'text').toLowerCase();
+                                          const subChoices = getCustomFieldChoices(subField);
+                                          const subValue = row?.[subFieldId];
+
+                                          return (
+                                            <div key={`${fieldId}_${subFieldId}_${subFieldIndex}`}>
+                                              <Label className="mb-1 block text-[11px] font-semibold uppercase text-gray-500 dark:text-gray-400">
+                                                {subLabel}
+                                              </Label>
+
+                                              {subInputType === 'textarea' ? (
+                                                <textarea
+                                                  value={subValue ?? ''}
+                                                  onChange={(e) =>
+                                                    updateInterviewRepeatableCell(fieldId, rowIndex, subFieldId, e.target.value)
+                                                  }
+                                                  rows={3}
+                                                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                                                />
+                                              ) : subInputType === 'dropdown' ? (
+                                                <select
+                                                  value={subValue ?? ''}
+                                                  onChange={(e) =>
+                                                    updateInterviewRepeatableCell(fieldId, rowIndex, subFieldId, e.target.value)
+                                                  }
+                                                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                                                >
+                                                  <option value="">Select</option>
+                                                  {subChoices.map((choice: string) => (
+                                                    <option key={`${subFieldId}_${choice}`} value={choice}>
+                                                      {choice}
+                                                    </option>
+                                                  ))}
+                                                </select>
+                                              ) : subInputType === 'radio' ? (
+                                                <div className="space-y-1">
+                                                  {subChoices.map((choice: string) => (
+                                                    <label key={`${subFieldId}_${choice}`} className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                                                      <input
+                                                        type="radio"
+                                                        name={`${fieldId}_${rowIndex}_${subFieldId}`}
+                                                        checked={String(subValue ?? '') === choice}
+                                                        onChange={() =>
+                                                          updateInterviewRepeatableCell(fieldId, rowIndex, subFieldId, choice)
+                                                        }
+                                                      />
+                                                      <span>{choice}</span>
+                                                    </label>
+                                                  ))}
+                                                </div>
+                                              ) : subInputType === 'checkbox' ? (
+                                                subChoices.length > 0 ? (
+                                                  <div className="space-y-1">
+                                                    {subChoices.map((choice: string) => {
+                                                      const selected = Array.isArray(subValue)
+                                                        ? subValue.map((v: any) => String(v))
+                                                        : [];
+                                                      const checked = selected.includes(choice);
+                                                      return (
+                                                        <label key={`${subFieldId}_${choice}`} className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                                                          <input
+                                                            type="checkbox"
+                                                            checked={checked}
+                                                            onChange={(e) => {
+                                                              const next = e.target.checked
+                                                                ? [...new Set([...selected, choice])]
+                                                                : selected.filter((v: string) => v !== choice);
+                                                              updateInterviewRepeatableCell(fieldId, rowIndex, subFieldId, next);
+                                                            }}
+                                                          />
+                                                          <span>{choice}</span>
+                                                        </label>
+                                                      );
+                                                    })}
+                                                  </div>
+                                                ) : (
+                                                  <label className="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                                                    <input
+                                                      type="checkbox"
+                                                      checked={Boolean(subValue)}
+                                                      onChange={(e) =>
+                                                        updateInterviewRepeatableCell(fieldId, rowIndex, subFieldId, e.target.checked)
+                                                      }
+                                                    />
+                                                    <span>Checked</span>
+                                                  </label>
+                                                )
+                                              ) : subInputType === 'tags' ? (
+                                                <input
+                                                  type="text"
+                                                  value={Array.isArray(subValue) ? subValue.join(', ') : ''}
+                                                  onChange={(e) => {
+                                                    const next = e.target.value
+                                                      .split(',')
+                                                      .map((v) => v.trim())
+                                                      .filter(Boolean);
+                                                    updateInterviewRepeatableCell(fieldId, rowIndex, subFieldId, next);
+                                                  }}
+                                                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                                                  placeholder="tag1, tag2, tag3"
+                                                />
+                                              ) : (
+                                                <input
+                                                  type={
+                                                    subInputType === 'number'
+                                                      ? 'number'
+                                                      : subInputType === 'date'
+                                                      ? 'date'
+                                                      : subInputType === 'email'
+                                                      ? 'email'
+                                                      : subInputType === 'url'
+                                                      ? 'url'
+                                                      : subInputType === 'phone'
+                                                      ? 'tel'
+                                                      : 'text'
+                                                  }
+                                                  value={subValue ?? ''}
+                                                  onChange={(e) =>
+                                                    updateInterviewRepeatableCell(fieldId, rowIndex, subFieldId, e.target.value)
+                                                  }
+                                                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                                                />
+                                              )}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="rounded-lg border border-dashed border-gray-300 px-3 py-2 text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                                  No entries yet.
+                                </p>
+                              )}
+                            </div>
+                          ) : inputType === 'textarea' ? (
+                            <textarea
+                              value={rawValue ?? ''}
+                              onChange={(e) => setInterviewCustomFieldValue(fieldId, e.target.value)}
+                              rows={4}
+                              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                            />
+                          ) : inputType === 'dropdown' ? (
+                            <select
+                              value={rawValue ?? ''}
+                              onChange={(e) => setInterviewCustomFieldValue(fieldId, e.target.value)}
+                              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                            >
+                              <option value="">Select</option>
+                              {choices.map((choice: string) => (
+                                <option key={`${fieldId}_${choice}`} value={choice}>
+                                  {choice}
+                                </option>
+                              ))}
+                            </select>
+                          ) : inputType === 'radio' ? (
+                            <div className="space-y-1">
+                              {choices.map((choice: string) => (
+                                <label key={`${fieldId}_${choice}`} className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                                  <input
+                                    type="radio"
+                                    name={`field_${fieldId}`}
+                                    checked={String(rawValue ?? '') === choice}
+                                    onChange={() => setInterviewCustomFieldValue(fieldId, choice)}
+                                  />
+                                  <span>{choice}</span>
+                                </label>
+                              ))}
+                            </div>
+                          ) : inputType === 'checkbox' ? (
+                            choices.length > 0 ? (
+                              <div className="space-y-1">
+                                {choices.map((choice: string) => {
+                                  const selected = Array.isArray(rawValue)
+                                    ? rawValue.map((v: any) => String(v))
+                                    : [];
+                                  const checked = selected.includes(choice);
+                                  return (
+                                    <label key={`${fieldId}_${choice}`} className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={(e) => {
+                                          const next = e.target.checked
+                                            ? [...new Set([...selected, choice])]
+                                            : selected.filter((v: string) => v !== choice);
+                                          setInterviewCustomFieldValue(fieldId, next);
+                                        }}
+                                      />
+                                      <span>{choice}</span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <label className="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                                <input
+                                  type="checkbox"
+                                  checked={Boolean(rawValue)}
+                                  onChange={(e) => setInterviewCustomFieldValue(fieldId, e.target.checked)}
+                                />
+                                <span>Checked</span>
+                              </label>
+                            )
+                          ) : inputType === 'tags' ? (
+                            <input
+                              type="text"
+                              value={Array.isArray(rawValue) ? rawValue.join(', ') : ''}
+                              onChange={(e) => {
+                                const next = e.target.value
+                                  .split(',')
+                                  .map((v) => v.trim())
+                                  .filter(Boolean);
+                                setInterviewCustomFieldValue(fieldId, next);
+                              }}
+                              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                              placeholder="tag1, tag2, tag3"
+                            />
+                          ) : (
+                            <input
+                              type={
+                                inputType === 'number'
+                                  ? 'number'
+                                  : inputType === 'date'
+                                  ? 'date'
+                                  : inputType === 'email'
+                                  ? 'email'
+                                  : inputType === 'url'
+                                  ? 'url'
+                                  : inputType === 'phone'
+                                  ? 'tel'
+                                  : 'text'
+                              }
+                              value={rawValue ?? ''}
+                              onChange={(e) => setInterviewCustomFieldValue(fieldId, e.target.value)}
+                              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                            />
+                          )}
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <CustomResponses applicant={applicant} customFields={customFieldsForInterview} />
+        )}
 
         
         

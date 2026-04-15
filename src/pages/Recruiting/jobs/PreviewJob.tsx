@@ -29,6 +29,103 @@ const getTranslation = (value: any, defaultValue = ""): string => {
   return plain || defaultValue;
 };
 
+type FieldConfigRule = {
+  visible: boolean;
+  required: boolean;
+};
+
+type FieldConfig = {
+  fullName: FieldConfigRule;
+  email: FieldConfigRule;
+  phone: FieldConfigRule;
+  gender: FieldConfigRule;
+  birthDate: FieldConfigRule;
+  address: FieldConfigRule;
+  profilePhoto: FieldConfigRule;
+  cvFilePath: FieldConfigRule;
+  expectedSalary: FieldConfigRule;
+};
+
+const previewFieldConfigItems: Array<{ key: keyof FieldConfig; label: string }> = [
+  { key: "fullName", label: "Full Name" },
+  { key: "email", label: "Email" },
+  { key: "phone", label: "Phone" },
+  { key: "gender", label: "Gender" },
+  { key: "birthDate", label: "Birth Date" },
+  { key: "address", label: "Address" },
+  { key: "profilePhoto", label: "Profile Photo" },
+  { key: "cvFilePath", label: "CV Upload" },
+  { key: "expectedSalary", label: "Expected Salary" },
+];
+
+const getDefaultFieldConfig = (): FieldConfig => ({
+  fullName: { visible: true, required: true },
+  email: { visible: true, required: true },
+  phone: { visible: true, required: true },
+  gender: { visible: true, required: true },
+  birthDate: { visible: true, required: true },
+  address: { visible: true, required: true },
+  profilePhoto: { visible: true, required: true },
+  cvFilePath: { visible: true, required: false },
+  expectedSalary: { visible: false, required: false },
+});
+
+const normalizeFieldConfig = (
+  value: any,
+  legacySalaryFieldVisible?: boolean
+): FieldConfig => {
+  const defaults = getDefaultFieldConfig();
+  const raw = value && typeof value === "object" ? value : {};
+
+  const withExpectedSalaryFallback = {
+    ...raw,
+    expectedSalary:
+      raw.expectedSalary && typeof raw.expectedSalary === "object"
+        ? raw.expectedSalary
+        : typeof legacySalaryFieldVisible === "boolean"
+        ? {
+            visible: legacySalaryFieldVisible,
+            required: false,
+          }
+        : raw.expectedSalary,
+  };
+
+  const normalizeRule = (
+    incoming: any,
+    fallback: FieldConfigRule
+  ): FieldConfigRule => {
+    const visible =
+      typeof incoming?.visible === "boolean" ? incoming.visible : fallback.visible;
+    const required =
+      typeof incoming?.required === "boolean"
+        ? incoming.required
+        : fallback.required;
+
+    return {
+      visible,
+      required: visible ? required : false,
+    };
+  };
+
+  return {
+    fullName: normalizeRule(withExpectedSalaryFallback.fullName, defaults.fullName),
+    email: normalizeRule(withExpectedSalaryFallback.email, defaults.email),
+    phone: normalizeRule(withExpectedSalaryFallback.phone, defaults.phone),
+    gender: normalizeRule(withExpectedSalaryFallback.gender, defaults.gender),
+    birthDate: normalizeRule(withExpectedSalaryFallback.birthDate, defaults.birthDate),
+    address: normalizeRule(withExpectedSalaryFallback.address, defaults.address),
+    profilePhoto: normalizeRule(
+      withExpectedSalaryFallback.profilePhoto,
+      defaults.profilePhoto
+    ),
+    cvFilePath: normalizeRule(withExpectedSalaryFallback.cvFilePath, defaults.cvFilePath),
+    expectedSalary: normalizeRule(
+      withExpectedSalaryFallback.expectedSalary,
+      defaults.expectedSalary
+    ),
+  };
+};
+
 export default function PreviewJob() {
   const { jobId } = useParams<{ jobId: string }>();
   const navigate = useNavigate();
@@ -48,6 +145,22 @@ export default function PreviewJob() {
   
   // Use data from state if available, otherwise use fetched data
   const job = jobFromState || jobFromApi;
+
+  const normalizedFieldConfig = useMemo(
+    () =>
+      normalizeFieldConfig(
+        (job as any)?.fieldConfig,
+        typeof (job as any)?.salaryFieldVisible === "boolean"
+          ? (job as any).salaryFieldVisible
+          : undefined
+      ),
+    [job]
+  );
+
+  const visibleBaseFieldCount = useMemo(
+    () => previewFieldConfigItems.filter((item) => normalizedFieldConfig[item.key].visible).length,
+    [normalizedFieldConfig]
+  );
 
   // Extract company and department data or IDs
   const { companyId, companyData, departmentId, departmentData } = useMemo(() => {
@@ -410,19 +523,64 @@ export default function PreviewJob() {
             <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
               Quick snapshot for recruiters and candidates before moving to the evaluation matrix.
             </p>
-            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="rounded-2xl bg-gray-50 p-4 dark:bg-gray-800/60">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Open Seats</p>
                 <p className="mt-1 text-base font-black text-gray-900 dark:text-white">{job.openPositions || 0}</p>
               </div>
               <div className="rounded-2xl bg-gray-50 p-4 dark:bg-gray-800/60">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Form Inputs</p>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Base Fields Visible</p>
+                <p className="mt-1 text-base font-black text-gray-900 dark:text-white">{visibleBaseFieldCount}</p>
+              </div>
+              <div className="rounded-2xl bg-gray-50 p-4 dark:bg-gray-800/60">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Custom Inputs</p>
                 <p className="mt-1 text-base font-black text-gray-900 dark:text-white">{job.customFields?.length || 0}</p>
               </div>
               <div className="rounded-2xl bg-gray-50 p-4 dark:bg-gray-800/60">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Scoring Factors</p>
                 <p className="mt-1 text-base font-black text-gray-900 dark:text-white">{job.jobSpecs?.length || 0}</p>
               </div>
+            </div>
+          </section>
+
+          <section className="rounded-3xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900 md:p-7">
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white">Base Applicant Fields</h3>
+            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+              Visibility and required rules configured for the default application form fields.
+            </p>
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {previewFieldConfigItems.map((item) => {
+                const config = normalizedFieldConfig[item.key];
+
+                return (
+                  <div
+                    key={item.key}
+                    className="rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-800/50"
+                  >
+                    <p className="text-sm font-bold text-gray-900 dark:text-white">{item.label}</p>
+                    <div className="mt-2 flex items-center gap-2 text-[10px] uppercase tracking-wider">
+                      <span
+                        className={`rounded-md px-2 py-1 font-bold ${
+                          config.visible
+                            ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+                            : "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"
+                        }`}
+                      >
+                        {config.visible ? "Visible" : "Hidden"}
+                      </span>
+                      <span
+                        className={`rounded-md px-2 py-1 font-bold ${
+                          config.required
+                            ? "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+                            : "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"
+                        }`}
+                      >
+                        {config.required ? "Required" : "Optional"}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </section>
         </div>
