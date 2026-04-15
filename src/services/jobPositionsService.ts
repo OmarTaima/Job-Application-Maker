@@ -429,15 +429,17 @@ class JobPositionsService {
 
     if (normalizedItems.length === 0) return;
 
-    for (const item of normalizedItems) {
-      const basePayload = basePayloadById?.[item.id] || {};
-      const payload: UpdateJobPositionRequest = {
-        ...basePayload,
-        order: item.order,
-      };
+    await Promise.all(
+      normalizedItems.map((item) => {
+        const basePayload = basePayloadById?.[item.id] || {};
+        const payload: UpdateJobPositionRequest = {
+          ...basePayload,
+          order: item.order,
+        };
 
-      await this.updateJobPosition(item.id, payload);
-    }
+        return this.updateJobPosition(item.id, payload);
+      })
+    );
   }
 
   /**

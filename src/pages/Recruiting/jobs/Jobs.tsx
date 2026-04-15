@@ -90,6 +90,7 @@ export default function Jobs() {
   const [isSavingOrder, setIsSavingOrder] = useState(false);
   const suppressNavigateRef = useRef(false);
   const orderSyncVersionRef = useRef(0);
+  const orderSyncDebounceRef = useRef<number | null>(null);
 
   // Memoize user-derived values for the query
   const jobQueryCompanyParam = useMemo(() => {
@@ -127,6 +128,14 @@ export default function Jobs() {
       return unchanged ? prevIds : incomingIds;
     });
   }, [jobPositions]);
+
+  useEffect(() => {
+    return () => {
+      if (orderSyncDebounceRef.current !== null) {
+        window.clearTimeout(orderSyncDebounceRef.current);
+      }
+    };
+  }, []);
 
   const orderedJobs = useMemo(() => {
     if (!Array.isArray(jobPositions) || jobPositions.length === 0) return [];
@@ -178,34 +187,38 @@ export default function Jobs() {
     return payload;
   };
 
-  const syncMovedJobOrderToBackend = async ({
-    movedJobId,
+  const syncJobOrderToBackend = async ({
     previousOrderIds,
     nextOrderIds,
   }: {
-    movedJobId: string;
     previousOrderIds: string[];
     nextOrderIds: string[];
   }) => {
-    const movedIndex = nextOrderIds.indexOf(movedJobId);
-    if (movedIndex === -1) return;
+    const jobsById = new Map(jobPositions.map((job: any) => [job?._id, job]));
+    const normalizedNextOrderIds = nextOrderIds.filter((id) => jobsById.has(id));
+    if (normalizedNextOrderIds.length === 0) return;
 
-    const movedJob = jobPositions.find((job: any) => job?._id === movedJobId);
-    if (!movedJob) return;
+    const reorderItems = normalizedNextOrderIds.map((id, index) => ({
+      id,
+      order: index + 1,
+    }));
 
-    const movedOrder = movedIndex + 1;
-    const basePayloadById: Record<string, any> = {
-      [movedJobId]: buildOrderPayload(movedJob, movedOrder),
-    };
+    const basePayloadById = normalizedNextOrderIds.reduce(
+      (acc, id, index) => {
+        const job = jobsById.get(id);
+        if (job) {
+          acc[id] = buildOrderPayload(job, index + 1);
+        }
+        return acc;
+      },
+      {} as Record<string, any>
+    );
 
     const requestVersion = ++orderSyncVersionRef.current;
     setIsSavingOrder(true);
 
     try {
-      await jobPositionsService.reorderJobPositions(
-        [{ id: movedJobId, order: movedOrder }],
-        basePayloadById
-      );
+      await jobPositionsService.reorderJobPositions(reorderItems, basePayloadById);
     } catch (err: any) {
       if (requestVersion === orderSyncVersionRef.current) {
         setOrderedJobIds(previousOrderIds);
@@ -218,6 +231,23 @@ export default function Jobs() {
         setIsSavingOrder(false);
       }
     }
+  };
+
+  const scheduleJobOrderSync = ({
+    previousOrderIds,
+    nextOrderIds,
+  }: {
+    previousOrderIds: string[];
+    nextOrderIds: string[];
+  }) => {
+    if (orderSyncDebounceRef.current !== null) {
+      window.clearTimeout(orderSyncDebounceRef.current);
+    }
+
+    orderSyncDebounceRef.current = window.setTimeout(() => {
+      orderSyncDebounceRef.current = null;
+      void syncJobOrderToBackend({ previousOrderIds, nextOrderIds });
+    }, 250);
   };
 
   const clearDragState = () => {
@@ -265,8 +295,7 @@ export default function Jobs() {
 
       if (hasChanged) {
         setOrderedJobIds(nextOrderIds);
-        void syncMovedJobOrderToBackend({
-          movedJobId: sourceJobId,
+        scheduleJobOrderSync({
           previousOrderIds: baselineOrderIds,
           nextOrderIds,
         });
@@ -606,7 +635,7 @@ export default function Jobs() {
                       </div>
                       <div className="flex items-center gap-1.5 text-xs text-slate-500">
                         <MapPinIcon className="size-3.5" />
-                        {job.location || "Office"}
+                        {job.workArrangement || "Office"}
                       </div>
                     </div>
                   </td>
