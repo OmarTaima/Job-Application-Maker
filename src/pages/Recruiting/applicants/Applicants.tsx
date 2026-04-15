@@ -1,4 +1,11 @@
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import {
+  useState,
+  useMemo,
+  useCallback,
+  useEffect,
+  useRef,
+  useDeferredValue,
+} from 'react';
 // simple in-memory cache for compressed thumbnails
 const _thumbnailCache: Map<string, string> = new Map();
 
@@ -186,6 +193,117 @@ const APPLICANTS_DEFAULT_LAYOUT: TableLayout = {
   columnOrder: [],
 };
 
+type ColumnFilterOption = {
+  id: string;
+  title: string;
+};
+
+type ColumnMultiSelectHeaderProps = {
+  column: any;
+  label: string;
+  options: ColumnFilterOption[];
+  isLaptopViewport: boolean;
+  menuWidth?: number;
+  menuMaxHeight?: number;
+};
+
+function ColumnMultiSelectHeader({
+  column,
+  label,
+  options,
+  isLaptopViewport,
+  menuWidth = 220,
+  menuMaxHeight = 280,
+}: ColumnMultiSelectHeaderProps) {
+  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const current = column.getFilterValue();
+
+  const selected: string[] = Array.isArray(current)
+    ? current.map(String)
+    : current
+      ? [String(current)]
+      : [];
+
+  const toggle = (value: string) => {
+    const next = new Set(selected);
+    if (next.has(value)) next.delete(value);
+    else next.add(value);
+    const arr = Array.from(next);
+    column.setFilterValue(arr.length ? arr : undefined);
+  };
+
+  const clear = () => {
+    column.setFilterValue(undefined);
+    setAnchorEl(null);
+  };
+
+  const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setAnchorEl(event.currentTarget);
+  };
+
+  const handleClose = () => setAnchorEl(null);
+
+  return (
+    <div
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      <div className="flex items-center gap-2">
+        <span className="text-sm font-medium">{label}</span>
+        <button
+          type="button"
+          onClick={handleClick}
+          className={`inline-flex items-center gap-1 rounded bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200 ${
+            isLaptopViewport ? 'px-1.5 py-0.5 text-[10px]' : 'px-2 py-1 text-xs'
+          }`}
+        >
+          {selected.length ? `${selected.length}` : ''}
+          <svg className="h-3 w-3" viewBox="0 0 20 20" fill="none">
+            <path
+              d="M6 8l4 4 4-4"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
+
+        <Menu
+          anchorEl={anchorEl}
+          open={Boolean(anchorEl)}
+          onClose={handleClose}
+          onClick={(e) => e.stopPropagation()}
+          PaperProps={{
+            style: { maxHeight: menuMaxHeight, width: menuWidth },
+            onMouseDown: (e: any) => e.stopPropagation(),
+          }}
+        >
+          <MenuItem onClick={clear} dense>
+            Clear
+          </MenuItem>
+          {options.map((option) => (
+            <MenuItem
+              key={option.id}
+              dense
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                toggle(option.id);
+              }}
+            >
+              <Checkbox checked={selected.includes(option.id)} size="small" />
+              <ListItemText primary={option.title} />
+            </MenuItem>
+          ))}
+        </Menu>
+      </div>
+    </div>
+  );
+}
+
 const Applicants = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -214,14 +332,14 @@ const Applicants = () => {
     }
   }, []);
 
-  const openApplicantDetailsInNewTab = (row: any) => {
+  const openApplicantDetailsInNewTab = useCallback((row: any) => {
     try {
       const url = `${window.location.origin}/applicant-details/${row.id}`;
       window.open(url, '_blank', 'noopener,noreferrer');
     } catch (e) {
       // ignore
     }
-  };
+  }, []);
 
   const currentUserId = useMemo(
     () => String((user as any)?._id || (user as any)?.id || ''),
@@ -230,30 +348,31 @@ const Applicants = () => {
 
   
 
-  const getApplicantHref = (row: any) => {
+  const getApplicantHref = useCallback((row: any) => {
     const orig: any = row?.original ?? row;
     const navId = String(orig?._id || orig?.id || row?.id || '');
     return `/applicant-details/${navId}`;
-  };
+  }, []);
 
-  const handleApplicantLinkClick = (
-    e: React.MouseEvent<HTMLAnchorElement>,
-    row: any
-  ) => {
-    if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) {
+  const handleApplicantLinkClick = useCallback(
+    (e: React.MouseEvent<HTMLAnchorElement>, row: any) => {
+      if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) {
+        e.stopPropagation();
+        return;
+      }
+      e.preventDefault();
       e.stopPropagation();
-      return;
-    }
-    e.preventDefault();
-    e.stopPropagation();
-    navigate(getApplicantHref(row), { state: { applicant: row.original } });
-  };
+      navigate(getApplicantHref(row), { state: { applicant: row.original } });
+    },
+    [getApplicantHref, navigate]
+  );
 
-  const handleApplicantLinkAuxClick = (
-    e: React.MouseEvent<HTMLAnchorElement>
-  ) => {
-    e.stopPropagation();
-  };
+  const handleApplicantLinkAuxClick = useCallback(
+    (e: React.MouseEvent<HTMLAnchorElement>) => {
+      e.stopPropagation();
+    },
+    []
+  );
 
   // Local state
 
@@ -577,10 +696,6 @@ const Applicants = () => {
       mountedRef.current = false;
     };
   }, []);
-  const [statusAnchorEl, setStatusAnchorEl] = useState<HTMLElement | null>(
-    null
-  );
-  const [jobAnchorEl, setJobAnchorEl] = useState<HTMLElement | null>(null);
   const [bulkStatusError, setBulkStatusError] = useState('');
   const [bulkDeleteError, setBulkDeleteError] = useState('');
 
@@ -862,6 +977,13 @@ const Applicants = () => {
     return [...defaultStatuses, ...extra];
   }, [applicants]);
 
+  const statusFilterOptions = useMemo<ColumnFilterOption[]>(() => {
+    return statusOptions.map((status) => ({
+      id: status,
+      title: status.charAt(0).toUpperCase() + status.slice(1),
+    }));
+  }, [statusOptions]);
+
   const jobOptions = useMemo(() => {
     const getIdValue = (v: any) =>
       typeof v === 'string' ? v : (v?._id ?? v?.id);
@@ -1078,6 +1200,17 @@ const Applicants = () => {
     return applicants.filter((a: Applicant) => a.status !== 'trashed');
   }, [applicants, columnFilters, isSuperAdmin]);
 
+  const deferredDisplayedApplicants = useDeferredValue(displayedApplicants);
+
+  const duplicatesOnlyEnabled = useMemo(
+    () =>
+      Array.isArray(customFilters) &&
+      customFilters.some(
+        (f: any) => f?.fieldId === '__duplicates_only' && f?.value === true
+      ),
+    [customFilters]
+  );
+
   // Apply custom filters (from Filter Settings modal) on top of displayedApplicants
   // Helper to robustly read a custom response value for a given filter definition
   const getCustomResponseValue = (a: any, f: any) => {
@@ -1281,18 +1414,16 @@ const Applicants = () => {
   };
 
   const filteredApplicants = useMemo(() => {
-    const allCustomFilters = Array.isArray(customFilters) ? customFilters : [];
-    const duplicatesOnlyEnabled = allCustomFilters.some(
-      (f: any) => f?.fieldId === '__duplicates_only' && f?.value === true
-    );
-    const effectiveCustomFilters = allCustomFilters.filter(
+    const effectiveCustomFilters = Array.isArray(customFilters)
+      ? customFilters.filter(
       (f: any) => f?.fieldId !== '__duplicates_only'
-    );
+    )
+      : [];
 
     const baseFiltered =
       effectiveCustomFilters.length === 0
-        ? displayedApplicants
-        : displayedApplicants.filter((a: any) => {
+        ? deferredDisplayedApplicants
+        : deferredDisplayedApplicants.filter((a: any) => {
       try {
         for (const f of effectiveCustomFilters) {
 
@@ -1997,37 +2128,14 @@ const Applicants = () => {
       const aid = String(a?._id || a?.id || '');
       return duplicateLookup.get(aid)?.isDuplicate === true;
     });
-  }, [displayedApplicants, customFilters, currentUserId, jobPositionMap]);
-
-  const duplicatePriorityLookup = useMemo(
-    () =>
-      buildApplicantDuplicateLookup(filteredApplicants as any[], currentUserId, {
-        getCompanyId: (applicant: any) => {
-          const rawCompany =
-            applicant?.companyId || applicant?.company || applicant?.companyObj;
-          if (rawCompany) {
-            if (typeof rawCompany === 'string' || typeof rawCompany === 'number') {
-              return String(rawCompany);
-            }
-            return String(rawCompany?._id || rawCompany?.id || '');
-          }
-
-          const rawJob = applicant?.jobPositionId;
-          const jobId =
-            typeof rawJob === 'string'
-              ? rawJob
-              : (rawJob?._id ?? rawJob?.id ?? '');
-          const job = jobPositionMap[jobId];
-          const jobCompany = job?.companyId || job?.company || job?.companyObj;
-          if (!jobCompany) return undefined;
-          if (typeof jobCompany === 'string' || typeof jobCompany === 'number') {
-            return String(jobCompany);
-          }
-          return String(jobCompany?._id || jobCompany?.id || '');
-        },
-      }),
-    [filteredApplicants, currentUserId, jobPositionMap]
-  );
+  }, [
+    deferredDisplayedApplicants,
+    customFilters,
+    duplicatesOnlyEnabled,
+    currentUserId,
+    jobPositionMap,
+    fieldToJobIds,
+  ]);
 
   // Build gender filter options from the applicants dataset but apply only
   // the trashed-visibility rule (so options persist after refresh even when
@@ -2055,13 +2163,6 @@ const Applicants = () => {
     });
     return ordered.map((g) => ({ id: g, title: g }));
   }, [applicants, isSuperAdmin]);
-
-  // Keep a ref to genderOptions so memoized column Header closures can
-  // access the latest list even when `columns` is memoized and not re-created.
-  const genderOptionsRef = useRef<typeof genderOptions>(genderOptions);
-  useEffect(() => {
-    genderOptionsRef.current = genderOptions;
-  }, [genderOptions]);
 
   // Sanitize persisted column filters: if a gender filter was stored but the
   // available gender options don't include the stored values, remove/trim
@@ -3101,8 +3202,6 @@ const Applicants = () => {
           const orig: any = row.original;
           const href = getApplicantHref(row);
           const seenBy = orig?.seenBy ?? [];
-          const currentUserId =
-            (user as any)?._id || (user as any)?.id || undefined;
           const isSeen =
             Array.isArray(seenBy) &&
             seenBy.some((s: any) => {
@@ -3183,98 +3282,16 @@ const Applicants = () => {
         size: columnSizeConfig.gender,
         enableColumnFilter: true,
         enableSorting: false,
-        Header: ({ column }: { column: any }) => {
-          const current = column.getFilterValue();
-          const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
-
-          const selected: string[] = Array.isArray(current)
-            ? current
-            : current
-              ? [current]
-              : [];
-
-          const toggle = (val: string) => {
-            const next = new Set(selected);
-            if (next.has(val)) next.delete(val);
-            else next.add(val);
-            const arr = Array.from(next);
-            column.setFilterValue(arr.length ? arr : undefined);
-          };
-
-          const clear = () => {
-            column.setFilterValue(undefined);
-            setAnchorEl(null);
-          };
-
-          const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
-            event.preventDefault();
-            event.stopPropagation();
-            setAnchorEl(event.currentTarget);
-          };
-
-          const handleClose = () => setAnchorEl(null);
-
-          return (
-            <div onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">Gender</span>
-                <div>
-                  <button
-                    type="button"
-                    onClick={handleClick}
-                    className={`inline-flex items-center gap-1 rounded bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200 ${
-                      isLaptopViewport ? 'px-1.5 py-0.5 text-[10px]' : 'px-2 py-1 text-xs'
-                    }`}
-                  >
-                    {selected.length
-                      ? `${selected.length}`
-                      : isLaptopViewport
-                        ? ''
-                        : ''}
-                    <svg className="h-3 w-3" viewBox="0 0 20 20" fill="none">
-                      <path
-                        d="M6 8l4 4 4-4"
-                        stroke="currentColor"
-                        strokeWidth="1.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  </button>
-
-                  <Menu
-                    anchorEl={anchorEl}
-                    open={Boolean(anchorEl)}
-                    onClose={handleClose}
-                    onClick={(e) => e.stopPropagation()}
-                    PaperProps={{ style: { maxHeight: 240, width: 200 } }}
-                  >
-                    <MenuItem onClick={clear} dense>
-                      Clear
-                    </MenuItem>
-                    {(genderOptionsRef.current || []).map((g) => (
-                      <MenuItem
-                        key={g.id}
-                        dense
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          toggle(g.id);
-                        }}
-                      >
-                        <Checkbox
-                          checked={selected.includes(g.id)}
-                          size="small"
-                        />
-                        <ListItemText primary={g.title} />
-                      </MenuItem>
-                    ))}
-                  </Menu>
-                </div>
-              </div>
-            </div>
-          );
-        },
+        Header: ({ column }: { column: any }) => (
+          <ColumnMultiSelectHeader
+            column={column}
+            label="Gender"
+            options={genderOptions}
+            isLaptopViewport={isLaptopViewport}
+            menuWidth={200}
+            menuMaxHeight={240}
+          />
+        ),
         filterFn: (row: any, columnId: string, filterValue: any) => {
           if (!filterValue) return true;
           const vals = Array.isArray(filterValue) ? filterValue : [filterValue];
@@ -3321,108 +3338,16 @@ const Applicants = () => {
                 const comp = job?.companyId ? getId(job.companyId) : '';
                 return comp;
               },
-              Header: ({ column }: { column: any }) => {
-                const current = column.getFilterValue();
-                const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(
-                  null
-                );
-
-                const selected: string[] = Array.isArray(current)
-                  ? current
-                  : current
-                    ? [current]
-                    : [];
-
-                const toggle = (id: string) => {
-                  const next = new Set(selected);
-                  if (next.has(id)) next.delete(id);
-                  else next.add(id);
-                  const arr = Array.from(next);
-                  column.setFilterValue(arr.length ? arr : undefined);
-                };
-
-                const clear = () => {
-                  column.setFilterValue(undefined);
-                  setAnchorEl(null);
-                };
-
-                const handleClick = (
-                  event: React.MouseEvent<HTMLButtonElement>
-                ) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  setAnchorEl(event.currentTarget);
-                };
-
-                const handleClose = () => {
-                  setAnchorEl(null);
-                };
-
-                return (
-                  <div onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">Company</span>
-                      <div>
-                        <button
-                          type="button"
-                          onClick={handleClick}
-                          className={`inline-flex items-center gap-1 rounded bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200 ${
-                            isLaptopViewport ? 'px-1.5 py-0.5 text-[10px]' : 'px-2 py-1 text-xs'
-                          }`}
-                        >
-                          {selected.length
-                            ? `${selected.length}`
-                            : isLaptopViewport
-                              ? ''
-                              : ''}
-                          <svg
-                            className="h-3 w-3"
-                            viewBox="0 0 20 20"
-                            fill="none"
-                          >
-                            <path
-                              d="M6 8l4 4 4-4"
-                              stroke="currentColor"
-                              strokeWidth="1.5"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            />
-                          </svg>
-                        </button>
-
-                        <Menu
-                          anchorEl={anchorEl}
-                          open={Boolean(anchorEl)}
-                          onClose={handleClose}
-                          onClick={(e) => e.stopPropagation()}
-                          PaperProps={{ style: { maxHeight: 300, width: 240 } }}
-                        >
-                          <MenuItem onClick={clear} dense>
-                            Clear
-                          </MenuItem>
-                          {companyOptions.map((c) => (
-                            <MenuItem
-                              key={c.id}
-                              dense
-                              onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                toggle(c.id);
-                              }}
-                            >
-                              <Checkbox
-                                checked={selected.includes(c.id)}
-                                size="small"
-                              />
-                              <ListItemText primary={c.title} />
-                            </MenuItem>
-                          ))}
-                        </Menu>
-                      </div>
-                    </div>
-                  </div>
-                );
-              },
+              Header: ({ column }: { column: any }) => (
+                <ColumnMultiSelectHeader
+                  column={column}
+                  label="Company"
+                  options={companyOptions}
+                  isLaptopViewport={isLaptopViewport}
+                  menuWidth={240}
+                  menuMaxHeight={300}
+                />
+              ),
               filterFn: (row: any, columnId: string, filterValue: any) => {
                 if (!filterValue) return true;
                 const vals = Array.isArray(filterValue)
@@ -3483,106 +3408,16 @@ const Applicants = () => {
           return getId(raw);
         },
 
-        Header: ({ column }: { column: any }) => {
-          const current = column.getFilterValue();
-          const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
-
-          const selected: string[] = Array.isArray(current)
-            ? current
-            : current
-              ? [current]
-              : [];
-
-          const toggle = (jobId: string) => {
-            const next = new Set(selected);
-            if (next.has(jobId)) next.delete(jobId);
-            else next.add(jobId);
-
-            const arr = Array.from(next);
-            column.setFilterValue(arr.length ? arr : undefined);
-          };
-
-          const clear = () => {
-            column.setFilterValue(undefined);
-            setAnchorEl(null);
-          };
-
-          const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
-            event.preventDefault();
-            event.stopPropagation();
-            setAnchorEl(event.currentTarget);
-          };
-
-          const handleClose = () => {
-            setAnchorEl(null);
-          };
-
-          return (
-            <div onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">
-                  {isLaptopViewport ? 'Job' : 'Job Position'}
-                </span>
-
-                <button
-                  type="button"
-                  onClick={handleClick}
-                  className={`inline-flex items-center gap-1 rounded bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200 ${
-                    isLaptopViewport ? 'px-1.5 py-0.5 text-[10px]' : 'px-2 py-1 text-xs'
-                  }`}
-                >
-                  {selected.length
-                    ? `${selected.length}`
-                    : isLaptopViewport
-                      ? ''
-                      : ''}
-                  <svg className="h-3 w-3" viewBox="0 0 20 20" fill="none">
-                    <path
-                      d="M6 8l4 4 4-4"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </button>
-
-                <Menu
-                  anchorEl={anchorEl}
-                  open={Boolean(anchorEl)}
-                  onClose={handleClose}
-                  onClick={(e) => e.stopPropagation()}
-                  PaperProps={{
-                    style: { maxHeight: 280, width: 260 },
-                  }}
-                >
-                  <MenuItem onClick={clear} dense>
-                    Clear
-                  </MenuItem>
-
-                  {jobOptions.map((j) => (
-                    <MenuItem
-                      key={j.id}
-                      dense
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        toggle(j.id);
-                        // Don't close the menu after selection to allow multiple selections
-                      }}
-                    >
-                      <Checkbox
-                        checked={selected.includes(j.id)}
-                        size="small"
-                      />
-                      <ListItemText primary={j.title} />
-                    </MenuItem>
-                  ))}
-                </Menu>
-              </div>
-            </div>
-          );
-        },
+        Header: ({ column }: { column: any }) => (
+          <ColumnMultiSelectHeader
+            column={column}
+            label={isLaptopViewport ? 'Job' : 'Job Position'}
+            options={jobOptions}
+            isLaptopViewport={isLaptopViewport}
+            menuWidth={260}
+            menuMaxHeight={280}
+          />
+        ),
 
         filterFn: (row: any, columnId: string, filterValue: any) => {
           if (!filterValue) return true;
@@ -3696,102 +3531,16 @@ const Applicants = () => {
         header: 'Status',
         enableSorting: false,
 
-        Header: ({ column }) => {
-          const current = column.getFilterValue();
-
-          const selected: string[] = Array.isArray(current)
-            ? current
-            : current
-              ? [current]
-              : [];
-
-          const toggle = (s: string) => {
-            const next = new Set(selected);
-            if (next.has(s)) next.delete(s);
-            else next.add(s);
-
-            const arr = Array.from(next);
-            column.setFilterValue(arr.length ? arr : undefined);
-          };
-
-          const clear = () => {
-            column.setFilterValue(undefined);
-            setStatusAnchorEl(null);
-          };
-
-          return (
-            <div onMouseDown={(e) => e.stopPropagation()}>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">Status</span>
-
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-
-                    // IMPORTANT: close job if open
-                    setJobAnchorEl(null);
-
-                    const target = e.currentTarget as HTMLElement;
-                    if (statusAnchorEl === target) setStatusAnchorEl(null);
-                    else setStatusAnchorEl(target);
-                  }}
-                  className={`inline-flex items-center gap-1 rounded bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200 ${
-                    isLaptopViewport ? 'px-1.5 py-0.5 text-[10px]' : 'px-2 py-1 text-xs'
-                  }`}
-                >
-                  {selected.length
-                    ? `${selected.length}`
-                    : isLaptopViewport
-                      ? ''
-                      : ''}
-                  <svg className="h-3 w-3" viewBox="0 0 20 20" fill="none">
-                    <path
-                      d="M6 8l4 4 4-4"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </button>
-
-                <Menu
-                  anchorEl={statusAnchorEl}
-                  open={Boolean(statusAnchorEl)}
-                  onClose={() => setStatusAnchorEl(null)}
-                  PaperProps={{
-                    style: { maxHeight: 240, width: 220 },
-                    onMouseDown: (e: any) => e.stopPropagation(),
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <MenuItem onClick={clear} dense>
-                    Clear
-                  </MenuItem>
-
-                  {statusOptions.map((s) => (
-                    <MenuItem
-                      key={s}
-                      dense
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        toggle(s);
-                      }}
-                    >
-                      <Checkbox checked={selected.includes(s)} size="small" />
-                      <ListItemText
-                        primary={s.charAt(0).toUpperCase() + s.slice(1)}
-                      />
-                    </MenuItem>
-                  ))}
-                </Menu>
-              </div>
-            </div>
-          );
-        },
+        Header: ({ column }: { column: any }) => (
+          <ColumnMultiSelectHeader
+            column={column}
+            label="Status"
+            options={statusFilterOptions}
+            isLaptopViewport={isLaptopViewport}
+            menuWidth={220}
+            menuMaxHeight={240}
+          />
+        ),
 
         filterFn: (row: any, columnId: string, filterValue: any) => {
           if (!filterValue) return true;
@@ -3964,20 +3713,18 @@ const Applicants = () => {
       companyMap,
       jobPositionMap,
       jobOptions,
+      companyOptions,
+      showCompanyColumn,
+      statusFilterOptions,
+      genderOptions,
       columnSizeConfig,
       isLaptopViewport,
+      isTableLoading,
       getStatusColor,
       formatDate,
       parseComparableNumber,
-      statusAnchorEl,
-      jobAnchorEl,
       getExpectedSalaryDisplay,
       getApplicantSScore,
-      duplicatePriorityLookup,
-      isJobPositionsFetching,
-      isApplicantsFetching,
-      isCompaniesFetching,
-      sorting,
     ]
   );
 
@@ -4121,11 +3868,15 @@ const Applicants = () => {
     [isDarkMode]
   );
 
-  const tableData = isTableLoading
-    ? Array.from({ length: (pagination?.pageSize as number) || 10 }).map(
+  const skeletonData = useMemo(
+    () =>
+      Array.from({ length: (pagination?.pageSize as number) || 10 }).map(
         (_: any, i: number) => ({ _id: `skeleton-${i}`, _skeleton: true })
-      )
-    : filteredApplicants;
+      ),
+    [pagination?.pageSize]
+  );
+
+  const tableData = isTableLoading ? skeletonData : filteredApplicants;
 
   const table = useMaterialReactTable({
     columns,
