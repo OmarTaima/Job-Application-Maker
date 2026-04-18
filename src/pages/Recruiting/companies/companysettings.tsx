@@ -116,16 +116,6 @@ export default function CompanySettingsPage({ companyId, onSaved, onChange }: Pr
     });
   }, [availableMails, defaultMail, companyDomain, onChange]);
 
-  const resolveSettingsId = (value: any): string | undefined => {
-    if (!value || typeof value !== 'object') return undefined;
-    if (value.settings && value.settings._id) return value.settings._id;
-    if (value.mailSettings && value.mailSettings._id) return value.mailSettings._id;
-    if (value._id && typeof value._id === 'string') return value._id;
-    if (value.company && value.company.settings && value.company.settings._id) return value.company.settings._id;
-    if (value.company && value.company._id && typeof value.company._id === 'string') return value.company._id;
-    return undefined;
-  };
-
   const handleAddMail = () => {
     if (!newMail || !newMail.includes("@")) {
       Swal.fire("Invalid Format", "Please enter a valid credential email", "error");
@@ -145,10 +135,8 @@ export default function CompanySettingsPage({ companyId, onSaved, onChange }: Pr
     if (!selectedCompanyId) return;
     setIsSaving(true);
     try {
-      const selectedCompany = (companies as Company[]).find((company) => company._id === selectedCompanyId);
-      const settingsId = resolveSettingsId(selectedCompanySettings) ?? resolveSettingsId(selectedCompany) ?? selectedCompanyId;
       await updateMutation.mutateAsync({
-        id: settingsId,
+        id: selectedCompanyId,
         data: {
           mailSettings: {
             availableMails,

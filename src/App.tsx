@@ -23,6 +23,8 @@ const RecruitingDashboard = lazy(() => import("./pages/Recruiting/companies/crea
 const Companies = lazy(() => import("./pages/Recruiting/companies/Companies"));
 const PreviewCompany = lazy(() => import("./pages/Recruiting/companies/PreviewCompany"));
 const CompanySettingsPage = lazy(() => import("./pages/Recruiting/companies/companysettings"));
+const InterviewCompanySettingsPage = lazy(() => import("./pages/Recruiting/Interview/interviewCompany"));
+const SavedQuestions = lazy(() => import("./pages/Recruiting/Interview/interviewPerUser"));
 const Jobs = lazy(() => import("./pages/Recruiting/jobs/Jobs"));
 const CreateJob = lazy(() => import("./pages/Recruiting/jobs/CreateJob"));
 const PreviewJob = lazy(() => import("./pages/Recruiting/jobs/PreviewJob"));
@@ -40,6 +42,8 @@ const Applicants = lazy(() => import("./pages/Recruiting/applicants/Applicants")
 const ApplicantData = lazy(() => import("./pages/Recruiting/applicants/ApplicantData"));
 const ApplicantsMobilePage = lazy(() => import("./pages/Recruiting/applicants/ApplicantsMobilePage"));
 const MailPreview = lazy(() => import("./pages/Recruiting/applicants/MailPreview"));
+const RejectedApplicants = lazy(() => import("./pages/Recruiting/applicants/Rejected"));
+const InterviewApplicant = lazy(() => import("./pages/Recruiting/applicants/Candidate"));
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import PermissionProtectedRoute from "./components/auth/PermissionProtectedRoute";
 
@@ -68,11 +72,27 @@ export default function App() {
               <Route path="company/:companyId" element={<PreviewCompany />} />
               <Route path="recruiting/company-settings" element={<CompanySettingsPage />} />
               <Route
+                element={
+                  <PermissionProtectedRoute
+                      requiredPermissions={[
+                        "Interview Settings Management",
+                        "Company Management",
+                        "Settings Management",
+                      ]}
+                      accessLevel="read"
+                    />
+                }
+              >
+                <Route path="recruiting/interview-settings" element={<InterviewCompanySettingsPage />} />
+              </Route>
+              <Route
                 path="company/:companyId/create-job"
                 element={<CreateJob />}
               />
               <Route path="applicants" element={<Applicants />} />
               <Route path="applicants/mobile" element={<ApplicantsMobilePage />} />
+              <Route path="applicants/rejected" element={<RejectedApplicants />} />
+              <Route path="applicant/interview" element={<InterviewApplicant />} />
               <Route
                 element={
                   <PermissionProtectedRoute
@@ -85,6 +105,7 @@ export default function App() {
               </Route>
               <Route path="applicant-details/:id" element={<ApplicantData />} />
               <Route path="recruiting/saved-fields" element={<SavedFields />} />
+              <Route path="recruiting/saved-questions" element={<SavedQuestions />} />
               <Route path="recruiting/saved-fields/preview/:fieldId" element={<SavedFieldsPreview />} />
               <Route path="recruiting/saved-fields/create" element={<CreateSavedField />} />
 

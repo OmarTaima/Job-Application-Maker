@@ -19,10 +19,14 @@ const navItems: NavItem[] = [
     name: "Home",
     path: "/",
   },
-  {
+   {
     icon: <GridIcon />,
     name: "Applicants",
-    path: "/applicants",
+    subItems: [
+      { name: "All Applicants", path: "/applicants", pro: false },
+      { name: "Rejected", path: "/applicants/rejected", pro: false },
+      // {name: "interview", path: "/applicant/interview", pro: false}
+    ],
   },
   {
     icon: <TaskIcon />,
@@ -36,6 +40,7 @@ const navItems: NavItem[] = [
       { name: "Create Company", path: "/recruiting", pro: false },
       { name: "Companies", path: "/companies", pro: false },
       { name: "Mail Settings", path: "/recruiting/company-settings", pro: false },
+      { name: "General Settings", path: "/recruiting/interview-settings", pro: false },
     ],
   },
   {
@@ -48,8 +53,11 @@ const navItems: NavItem[] = [
   },
   {
     icon: <GridIcon />,
-    name: "Saved Fields",
-    path: "/recruiting/saved-fields",
+    name: "User Settings",
+    subItems: [
+      { name: "Saved Fields", path: "/recruiting/saved-fields", pro: false },
+      { name: "Saved Questions", path: "/recruiting/saved-questions", pro: false },
+    ],
   },
 ];
   //   icon: <CalenderIcon />,
@@ -204,6 +212,12 @@ const AppSidebar: React.FC = () => {
         if (subItem.path === "/recruiting") return hasPermission("Company Management", "create");
         if (subItem.path === "/companies") return hasPermission("Company Management", "read");
         if (subItem.path === "/recruiting/company-settings") return hasPermission("Mail Management", "read");
+        if (subItem.path === "/recruiting/interview-settings")
+          return (
+            hasPermission("Interview Settings Management", "read") ||
+            hasPermission("Company Management", "read") ||
+            hasPermission("Settings Management", "read")
+          );
         if (subItem.path === "/create-job") return hasPermission("Job Position Management", "create");
         if (subItem.path === "/jobs") return hasPermission("Job Position Management", "read");
         if (subItem.path === "/users") return hasPermission("User Management", "read");
@@ -215,6 +229,8 @@ const AppSidebar: React.FC = () => {
           );
         if (subItem.path === "/recruiting/saved-fields")
           return true; // Saved fields are available to authenticated users
+        if (subItem.path === "/recruiting/saved-questions")
+          return true; // Saved questions are available to authenticated users
         // Default: allow access (for dashboard, etc.)
         return true;
       });

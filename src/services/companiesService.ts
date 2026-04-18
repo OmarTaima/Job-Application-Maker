@@ -48,6 +48,29 @@ export interface CompanyResponse {
   data: Company;
 }
 
+export type InterviewAnswerType =
+  | "text"
+  | "number"
+  | "radio"
+  | "checkbox"
+  | "dropdown"
+  | "tags";
+
+export interface InterviewQuestion {
+  question: string;
+  score: number;
+  answerType: InterviewAnswerType;
+}
+
+export interface InterviewGroup {
+  name: string;
+  questions: InterviewQuestion[];
+}
+
+export interface InterviewSettings {
+  groups: InterviewGroup[];
+}
+
 export interface CompanySettings {
   _id: string;
   company: string;
@@ -61,6 +84,13 @@ export interface CompanySettings {
     availableSenders?: string[];
     defaultMail?: string | null;
     companyDomain?: string | null;
+    resendApiKey?: string | null;
+    sendApplicantDataMail?: boolean;
+    webhookSecret?: string | null;
+    applicantEmailTemplate?: {
+      subject?: string;
+      body?: string | null;
+    };
   };
   // Some endpoints return the settings wrapped under `settings.mailSettings`
   settings?: {
@@ -68,8 +98,19 @@ export interface CompanySettings {
       availableMails?: string[];
       defaultMail?: string | null;
       companyDomain?: string | null;
+      resendApiKey?: string | null;
+      sendApplicantDataMail?: boolean;
+      webhookSecret?: string | null;
+      applicantEmailTemplate?: {
+        subject?: string;
+        body?: string | null;
+      };
     };
+    interviewSettings?: InterviewSettings;
   };
+  defaultColorGradient?: string[];
+  rejectReasons?: string[];
+  interviewSettings?: InterviewSettings;
   // Company-like fields that may be present when the API returns a full company
   // object from the settings query.
   name?: string | { en: string; ar?: string };
@@ -89,7 +130,17 @@ export interface CreateCompanySettingsRequest {
     availableMails?: string[];
     defaultMail?: string | null;
     companyDomain?: string | null;
+    resendApiKey?: string | null;
+    sendApplicantDataMail?: boolean;
+    webhookSecret?: string | null;
+    applicantEmailTemplate?: {
+      subject?: string;
+      body?: string | null;
+    };
   };
+  interviewSettings?: InterviewSettings;
+  defaultColorGradient?: string[];
+  rejectReasons?: string[];
 }
 
 export interface UpdateCompanySettingsRequest {
@@ -97,7 +148,25 @@ export interface UpdateCompanySettingsRequest {
     availableMails?: string[];
     defaultMail?: string | null;
     companyDomain?: string | null;
+    resendApiKey?: string | null;
+    sendApplicantDataMail?: boolean;
+    webhookSecret?: string | null;
+    applicantEmailTemplate?: {
+      subject?: string;
+      body?: string | null;
+    };
   };
+  interviewSettings?: InterviewSettings;
+  defaultColorGradient?: string[];
+  rejectReasons?: string[];
+}
+
+export interface UpdateInterviewSettingsRequest {
+  groups: InterviewGroup[];
+}
+
+export interface UpdateRejectionReasonsRequest {
+  rejectReasons: string[];
 }
 
 // API Error class
@@ -111,6 +180,24 @@ export class ApiError extends Error {
     this.name = "ApiError";
   }
 }
+
+const normalizeInterviewSettings = (payload: any): InterviewSettings | null => {
+  const root = payload?.result ?? payload?.data ?? payload;
+  const candidate =
+    root?.interviewSettings ??
+    root?.settings?.interviewSettings ??
+    (Array.isArray(root?.groups) ? root : null);
+
+  if (candidate && Array.isArray(candidate.groups)) {
+    return { groups: candidate.groups as InterviewGroup[] };
+  }
+
+  if (Array.isArray(candidate)) {
+    return { groups: candidate as InterviewGroup[] };
+  }
+
+  return null;
+};
 
 // Companies API service
 export const companiesService = {
@@ -310,16 +397,156 @@ export const companiesService = {
     }
   },
 
-  
+
+
+ 
+
+  async updateCompanyInterviewSettings(
+    companyId: string,
+    payload: UpdateInterviewSettingsRequest
+  ): Promise<InterviewSettings> {
+    try {
+      const groups = Array.isArray(payload?.groups) ? payload.groups : [];
+      let response: any;
+      const hasValidationDetail = (error: any, fieldName: string): boolean => {
+        const details = error?.response?.data?.details;
+        if (!Array.isArray(details)) return false;
+        return details.some((detail: any) => {
+          const path = Array.isArray(detail?.path) ? detail.path : [];
+          return path.includes(fieldName);
+        });
+      };
+
+      try {
+        response = await axios.put<any>(
+          `/companies/${encodeURIComponent(companyId)}/settings/interview`,
+          { interviewSettings: { groups } }
+        );
+      } catch (error: any) {
+        const status = error?.response?.status;
+        const isValidation = status === 400 || status === 422;
+
+        if (isValidation && hasValidationDetail(error, "interviewSettings")) {
+          // Some deployments validate this route against a direct interview payload.
+          response = await axios.put<any>(
+            `/companies/${encodeURIComponent(companyId)}/settings/interview`,
+            { groups }
+          );
+        } else if (status === 404) {
+          try {
+            response = await axios.put<any>(
+              "/settings/interview",
+              { interviewSettings: { groups } },
+              { params: { companyId } }
+            );
+          } catch (fallbackError: any) {
+            const fallbackStatus = fallbackError?.response?.status;
+            const fallbackValidation = fallbackStatus === 400 || fallbackStatus === 422;
+
+            if (fallbackValidation && hasValidationDetail(fallbackError, "interviewSettings")) {
+              response = await axios.put<any>(
+                "/settings/interview",
+                { groups },
+                { params: { companyId } }
+              );
+            } else {
+              throw fallbackError;
+            }
+          }
+        } else {
+          throw error;
+        }
+      }
+
+      const normalized = normalizeInterviewSettings(response.data);
+      if (normalized) return normalized;
+      return { groups };
+    } catch (error: any) {
+      throw new ApiError(
+        getErrorMessage(error),
+        error.response?.status,
+        error.response?.data?.details
+      );
+    }
+  },
+
+  async updateCompanyRejectionReasons(
+    companyId: string,
+    payload: UpdateRejectionReasonsRequest
+  ): Promise<CompanySettings> {
+    try {
+      const rejectReasons = Array.isArray(payload?.rejectReasons)
+        ? payload.rejectReasons.map((reason) => String(reason ?? "").trim()).filter(Boolean)
+        : [];
+
+      let response: any;
+      try {
+        response = await axios.put<any>(
+          `/companies/${encodeURIComponent(companyId)}/settings/rejection-reasons`,
+          { rejectReasons }
+        );
+      } catch (error: any) {
+        // Keep backward compatibility for deployments that still accept only the generic settings endpoint.
+        if (error?.response?.status === 404) {
+          response = await axios.put<any>(
+            `/companies/${encodeURIComponent(companyId)}/settings`,
+            { rejectReasons }
+          );
+        } else {
+          throw error;
+        }
+      }
+
+      const data = response.data?.result ?? response.data?.data ?? response.data ?? {};
+      const normalizedReasons = Array.isArray((data as any)?.rejectReasons)
+        ? (data as any).rejectReasons
+            .map((reason: any) => String(reason ?? "").trim())
+            .filter(Boolean)
+        : rejectReasons;
+
+      return {
+        _id: (data as any)?._id ?? companyId,
+        company:
+          (data as any)?.company ??
+          (data as any)?.companyId ??
+          companyId,
+        rejectReasons: normalizedReasons,
+        mailSettings: (data as any)?.mailSettings,
+        interviewSettings: (data as any)?.interviewSettings,
+        defaultColorGradient: (data as any)?.defaultColorGradient,
+      } as CompanySettings;
+    } catch (error: any) {
+      throw new ApiError(
+        getErrorMessage(error),
+        error.response?.status,
+        error.response?.data?.details
+      );
+    }
+  },
+
   async updateCompanySettings(id: string, payload: UpdateCompanySettingsRequest): Promise<CompanySettings> {
     try {
-      const body = payload?.mailSettings ? { mailSettings: payload.mailSettings } : {};
+      const body: any = {};
+      if (payload?.mailSettings) body.mailSettings = payload.mailSettings;
+      if (payload?.interviewSettings) body.interviewSettings = payload.interviewSettings;
+      if (payload?.defaultColorGradient) body.defaultColorGradient = payload.defaultColorGradient;
+      if (payload?.rejectReasons) body.rejectReasons = payload.rejectReasons;
+
       const response = await axios.put<any>(`/companies/${id}/settings`, body);
       const data = response.data?.data ?? response.data ?? null;
       if (!data) return data as CompanySettings;
-      if ((data as any).mailSettings) {
-        return { _id: (data as any)._id, company: (data as any).company ?? (data as any)._id, mailSettings: (data as any).mailSettings } as CompanySettings;
+
+      if ((data as any).mailSettings || (data as any).interviewSettings) {
+        return {
+          _id: (data as any)._id,
+          company: (data as any).company ?? (data as any)._id,
+          mailSettings: (data as any).mailSettings,
+          interviewSettings: (data as any).interviewSettings,
+          defaultColorGradient: (data as any).defaultColorGradient,
+          rejectReasons: (data as any).rejectReasons,
+        } as CompanySettings;
       }
+
       return data as CompanySettings;
     } catch (error: any) {
       throw new ApiError(

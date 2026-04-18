@@ -14,6 +14,9 @@ interface MultiSelectProps {
   onChange?: (selected: string[]) => void;
   disabled?: boolean;
   placeholder?: string;
+  maxHeightClass?: string;
+  allowCustomValues?: boolean;
+  customInputPlaceholder?: string;
 }
 
 const MultiSelect: React.FC<MultiSelectProps> = ({
@@ -24,6 +27,9 @@ const MultiSelect: React.FC<MultiSelectProps> = ({
   onChange,
   disabled = false,
   placeholder = "Select options",
+  maxHeightClass = "max-h-select",
+  allowCustomValues = false,
+  customInputPlaceholder = "Type and press Enter",
 }) => {
   const isControlled = value !== undefined;
   const [internalSelected, setInternalSelected] =
@@ -31,6 +37,7 @@ const MultiSelect: React.FC<MultiSelectProps> = ({
   const selectedOptions = isControlled ? value : internalSelected;
   const [isOpen, setIsOpen] = useState(false);
   const [focusedIndex, setFocusedIndex] = useState(-1);
+  const [customInput, setCustomInput] = useState("");
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -73,8 +80,31 @@ const MultiSelect: React.FC<MultiSelectProps> = ({
     updateSelection(selectedOptions.filter((v) => v !== optionValue));
   };
 
+  const addCustomOption = (rawValue: string) => {
+    if (!allowCustomValues || disabled) return;
+
+    const normalized = String(rawValue ?? "")
+      .replace(/,$/, "")
+      .trim();
+
+    if (!normalized) return;
+
+    const exists = selectedOptions.some(
+      (v) => String(v).toLowerCase() === normalized.toLowerCase()
+    );
+
+    if (!exists) {
+      updateSelection([...selectedOptions, normalized]);
+    }
+
+    setCustomInput("");
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (disabled) return;
+
+    const handledKeys = ["Enter", "Escape", "ArrowDown", "ArrowUp"];
+    if (!handledKeys.includes(e.key)) return;
 
     e.preventDefault();
     switch (e.key) {
@@ -101,6 +131,28 @@ const MultiSelect: React.FC<MultiSelectProps> = ({
         }
         break;
     }
+  };
+
+  const handleCustomInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (disabled) return;
+
+    if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault();
+      e.stopPropagation();
+      addCustomOption(customInput);
+      return;
+    }
+
+    if (e.key === "Backspace" && !customInput.trim() && selectedOptions.length > 0) {
+      e.preventDefault();
+      e.stopPropagation();
+      removeOption(selectedOptions[selectedOptions.length - 1]);
+    }
+  };
+
+  const commitCustomInput = () => {
+    if (!allowCustomValues || disabled || !customInput.trim()) return;
+    addCustomOption(customInput);
   };
 
   return (
@@ -170,11 +222,30 @@ const MultiSelect: React.FC<MultiSelectProps> = ({
                       </div>
                     );
                   })
-                ) : (
+                ) : null}
+
+                {allowCustomValues && !disabled ? (
+                  <input
+                    type="text"
+                    value={customInput}
+                    onChange={(e) => setCustomInput(e.target.value)}
+                    onKeyDown={handleCustomInputKeyDown}
+                    onBlur={commitCustomInput}
+                    onClick={(e) => e.stopPropagation()}
+                    onFocus={() => setIsOpen(true)}
+                    className="min-w-[180px] flex-1 bg-transparent p-1 text-sm text-gray-800 outline-none dark:text-white/90"
+                    placeholder={
+                      selectedOptions.length === 0
+                        ? placeholder
+                        : customInputPlaceholder
+                    }
+                    aria-label={label}
+                  />
+                ) : selectedOptions.length === 0 ? (
                   <div className="w-full h-full p-1 pr-2 text-sm text-gray-400 dark:text-gray-500 pointer-events-none">
                     {placeholder}
                   </div>
-                )}
+                ) : null}
               </div>
               <div className="flex items-center self-start py-1 pl-1 pr-1 w-7">
                 <button
@@ -211,7 +282,7 @@ const MultiSelect: React.FC<MultiSelectProps> = ({
 
           {isOpen && (
             <div
-              className="absolute left-0 z-40 w-full overflow-y-auto bg-white rounded-lg shadow-sm top-full max-h-select dark:bg-gray-900"
+              className={`absolute left-0 z-40 w-full overflow-y-auto bg-white rounded-lg shadow-sm top-full ${maxHeightClass} dark:bg-gray-900`}
               onClick={(e) => e.stopPropagation()}
               role="listbox"
               aria-label={label}

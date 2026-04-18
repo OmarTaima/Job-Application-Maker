@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Modal } from '../ui/modal';
 import Label from '../form/Label';
 import Select from '../form/Select';
 import TextArea from '../form/input/TextArea';
+import MultiSelect from '../form/MultiSelect';
+import { useCompanySettings } from '../../hooks/queries/useCompanies';
 
 type Props = {
   isOpen: boolean;
@@ -14,6 +16,7 @@ type Props = {
   handleStatusChange: (e: React.FormEvent) => void;
   isSubmittingStatus: boolean;
   statusOptions: any[];
+  companyId?: string;
 };
 
 export default function StatusChangeModal({
@@ -26,9 +29,20 @@ export default function StatusChangeModal({
   handleStatusChange,
   isSubmittingStatus,
   statusOptions,
+  companyId,
 }: Props) {
+  const { data: companySettings } = useCompanySettings(companyId, { enabled: !!companyId });
+
+  const reasonOptions = useMemo(() => {
+    const fromRoot = (companySettings as any)?.rejectReasons;
+    const fromNested = (companySettings as any)?.settings?.rejectReasons;
+    const list = Array.isArray(fromRoot) && fromRoot.length ? fromRoot : Array.isArray(fromNested) ? fromNested : [];
+    return list.map((r: any) => ({ value: String(r ?? ''), text: String(r ?? '') }));
+  }, [companySettings]);
+
+  const modalClass = statusForm?.status === 'rejected' ? 'max-w-4xl p-6' : 'max-w-2xl p-6';
   return (
-    <Modal isOpen={isOpen} onClose={() => { onClose(); setStatusError(''); }} className="max-w-2xl p-6" closeOnBackdrop={false}>
+    <Modal isOpen={isOpen} onClose={() => { onClose(); setStatusError(''); }} className={modalClass} closeOnBackdrop={false}>
       <form onSubmit={handleStatusChange} className="space-y-6">
         <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Change Status</h2>
 
@@ -43,14 +57,41 @@ export default function StatusChangeModal({
 
         <div>
           <Label htmlFor="status-select">New Status</Label>
-          <Select options={statusOptions} placeholder="Select new status" onChange={(value: any) => setStatusForm({ ...statusForm, status: value })} />
+          <Select
+            options={statusOptions}
+            placeholder="Select new status"
+            onChange={(value: any) =>
+              setStatusForm({
+                ...statusForm,
+                status: value,
+                ...(value !== 'rejected'
+                  ? { reasons: [] }
+                  : {}),
+              })
+            }
+          />
         </div>
 
         <div>
           <Label htmlFor="status-notes">Notes (Optional)</Label>
           <TextArea value={statusForm.notes} onChange={(value: any) => setStatusForm({ ...statusForm, notes: value })} placeholder="Add notes about this status change" rows={3} />
         </div>
-
+        
+        {statusForm.status === 'rejected' && (
+          <div>
+            <MultiSelect
+              label="Reasons"
+              options={reasonOptions}
+              value={statusForm.reasons ?? []}
+              onChange={(selected: string[]) => setStatusForm({ ...statusForm, reasons: selected })}
+              placeholder="Select or type a reason"
+              disabled={isSubmittingStatus}
+              maxHeightClass="max-h-96"
+              allowCustomValues
+              customInputPlaceholder="Type a reason and press Enter"
+            />
+          </div>
+        )}
         <div className="flex justify-end gap-3">
           <button type="button" onClick={onClose} className="rounded-lg border border-stroke px-6 py-2 hover:bg-gray-100 dark:border-strokedark dark:hover:bg-gray-800" disabled={isSubmittingStatus}>Cancel</button>
           <button type="submit" className="rounded-lg bg-green-600 px-6 py-2 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2" disabled={isSubmittingStatus}>

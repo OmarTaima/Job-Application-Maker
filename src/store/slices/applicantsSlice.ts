@@ -134,6 +134,7 @@ export type UpdateStatusRequest = {
     phoneOption?: "company" | "user" | "whatsapp" | "custom";
     customPhone?: string;
   };
+  reasons?: string[];
 };
 
 interface ApplicantsState {

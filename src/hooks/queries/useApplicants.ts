@@ -184,10 +184,16 @@ export function useUpdateApplicantStatus() {
       // Optimistically update the detail query
       queryClient.setQueryData(applicantsKeys.detail(id), (old: any) => {
         if (!old) return old;
+        const normalizedReasons = Array.isArray((data as any).reasons)
+          ? (data as any).reasons
+              .map((reason: any) => String(reason ?? '').trim())
+              .filter(Boolean)
+          : [];
         const tempHistory = {
           _id: `temp-${Date.now()}`,
           status: data.status,
           notes: (data as any).notes,
+          ...(normalizedReasons.length ? { reasons: normalizedReasons } : {}),
           changedAt: new Date().toISOString(),
           // preserve any extra fields (e.g., notifications) if present
           ...(data as any).notifications ? { notifications: (data as any).notifications } : {},
@@ -348,7 +354,7 @@ export function useUpdateInterviewStatus() {
           ...old,
           interviews: old.interviews?.map((interview: any) =>
             interview._id === interviewId
-              ? { ...interview, status: data.status, notes: data.notes }
+              ? { ...interview, ...data }
               : interview
           ),
         };

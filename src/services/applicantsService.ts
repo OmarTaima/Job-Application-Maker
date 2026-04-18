@@ -17,10 +17,19 @@ export type Interview = {
   _id?: string;
   issuedBy?: string;
   scheduledAt?: string;
+  scheduledBy?: string;
+  startedAt?: string;
+  endedAt?: string;
+  conductedBy?: string;
   videoLink?: string;
+  description?: string | null;
+  location?: string | null;
+  address?: string | null;
   notes?: string;
   interviewers?: string[];
   type?: string;
+  status?: "scheduled" | "in_progress" | "completed" | "cancelled";
+  questions?: InterviewAnswer[];
   notifications?: {
     channels: {
       email: boolean;
@@ -32,6 +41,13 @@ export type Interview = {
     phoneOption?: "company" | "user" | "whatsapp" | "custom";
     customPhone?: string;
   };
+};
+
+export type InterviewAnswer = {
+  question: string;
+  score: number;
+  achievedScore?: number;
+  notes?: string | null;
 };
 
 export type Message = {
@@ -144,11 +160,13 @@ export type UpdateStatusRequest = {
     | "rejected"
     | "trashed";
   notes?: string;
+  reasons?: string[];
 };
 
 export type ScheduleInterviewRequest = {
   scheduledAt?: string;
   conductedBy?: string;
+  scheduledBy?: string;
   description?: string | null;
   location?: string | null;
   videoLink?: string;
@@ -156,7 +174,8 @@ export type ScheduleInterviewRequest = {
   type?: string | null;
   notes?: string;
   interviewers?: string[];
-  status?: "scheduled" | "completed" | "cancelled";
+  status?: "scheduled" | "in_progress" | "completed" | "cancelled";
+  questions?: InterviewAnswer[];
 };
 
 export type BulkScheduleInterviewItem = ScheduleInterviewRequest & {
@@ -168,8 +187,19 @@ export type BulkScheduleInterviewRequest = {
 };
 
 export type UpdateInterviewStatusRequest = {
-  status: "scheduled" | "completed" | "cancelled";
-  notes?: string;
+  scheduledAt?: string;
+  scheduledBy?: string;
+  startedAt?: string;
+  endedAt?: string;
+  conductedBy?: string;
+  description?: string | null;
+  location?: string | null;
+  videoLink?: string;
+  address?: string | null;
+  type?: string | null;
+  notes?: string | null;
+  status?: "scheduled" | "in_progress" | "completed" | "cancelled";
+  questions?: InterviewAnswer[];
 };
 
 export type AddCommentRequest = {
@@ -186,6 +216,22 @@ export type SendMessageRequest = {
 };
 
 class ApplicantsService {
+  private normalizeInterviewQuestions(questions: any): InterviewAnswer[] {
+    if (!Array.isArray(questions)) return [];
+
+    return questions.map((q: any) => ({
+      question: String(q?.question || '').trim(),
+      score: Number(q?.score ?? 0),
+      achievedScore: Math.max(
+        0,
+        Number.isFinite(Number(q?.achievedScore))
+          ? Number(q?.achievedScore)
+          : 0
+      ),
+      notes: q?.notes ?? '',
+    }));
+  }
+
   private toScheduleInterviewItem(
     applicantId: any,
     data: ScheduleInterviewRequest
@@ -202,6 +248,7 @@ class ApplicantsService {
     const allowedKeys: Array<
       | 'scheduledAt'
       | 'conductedBy'
+      | 'scheduledBy'
       | 'description'
       | 'location'
       | 'videoLink'
@@ -212,6 +259,7 @@ class ApplicantsService {
     > = [
       'scheduledAt',
       'conductedBy',
+      'scheduledBy',
       'description',
       'location',
       'videoLink',
@@ -227,6 +275,9 @@ class ApplicantsService {
         item[key] = value;
       }
     });
+
+    // Keep questions as an array for backend handlers that iterate with forEach.
+    item.questions = this.normalizeInterviewQuestions((data as any)?.questions);
 
     return item as BulkScheduleInterviewItem;
   }
@@ -512,7 +563,12 @@ class ApplicantsService {
     data: ScheduleInterviewRequest
   ): Promise<Applicant> {
     try {
-      const item = this.toScheduleInterviewItem(applicantId, data);
+      const normalizedData: ScheduleInterviewRequest = {
+        ...data,
+        questions: this.normalizeInterviewQuestions((data as any)?.questions),
+      };
+
+      const item = this.toScheduleInterviewItem(applicantId, normalizedData);
       let response: any;
 
       try {
@@ -523,7 +579,7 @@ class ApplicantsService {
           throw error;
         }
 
-        response = await axios.post(`/applicants/${applicantId}/interviews`, data);
+        response = await axios.post(`/applicants/${applicantId}/interviews`, normalizedData);
       }
 
       const payload = response.data?.data ?? response.data;
@@ -598,12 +654,32 @@ class ApplicantsService {
     data: UpdateInterviewStatusRequest
   ): Promise<Applicant> {
     try {
-      // Explicitly construct payload with only allowed fields
-      const payload: any = {
-        status: data.status,
-      };
-      if (data.notes) {
-        payload.notes = data.notes;
+      // Explicitly construct payload with only fields accepted by updateInterviewSchema
+      const payload: any = {};
+      const allowedKeys: Array<keyof UpdateInterviewStatusRequest> = [
+        'scheduledAt',
+        'scheduledBy',
+        'startedAt',
+        'endedAt',
+        'conductedBy',
+        'description',
+        'location',
+        'videoLink',
+        'address',
+        'type',
+        'notes',
+        'status',
+      ];
+
+      allowedKeys.forEach((key) => {
+        const value = data?.[key];
+        if (value !== undefined) {
+          payload[key] = value;
+        }
+      });
+
+      if (Array.isArray(data?.questions)) {
+        payload.questions = this.normalizeInterviewQuestions(data.questions);
       }
 
       const response = await axios.put(

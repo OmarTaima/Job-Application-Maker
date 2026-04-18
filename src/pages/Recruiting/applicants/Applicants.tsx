@@ -755,7 +755,7 @@ const Applicants = () => {
         .join(', ');
     }
     if (err.response?.data?.errors) {
-      const errors = err.response.data.errors;
+      const {errors} = err.response.data;
       if (Array.isArray(errors)) {
         return errors.map((e: any) => e.msg || e.message).join(', ');
       }
@@ -778,8 +778,7 @@ const Applicants = () => {
       if (urlParts.length !== 2) return null;
       const fileName = `CV_${idHint || 'cv'}`;
       const transformations = `f_auto/fl_attachment:${fileName}`;
-      const downloadUrl = `${urlParts[0]}/upload/${transformations}/${urlParts[1]}`;
-      return downloadUrl;
+      return `${urlParts[0]}/upload/${transformations}/${urlParts[1]}`;
     } catch (e) {
       return null;
     }
@@ -805,61 +804,26 @@ const Applicants = () => {
   };
 
   const resolveCvPath = (a: any): string | null => {
-    try {
-      if (!a) return null;
-      // Common fields that may contain a CV or resume path
-      const keys = [
-        'cvFilePath',
-        'cvUrl',
-        'resume',
-        'cv',
-        'attachments',
-        'resumeUrl',
-        'cvFilePath',
-        'cvFile',
-        'resumeFilePath',
-        'resumeFile',
-        'cv_file_path',
-        'cv_file',
-        'cv_path',
-      ];
-      for (const k of keys) {
-        const v = (a as any)[k];
-        if (!v) continue;
-        if (typeof v === 'string' && v.trim()) return v;
-        if (Array.isArray(v) && v.length) {
-          const first = v.find((it) => typeof it === 'string' && it.trim());
-          if (first) return first;
-        }
+    // Deduplicated candidate keys to avoid redundant iterations
+    const keys = [
+      'cvFilePath',
+      'resumePath',
+      'cvUrl',
+      'resumeUrl',
+      'curriculumVitaePath',
+    ] as const;
+
+    for (const key of keys) {
+      const value = a?.[key];
+      if (typeof value === 'string' && value.trim().length > 0) {
+        return value;
       }
-      // search custom responses for keys mentioning cv/resume
-      const resp = a?.customResponses || a?.customFieldResponses || {};
-      for (const [k, v] of Object.entries(resp || {})) {
-        const lk = String(k || '').toLowerCase();
-        if (
-          lk.includes('cv') ||
-          lk.includes('resume') ||
-          lk.includes('cvfile') ||
-          lk.includes('cv_file') ||
-          lk.includes('cvfilepath')
-        ) {
-          if (typeof v === 'string' && v.trim()) return v as string;
-          if (Array.isArray(v) && v.length) {
-            const f = v.find((it) => typeof it === 'string' && it.trim());
-            if (f) return f as string;
-          }
-        }
-        if (
-          typeof v === 'string' &&
-          /https?:\/\/.+\.(pdf|docx?|rtf|txt|zip)$/i.test(v)
-        )
-          return v as string;
-      }
-      return null;
-    } catch (e) {
-      return null;
     }
+
+    return null;
   };
+
+
 
   const downloadCvForApplicant = async (a: any) => {
     if (!a)
@@ -1472,17 +1436,13 @@ const Applicants = () => {
                   a?.customResponses || a?.customFieldResponses || {};
                 for (const [k, v] of Object.entries(resp || {})) {
                   const lk = String(k || '').toLowerCase();
-                  if (
-                    lk.includes('cv') ||
-                    lk.includes('resume') ||
-                    lk.includes('cvfile') ||
-                    lk.includes('cv_file') ||
-                    lk.includes('cvfilepath')
-                  ) {
-                    if (v) {
-                      has = true;
-                      break;
-                    }
+                  if ((lk.includes('cv') ||
+                                     lk.includes('resume') ||
+                                      lk.includes('cvfile') ||
+                                      lk.includes('cv_file') ||
+                                      lk.includes('cvfilepath')) && v) {
+                        has = true;
+                   break;
                   }
                 }
               } catch (e) {
@@ -1556,13 +1516,9 @@ const Applicants = () => {
                       (al) => rk === al || rk.includes(al) || al.includes(rk)
                     )
                   );
-                  if (!hasRespKeyMatch) {
-                    if (
-                      !applicantJobId ||
-                      !allowedUnion.has(String(applicantJobId))
-                    ) {
-                      return false;
-                    }
+                  if (!hasRespKeyMatch && (!applicantJobId ||
+                                       !allowedUnion.has(String(applicantJobId)))) {
+                        return false;
                   }
                 } catch (e) {
                   if (
@@ -1935,66 +1891,63 @@ const Applicants = () => {
                 const canonical = getCanonicalType(f);
                 const allResp =
                   a?.customResponses || a?.customFieldResponses || {};
-                if (
-                  canonical === 'engineering_specialization' &&
-                  canonicalMap[canonical]
-                ) {
-                  const allowed = canonicalMap[canonical].map((s) =>
-                    normalizeLabelSimple(s)
-                  );
-                  for (const [k, v] of Object.entries(allResp)) {
-                    const nk = normalizeLabelSimple(k);
-                    if (!nk) continue;
-                    if (
-                      !(
-                        allowed.includes(nk) ||
-                        allowed.some((al) => nk.includes(al) || al.includes(nk))
-                      )
-                    )
-                      continue;
-                    const items =
-                      extractResponseItems(v).map(normalizeForCompare);
-                    if (items.some((it) => it.includes(needle))) {
-                      matched = true;
-                      break;
-                    }
-                  }
-                } else {
-                  // Non-engineering canonical fields: preserve previous behavior
-                  if (canonical && canonicalMap[canonical]) {
-                    const allowed = canonicalMap[canonical].map((s) =>
-                      normalizeLabelSimple(s)
-                    );
-                    for (const [k, v] of Object.entries(allResp)) {
-                      const nk = normalizeLabelSimple(k);
-                      if (!nk) continue;
-                      if (
-                        !(
-                          allowed.includes(nk) ||
-                          allowed.some(
-                            (al) => nk.includes(al) || al.includes(nk)
-                          )
-                        )
-                      )
-                        continue;
-                      const items =
-                        extractResponseItems(v).map(normalizeForCompare);
-                      if (items.some((it) => it.includes(needle))) {
-                        matched = true;
-                        break;
-                      }
-                    }
-                  } else {
-                    for (const v of Object.values(allResp)) {
-                      const items =
-                        extractResponseItems(v).map(normalizeForCompare);
-                      if (items.some((it) => it.includes(needle))) {
-                        matched = true;
-                        break;
-                      }
-                    }
-                  }
-                }
+                 if (canonical === 'engineering_specialization' &&
+                                 canonicalMap[canonical]) {
+                                  const allowed = canonicalMap[canonical].map((s) =>
+                                    normalizeLabelSimple(s)
+                                  );
+                                  for (const [k, v] of Object.entries(allResp)) {
+                                   const nk = normalizeLabelSimple(k);
+                                   if (!nk) continue;
+                                    if (
+                                     !(
+                                       allowed.includes(nk) ||
+                                        allowed.some((al) => nk.includes(al) || al.includes(nk))
+                                     )
+                                   )
+                                     continue;
+                                    const items =
+                                      extractResponseItems(v).map(normalizeForCompare);
+                                    if (items.some((it) => it.includes(needle))) {
+                                     matched = true;
+                                      break;
+                                   }
+                                  }
+                               }
+                else if (canonical && canonicalMap[canonical]) {
+                                    const allowed = canonicalMap[canonical].map((s) =>
+                                      normalizeLabelSimple(s)
+                                    );
+                                    for (const [k, v] of Object.entries(allResp)) {
+                                      const nk = normalizeLabelSimple(k);
+                                      if (!nk) continue;
+                                     if (
+                                        !(
+                                         allowed.includes(nk) ||
+                                        allowed.some(
+                                          (al) => nk.includes(al) || al.includes(nk)
+                                        )
+                                      )
+                                     )
+                                        continue;
+                                     const items =
+                                        extractResponseItems(v).map(normalizeForCompare);
+                                     if (items.some((it) => it.includes(needle))) {
+                                       matched = true;
+                                        break;
+                                      }
+                                    }
+                                  }
+                else {
+                                    for (const v of Object.values(allResp)) {
+                                      const items =
+                                        extractResponseItems(v).map(normalizeForCompare);
+                                     if (items.some((it) => it.includes(needle))) {
+                                        matched = true;
+                                        break;
+                                     }
+                                   }
+                                 }
               } catch (e) {
                 // ignore
               }
@@ -2372,12 +2325,12 @@ const Applicants = () => {
         return String(value).trim();
       }
       if (Array.isArray(value)) {
-        const joined = value
+        return value
           .map((item) => toText(item))
           .filter(Boolean)
           .join(', ')
           .trim();
-        return joined;
+        
       }
       if (typeof value === 'object') {
         const candidateKeys = [
@@ -3887,7 +3840,18 @@ const Applicants = () => {
     [pagination?.pageSize]
   );
 
-  const tableData = isTableLoading ? skeletonData : filteredApplicants;
+    const tableData = isTableLoading ? skeletonData : filteredApplicants;
+    // Ensure initial column filters are compatible with the current column set.
+    const effectiveColumnFilters = useMemo(() => {
+      try {
+        if (!Array.isArray(columnFilters)) return columnFilters;
+        if (showCompanyColumn) return columnFilters;
+        return columnFilters.filter((f: any) => f?.id !== 'companyId');
+      } catch (e) {
+        return columnFilters;
+      }
+    }, [columnFilters, showCompanyColumn]);
+
 
   const table = useMaterialReactTable({
     columns,
@@ -3959,7 +3923,7 @@ const Applicants = () => {
     // Default pagination: 10 rows per page
     initialState: {
       pagination,
-      columnFilters,
+      columnFilters: effectiveColumnFilters,
       columnVisibility: responsiveColumnVisibility,
       density: 'compact',
       columnOrder:
@@ -3977,7 +3941,7 @@ const Applicants = () => {
     state: {
       sorting,
       pagination,
-      columnFilters,
+      columnFilters: effectiveColumnFilters,
       rowSelection,
       columnVisibility: responsiveColumnVisibility,
     },

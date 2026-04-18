@@ -1,5 +1,5 @@
 // Core React imports
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 // UI helpers and third-party utilities
 import Swal from '../../../utils/swal';
 import { useParams, useNavigate, useLocation } from 'react-router';
@@ -56,22 +56,18 @@ const ApplicantData = () => {
  useEffect(() => {
   // Check if this tab was opened in background
   const params = new URLSearchParams(location.search);
-  if (params.get('bg') === '1') {
-    // This tab was opened in background, try to focus back to opener
-    if (window.opener && !window.opener.closed) {
-      // Focus back to the opener (original tab)
-      try {
-        window.opener.focus();
-      } catch (e) {
-        // Ignore cross-origin errors
+  if (params.get('bg') === '1' && (window.opener && !window.opener.closed)) {
+        try {
+          window.opener.focus();
+        } catch (e) {
+          // Ignore cross-origin errors
+        }
+        
+        // Also try to blur this window
+        try {
+          window.blur();
+        } catch (e) {}
       }
-      
-      // Also try to blur this window
-      try {
-        window.blur();
-      } catch (e) {}
-    }
-  }
 }, [location.search]);
   // Navigation / incoming state
   // If the previous route passed applicant data via location.state we can use it for instant rendering
@@ -217,8 +213,7 @@ const ApplicantData = () => {
       if (urlParts.length !== 2) return null;
       const fileName = `CV_${(applicant?.applicantNo ?? applicant?._id ?? 'cv')}`;
       const transformations = `f_auto/fl_attachment:${fileName}`;
-      const downloadUrl = `${urlParts[0]}/upload/${transformations}/${urlParts[1]}`;
-      return downloadUrl;
+      return `${urlParts[0]}/upload/${transformations}/${urlParts[1]}`;
     } catch (e) {
       return null;
     }
@@ -328,7 +323,7 @@ const ApplicantData = () => {
       typeof applicant.jobPositionId === 'object' &&
       (applicant.jobPositionId as any)?.title
     ) {
-      const title = (applicant.jobPositionId as any).title;
+      const {title} = applicant.jobPositionId as any;
       if (typeof title === 'string') return { en: title };
       if (typeof title === 'object' && title?.en) return { en: title.en };
       return { en: '' };
@@ -703,6 +698,7 @@ const ApplicantData = () => {
   const [statusForm, setStatusForm] = useState({
     status: '' as Applicant['status'] | '',
     notes: '',
+    reasons: [] as string[],
   });
   const [interviewError, setInterviewError] = useState('');
   const [commentError, setCommentError] = useState('');
@@ -720,6 +716,27 @@ const ApplicantData = () => {
     jobSpecsResponses: Array<{ jobSpecId: string; answer: boolean }>;
   };
 
+  type InterviewQuestionDraft = {
+    localId: string;
+    question: string;
+    score: number;
+    achievedScore: number;
+    notes: string;
+    source: 'group' | 'existing';
+    answerType: string;
+    includeInTotal: boolean;
+    groupId?: string;
+    groupName?: string;
+  };
+
+  type CompanyInterviewGroup = {
+    id: string;
+    name: string;
+    questions: Array<{ question: string; score: number; answerType: string }>;
+  };
+
+  type InterviewTargetMode = 'existing' | 'new';
+
   const toInputDate = (value: any): string => {
     if (!value) return '';
     const date = new Date(value);
@@ -734,14 +751,14 @@ const ApplicantData = () => {
     return '';
   };
 
-  const normalizeLookupToken = (value: any): string => {
-    return String(value || '')
-      .toLowerCase()
-      .replace(/\u200e|\u200f/g, '')
-      .replace(/[^\w\u0600-\u06FF\s]/g, ' ')
-      .replace(/[\s_-]+/g, '')
-      .trim();
-  };
+  // const normalizeLookupToken = (value: any): string => {
+  //   return String(value || '')
+  //     .toLowerCase()
+  //     .replace(/\u200e|\u200f/g, '')
+  //     .replace(/[^\w\u0600-\u06FF\s]/g, ' ')
+  //     .replace(/[\s_-]+/g, '')
+  //     .trim();
+  // };
 
   const getCustomFieldId = (field: any, index: number): string => {
     return String(field?.fieldId || `field_${index}`);
@@ -762,57 +779,57 @@ const ApplicantData = () => {
     return [];
   };
 
-  const findMatchingResponseKeyForField = (
-    field: any,
-    responses: Record<string, any>
-  ): string => {
-    if (!responses || typeof responses !== 'object') return '';
+  // const findMatchingResponseKeyForField = (
+  //   field: any,
+  //   responses: Record<string, any>
+  // ): string => {
+  //   if (!responses || typeof responses !== 'object') return '';
 
-    const fieldId = String(field?.fieldId || '');
-    if (fieldId && Object.prototype.hasOwnProperty.call(responses, fieldId)) {
-      return fieldId;
-    }
+  //   const fieldId = String(field?.fieldId || '');
+  //   if (fieldId && Object.prototype.hasOwnProperty.call(responses, fieldId)) {
+  //     return fieldId;
+  //   }
 
-    const directCandidates = [
-      field?.label?.en,
-      field?.label?.ar,
-      toPlainString(field?.label),
-    ]
-      .filter(Boolean)
-      .map((v) => String(v));
+  //   const directCandidates = [
+  //     field?.label?.en,
+  //     field?.label?.ar,
+  //     toPlainString(field?.label),
+  //   ]
+  //     .filter(Boolean)
+  //     .map((v) => String(v));
 
-    for (const candidate of directCandidates) {
-      if (Object.prototype.hasOwnProperty.call(responses, candidate)) {
-        return candidate;
-      }
-    }
+  //   for (const candidate of directCandidates) {
+  //     if (Object.prototype.hasOwnProperty.call(responses, candidate)) {
+  //       return candidate;
+  //     }
+  //   }
 
-    const normalizedTargets = new Set<string>();
-    [fieldId, ...directCandidates]
-      .filter(Boolean)
-      .forEach((token) => {
-        const normalized = normalizeLookupToken(token);
-        if (!normalized) return;
-        normalizedTargets.add(normalized);
-        normalizedTargets.add(normalized.replace(/^rec/, ''));
-        normalizedTargets.add(normalized.replace(/^sav/, ''));
-      });
+  //   const normalizedTargets = new Set<string>();
+  //   [fieldId, ...directCandidates]
+  //     .filter(Boolean)
+  //     .forEach((token) => {
+  //       const normalized = normalizeLookupToken(token);
+  //       if (!normalized) return;
+  //       normalizedTargets.add(normalized);
+  //       normalizedTargets.add(normalized.replace(/^rec/, ''));
+  //       normalizedTargets.add(normalized.replace(/^sav/, ''));
+  //     });
 
-    for (const key of Object.keys(responses || {})) {
-      const normalizedKey = normalizeLookupToken(key);
-      if (!normalizedKey) continue;
-      if (normalizedTargets.has(normalizedKey)) return key;
+  //   for (const key of Object.keys(responses || {})) {
+  //     const normalizedKey = normalizeLookupToken(key);
+  //     if (!normalizedKey) continue;
+  //     if (normalizedTargets.has(normalizedKey)) return key;
 
-      for (const target of normalizedTargets) {
-        if (!target) continue;
-        if (normalizedKey.includes(target) || target.includes(normalizedKey)) {
-          return key;
-        }
-      }
-    }
+  //     for (const target of normalizedTargets) {
+  //       if (!target) continue;
+  //       if (normalizedKey.includes(target) || target.includes(normalizedKey)) {
+  //         return key;
+  //       }
+  //     }
+  //   }
 
-    return '';
-  };
+  //   return '';
+  // };
 
   const coerceCustomFieldValueForForm = (field: any, rawValue: any): any => {
     const inputType = String(field?.inputType || 'text').toLowerCase();
@@ -1017,52 +1034,132 @@ const ApplicantData = () => {
     return [] as any[];
   };
 
-  const buildInitialJobSpecsResponses = (src: any, availableSpecs: any[] = []) => {
-    const answerMap = new Map<string, boolean>();
+  // const buildInitialJobSpecsResponses = (src: any, availableSpecs: any[] = []) => {
+  //   const answerMap = new Map<string, boolean>();
 
-    const direct = Array.isArray(src?.jobSpecsResponses) ? src.jobSpecsResponses : [];
-    const fromDirect = direct
-      .map((r: any) => ({
-        jobSpecId: normalizeSpecId(r?.jobSpecId ?? r?._id ?? r?.id),
-        answer: typeof r?.answer === 'boolean' ? r.answer : Boolean(r?.answer),
-      }))
-      .filter((r: any) => Boolean(r.jobSpecId));
+  //   const direct = Array.isArray(src?.jobSpecsResponses) ? src.jobSpecsResponses : [];
+  //   const fromDirect = direct
+  //     .map((r: any) => ({
+  //       jobSpecId: normalizeSpecId(r?.jobSpecId ?? r?._id ?? r?.id),
+  //       answer: typeof r?.answer === 'boolean' ? r.answer : Boolean(r?.answer),
+  //     }))
+  //     .filter((r: any) => Boolean(r.jobSpecId));
 
-    fromDirect.forEach((r: any) => answerMap.set(String(r.jobSpecId), Boolean(r.answer)));
+  //   fromDirect.forEach((r: any) => answerMap.set(String(r.jobSpecId), Boolean(r.answer)));
 
-    const fallbackSpecs = Array.isArray(src?.jobSpecsWithDetails)
-      ? src.jobSpecsWithDetails
-      : Array.isArray(src?.jobSpecs)
-      ? src.jobSpecs
+  //   const fallbackSpecs = Array.isArray(src?.jobSpecsWithDetails)
+  //     ? src.jobSpecsWithDetails
+  //     : Array.isArray(src?.jobSpecs)
+  //     ? src.jobSpecs
+  //     : [];
+
+  //   const fromFallback = fallbackSpecs
+  //     .map((s: any) => ({
+  //       jobSpecId: normalizeSpecId(s?.jobSpecId ?? s?._id ?? s?.id),
+  //       answer: typeof s?.answer === 'boolean' ? s.answer : Boolean(s?.answer),
+  //     }))
+  //     .filter((r: any) => Boolean(r.jobSpecId));
+
+  //   fromFallback.forEach((r: any) => {
+  //     if (!answerMap.has(String(r.jobSpecId))) {
+  //       answerMap.set(String(r.jobSpecId), Boolean(r.answer));
+  //     }
+  //   });
+
+  //   (availableSpecs || []).forEach((s: any) => {
+  //     const specId = normalizeSpecId(s?.jobSpecId ?? s?._id ?? s?.id);
+  //     if (!specId) return;
+  //     if (!answerMap.has(String(specId))) {
+  //       answerMap.set(String(specId), false);
+  //     }
+  //   });
+
+  //   return Array.from(answerMap.entries()).map(([jobSpecId, answer]) => ({ jobSpecId, answer }));
+  // };
+
+  const companyInterviewGroups = useMemo<CompanyInterviewGroup[]>(() => {
+    const sources: any[] = [companyObj, fetchedCompany, jobPosCompany];
+
+    if (resolvedCompanyId) {
+      const fromList = (companies || []).find(
+        (c: any) => String(c?._id || c?.id || '') === String(resolvedCompanyId)
+      );
+      if (fromList) sources.push(fromList);
+    }
+
+    const normalizeGroups = (rawGroups: any[]): CompanyInterviewGroup[] => {
+      return (rawGroups || [])
+        .map((g: any, groupIndex: number) => {
+          const groupId = String(g?._id || g?.id || `group_${groupIndex}`);
+          const groupName = String(g?.name || `Group ${groupIndex + 1}`);
+          const questions = Array.isArray(g?.questions)
+            ? g.questions
+                .map((q: any) => ({
+                  question: String(q?.question || '').trim(),
+                  score: Number(q?.score ?? 0),
+                  answerType: String(q?.answerType || 'text').trim() || 'text',
+                }))
+                .filter((q: any) => q.question)
+            : [];
+
+          return {
+            id: groupId,
+            name: groupName,
+            questions,
+          };
+        })
+        .filter((g: CompanyInterviewGroup) => g.questions.length > 0);
+    };
+
+    for (const source of sources) {
+      if (!source || typeof source !== 'object') continue;
+      const rawGroups =
+        source?.settings?.interviewSettings?.groups ||
+        source?.interviewSettings?.groups ||
+        source?.settings?.groups ||
+        source?.groups;
+
+      if (Array.isArray(rawGroups) && rawGroups.length > 0) {
+        return normalizeGroups(rawGroups);
+      }
+    }
+
+    return [];
+  }, [companyObj, fetchedCompany, jobPosCompany, companies, resolvedCompanyId]);
+
+  const sortInterviewsByPriority = useCallback((sourceInterviews: any[] = []) => {
+    const rank: Record<string, number> = {
+      in_progress: 4,
+      scheduled: 3,
+      completed: 2,
+      cancelled: 1,
+    };
+
+    return [...(sourceInterviews || [])].sort((a: any, b: any) => {
+      const ra = rank[String(a?.status || 'scheduled')] || 0;
+      const rb = rank[String(b?.status || 'scheduled')] || 0;
+      if (rb !== ra) return rb - ra;
+
+      const ta = new Date(a?.startedAt || a?.scheduledAt || a?.issuedAt || 0).getTime();
+      const tb = new Date(b?.startedAt || b?.scheduledAt || b?.issuedAt || 0).getTime();
+      return tb - ta;
+    });
+  }, []);
+
+  const applicantInterviews = useMemo(() => {
+    const interviews = Array.isArray((applicant as any)?.interviews)
+      ? [...((applicant as any).interviews || [])]
       : [];
+    return sortInterviewsByPriority(interviews);
+  }, [applicant, sortInterviewsByPriority]);
 
-    const fromFallback = fallbackSpecs
-      .map((s: any) => ({
-        jobSpecId: normalizeSpecId(s?.jobSpecId ?? s?._id ?? s?.id),
-        answer: typeof s?.answer === 'boolean' ? s.answer : Boolean(s?.answer),
-      }))
-      .filter((r: any) => Boolean(r.jobSpecId));
-
-    fromFallback.forEach((r: any) => {
-      if (!answerMap.has(String(r.jobSpecId))) {
-        answerMap.set(String(r.jobSpecId), Boolean(r.answer));
-      }
-    });
-
-    (availableSpecs || []).forEach((s: any) => {
-      const specId = normalizeSpecId(s?.jobSpecId ?? s?._id ?? s?.id);
-      if (!specId) return;
-      if (!answerMap.has(String(specId))) {
-        answerMap.set(String(specId), false);
-      }
-    });
-
-    return Array.from(answerMap.entries()).map(([jobSpecId, answer]) => ({ jobSpecId, answer }));
-  };
+  const getPreferredInterviewToUpdate = useCallback(() => {
+    return applicantInterviews[0] || null;
+  }, [applicantInterviews]);
 
   const [isInterviewEditMode, setIsInterviewEditMode] = useState(false);
   const [isSavingInterviewEdit, setIsSavingInterviewEdit] = useState(false);
-  const [interviewUnmappedCustomResponses, setInterviewUnmappedCustomResponses] =
+  const [interviewUnmappedCustomResponses] =
     useState<Record<string, any>>({});
   const [interviewEditForm, setInterviewEditForm] = useState<InterviewEditFormState>({
     fullName: '',
@@ -1075,58 +1172,239 @@ const ApplicantData = () => {
     customResponses: {},
     jobSpecsResponses: [],
   });
+  const [interviewTargetMode, setInterviewTargetMode] = useState<InterviewTargetMode>('existing');
+  const [interviewTargetId, setInterviewTargetId] = useState('');
+  const [selectedQuestionGroupIds, setSelectedQuestionGroupIds] = useState<string[]>([]);
+  const [interviewQuestionDrafts, setInterviewQuestionDrafts] = useState<InterviewQuestionDraft[]>([]);
 
-  const openInterviewEditMode = () => {
-    if (!applicant) return;
+  useEffect(() => {
+    if (!isInterviewEditMode) return;
 
-    const availableCustomFields = getAvailableCustomFieldsForInterview();
-    const availableSpecs = getAvailableJobSpecsForInterview();
-
-    const rawCustomResponses =
-      applicant?.customResponses && typeof applicant.customResponses === 'object'
-        ? applicant.customResponses
-        : applicant?.customFieldResponses && typeof applicant.customFieldResponses === 'object'
-        ? applicant.customFieldResponses
-        : {};
-
-    const mappedResponseKeys = new Set<string>();
-    const nextCustomResponses: Record<string, any> = {};
-
-    availableCustomFields.forEach((field: any, fieldIndex: number) => {
-      const fieldId = getCustomFieldId(field, fieldIndex);
-      const matchedKey = findMatchingResponseKeyForField(field, rawCustomResponses);
-      if (matchedKey) mappedResponseKeys.add(matchedKey);
-      const rawValue =
-        matchedKey && Object.prototype.hasOwnProperty.call(rawCustomResponses, matchedKey)
-          ? rawCustomResponses[matchedKey]
-          : rawCustomResponses[fieldId];
-
-      nextCustomResponses[fieldId] = coerceCustomFieldValueForForm(field, rawValue);
-    });
-
-    const unmappedCustomResponses = Object.fromEntries(
-      Object.entries(rawCustomResponses).filter(([key]) => !mappedResponseKeys.has(key))
+    const selectedGroups = companyInterviewGroups.filter((g) =>
+      selectedQuestionGroupIds.includes(g.id)
     );
 
-    setInterviewUnmappedCustomResponses(unmappedCustomResponses);
+    const importedFromGroups: InterviewQuestionDraft[] = selectedGroups.flatMap(
+      (group) =>
+        group.questions.map((q, idx) => ({
+          localId: `group_${group.id}_${idx}_${q.question}`,
+          question: q.question,
+          score: Number.isFinite(Number(q.score)) ? Number(q.score) : 0,
+          achievedScore: 0,
+          notes: '',
+          source: 'group',
+          answerType: String(q.answerType || 'text'),
+          includeInTotal: true,
+          groupId: group.id,
+          groupName: group.name,
+        }))
+    );
 
-    setInterviewEditForm({
-      fullName: applicant?.fullName ? String(applicant.fullName) : '',
-      email: applicant?.email ? String(applicant.email) : '',
-      phone: applicant?.phone ? String(applicant.phone) : '',
-      gender: applicant?.gender ? normalizeGenderLocal(applicant.gender) : '',
-      birthDate: toInputDate(getBirthDateValue()),
-      address: applicant?.address ? String(applicant.address) : '',
-      expectedSalary:
-        applicant?.expectedSalary !== undefined && applicant?.expectedSalary !== null
-          ? String(applicant.expectedSalary)
-          : '',
-      customResponses: nextCustomResponses,
-      jobSpecsResponses: buildInitialJobSpecsResponses(applicant, availableSpecs),
+    const fallbackInterviewId = String(getPreferredInterviewToUpdate()?._id || '');
+    const resolvedInterviewId =
+      interviewTargetMode === 'existing'
+        ? String(interviewTargetId || fallbackInterviewId || '')
+        : '';
+
+    const selectedInterview = resolvedInterviewId
+      ? applicantInterviews.find((iv: any) => String(iv?._id || '') === resolvedInterviewId)
+      : null;
+
+    const selectedInterviewAnswerSeed = new Map<
+      string,
+      { achievedScore: number; notes: string; score: number }
+    >();
+
+    (Array.isArray(selectedInterview?.questions) ? selectedInterview.questions : []).forEach((q: any) => {
+      const key = String(q?.question || '').trim().toLowerCase();
+      selectedInterviewAnswerSeed.set(key, {
+        achievedScore: Number.isFinite(Number(q?.achievedScore)) ? Number(q.achievedScore) : 0,
+        notes: String(q?.notes || ''),
+        score: Number.isFinite(Number(q?.score)) ? Number(q.score) : 0,
+      });
     });
 
-    setIsInterviewEditMode(true);
+    setInterviewQuestionDrafts((prev) => {
+      const previousAnswers = new Map<string, InterviewQuestionDraft>();
+
+      (prev || []).forEach((q) => {
+        const key = `${q.groupId || ''}::${q.question}::${q.score}`;
+        previousAnswers.set(key, q);
+      });
+
+      const mergedGroupQuestions = importedFromGroups.map((q) => {
+        const key = `${q.groupId || ''}::${q.question}::${q.score}`;
+        const previous = previousAnswers.get(key);
+        const interviewSeed = selectedInterviewAnswerSeed.get(
+          String(q.question || '').trim().toLowerCase()
+        );
+        const includeFromSeed =
+          interviewSeed && Number(q.score) > 0 ? Number(interviewSeed.score) > 0 : true;
+        return {
+          ...q,
+          achievedScore: previous
+            ? Number(previous.achievedScore || 0)
+            : Number(interviewSeed?.achievedScore || 0),
+          notes: previous?.notes || interviewSeed?.notes || '',
+          includeInTotal: previous ? Boolean(previous.includeInTotal) : includeFromSeed,
+          answerType: previous?.answerType || q.answerType || 'text',
+        };
+      });
+
+      return mergedGroupQuestions;
+    });
+  }, [
+    isInterviewEditMode,
+    selectedQuestionGroupIds,
+    companyInterviewGroups,
+    interviewTargetMode,
+    interviewTargetId,
+    applicantInterviews,
+    getPreferredInterviewToUpdate,
+  ]);
+
+  // const openInterviewEditMode = () => {
+  //   if (!applicant) return;
+
+  //   const availableCustomFields = getAvailableCustomFieldsForInterview();
+  //   const availableSpecs = getAvailableJobSpecsForInterview();
+
+  //   const rawCustomResponses =
+  //     applicant?.customResponses && typeof applicant.customResponses === 'object'
+  //       ? applicant.customResponses
+  //       : applicant?.customFieldResponses && typeof applicant.customFieldResponses === 'object'
+  //       ? applicant.customFieldResponses
+  //       : {};
+
+  //   const mappedResponseKeys = new Set<string>();
+  //   const nextCustomResponses: Record<string, any> = {};
+
+  //   availableCustomFields.forEach((field: any, fieldIndex: number) => {
+  //     const fieldId = getCustomFieldId(field, fieldIndex);
+  //     const matchedKey = findMatchingResponseKeyForField(field, rawCustomResponses);
+  //     if (matchedKey) mappedResponseKeys.add(matchedKey);
+  //     const rawValue =
+  //       matchedKey && Object.prototype.hasOwnProperty.call(rawCustomResponses, matchedKey)
+  //         ? rawCustomResponses[matchedKey]
+  //         : rawCustomResponses[fieldId];
+
+  //     nextCustomResponses[fieldId] = coerceCustomFieldValueForForm(field, rawValue);
+  //   });
+
+  //   const unmappedCustomResponses = Object.fromEntries(
+  //     Object.entries(rawCustomResponses).filter(([key]) => !mappedResponseKeys.has(key))
+  //   );
+
+  //   setInterviewUnmappedCustomResponses(unmappedCustomResponses);
+
+  //   setInterviewEditForm({
+  //     fullName: applicant?.fullName ? String(applicant.fullName) : '',
+  //     email: applicant?.email ? String(applicant.email) : '',
+  //     phone: applicant?.phone ? String(applicant.phone) : '',
+  //     gender: applicant?.gender ? normalizeGenderLocal(applicant.gender) : '',
+  //     birthDate: toInputDate(getBirthDateValue()),
+  //     address: applicant?.address ? String(applicant.address) : '',
+  //     expectedSalary:
+  //       applicant?.expectedSalary !== undefined && applicant?.expectedSalary !== null
+  //         ? String(applicant.expectedSalary)
+  //         : '',
+  //     customResponses: nextCustomResponses,
+  //     jobSpecsResponses: buildInitialJobSpecsResponses(applicant, availableSpecs),
+  //   });
+
+  //   const targetInterview = getPreferredInterviewToUpdate();
+  //   const hasExistingInterview = Boolean(targetInterview?._id);
+
+  //   setInterviewTargetMode(hasExistingInterview ? 'existing' : 'new');
+  //   setInterviewTargetId(String(targetInterview?._id || ''));
+  //   setSelectedQuestionGroupIds((companyInterviewGroups || []).map((group) => group.id));
+  //   setInterviewQuestionDrafts([]);
+
+  //   setIsInterviewEditMode(true);
+  // };
+
+  const handleInterviewTargetModeChange = (mode: InterviewTargetMode) => {
+    setInterviewTargetMode(mode);
+
+    if (mode === 'new') {
+      setInterviewTargetId('');
+      return;
+    }
+
+    const fallbackInterviewId = String(getPreferredInterviewToUpdate()?._id || '');
+    const resolvedInterviewId = String(interviewTargetId || fallbackInterviewId || '');
+    setInterviewTargetId(resolvedInterviewId);
   };
+
+  const handleExistingInterviewSelection = (nextInterviewId: string) => {
+    setInterviewTargetMode('existing');
+    setInterviewTargetId(nextInterviewId);
+  };
+
+  const updateInterviewQuestionDraft = (
+    localId: string,
+    field: 'achievedScore' | 'notes',
+    value: any
+  ) => {
+    setInterviewQuestionDrafts((prev) =>
+      prev.map((q) => {
+        if (q.localId !== localId) return q;
+        if (field === 'achievedScore') {
+          const parsed = Number(value);
+          return { ...q, achievedScore: Number.isFinite(parsed) ? parsed : 0 };
+        }
+        return { ...q, notes: String(value ?? '') };
+      })
+    );
+  };
+
+  const updateInterviewQuestionIncluded = (localId: string, includeInTotal: boolean) => {
+    setInterviewQuestionDrafts((prev) =>
+      prev.map((q) => (q.localId === localId ? { ...q, includeInTotal } : q))
+    );
+  };
+
+  const isQuestionAnswered = useCallback((q: InterviewQuestionDraft) => {
+    const answerText = String(q.notes || '').trim();
+    if (!answerText) return false;
+
+    if (String(q.answerType || '').toLowerCase() === 'number') {
+      return Number.isFinite(Number(answerText));
+    }
+
+    return true;
+  }, []);
+
+  const getEffectiveQuestionScore = useCallback((q: InterviewQuestionDraft) => {
+    const baseScore = Number.isFinite(Number(q.score)) ? Number(q.score) : 0;
+    return q.includeInTotal ? Math.max(0, baseScore) : 0;
+  }, []);
+
+  const getComputedQuestionAchievedScore = useCallback(
+    (q: InterviewQuestionDraft) => {
+      const effectiveScore = getEffectiveQuestionScore(q);
+      if (effectiveScore <= 0) return 0;
+      return isQuestionAnswered(q) ? effectiveScore : 0;
+    },
+    [getEffectiveQuestionScore, isQuestionAnswered]
+  );
+
+  const interviewScoreSummary = useMemo(() => {
+    const totalScore = (interviewQuestionDrafts || []).reduce(
+      (sum, q) => sum + getEffectiveQuestionScore(q),
+      0
+    );
+
+    const achievedScore = (interviewQuestionDrafts || []).reduce(
+      (sum, q) => sum + getComputedQuestionAchievedScore(q),
+      0
+    );
+
+    return {
+      totalScore,
+      achievedScore,
+    };
+  }, [interviewQuestionDrafts, getEffectiveQuestionScore, getComputedQuestionAchievedScore]);
 
   const setInterviewCustomFieldValue = (fieldId: string, value: any) => {
     setInterviewEditForm((prev) => ({
@@ -1221,6 +1499,45 @@ const ApplicantData = () => {
     });
   };
 
+  const createInterviewForQuestionSave = async (): Promise<string> => {
+    if (!id) return '';
+
+    const scheduledAt = new Date().toISOString();
+    const creationNotes = `Created from interview edit on ${new Date().toLocaleDateString()}`;
+
+    const updatedApplicant = await scheduleInterviewMutation.mutateAsync({
+      id,
+      data: {
+        scheduledAt,
+        type: 'phone',
+        status: 'scheduled',
+        notes: creationNotes,
+        questions: [],
+      },
+    });
+
+    const interviewsFromResponse = Array.isArray((updatedApplicant as any)?.interviews)
+      ? [...((updatedApplicant as any).interviews || [])]
+      : [];
+
+    const exactMatch = interviewsFromResponse.find(
+      (iv: any) =>
+        String(iv?.scheduledAt || '') === String(scheduledAt) &&
+        String(iv?.notes || '') === creationNotes
+    );
+
+    if (exactMatch?._id) {
+      return String(exactMatch._id);
+    }
+
+    const newestInterview = sortInterviewsByPriority(interviewsFromResponse)[0];
+    if (newestInterview?._id) {
+      return String(newestInterview._id);
+    }
+
+    return '';
+  };
+
   const handleInterviewEditSave = async () => {
     if (!id || !applicant) return;
 
@@ -1233,6 +1550,46 @@ const ApplicantData = () => {
       (!Number.isFinite(expectedSalaryValue) || Number.isNaN(expectedSalaryValue))
     ) {
       Swal.fire('Invalid Salary', 'Expected salary must be a valid number.', 'error');
+      return;
+    }
+
+    const invalidQuestionRows = (interviewQuestionDrafts || []).filter(
+      (q) => !String(q.question || '').trim() || !Number.isFinite(Number(q.score))
+    );
+
+    if (invalidQuestionRows.length > 0) {
+      Swal.fire(
+        'Invalid Interview Question',
+        'Each interview question must include a question text and numeric score.',
+        'error'
+      );
+      return;
+    }
+
+    const interviewQuestionsPayload = (interviewQuestionDrafts || [])
+      .filter((q) => String(q.question || '').trim() && Number.isFinite(Number(q.score)))
+      .map((q) => ({
+      question: String(q.question || '').trim(),
+      score: getEffectiveQuestionScore(q),
+      achievedScore: getComputedQuestionAchievedScore(q),
+      notes: String(q.notes || '').trim(),
+    }));
+
+    let interviewIdToUpdate = '';
+    if (interviewTargetMode === 'existing') {
+      interviewIdToUpdate = String(interviewTargetId || getPreferredInterviewToUpdate()?._id || '');
+    }
+
+    if (
+      interviewTargetMode === 'existing' &&
+      interviewQuestionsPayload.length > 0 &&
+      !interviewIdToUpdate
+    ) {
+      Swal.fire(
+        'No Interview Record',
+        'Schedule an interview first, then add/update interview questions.',
+        'warning'
+      );
       return;
     }
 
@@ -1283,13 +1640,59 @@ const ApplicantData = () => {
     if (interviewEditForm.birthDate) payload.birthDate = interviewEditForm.birthDate;
     if (expectedSalaryValue !== undefined) payload.expectedSalary = expectedSalaryValue;
 
+    let applicantUpdated = false;
+
     try {
       setIsSavingInterviewEdit(true);
       await updateApplicantMutation.mutateAsync({ id, data: payload });
+      applicantUpdated = true;
+
+      if (interviewQuestionsPayload.length > 0) {
+        if (interviewTargetMode === 'new') {
+          interviewIdToUpdate = await createInterviewForQuestionSave();
+          if (!interviewIdToUpdate) {
+            throw new Error(
+              'Interview was created, but no interview id was returned. Please try again.'
+            );
+          }
+        }
+
+        if (!interviewIdToUpdate) {
+          throw new Error('Please select an interview target before saving questions.');
+        }
+
+        await updateInterviewMutation.mutateAsync({
+          applicantId: id,
+          interviewId: interviewIdToUpdate,
+          data: {
+            questions: interviewQuestionsPayload,
+          } as any,
+        });
+      }
+
       setIsInterviewEditMode(false);
-      Swal.fire('Saved', 'Applicant interview data was updated successfully.', 'success');
+  setInterviewTargetMode('existing');
+      setInterviewTargetId('');
+      setSelectedQuestionGroupIds([]);
+      setInterviewQuestionDrafts([]);
+
+      Swal.fire(
+        'Saved',
+        interviewQuestionsPayload.length > 0
+          ? 'Applicant data and interview questions were updated successfully.'
+          : 'Applicant interview data was updated successfully.',
+        'success'
+      );
     } catch (err: any) {
-      Swal.fire('Update Failed', getErrorMessage(err), 'error');
+      if (applicantUpdated) {
+        Swal.fire(
+          'Partial Update',
+          `Applicant data was saved, but interview update failed: ${getErrorMessage(err)}`,
+          'warning'
+        );
+      } else {
+        Swal.fire('Update Failed', getErrorMessage(err), 'error');
+      }
     } finally {
       setIsSavingInterviewEdit(false);
     }
@@ -1297,6 +1700,10 @@ const ApplicantData = () => {
 
   const handleInterviewEditCancel = () => {
     setIsInterviewEditMode(false);
+    setInterviewTargetMode('existing');
+    setInterviewTargetId('');
+    setSelectedQuestionGroupIds([]);
+    setInterviewQuestionDrafts([]);
   };
 
   
@@ -1403,7 +1810,7 @@ const ApplicantData = () => {
     }
     // Check for validation errors in 'errors' array (old format)
     if (err.response?.data?.errors) {
-      const errors = err.response.data.errors;
+      const {errors} = err.response.data;
       if (Array.isArray(errors)) {
         return errors.map((e: any) => e.msg || e.message).join(', ');
       }
@@ -1761,13 +2168,24 @@ const ApplicantData = () => {
 
     setIsSubmittingStatus(true);
     try {
+      const selectedReasons = Array.isArray((statusForm as any).reasons)
+        ? (statusForm as any).reasons
+            .map((r: any) => String(r ?? '').trim())
+            .filter(Boolean)
+        : [];
+
+      const mergedRejectedReasons = Array.from(new Set(selectedReasons));
+
       const statusData: UpdateStatusRequest = {
         status: statusForm.status as UpdateStatusRequest['status'],
         notes: statusForm.notes || undefined,
-      };
+        ...(statusForm.status === 'rejected' && mergedRejectedReasons.length
+          ? { reasons: mergedRejectedReasons }
+          : {}),
+      } as UpdateStatusRequest;
 
       // Close modal and reset form immediately
-      setStatusForm({ status: '', notes: '' });
+      setStatusForm({ status: '', notes: '', reasons: [] });
       setShowStatusModal(false);
 
       // Update status via React Query mutation (optimistic)
@@ -1885,7 +2303,7 @@ const ApplicantData = () => {
             >
               <span className="hidden sm:inline">{applicant.status.charAt(0).toUpperCase() + applicant.status.slice(1)}</span> 
             </button>
-            <button
+            {/* <button
               onClick={openInterviewEditMode}
               disabled={isInterviewEditMode}
               className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-amber-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-60 disabled:cursor-not-allowed"
@@ -1894,7 +2312,7 @@ const ApplicantData = () => {
                 <path d="M8 5v14l11-7z" />
               </svg>
               Interview
-            </button>
+            </button> */}
             {isInterviewEditMode && (
               <>
                 <button
@@ -2540,7 +2958,7 @@ const ApplicantData = () => {
                         answered
                           ? 'bg-green-50 text-green-700 border-green-100'
                           : 'bg-gray-50 text-gray-500 border-gray-200'
-                      } ${!specResponseId ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-90'}`}
+                      } ${specResponseId ? 'hover:opacity-90' : 'opacity-50 cursor-not-allowed'}`}
                     >
                       {answered ? (
                         <>
@@ -2916,6 +3334,261 @@ const ApplicantData = () => {
           <CustomResponses applicant={applicant} customFields={customFieldsForInterview} />
         )}
 
+        {isInterviewEditMode && (
+          <div className="rounded-2xl overflow-hidden bg-gradient-to-br from-violet-50 to-fuchsia-50 dark:from-gray-900 dark:to-gray-800 border-2 border-violet-200 dark:border-violet-900/50 shadow-lg">
+            <div className="bg-gradient-to-r from-violet-600 to-fuchsia-600 dark:from-violet-700 dark:to-fuchsia-700 px-8 py-6">
+              <h3 className="text-2xl font-extrabold text-white">Interview Questions</h3>
+              <p className="text-sm text-violet-100 mt-0.5">
+                Questions come from interview settings/interview record, and you only fill answers.
+              </p>
+            </div>
+
+            <div className="p-8 space-y-6">
+              <div className="rounded-xl border border-violet-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
+                <Label className="mb-3 block text-xs text-violet-700 dark:text-violet-300 font-bold uppercase">
+                  Interview Target
+                </Label>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  <label className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 dark:border-gray-700 dark:text-gray-300">
+                    <input
+                      type="radio"
+                      name="interview-target-mode"
+                      checked={interviewTargetMode === 'existing'}
+                      onChange={() => handleInterviewTargetModeChange('existing')}
+                    />
+                    <span>Use Existing Interview</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 dark:border-gray-700 dark:text-gray-300">
+                    <input
+                      type="radio"
+                      name="interview-target-mode"
+                      checked={interviewTargetMode === 'new'}
+                      onChange={() => handleInterviewTargetModeChange('new')}
+                    />
+                    <span>Create New Interview</span>
+                  </label>
+                </div>
+
+                {interviewTargetMode === 'existing' ? (
+                  <div className="mt-3 space-y-1">
+                    <Label className="text-[11px] font-semibold uppercase text-gray-500 dark:text-gray-400">
+                      Select Existing Interview
+                    </Label>
+                    {applicantInterviews.length === 0 ? (
+                      <p className="text-sm text-amber-700 dark:text-amber-300">
+                        No existing interviews found. Switch to "Create New Interview" to create one on save.
+                      </p>
+                    ) : (
+                      <select
+                        value={interviewTargetId}
+                        onChange={(e) => handleExistingInterviewSelection(e.target.value)}
+                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-violet-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                      >
+                        <option value="">Select interview</option>
+                        {applicantInterviews.map((iv: any, index: number) => {
+                          const interviewId = String(iv?._id || '');
+                          if (!interviewId) return null;
+
+                          const statusText = String(iv?.status || 'scheduled')
+                            .replace(/_/g, ' ')
+                            .replace(/\b\w/g, (char) => char.toUpperCase());
+                          const typeText = iv?.type ? ` | ${String(iv.type)}` : '';
+                          const whenRaw = iv?.startedAt || iv?.scheduledAt || iv?.issuedAt;
+                          const whenText = whenRaw ? formatDate(whenRaw) : 'No date';
+
+                          return (
+                            <option key={interviewId} value={interviewId}>
+                              {`Interview ${index + 1} | ${statusText}${typeText} | ${whenText}`}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    )}
+                  </div>
+                ) : (
+                  <p className="mt-3 text-sm text-amber-700 dark:text-amber-300">
+                    A new interview record will be created automatically when you save these questions.
+                  </p>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-violet-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <Label className="text-xs text-violet-700 dark:text-violet-300 font-bold uppercase">
+                    Question Groups (Company Settings)
+                  </Label>
+                </div>
+
+                {companyInterviewGroups.length === 0 ? (
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    No question groups found in company interview settings.
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    {companyInterviewGroups.map((group) => {
+                      const checked = selectedQuestionGroupIds.includes(group.id);
+                      return (
+                        <label
+                          key={group.id}
+                          className="flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 dark:border-gray-700 dark:text-gray-300"
+                        >
+                          <div className="min-w-0">
+                            <p className="font-semibold truncate">{group.name}</p>
+                            <p className="text-xs text-gray-500">{group.questions.length} questions</p>
+                          </div>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(e) => {
+                              const nextChecked = e.target.checked;
+                              setSelectedQuestionGroupIds((prev) => {
+                                if (nextChecked) return Array.from(new Set([...prev, group.id]));
+                                return prev.filter((id) => id !== group.id);
+                              });
+                            }}
+                          />
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs text-violet-700 dark:text-violet-300 font-bold uppercase">
+                    Questions To Save In Interview
+                  </Label>
+                  <div className="flex items-center gap-2">
+                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200">
+                      Score {interviewScoreSummary.achievedScore}/{interviewScoreSummary.totalScore}
+                    </span>
+                    {interviewTargetMode === 'new' ? (
+                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:bg-amber-900/40 dark:text-amber-200">
+                        Create new interview on save
+                      </span>
+                    ) : interviewTargetId ? (
+                      <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-violet-700 dark:bg-violet-900/40 dark:text-violet-200">
+                        Interview linked
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:bg-amber-900/40 dark:text-amber-200">
+                        No interview record
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {interviewQuestionDrafts.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-gray-300 px-3 py-3 text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                    No questions yet. Select one or more groups above.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {interviewQuestionDrafts.map((item, idx) => (
+                      <div
+                        key={item.localId}
+                        className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900"
+                      >
+                        <div className="mb-3 flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-gray-500">Q{idx + 1}</span>
+                            {item.source === 'group' && item.groupName && (
+                              <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold text-violet-700 dark:bg-violet-900/40 dark:text-violet-200">
+                                {item.groupName}
+                              </span>
+                            )}
+                          </div>
+                          <label className="flex items-center gap-2 text-xs font-semibold text-gray-600 dark:text-gray-300">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(item.includeInTotal)}
+                              onChange={(e) =>
+                                updateInterviewQuestionIncluded(item.localId, e.target.checked)
+                              }
+                            />
+                            Include in total
+                          </label>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                          <div className="md:col-span-5">
+                            <Label className="mb-1 block text-[11px] font-semibold uppercase text-gray-500 dark:text-gray-400">
+                              Question
+                            </Label>
+                            <div className="w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100">
+                              {item.question || '-'}
+                            </div>
+                          </div>
+
+                          <div className="md:col-span-2">
+                            <Label className="mb-1 block text-[11px] font-semibold uppercase text-gray-500 dark:text-gray-400">
+                              Score
+                            </Label>
+                            <div className="w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100">
+                              {Number.isFinite(Number(item.score)) ? Number(item.score) : 0}
+                            </div>
+                          </div>
+
+                          <div className="md:col-span-3">
+                            <Label className="mb-1 block text-[11px] font-semibold uppercase text-gray-500 dark:text-gray-400">
+                              Answer ({String(item.answerType || 'text')})
+                            </Label>
+                            {String(item.answerType || 'text').toLowerCase() === 'number' ? (
+                              <input
+                                type="number"
+                                value={item.notes}
+                                onChange={(e) =>
+                                  updateInterviewQuestionDraft(item.localId, 'notes', e.target.value)
+                                }
+                                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-violet-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                                placeholder="Type numeric answer"
+                              />
+                            ) : String(item.answerType || 'text').toLowerCase() === 'checkbox' ? (
+                              <select
+                                value={item.notes}
+                                onChange={(e) =>
+                                  updateInterviewQuestionDraft(item.localId, 'notes', e.target.value)
+                                }
+                                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-violet-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                              >
+                                <option value="">Select answer</option>
+                                <option value="true">True</option>
+                                <option value="false">False</option>
+                              </select>
+                            ) : (
+                              <input
+                                type="text"
+                                value={item.notes}
+                                onChange={(e) =>
+                                  updateInterviewQuestionDraft(item.localId, 'notes', e.target.value)
+                                }
+                                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-violet-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                                placeholder="Type answer"
+                              />
+                            )}
+                          </div>
+
+                          <div className="md:col-span-2">
+                            <Label className="mb-1 block text-[11px] font-semibold uppercase text-gray-500 dark:text-gray-400">
+                              Achieved
+                            </Label>
+                            <div className="w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100">
+                              {getComputedQuestionAchievedScore(item)}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         
         
 
@@ -3038,6 +3711,7 @@ const ApplicantData = () => {
         onClose={() => {
           setShowStatusModal(false);
           setStatusError('');
+          setStatusForm({ status: '', notes: '', reasons: [] });
         }}
         statusForm={statusForm}
         setStatusForm={setStatusForm}
@@ -3046,6 +3720,7 @@ const ApplicantData = () => {
         handleStatusChange={handleStatusChange}
         isSubmittingStatus={isSubmittingStatus}
         statusOptions={statusOptions}
+        companyId={resolvedCompanyId}
       />
     </>
   );

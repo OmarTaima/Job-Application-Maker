@@ -5,6 +5,10 @@ import type {
   CreateCompanyRequest,
   UpdateCompanyRequest,
   Company,
+  InterviewSettings,
+  UpdateRejectionReasonsRequest,
+  UpdateCompanySettingsRequest,
+  UpdateInterviewSettingsRequest,
 } from "../../services/companiesService";
 import type { Applicant } from "../../store/slices/applicantsSlice";
 
@@ -17,6 +21,8 @@ export const companiesKeys = {
   detail: (id: string) => [...companiesKeys.details(), id] as const,
   settings: () => [...companiesKeys.all, "settings"] as const,
   setting: (companyId: string) => [...companiesKeys.settings(), companyId] as const,
+  interviewSettings: () => [...companiesKeys.settings(), "interview"] as const,
+  interviewSetting: (companyId: string) => [...companiesKeys.interviewSettings(), companyId] as const,
 };
 
 // Get all companies (optionally filtered by company IDs)
@@ -89,11 +95,81 @@ export function useCompany(id: string, options?: { enabled?: boolean }) {
 
 // Company settings: fetch by company id
 export function useCompanySettings(companyId: string | undefined, options?: { enabled?: boolean }) {
+  const queryClient = useQueryClient();
+
   return useQuery<any>({
     queryKey: companiesKeys.setting(companyId ?? ""),
     queryFn: async () => {
       if (!companyId) return null;
+
+      // If the companies list already contains the requested company and it
+      // includes settings/rejectReasons/interviewSettings, reuse it to avoid
+      // an extra network request when switching company selection.
+      const list = queryClient.getQueryData(companiesKeys.list()) as any[] | undefined;
+      if (list && list.length > 0) {
+        for (const c of list) {
+          if (!c) continue;
+
+          // Normalize common wrapper shapes used across the app
+          let companyObj: any = c;
+          if (companyObj.company && typeof companyObj.company === "object") companyObj = companyObj.company;
+          if (companyObj.data && typeof companyObj.data === "object") companyObj = companyObj.data;
+
+          const cid = companyObj._id ?? (companyObj.company && (typeof companyObj.company === "string" ? companyObj.company : companyObj.company?._id));
+          if (!cid) continue;
+          if (String(cid) === String(companyId)) {
+            // If the cached company object contains settings-like fields,
+            // return it as the settings payload.
+            if (companyObj.settings || companyObj.rejectReasons || companyObj.interviewSettings || companyObj.mailSettings) {
+              return companyObj;
+            }
+
+            // Some list entries themselves are wrapper objects with settings
+            if (c.settings || c.rejectReasons || c.interviewSettings || c.mailSettings) {
+              return c;
+            }
+          }
+        }
+      }
+
       return companiesService.getCompanySettingsByCompany(companyId);
+    },
+    enabled: options?.enabled !== undefined ? options.enabled && !!companyId : !!companyId,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useCompanyInterviewSettings(companyId: string | undefined, options?: { enabled?: boolean }) {
+  const queryClient = useQueryClient();
+
+  return useQuery<InterviewSettings | null>({
+    queryKey: companiesKeys.interviewSetting(companyId ?? ""),
+    queryFn: async () => {
+      if (!companyId) return null;
+
+      // Try to reuse any cached company object from the companies list to avoid
+      // unnecessary network requests when the list already contains settings.
+      const list = queryClient.getQueryData(companiesKeys.list()) as any[] | undefined;
+      if (list && list.length > 0) {
+        for (const c of list) {
+          if (!c) continue;
+
+          // Normalize wrapper shapes used across the app
+          let companyObj: any = c;
+          if (companyObj.company && typeof companyObj.company === "object") companyObj = companyObj.company;
+          if (companyObj.data && typeof companyObj.data === "object") companyObj = companyObj.data;
+
+          const cid = companyObj._id ?? (companyObj.company && (typeof companyObj.company === "string" ? companyObj.company : companyObj.company?._id));
+          if (!cid) continue;
+          if (String(cid) === String(companyId)) {
+            const interview = companyObj.interviewSettings ?? companyObj.settings?.interviewSettings ?? null;
+            if (interview) return interview;
+          }
+        }
+      }
+
+      const settings = await companiesService.getCompanySettingsByCompany(companyId);
+      return settings?.interviewSettings ?? settings?.settings?.interviewSettings ?? null;
     },
     enabled: options?.enabled !== undefined ? options.enabled && !!companyId : !!companyId,
     staleTime: 5 * 60 * 1000,
@@ -106,15 +182,20 @@ export function useUpdateCompanySettings() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: any }) => companiesService.updateCompanySettings(id, data),
+    mutationFn: ({ id, data }: { id: string; data: UpdateCompanySettingsRequest }) => companiesService.updateCompanySettings(id, data),
     onSuccess: (data: any) => {
       // Normalize server response which may be { message, result: { ... } } or { data: ... } or the settings object itself
       const payload = data?.result ?? data?.data ?? data;
       const companyId = payload?.company || payload?.companyId || (payload && payload.company && typeof payload.company === 'string' ? payload.company : undefined);
+      const mailSettings = payload?.mailSettings ?? payload?.settings?.mailSettings ?? payload;
+      const interviewSettings = payload?.interviewSettings ?? payload?.settings?.interviewSettings;
 
       if (companyId) {
         // Update the settings cache for this company
         queryClient.setQueryData(companiesKeys.setting(companyId), payload);
+        if (interviewSettings) {
+          queryClient.setQueryData(companiesKeys.interviewSetting(companyId), interviewSettings);
+        }
 
         // Also update any cached company details in list/detail queries to include updated settings
         queryClient.setQueryData(companiesKeys.list(), (old: any) => {
@@ -123,13 +204,13 @@ export function useUpdateCompanySettings() {
             return old.map((c: any) => {
               if (!c) return c;
               // handle wrapped shapes
-              if (c._id === companyId) return { ...c, settings: payload, mailSettings: payload.mailSettings ?? payload };
-              if (c.company && c.company._id === companyId) return { ...c, company: { ...c.company, settings: payload, mailSettings: payload.mailSettings ?? payload } };
+              if (c._id === companyId) return { ...c, settings: payload, mailSettings, interviewSettings };
+              if (c.company && c.company._id === companyId) return { ...c, company: { ...c.company, settings: payload, mailSettings, interviewSettings } };
               return c;
             });
           }
           if (old && old.data && Array.isArray(old.data)) {
-            return { ...old, data: old.data.map((c: any) => c._id === companyId ? { ...c, settings: payload, mailSettings: payload.mailSettings ?? payload } : c) };
+            return { ...old, data: old.data.map((c: any) => c._id === companyId ? { ...c, settings: payload, mailSettings, interviewSettings } : c) };
           }
           return old;
         });
@@ -137,9 +218,170 @@ export function useUpdateCompanySettings() {
         // Update detail cache
         queryClient.setQueryData(companiesKeys.detail(companyId), (old: any) => {
           if (!old) return old;
-          return { ...old, settings: payload, mailSettings: payload.mailSettings ?? payload };
+          return { ...old, settings: payload, mailSettings, interviewSettings };
         });
       }
+    },
+  });
+}
+
+export function useUpdateCompanyRejectionReasons() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      companyId,
+      data,
+    }: {
+      companyId: string;
+      data: UpdateRejectionReasonsRequest;
+    }) => companiesService.updateCompanyRejectionReasons(companyId, data),
+    onSuccess: (result: any, variables) => {
+      const companyId =
+        result?.company ??
+        result?.companyId ??
+        variables.companyId;
+
+      if (!companyId) return;
+
+      const rejectReasons = Array.isArray(result?.rejectReasons)
+        ? result.rejectReasons
+        : (variables.data?.rejectReasons ?? []);
+
+      queryClient.setQueryData(companiesKeys.setting(companyId), (old: any) => {
+        if (!old) {
+          return { company: companyId, rejectReasons };
+        }
+        return {
+          ...old,
+          rejectReasons,
+          settings: {
+            ...(old.settings ?? {}),
+            rejectReasons,
+          },
+        };
+      });
+
+      queryClient.setQueryData(companiesKeys.list(), (old: any) => {
+        if (!old) return old;
+
+        if (Array.isArray(old)) {
+          return old.map((company: any) => {
+            if (!company) return company;
+            if (company._id !== companyId) return company;
+            return {
+              ...company,
+              rejectReasons,
+              settings: {
+                ...(company.settings ?? {}),
+                rejectReasons,
+              },
+            };
+          });
+        }
+
+        if (old && old.data && Array.isArray(old.data)) {
+          return {
+            ...old,
+            data: old.data.map((company: any) =>
+              company._id === companyId
+                ? {
+                    ...company,
+                    rejectReasons,
+                    settings: {
+                      ...(company.settings ?? {}),
+                      rejectReasons,
+                    },
+                  }
+                : company
+            ),
+          };
+        }
+
+        return old;
+      });
+
+      queryClient.setQueryData(companiesKeys.detail(companyId), (old: any) => {
+        if (!old) return old;
+        return {
+          ...old,
+          rejectReasons,
+          settings: {
+            ...(old.settings ?? {}),
+            rejectReasons,
+          },
+        };
+      });
+    },
+  });
+}
+
+export function useUpdateCompanyInterviewSettings() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ companyId, data }: { companyId: string; data: UpdateInterviewSettingsRequest }) =>
+      companiesService.updateCompanyInterviewSettings(companyId, data),
+    onSuccess: (interviewSettings, variables) => {
+      const companyId = variables.companyId;
+      if (!companyId) return;
+
+      queryClient.setQueryData(companiesKeys.interviewSetting(companyId), interviewSettings);
+
+      queryClient.setQueryData(companiesKeys.setting(companyId), (old: any) => {
+        if (!old) return { company: companyId, interviewSettings };
+        return { ...old, interviewSettings };
+      });
+
+      queryClient.setQueryData(companiesKeys.list(), (old: any) => {
+        if (!old) return old;
+
+        if (Array.isArray(old)) {
+          return old.map((c: any) => {
+            if (!c) return c;
+            if (c._id === companyId) {
+              return {
+                ...c,
+                interviewSettings,
+                settings: { ...(c.settings ?? {}), interviewSettings },
+              };
+            }
+            if (c.company && c.company._id === companyId) {
+              return {
+                ...c,
+                company: {
+                  ...c.company,
+                  interviewSettings,
+                  settings: { ...(c.company.settings ?? {}), interviewSettings },
+                },
+              };
+            }
+            return c;
+          });
+        }
+
+        if (old && old.data && Array.isArray(old.data)) {
+          return {
+            ...old,
+            data: old.data.map((c: any) =>
+              c._id === companyId
+                ? { ...c, interviewSettings, settings: { ...(c.settings ?? {}), interviewSettings } }
+                : c
+            ),
+          };
+        }
+
+        return old;
+      });
+
+      queryClient.setQueryData(companiesKeys.detail(companyId), (old: any) => {
+        if (!old) return old;
+        return {
+          ...old,
+          interviewSettings,
+          settings: { ...(old.settings ?? {}), interviewSettings },
+        };
+      });
     },
   });
 }

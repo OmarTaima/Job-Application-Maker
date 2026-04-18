@@ -118,7 +118,6 @@ export default function PreviewRole() {
   const handleSave = async () => {
     const payload = {
       name: formData.name,
-      description: formData.description,
       permissions: selectedPermissions.map((permId) => ({
         permission: permId,
         access: permissionAccess[permId] || [],

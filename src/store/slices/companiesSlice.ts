@@ -1,6 +1,12 @@
 import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
 import { companiesService } from "../../services/companiesService";
-import type { CompanySettings, CreateCompanySettingsRequest, UpdateCompanySettingsRequest } from "../../services/companiesService";
+import type {
+  CompanySettings,
+  CreateCompanySettingsRequest,
+  InterviewSettings,
+  UpdateCompanySettingsRequest,
+  UpdateInterviewSettingsRequest,
+} from "../../services/companiesService";
 
 export interface Company {
   _id: string;
@@ -42,6 +48,7 @@ interface CompaniesState {
   companies: Company[];
   currentCompany: Company | null;
   companySettings: CompanySettings | null;
+  interviewSettings: InterviewSettings | null;
   loading: boolean;
   error: string | null;
   isFetched: boolean;
@@ -51,6 +58,7 @@ const initialState: CompaniesState = {
   companies: [],
   currentCompany: null,
   companySettings: null,
+  interviewSettings: null,
   loading: false,
   error: null,
   isFetched: false,
@@ -73,7 +81,12 @@ export const createCompanySettings = createAsyncThunk(
   async (payload: CreateCompanySettingsRequest, { rejectWithValue }) => {
     try {
       // Backend exposes update endpoint for settings; use updateCompanySettings to create/update
-      return await companiesService.updateCompanySettings(payload.company, { mailSettings: payload.mailSettings });
+      return await companiesService.updateCompanySettings(payload.company, {
+        mailSettings: payload.mailSettings,
+        interviewSettings: payload.interviewSettings,
+        defaultColorGradient: payload.defaultColorGradient,
+        rejectReasons: payload.rejectReasons,
+      });
     } catch (error: any) {
       return rejectWithValue(error.message || "Failed to create company settings");
     }
@@ -90,6 +103,32 @@ export const updateCompanySettings = createAsyncThunk(
       return await companiesService.updateCompanySettings(id, data);
     } catch (error: any) {
       return rejectWithValue(error.message || "Failed to update company settings");
+    }
+  }
+);
+
+export const fetchInterviewSettings = createAsyncThunk(
+  "companies/fetchInterviewSettings",
+  async (companyId: string, { rejectWithValue }) => {
+    try {
+      const settings = await companiesService.getCompanySettingsByCompany(companyId);
+      return settings?.interviewSettings ?? settings?.settings?.interviewSettings ?? null;
+    } catch (error: any) {
+      return rejectWithValue(error.message || "Failed to fetch interview settings");
+    }
+  }
+);
+
+export const updateInterviewSettings = createAsyncThunk(
+  "companies/updateInterviewSettings",
+  async (
+    { companyId, data }: { companyId: string; data: UpdateInterviewSettingsRequest },
+    { rejectWithValue }
+  ) => {
+    try {
+      return await companiesService.updateCompanyInterviewSettings(companyId, data);
+    } catch (error: any) {
+      return rejectWithValue(error.message || "Failed to update interview settings");
     }
   }
 );
@@ -209,6 +248,10 @@ const companiesSlice = createSlice({
         (state, action: PayloadAction<CompanySettings | null>) => {
           state.loading = false;
           state.companySettings = action.payload;
+          state.interviewSettings =
+            action.payload?.interviewSettings ??
+            action.payload?.settings?.interviewSettings ??
+            null;
         }
       )
       .addCase(fetchCompanySettings.rejected, (state, action) => {
@@ -224,6 +267,10 @@ const companiesSlice = createSlice({
         (state, action: PayloadAction<CompanySettings>) => {
           state.loading = false;
           state.companySettings = action.payload;
+          state.interviewSettings =
+            action.payload?.interviewSettings ??
+            action.payload?.settings?.interviewSettings ??
+            null;
         }
       )
       .addCase(createCompanySettings.rejected, (state, action) => {
@@ -239,9 +286,49 @@ const companiesSlice = createSlice({
         (state, action: PayloadAction<CompanySettings>) => {
           state.loading = false;
           state.companySettings = action.payload;
+          state.interviewSettings =
+            action.payload?.interviewSettings ??
+            action.payload?.settings?.interviewSettings ??
+            null;
         }
       )
       .addCase(updateCompanySettings.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      })
+      .addCase(fetchInterviewSettings.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(
+        fetchInterviewSettings.fulfilled,
+        (state, action: PayloadAction<InterviewSettings | null>) => {
+          state.loading = false;
+          state.interviewSettings = action.payload;
+        }
+      )
+      .addCase(fetchInterviewSettings.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      })
+      .addCase(updateInterviewSettings.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(
+        updateInterviewSettings.fulfilled,
+        (state, action: PayloadAction<InterviewSettings>) => {
+          state.loading = false;
+          state.interviewSettings = action.payload;
+          if (state.companySettings) {
+            state.companySettings = {
+              ...state.companySettings,
+              interviewSettings: action.payload,
+            };
+          }
+        }
+      )
+      .addCase(updateInterviewSettings.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload as string;
       })
