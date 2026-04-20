@@ -19,7 +19,7 @@ export const jobPositionsKeys = {
 };
 
 // Get all job positions
-export function useJobPositions(companyId?: string[], deleted: boolean = false) {
+export function useJobPositions(companyId?: string[], deleted: boolean = false, options?: { enabled?: boolean }) {
   const authUser = useAppSelector((s: any) => s.auth.user);
 
   const userCompanyIds = (() => {
@@ -51,6 +51,7 @@ export function useJobPositions(companyId?: string[], deleted: boolean = false) 
       return jobPositionsService.getAllJobPositions({ companyId: effectiveCompanyId, deleted } as any);
     },
     staleTime: 5 * 60 * 1000,
+    enabled: options?.enabled !== undefined ? options.enabled : true,
   });
 }
 

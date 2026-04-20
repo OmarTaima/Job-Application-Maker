@@ -24,6 +24,7 @@ export type SavedQuestion = {
   question: string;
   score: number;
   answerType: SavedQuestionAnswerType;
+  choices?: string[];
 };
 
 export type SavedQuestionGroup = {
@@ -49,6 +50,9 @@ const normalizeGroupPayload = (group: SavedQuestionGroup): SavedQuestionGroup =>
           ? Number(question?.score)
           : 0,
         answerType: question?.answerType ?? "text",
+        choices: Array.isArray((question as any)?.choices)
+          ? (question as any).choices.map((c: any) => String(c ?? "").trim()).filter(Boolean)
+          : [],
       }))
     : [],
 });

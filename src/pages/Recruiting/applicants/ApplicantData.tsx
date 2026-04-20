@@ -1,5 +1,5 @@
 // Core React imports
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 // UI helpers and third-party utilities
 import Swal from '../../../utils/swal';
 import { useParams, useNavigate, useLocation } from 'react-router';
@@ -26,9 +26,10 @@ import {
 } from '../../../hooks/queries';
 import { useAuth } from '../../../context/AuthContext';
 import { useQueryClient } from '@tanstack/react-query';
-import type {
-  Applicant,
-  UpdateStatusRequest,
+import {
+  applicantsService,
+  type Applicant,
+  type UpdateStatusRequest,
 } from '../../../services/applicantsService';
 import { toPlainString } from '../../../utils/strings';
 import MessageModal from '../../../components/modals/MessageModal';
@@ -38,6 +39,7 @@ import InterviewSettingsModal from '../../../components/modals/InterviewSettings
 import StatusChangeModal from '../../../components/modals/StatusChangeModal';
 import StatusHistory from './StatusHistory';
 import CustomResponses from './CustomResponses';
+import Questions from './Questions';
 
 // Simple Quill editor integration (dynamic import to avoid react-quill)
 import 'quill/dist/quill.snow.css';
@@ -72,90 +74,93 @@ const ApplicantData = () => {
   // Navigation / incoming state
   // If the previous route passed applicant data via location.state we can use it for instant rendering
   const stateApplicant = location.state?.applicant as Applicant | undefined;
+  const wasNavigated = Boolean(location.state?.applicant);
+
+  // Detect whether this page load was a full browser reload so we can
+  // perform a manual silent fetch and prevent react-query from issuing
+  // its own simultaneous fetch.
+  const isReload = (() => {
+    try {
+      if (typeof performance === 'undefined') return false;
+      const nav = (performance as any).getEntriesByType ? (performance as any).getEntriesByType('navigation') : undefined;
+      if (Array.isArray(nav) && nav.length > 0) return nav[0].type === 'reload';
+      if ((performance as any).navigation && (performance as any).navigation.type !== undefined) {
+        return (performance as any).navigation.type === (performance as any).navigation.TYPE_RELOAD;
+      }
+      return false;
+    } catch (e) {
+      return false;
+    }
+  })();
+
+  const [reloadFetchDone, setReloadFetchDone] = useState(false);
+
+  // Fetch applicant detail (prefer navigation state as initial data for instant render)
+  const {
+    data: fetchedApplicant,
+    isLoading: isApplicantLoading,
+    isFetched: isApplicantFetched,
+    error: applicantError,
+  } = useApplicant(id || '', { initialData: wasNavigated ? stateApplicant : undefined, enabled: !isReload || reloadFetchDone });
+
+  // Canonical applicant object used throughout the component
+  const applicant = (fetchedApplicant ?? stateApplicant) as any;
+  const loading = isApplicantLoading && !fetchedApplicant && !stateApplicant;
+  const error = applicantError as any;
+
+  // Resolve job position id from various possible shapes on the applicant object
+  const resolvedJobPosId = useMemo(() => {
+    if (!applicant) return '';
+    if (typeof (applicant as any).jobPositionId === 'string') return (applicant as any).jobPositionId;
+    if (typeof (applicant as any).jobPosition === 'string') return (applicant as any).jobPosition;
+    const jp = (applicant as any).jobPositionId || (applicant as any).jobPosition;
+    if (jp && typeof jp === 'object') return jp._id || jp.id || '';
+    return '';
+  }, [applicant?._id, (applicant as any)?.jobPositionId, (applicant as any)?.jobPosition]);
+
+  // Fallback (unscoped) job positions cache used when scoped data is unavailable
+  // Skip this fallback when we already resolved a single job position id.
+  const { data: jobPositionsFallback = [], isFetched: isJobPositionsFallbackFetched } = useJobPositions(undefined, false, { enabled: !resolvedJobPosId });
+
+  // Job position detail for resolved job position id
+  const { data: jobPositionDetail, isFetched: isJobPositionDetailFetched } = useJobPosition(resolvedJobPosId || '', { enabled: !!resolvedJobPosId });
+
+  // Company associated with the resolved job position (if present)
+  const jobPosCompanyId = jobPositionDetail && (jobPositionDetail as any).companyId
+    ? typeof (jobPositionDetail as any).companyId === 'string'
+      ? (jobPositionDetail as any).companyId
+      : (jobPositionDetail as any).companyId?._id || ''
+    : '';
+
+  // Companies derived from this applicant (used to resolve fallback lookups)
+  // Only pass the minimal applicant shape containing `companyId` so the
+  // companies-with-applicants hook can compute company IDs without being
+  // invalidated by unrelated applicant field updates.
+  const applicantCompanyId = useMemo(() => {
+    if (!applicant) return undefined;
+    if (typeof applicant.companyId === 'string') return applicant.companyId;
+    if (typeof applicant.companyId === 'object' && (applicant.companyId as any)?._id) return (applicant.companyId as any)._id;
+    return undefined;
+  }, [applicant?._id, (applicant as any)?.companyId]);
+
+  const applicantArray = useMemo(() => (applicantCompanyId ? ([{ companyId: applicantCompanyId }] as any as Applicant[]) : undefined), [applicantCompanyId]);
+  const { data: companies = [], isFetched: isCompaniesWithApplicantsFetched } = useCompaniesWithApplicants(applicantArray);
+
+  // Prefer company data from the previously fetched `companies` list to avoid extra network calls.
+  const jobPosCompanyFromList = useMemo(() => {
+    if (!jobPosCompanyId) return null as any;
+    return (companies || []).find((c: any) => String(c?._id || c?.id || '') === String(jobPosCompanyId)) || null;
+  }, [jobPosCompanyId, companies]);
+
+  const jobPosCompanyQuery = useCompany(jobPosCompanyFromList ? '' : (jobPosCompanyId || ''), { enabled: !!jobPosCompanyId && !jobPosCompanyFromList });
+  const jobPosCompany = jobPosCompanyFromList ?? jobPosCompanyQuery.data;
+  const isJobPosCompanyFetched = Boolean(jobPosCompanyFromList) ? true : jobPosCompanyQuery.isFetched;
 
   
   // Helper: detect Arabic characters in a string
   // Used to apply RTL layout where appropriate
-  const isArabic = (text?: any) => {
-    if (!text || typeof text !== 'string') return false;
-    return /[\u0600-\u06FF]/.test(text);
-  };
+  const isArabic = (s: any) => (typeof s === 'string' && /[\u0600-\u06FF]/.test(s));
   
-  // UI state: active tab in the Activity Timeline
-
-  // Data fetching (react-query hooks)
-  // Fetch applicant and related entities; initialData uses navigation state when available for instant UI
-  const { data: fetchedApplicant, isLoading: loading, error, isFetched: isApplicantFetched } = useApplicant(id || '', {
-    initialData: stateApplicant,
-  });
-  
-  // Prefer fetched data, but preserve richer fields from navigation state when
-  // the detail payload omits them (observed with custom responses/populated refs).
-  const applicant: any = useMemo(() => {
-    const fetched = (fetchedApplicant as any) || undefined;
-    const state = (stateApplicant as any) || undefined;
-
-    if (!fetched && !state) return undefined;
-    if (!fetched) return state;
-    if (!state) return fetched;
-
-    const merged = {
-      ...state,
-      ...fetched,
-    } as any;
-
-    merged.customResponses =
-      fetched.customResponses ??
-      fetched.customFieldResponses ??
-      state.customResponses ??
-      state.customFieldResponses ??
-      {};
-
-    merged.jobPositionId =
-      fetched.jobPositionId ??
-      fetched.jobPosition ??
-      state.jobPositionId ??
-      state.jobPosition;
-
-    merged.jobPosition = fetched.jobPosition ?? state.jobPosition;
-
-    return merged;
-  }, [fetchedApplicant, stateApplicant]);
-
-  // Related data hooks (job positions, company details)
-  // Declared here to preserve hook order for React
-  // Avoid fetching all job positions on initial load — use sentinel to return empty list
-  const { data: jobPositionsFallback = [],  isFetched: isJobPositionsFallbackFetched } = useJobPositions(['__NO_COMPANY__']);
-  // Resolve a canonical job position id from the applicant payload. The applicant
-  // may include either a string id or a populated object; normalize both forms
-  // so `useJobPosition` always fetches the canonical job-position record when
-  // an id is available. This ensures we have access to `jobSpecs` from the
-  // job-position GET even for older applicants.
-  const resolvedJobPosId = useMemo(() => {
-    if (!applicant) return '';
-    const resolve = (val: any) => {
-      if (!val) return '';
-      if (typeof val === 'string') return val;
-      if (typeof val === 'object') return val._id || val.id || '';
-      return '';
-    };
-
-    // Try common fields that may contain the job position reference
-    const fromJobPositionId = resolve((applicant as any).jobPositionId);
-    if (fromJobPositionId) return fromJobPositionId;
-    const fromJobPosition = resolve((applicant as any).jobPosition);
-    return fromJobPosition || '';
-  }, [applicant]);
-
-  const { data: jobPositionDetail, isFetched: isJobPositionDetailFetched } = useJobPosition(resolvedJobPosId, { enabled: !!resolvedJobPosId });
-  const jpCompanyId = jobPositionDetail && ((jobPositionDetail as any).companyId ? (typeof (jobPositionDetail as any).companyId === 'string' ? (jobPositionDetail as any).companyId : (jobPositionDetail as any).companyId?._id) : '');
-  const { data: jobPosCompany, isFetched: isJobPosCompanyFetched } = useCompany(jpCompanyId || '', { enabled: !!jpCompanyId });
-  const { data: companies = [],  isFetched: isCompaniesWithApplicantsFetched } = useCompaniesWithApplicants(
-    applicant ? [applicant] : undefined
-  );
-
-  const [lastRefetch, setLastRefetch] = useState<Date | null>(null);
-
   const resolvedCompanyId = useMemo(() => {
     if (!applicant) return '';
     if (typeof applicant.jobPositionId === 'object') {
@@ -166,9 +171,15 @@ const ApplicantData = () => {
     if (typeof applicant.companyId === 'string') return applicant.companyId;
     if (typeof applicant.companyId === 'object' && (applicant.companyId as any)?._id) return (applicant.companyId as any)._id;
     return '';
-  }, [applicant]);
+  }, [applicant?._id, (applicant as any)?.jobPositionId, (applicant as any)?.companyId]);
 
-  const { data: fetchedCompany } = useCompany(resolvedCompanyId || '', { enabled: !!resolvedCompanyId });
+  const resolvedCompanyFromList = useMemo(() => {
+    if (!resolvedCompanyId) return null as any;
+    return (companies || []).find((c: any) => String(c?._id || c?.id || '') === String(resolvedCompanyId)) || null;
+  }, [resolvedCompanyId, companies]);
+
+  const fetchedCompanyQuery = useCompany(resolvedCompanyFromList ? '' : (resolvedCompanyId || ''), { enabled: !!resolvedCompanyId && !resolvedCompanyFromList && isJobPositionDetailFetched && resolvedCompanyId !== jobPosCompanyId });
+  const fetchedCompany = resolvedCompanyFromList ?? fetchedCompanyQuery.data;
 
   // Fetch job positions scoped to the applicant's company when available.
   // Use the '__NO_COMPANY__' sentinel to avoid fetching all positions during initial load.
@@ -179,7 +190,7 @@ const ApplicantData = () => {
     // (available via `useJobPosition`) to avoid fetching all jobs.
     if (resolvedJobPosId) return ['__NO_COMPANY__'];
     return resolvedCompanyId ? [resolvedCompanyId] : ['__NO_COMPANY__'];
-  }, [applicant, resolvedCompanyId, resolvedJobPosId]);
+  }, [applicant?._id, resolvedCompanyId, resolvedJobPosId]);
 
   // Replace the top-level job positions query with a company-scoped one.
   // This prevents listing job positions for other companies on page refresh.
@@ -269,48 +280,92 @@ const ApplicantData = () => {
   const markSeenMutation = useMarkApplicantSeen();
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const hasMarkedSeenRef = useRef(false);
+
+  // Reset the marked-seen guard when navigating between applicants without unmounting
+  useEffect(() => {
+    hasMarkedSeenRef.current = false;
+  }, [id]);
+
+  // If this page was reloaded (browser refresh), ensure we fetch the applicant by id using react-query.
+  useEffect(() => {
+    if (!id) return;
+    if (!isReload) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const refreshedApplicant = await applicantsService.getApplicantById(id);
+        if (!cancelled && refreshedApplicant && typeof refreshedApplicant === 'object') {
+          queryClient.setQueryData(applicantsKeys.detail(id), refreshedApplicant);
+
+          // Also update any list queries so lists reflect the fresh data.
+          queryClient.setQueriesData({ queryKey: applicantsKeys.lists() }, (old: any) => {
+            if (!old) return old;
+            if (Array.isArray(old)) return old.map((applicant: any) => (applicant && applicant._id === id ? { ...applicant, ...refreshedApplicant } : applicant));
+            if (old.data && Array.isArray(old.data)) return { ...old, data: old.data.map((applicant: any) => (applicant && applicant._id === id ? { ...applicant, ...refreshedApplicant } : applicant)) };
+            return old;
+          });
+
+          // mark that our manual reload fetch completed so react-query can resume normal fetching
+          try { setReloadFetchDone(true); } catch (e) { /* ignore */ }
+        }
+      } catch (e) {
+        if (!cancelled) {
+          // fallback to invalidation if direct fetch fails
+          try { queryClient.invalidateQueries({ queryKey: applicantsKeys.detail(id) }); } catch (_) {}
+        }
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [id, queryClient, isReload, setReloadFetchDone]);
 
   // mark as seen by current user when applicant is viewed
   useEffect(() => {
-    if (!applicant || !user || !user._id) return;
+    if (!applicant?._id || !user?._id || hasMarkedSeenRef.current) return;
     const userId = user._id as string;
+
     const seenBy = (applicant as any).seenBy ?? [];
-    if (!Array.isArray(seenBy) || !seenBy.includes(userId)) {
-      // optimistic update of detail cache
-      try {
-        queryClient.setQueryData(applicantsKeys.detail(applicant._id), (old: any) => {
-          if (!old) return old;
-          const cur = old.seenBy ?? [];
-          if (Array.isArray(cur) && cur.includes(userId)) return old;
-          return { ...old, seenBy: Array.isArray(cur) ? [...cur, userId] : [userId] };
-        });
-
-        // also optimistically update any applicants list queries so the list view reflects seen immediately
-        try {
-          queryClient.setQueriesData({ queryKey: applicantsKeys.lists() }, (old: any) => {
-            if (!old) return old;
-            const addSeenTo = (arr: any[]) => arr.map((a: any) => {
-              if (!a) return a;
-              if ((a._id || a.id) !== (applicant._id || applicant.id)) return a;
-              const cur = a.seenBy ?? [];
-              if (Array.isArray(cur) && cur.includes(userId)) return a;
-              return { ...a, seenBy: Array.isArray(cur) ? [...cur, userId] : [userId] };
-            });
-
-            if (Array.isArray(old)) return addSeenTo(old);
-            if (old.data && Array.isArray(old.data)) return { ...old, data: addSeenTo(old.data) };
-            return old;
-          });
-        } catch (e) {
-          // ignore list update failures
-        }
-
-        markSeenMutation.mutate(applicant._id);
-      } catch (e) {
-        // ignore errors silently
-      }
+    if (Array.isArray(seenBy) && seenBy.includes(userId)) {
+      hasMarkedSeenRef.current = true; // already marked
+      return;
     }
-  }, [applicant?._id, (applicant as any)?.seenBy?.length, user?._id]);
+
+    // mark once optimistically and trigger mutation
+    hasMarkedSeenRef.current = true;
+    try {
+      queryClient.setQueryData(applicantsKeys.detail(applicant._id), (old: any) => {
+        if (!old) return old;
+        const cur = old.seenBy ?? [];
+        if (Array.isArray(cur) && cur.includes(userId)) return old;
+        return { ...old, seenBy: Array.isArray(cur) ? [...cur, userId] : [userId] };
+      });
+
+      try {
+        queryClient.setQueriesData({ queryKey: applicantsKeys.lists() }, (old: any) => {
+          if (!old) return old;
+          const addSeenTo = (arr: any[]) => arr.map((a: any) => {
+            if (!a) return a;
+            if ((a._id || a.id) !== (applicant._id || applicant.id)) return a;
+            const cur = a.seenBy ?? [];
+            if (Array.isArray(cur) && cur.includes(userId)) return a;
+            return { ...a, seenBy: Array.isArray(cur) ? [...cur, userId] : [userId] };
+          });
+
+          if (Array.isArray(old)) return addSeenTo(old);
+          if (old.data && Array.isArray(old.data)) return { ...old, data: addSeenTo(old.data) };
+          return old;
+        });
+      } catch (e) {
+        // ignore list update failures
+      }
+
+      markSeenMutation.mutate(applicant._id);
+    } catch (e) {
+      // ignore errors silently
+    }
+  }, [applicant?._id, user?._id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Interview-related UI state and form helpers
 
@@ -589,7 +644,7 @@ const ApplicantData = () => {
   };
 
   // Resolve canonical company object for the current applicant
-  const companyObj = (() => {
+  const companyObj = useMemo(() => {
     if (!applicant) return null as any;
     // If we fetched the canonical company from server, prefer it
     if ((fetchedCompany as any) && (fetchedCompany as any)?._id) return fetchedCompany as any;
@@ -625,13 +680,14 @@ const ApplicantData = () => {
     }
 
     return null as any;
-  })();
+  }, [fetchedCompany, jobPositionDetail, applicant?._id, companies, resolvedCompanyId]);
 
-  const jobTitle = getJobTitle();
-  const companyName = getCompanyName();
-  const departmentName = getDepartmentName();
+  const jobTitle = useMemo(() => getJobTitle(), [applicant?._id, jobPositionDetail, jobPositions, jobPosCompany]);
+  const companyName = useMemo(() => getCompanyName(), [applicant?._id, jobPositionDetail, companies, jobPosCompany, fetchedCompany]);
+  const departmentName = useMemo(() => getDepartmentName(), [applicant?._id, jobPositionDetail, companies, jobPosCompany]);
 
   // Modal visibility and selected item state
+  const [lastRefetch, setLastRefetch] = useState<Date | null>(null);
   const [showInterviewModal, setShowInterviewModal] = useState(false);
   const [showMessageModal, setShowMessageModal] = useState(false);
   const [showCommentModal, setShowCommentModal] = useState(false);
@@ -727,12 +783,13 @@ const ApplicantData = () => {
     includeInTotal: boolean;
     groupId?: string;
     groupName?: string;
+    choices?: string[];
   };
 
   type CompanyInterviewGroup = {
     id: string;
     name: string;
-    questions: Array<{ question: string; score: number; answerType: string }>;
+    questions: Array<{ question: string; score: number; answerType: string; choices?: string[] }>;
   };
 
   type InterviewTargetMode = 'existing' | 'new';
@@ -751,14 +808,101 @@ const ApplicantData = () => {
     return '';
   };
 
-  // const normalizeLookupToken = (value: any): string => {
-  //   return String(value || '')
-  //     .toLowerCase()
-  //     .replace(/\u200e|\u200f/g, '')
-  //     .replace(/[^\w\u0600-\u06FF\s]/g, ' ')
-  //     .replace(/[\s_-]+/g, '')
-  //     .trim();
-  // };
+  const normalizeLookupToken = (value: any): string => {
+    return String(value || '')
+      .toLowerCase()
+      .replace(/\u200e|\u200f/g, '')
+      .replace(/[^\w\u0600-\u06FF\s]/g, ' ')
+      .replace(/[\s_-]+/g, '')
+      .trim();
+  };
+
+  // Given an interview object and the available company groups, return an array
+  // of group ids that best match the interview's questions. Uses normalized
+  // token comparison and selects groups that have at least half of their
+  // questions present in the interview (or at least one when group is small).
+  const inferGroupIdsFromInterview = (interview: any): string[] => {
+    try {
+      if (!interview || !Array.isArray(interview.questions) || companyInterviewGroups.length === 0) return [];
+      const qSet = new Set<string>();
+      for (const q of interview.questions) {
+        const t = normalizeLookupToken(q?.question ?? q?.notes ?? q?.answer ?? '');
+        if (t) qSet.add(t);
+      }
+
+      const matched: string[] = [];
+      for (const g of companyInterviewGroups) {
+        if (!g || !Array.isArray(g.questions) || g.questions.length === 0) continue;
+        const groupTokens = g.questions.map((qq: any) => normalizeLookupToken(qq?.question || ''))
+          .filter(Boolean);
+        if (groupTokens.length === 0) continue;
+        let common = 0;
+        for (const gt of groupTokens) if (qSet.has(gt)) common++;
+        const threshold = Math.max(1, Math.ceil(groupTokens.length / 2));
+        if (common >= threshold) matched.push(String(g.id || g.name || ''));
+      }
+      return Array.from(new Set(matched)).filter(Boolean);
+    } catch (e) {
+      return [];
+    }
+  };
+
+  const isPlainObject = (value: any): value is Record<string, any> => {
+    return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+  };
+
+  const formatCustomResponseKeyLabel = (key: string): string => {
+    if (!key) return 'Custom Field';
+    if (/[\u0600-\u06FF]/.test(key)) {
+      return key.replace(/[_-]+/g, ' ');
+    }
+
+    return key
+      .replace(/[_-]+/g, ' ')
+      .replace(/([a-z])([A-Z])/g, '$1 $2')
+      .replace(/\b\w/g, (char) => char.toUpperCase())
+      .trim();
+  };
+
+  const looksLikeDateValue = (value: string): boolean => {
+    const trimmed = String(value || '').trim();
+    if (!trimmed) return false;
+    if (/^\d{4}-\d{2}-\d{2}(T.*)?$/.test(trimmed)) {
+      return !Number.isNaN(Date.parse(trimmed));
+    }
+    if (/^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}$/.test(trimmed)) {
+      return !Number.isNaN(Date.parse(trimmed));
+    }
+    return false;
+  };
+
+  const inferCustomResponseInputType = (rawValue: any): string => {
+    if (Array.isArray(rawValue)) {
+      if (rawValue.length === 0) return 'tags';
+      if (rawValue.every((item) => isPlainObject(item))) return 'repeatable_group';
+      if (rawValue.every((item) => typeof item === 'boolean')) return 'checkbox';
+      return 'tags';
+    }
+
+    if (typeof rawValue === 'boolean') return 'checkbox';
+    if (typeof rawValue === 'number') return 'number';
+    if (isPlainObject(rawValue)) return 'json';
+
+    if (typeof rawValue === 'string') {
+      const trimmed = rawValue.trim();
+      if (!trimmed) return 'text';
+      if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return 'email';
+      if (/^https?:\/\/\S+$/i.test(trimmed)) return 'url';
+      if (looksLikeDateValue(trimmed)) return 'date';
+      if (/^\+?[0-9()\-\s]{7,}$/.test(trimmed)) return 'phone';
+      if (trimmed.includes('\n') || trimmed.length > 180) return 'textarea';
+      if (trimmed.toLowerCase() === 'true' || trimmed.toLowerCase() === 'false') {
+        return 'checkbox';
+      }
+    }
+
+    return 'text';
+  };
 
   const getCustomFieldId = (field: any, index: number): string => {
     return String(field?.fieldId || `field_${index}`);
@@ -779,60 +923,107 @@ const ApplicantData = () => {
     return [];
   };
 
-  // const findMatchingResponseKeyForField = (
-  //   field: any,
-  //   responses: Record<string, any>
-  // ): string => {
-  //   if (!responses || typeof responses !== 'object') return '';
+  const inferRepeatableGroupFields = (rows: any[]): any[] => {
+    const keys = new Set<string>();
 
-  //   const fieldId = String(field?.fieldId || '');
-  //   if (fieldId && Object.prototype.hasOwnProperty.call(responses, fieldId)) {
-  //     return fieldId;
-  //   }
+    (rows || []).forEach((row: any) => {
+      if (!isPlainObject(row)) return;
+      Object.keys(row).forEach((key) => {
+        if (key) keys.add(String(key));
+      });
+    });
 
-  //   const directCandidates = [
-  //     field?.label?.en,
-  //     field?.label?.ar,
-  //     toPlainString(field?.label),
-  //   ]
-  //     .filter(Boolean)
-  //     .map((v) => String(v));
+    return Array.from(keys).map((key, index) => {
+      const sampleValue = (rows || []).find((row: any) => isPlainObject(row) && row[key] !== undefined)?.[key];
+      const inferredTypeRaw = inferCustomResponseInputType(sampleValue);
+      const inferredType = inferredTypeRaw === 'repeatable_group' ? 'json' : inferredTypeRaw;
 
-  //   for (const candidate of directCandidates) {
-  //     if (Object.prototype.hasOwnProperty.call(responses, candidate)) {
-  //       return candidate;
-  //     }
-  //   }
+      return {
+        fieldId: key,
+        label: formatCustomResponseKeyLabel(key),
+        inputType: inferredType,
+        displayOrder: index,
+        __inferredFromResponse: true,
+      };
+    });
+  };
 
-  //   const normalizedTargets = new Set<string>();
-  //   [fieldId, ...directCandidates]
-  //     .filter(Boolean)
-  //     .forEach((token) => {
-  //       const normalized = normalizeLookupToken(token);
-  //       if (!normalized) return;
-  //       normalizedTargets.add(normalized);
-  //       normalizedTargets.add(normalized.replace(/^rec/, ''));
-  //       normalizedTargets.add(normalized.replace(/^sav/, ''));
-  //     });
+  const buildInferredCustomFieldsFromResponses = (
+    responses: Record<string, any>
+  ): any[] => {
+    return Object.entries(responses || {}).map(([key, value], index) => {
+      const inferredType = inferCustomResponseInputType(value);
 
-  //   for (const key of Object.keys(responses || {})) {
-  //     const normalizedKey = normalizeLookupToken(key);
-  //     if (!normalizedKey) continue;
-  //     if (normalizedTargets.has(normalizedKey)) return key;
+      return {
+        fieldId: String(key),
+        label: formatCustomResponseKeyLabel(String(key)),
+        inputType: inferredType,
+        groupFields:
+          inferredType === 'repeatable_group'
+            ? inferRepeatableGroupFields(Array.isArray(value) ? value : [])
+            : undefined,
+        displayOrder: 10000 + index,
+        __inferredFromResponse: true,
+      };
+    });
+  };
 
-  //     for (const target of normalizedTargets) {
-  //       if (!target) continue;
-  //       if (normalizedKey.includes(target) || target.includes(normalizedKey)) {
-  //         return key;
-  //       }
-  //     }
-  //   }
+  const findMatchingResponseKeyForField = (
+    field: any,
+    responses: Record<string, any>
+  ): string => {
+    if (!responses || typeof responses !== 'object') return '';
 
-  //   return '';
-  // };
+    const fieldId = String(field?.fieldId || '');
+    if (fieldId && Object.prototype.hasOwnProperty.call(responses, fieldId)) {
+      return fieldId;
+    }
+
+    const directCandidates = [
+      field?.label?.en,
+      field?.label?.ar,
+      toPlainString(field?.label),
+    ]
+      .filter(Boolean)
+      .map((v) => String(v));
+
+    for (const candidate of directCandidates) {
+      if (Object.prototype.hasOwnProperty.call(responses, candidate)) {
+        return candidate;
+      }
+    }
+
+    const normalizedTargets = new Set<string>();
+    [fieldId, ...directCandidates]
+      .filter(Boolean)
+      .forEach((token) => {
+        const normalized = normalizeLookupToken(token);
+        if (!normalized) return;
+        normalizedTargets.add(normalized);
+        normalizedTargets.add(normalized.replace(/^rec/, ''));
+        normalizedTargets.add(normalized.replace(/^sav/, ''));
+      });
+
+    for (const key of Object.keys(responses || {})) {
+      const normalizedKey = normalizeLookupToken(key);
+      if (!normalizedKey) continue;
+      if (normalizedTargets.has(normalizedKey)) return key;
+
+      for (const target of normalizedTargets) {
+        if (!target) continue;
+        if (normalizedKey.includes(target) || target.includes(normalizedKey)) {
+          return key;
+        }
+      }
+    }
+
+    return '';
+  };
 
   const coerceCustomFieldValueForForm = (field: any, rawValue: any): any => {
-    const inputType = String(field?.inputType || 'text').toLowerCase();
+    const inputType = String(
+      field?.inputType || inferCustomResponseInputType(rawValue) || 'text'
+    ).toLowerCase();
 
     if (inputType === 'repeatable_group') {
       if (!Array.isArray(rawValue)) return [];
@@ -841,10 +1032,34 @@ const ApplicantData = () => {
       );
     }
 
+    if (inputType === 'json') {
+      if (rawValue === undefined || rawValue === null || rawValue === '') return '';
+      if (typeof rawValue === 'string') {
+        const trimmed = rawValue.trim();
+        if (!trimmed) return '';
+        try {
+          return JSON.stringify(JSON.parse(trimmed), null, 2);
+        } catch {
+          return rawValue;
+        }
+      }
+
+      try {
+        return JSON.stringify(rawValue, null, 2);
+      } catch {
+        return String(rawValue);
+      }
+    }
+
     if (inputType === 'checkbox') {
       const choices = getCustomFieldChoices(field);
       if (choices.length === 0) {
         if (typeof rawValue === 'boolean') return rawValue;
+        if (typeof rawValue === 'string') {
+          const lowered = rawValue.trim().toLowerCase();
+          if (lowered === 'true') return true;
+          if (lowered === 'false') return false;
+        }
         if (rawValue === undefined || rawValue === null || rawValue === '') return false;
         return Boolean(rawValue);
       }
@@ -885,7 +1100,9 @@ const ApplicantData = () => {
   };
 
   const coerceCustomFieldValueForPayload = (field: any, rawValue: any): any => {
-    const inputType = String(field?.inputType || 'text').toLowerCase();
+    const inputType = String(
+      field?.inputType || inferCustomResponseInputType(rawValue) || 'text'
+    ).toLowerCase();
 
     if (inputType === 'repeatable_group') {
       const rows = Array.isArray(rawValue) ? rawValue : [];
@@ -904,9 +1121,31 @@ const ApplicantData = () => {
       });
     }
 
+    if (inputType === 'json') {
+      if (rawValue === undefined || rawValue === null || rawValue === '') return '';
+      if (typeof rawValue === 'string') {
+        const trimmed = rawValue.trim();
+        if (!trimmed) return '';
+        try {
+          return JSON.parse(trimmed);
+        } catch {
+          return rawValue;
+        }
+      }
+      return rawValue;
+    }
+
     if (inputType === 'checkbox') {
       const choices = getCustomFieldChoices(field);
-      if (choices.length === 0) return Boolean(rawValue);
+      if (choices.length === 0) {
+        if (typeof rawValue === 'boolean') return rawValue;
+        if (typeof rawValue === 'string') {
+          const lowered = rawValue.trim().toLowerCase();
+          if (lowered === 'true') return true;
+          if (lowered === 'false') return false;
+        }
+        return Boolean(rawValue);
+      }
       if (Array.isArray(rawValue)) return rawValue.map((v: any) => String(v));
       if (typeof rawValue === 'string') {
         return rawValue
@@ -1034,48 +1273,48 @@ const ApplicantData = () => {
     return [] as any[];
   };
 
-  // const buildInitialJobSpecsResponses = (src: any, availableSpecs: any[] = []) => {
-  //   const answerMap = new Map<string, boolean>();
+  const buildInitialJobSpecsResponses = (src: any, availableSpecs: any[] = []) => {
+    const answerMap = new Map<string, boolean>();
 
-  //   const direct = Array.isArray(src?.jobSpecsResponses) ? src.jobSpecsResponses : [];
-  //   const fromDirect = direct
-  //     .map((r: any) => ({
-  //       jobSpecId: normalizeSpecId(r?.jobSpecId ?? r?._id ?? r?.id),
-  //       answer: typeof r?.answer === 'boolean' ? r.answer : Boolean(r?.answer),
-  //     }))
-  //     .filter((r: any) => Boolean(r.jobSpecId));
+    const direct = Array.isArray(src?.jobSpecsResponses) ? src.jobSpecsResponses : [];
+    const fromDirect = direct
+      .map((r: any) => ({
+        jobSpecId: normalizeSpecId(r?.jobSpecId ?? r?._id ?? r?.id),
+        answer: typeof r?.answer === 'boolean' ? r.answer : Boolean(r?.answer),
+      }))
+      .filter((r: any) => Boolean(r.jobSpecId));
 
-  //   fromDirect.forEach((r: any) => answerMap.set(String(r.jobSpecId), Boolean(r.answer)));
+    fromDirect.forEach((r: any) => answerMap.set(String(r.jobSpecId), Boolean(r.answer)));
 
-  //   const fallbackSpecs = Array.isArray(src?.jobSpecsWithDetails)
-  //     ? src.jobSpecsWithDetails
-  //     : Array.isArray(src?.jobSpecs)
-  //     ? src.jobSpecs
-  //     : [];
+    const fallbackSpecs = Array.isArray(src?.jobSpecsWithDetails)
+      ? src.jobSpecsWithDetails
+      : Array.isArray(src?.jobSpecs)
+      ? src.jobSpecs
+      : [];
 
-  //   const fromFallback = fallbackSpecs
-  //     .map((s: any) => ({
-  //       jobSpecId: normalizeSpecId(s?.jobSpecId ?? s?._id ?? s?.id),
-  //       answer: typeof s?.answer === 'boolean' ? s.answer : Boolean(s?.answer),
-  //     }))
-  //     .filter((r: any) => Boolean(r.jobSpecId));
+    const fromFallback = fallbackSpecs
+      .map((s: any) => ({
+        jobSpecId: normalizeSpecId(s?.jobSpecId ?? s?._id ?? s?.id),
+        answer: typeof s?.answer === 'boolean' ? s.answer : Boolean(s?.answer),
+      }))
+      .filter((r: any) => Boolean(r.jobSpecId));
 
-  //   fromFallback.forEach((r: any) => {
-  //     if (!answerMap.has(String(r.jobSpecId))) {
-  //       answerMap.set(String(r.jobSpecId), Boolean(r.answer));
-  //     }
-  //   });
+    fromFallback.forEach((r: any) => {
+      if (!answerMap.has(String(r.jobSpecId))) {
+        answerMap.set(String(r.jobSpecId), Boolean(r.answer));
+      }
+    });
 
-  //   (availableSpecs || []).forEach((s: any) => {
-  //     const specId = normalizeSpecId(s?.jobSpecId ?? s?._id ?? s?.id);
-  //     if (!specId) return;
-  //     if (!answerMap.has(String(specId))) {
-  //       answerMap.set(String(specId), false);
-  //     }
-  //   });
+    (availableSpecs || []).forEach((s: any) => {
+      const specId = normalizeSpecId(s?.jobSpecId ?? s?._id ?? s?.id);
+      if (!specId) return;
+      if (!answerMap.has(String(specId))) {
+        answerMap.set(String(specId), false);
+      }
+    });
 
-  //   return Array.from(answerMap.entries()).map(([jobSpecId, answer]) => ({ jobSpecId, answer }));
-  // };
+    return Array.from(answerMap.entries()).map(([jobSpecId, answer]) => ({ jobSpecId, answer }));
+  };
 
   const companyInterviewGroups = useMemo<CompanyInterviewGroup[]>(() => {
     const sources: any[] = [companyObj, fetchedCompany, jobPosCompany];
@@ -1098,6 +1337,7 @@ const ApplicantData = () => {
                   question: String(q?.question || '').trim(),
                   score: Number(q?.score ?? 0),
                   answerType: String(q?.answerType || 'text').trim() || 'text',
+                  choices: Array.isArray(q?.choices) ? (q.choices as any[]).map((c) => String(c ?? '').trim()).filter(Boolean) : [],
                 }))
                 .filter((q: any) => q.question)
             : [];
@@ -1151,7 +1391,7 @@ const ApplicantData = () => {
       ? [...((applicant as any).interviews || [])]
       : [];
     return sortInterviewsByPriority(interviews);
-  }, [applicant, sortInterviewsByPriority]);
+  }, [applicant?._id, (applicant as any)?.interviews?.length, sortInterviewsByPriority]);
 
   const getPreferredInterviewToUpdate = useCallback(() => {
     return applicantInterviews[0] || null;
@@ -1159,8 +1399,25 @@ const ApplicantData = () => {
 
   const [isInterviewEditMode, setIsInterviewEditMode] = useState(false);
   const [isSavingInterviewEdit, setIsSavingInterviewEdit] = useState(false);
-  const [interviewUnmappedCustomResponses] =
+  const [interviewUnmappedCustomResponses, setInterviewUnmappedCustomResponses] =
     useState<Record<string, any>>({});
+  const [interviewEditableCustomFields, setInterviewEditableCustomFields] = useState<any[]>([]);
+  const [tagInputBuffers, setTagInputBuffers] = useState<Record<string, string>>({});
+
+  const mergeTags = (current: any[], next: any[]) => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    (Array.isArray(current) ? current : []).concat(Array.isArray(next) ? next : []).forEach((v: any) => {
+      const s = String(v ?? '').trim();
+      if (!s) return;
+      const key = s.toLowerCase();
+      if (!seen.has(key)) {
+        seen.add(key);
+        out.push(s);
+      }
+    });
+    return out;
+  };
   const [interviewEditForm, setInterviewEditForm] = useState<InterviewEditFormState>({
     fullName: '',
     email: '',
@@ -1176,6 +1433,7 @@ const ApplicantData = () => {
   const [interviewTargetId, setInterviewTargetId] = useState('');
   const [selectedQuestionGroupIds, setSelectedQuestionGroupIds] = useState<string[]>([]);
   const [interviewQuestionDrafts, setInterviewQuestionDrafts] = useState<InterviewQuestionDraft[]>([]);
+  const lastResolvedInterviewIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!isInterviewEditMode) return;
@@ -1193,7 +1451,8 @@ const ApplicantData = () => {
           achievedScore: 0,
           notes: '',
           source: 'group',
-          answerType: String(q.answerType || 'text'),
+              answerType: String(q.answerType || 'text'),
+              choices: Array.isArray((q as any).choices) ? (q as any).choices.map((c: any) => String(c ?? '').trim()).filter(Boolean) : [],
           includeInTotal: true,
           groupId: group.id,
           groupName: group.name,
@@ -1210,6 +1469,25 @@ const ApplicantData = () => {
       ? applicantInterviews.find((iv: any) => String(iv?._id || '') === resolvedInterviewId)
       : null;
 
+    // If no groups were selected, and the chosen interview already contains questions,
+    // show those questions/answers directly so the user can edit them.
+    if (importedFromGroups.length === 0 && selectedInterview && Array.isArray(selectedInterview.questions) && selectedInterview.questions.length > 0) {
+      const drafts: InterviewQuestionDraft[] = selectedInterview.questions.map((q: any, idx: number) => ({
+        localId: `iv_${String(selectedInterview._id || '')}_${idx}`,
+        question: String(q?.question || '').trim(),
+        score: Number.isFinite(Number(q?.score)) ? Number(q.score) : 0,
+        achievedScore: Number.isFinite(Number(q?.achievedScore)) ? Number(q.achievedScore) : 0,
+        notes: String(q?.notes ?? q?.answer ?? ''),
+        source: 'existing',
+          answerType: String(q?.answerType || 'text'),
+          choices: Array.isArray(q?.choices) ? (q.choices as any[]).map((c) => String(c ?? '').trim()).filter(Boolean) : [],
+        includeInTotal: !(Number.isFinite(Number(q?.score)) && Number(q?.score) === 0),
+      }));
+
+      setInterviewQuestionDrafts(drafts);
+      return;
+    }
+
     const selectedInterviewAnswerSeed = new Map<
       string,
       { achievedScore: number; notes: string; score: number }
@@ -1224,13 +1502,18 @@ const ApplicantData = () => {
       });
     });
 
+    const prevResolvedId = lastResolvedInterviewIdRef.current;
+    const isSwitchingInterview = prevResolvedId !== null && String(prevResolvedId) !== String(resolvedInterviewId);
+
     setInterviewQuestionDrafts((prev) => {
       const previousAnswers = new Map<string, InterviewQuestionDraft>();
 
-      (prev || []).forEach((q) => {
-        const key = `${q.groupId || ''}::${q.question}::${q.score}`;
-        previousAnswers.set(key, q);
-      });
+      if (!isSwitchingInterview) {
+        (prev || []).forEach((q) => {
+          const key = `${q.groupId || ''}::${q.question}::${q.score}`;
+          previousAnswers.set(key, q);
+        });
+      }
 
       const mergedGroupQuestions = importedFromGroups.map((q) => {
         const key = `${q.groupId || ''}::${q.question}::${q.score}`;
@@ -1248,9 +1531,11 @@ const ApplicantData = () => {
           notes: previous?.notes || interviewSeed?.notes || '',
           includeInTotal: previous ? Boolean(previous.includeInTotal) : includeFromSeed,
           answerType: previous?.answerType || q.answerType || 'text',
+          choices: previous?.choices || (Array.isArray((q as any).choices) ? (q as any).choices.map((c: any) => String(c ?? '').trim()).filter(Boolean) : []),
         };
       });
 
+      lastResolvedInterviewIdRef.current = resolvedInterviewId || null;
       return mergedGroupQuestions;
     });
   }, [
@@ -1263,65 +1548,80 @@ const ApplicantData = () => {
     getPreferredInterviewToUpdate,
   ]);
 
-  // const openInterviewEditMode = () => {
-  //   if (!applicant) return;
+  const openInterviewEditMode = () => {
+    if (!applicant) return;
 
-  //   const availableCustomFields = getAvailableCustomFieldsForInterview();
-  //   const availableSpecs = getAvailableJobSpecsForInterview();
+    const availableCustomFields = getAvailableCustomFieldsForInterview();
+    const availableSpecs = getAvailableJobSpecsForInterview();
 
-  //   const rawCustomResponses =
-  //     applicant?.customResponses && typeof applicant.customResponses === 'object'
-  //       ? applicant.customResponses
-  //       : applicant?.customFieldResponses && typeof applicant.customFieldResponses === 'object'
-  //       ? applicant.customFieldResponses
-  //       : {};
+    const rawCustomResponses =
+      applicant?.customResponses && typeof applicant.customResponses === 'object'
+        ? applicant.customResponses
+        : applicant?.customFieldResponses && typeof applicant.customFieldResponses === 'object'
+        ? applicant.customFieldResponses
+        : {};
 
-  //   const mappedResponseKeys = new Set<string>();
-  //   const nextCustomResponses: Record<string, any> = {};
+    const mappedResponseKeys = new Set<string>();
+    const nextCustomResponses: Record<string, any> = {};
 
-  //   availableCustomFields.forEach((field: any, fieldIndex: number) => {
-  //     const fieldId = getCustomFieldId(field, fieldIndex);
-  //     const matchedKey = findMatchingResponseKeyForField(field, rawCustomResponses);
-  //     if (matchedKey) mappedResponseKeys.add(matchedKey);
-  //     const rawValue =
-  //       matchedKey && Object.prototype.hasOwnProperty.call(rawCustomResponses, matchedKey)
-  //         ? rawCustomResponses[matchedKey]
-  //         : rawCustomResponses[fieldId];
+    availableCustomFields.forEach((field: any, fieldIndex: number) => {
+      const fieldId = getCustomFieldId(field, fieldIndex);
+      const matchedKey = findMatchingResponseKeyForField(field, rawCustomResponses);
+      if (matchedKey) mappedResponseKeys.add(matchedKey);
+      const rawValue =
+        matchedKey && Object.prototype.hasOwnProperty.call(rawCustomResponses, matchedKey)
+          ? rawCustomResponses[matchedKey]
+          : rawCustomResponses[fieldId];
 
-  //     nextCustomResponses[fieldId] = coerceCustomFieldValueForForm(field, rawValue);
-  //   });
+      nextCustomResponses[fieldId] = coerceCustomFieldValueForForm(field, rawValue);
+    });
 
-  //   const unmappedCustomResponses = Object.fromEntries(
-  //     Object.entries(rawCustomResponses).filter(([key]) => !mappedResponseKeys.has(key))
-  //   );
+    const unmappedCustomResponses = Object.fromEntries(
+      Object.entries(rawCustomResponses).filter(([key]) => !mappedResponseKeys.has(key))
+    );
 
-  //   setInterviewUnmappedCustomResponses(unmappedCustomResponses);
+    const inferredCustomFields = buildInferredCustomFieldsFromResponses(unmappedCustomResponses);
 
-  //   setInterviewEditForm({
-  //     fullName: applicant?.fullName ? String(applicant.fullName) : '',
-  //     email: applicant?.email ? String(applicant.email) : '',
-  //     phone: applicant?.phone ? String(applicant.phone) : '',
-  //     gender: applicant?.gender ? normalizeGenderLocal(applicant.gender) : '',
-  //     birthDate: toInputDate(getBirthDateValue()),
-  //     address: applicant?.address ? String(applicant.address) : '',
-  //     expectedSalary:
-  //       applicant?.expectedSalary !== undefined && applicant?.expectedSalary !== null
-  //         ? String(applicant.expectedSalary)
-  //         : '',
-  //     customResponses: nextCustomResponses,
-  //     jobSpecsResponses: buildInitialJobSpecsResponses(applicant, availableSpecs),
-  //   });
+    inferredCustomFields.forEach((field: any, inferredIndex: number) => {
+      const fieldId = getCustomFieldId(field, availableCustomFields.length + inferredIndex);
+      const rawValue = rawCustomResponses[fieldId];
+      nextCustomResponses[fieldId] = coerceCustomFieldValueForForm(field, rawValue);
+    });
 
-  //   const targetInterview = getPreferredInterviewToUpdate();
-  //   const hasExistingInterview = Boolean(targetInterview?._id);
+    setInterviewUnmappedCustomResponses(unmappedCustomResponses);
+    setInterviewEditableCustomFields([...availableCustomFields, ...inferredCustomFields]);
 
-  //   setInterviewTargetMode(hasExistingInterview ? 'existing' : 'new');
-  //   setInterviewTargetId(String(targetInterview?._id || ''));
-  //   setSelectedQuestionGroupIds((companyInterviewGroups || []).map((group) => group.id));
-  //   setInterviewQuestionDrafts([]);
+    setInterviewEditForm({
+      fullName: applicant?.fullName ? String(applicant.fullName) : '',
+      email: applicant?.email ? String(applicant.email) : '',
+      phone: applicant?.phone ? String(applicant.phone) : '',
+      gender: applicant?.gender ? normalizeGenderLocal(applicant.gender) : '',
+      birthDate: toInputDate(getBirthDateValue()),
+      address: applicant?.address ? String(applicant.address) : '',
+      expectedSalary:
+        applicant?.expectedSalary !== undefined && applicant?.expectedSalary !== null
+          ? String(applicant.expectedSalary)
+          : '',
+      customResponses: nextCustomResponses,
+      jobSpecsResponses: buildInitialJobSpecsResponses(applicant, availableSpecs),
+    });
 
-  //   setIsInterviewEditMode(true);
-  // };
+    const targetInterview = getPreferredInterviewToUpdate();
+    const hasExistingInterview = Boolean(targetInterview?._id);
+
+    setInterviewTargetMode(hasExistingInterview ? 'existing' : 'new');
+    setInterviewTargetId(String(targetInterview?._id || ''));
+    // Auto-select groups that match the preferred interview, if any
+    try {
+      const inferred = targetInterview ? inferGroupIdsFromInterview(targetInterview) : [];
+      setSelectedQuestionGroupIds(inferred);
+    } catch (e) {
+      setSelectedQuestionGroupIds([]);
+    }
+    setInterviewQuestionDrafts([]);
+
+    setIsInterviewEditMode(true);
+  };
 
   const handleInterviewTargetModeChange = (mode: InterviewTargetMode) => {
     setInterviewTargetMode(mode);
@@ -1334,11 +1634,29 @@ const ApplicantData = () => {
     const fallbackInterviewId = String(getPreferredInterviewToUpdate()?._id || '');
     const resolvedInterviewId = String(interviewTargetId || fallbackInterviewId || '');
     setInterviewTargetId(resolvedInterviewId);
+
+    // Auto-select groups for the resolved interview id
+    try {
+      const iv = applicantInterviews.find((x: any) => String(x?._id || '') === String(resolvedInterviewId));
+      const inferred = iv ? inferGroupIdsFromInterview(iv) : [];
+      setSelectedQuestionGroupIds(inferred);
+    } catch (e) {
+      setSelectedQuestionGroupIds([]);
+    }
   };
 
   const handleExistingInterviewSelection = (nextInterviewId: string) => {
     setInterviewTargetMode('existing');
     setInterviewTargetId(nextInterviewId);
+    try {
+      const iv = applicantInterviews.find((x: any) => String(x?._id || '') === String(nextInterviewId));
+      const inferred = iv ? inferGroupIdsFromInterview(iv) : [];
+      setSelectedQuestionGroupIds(inferred);
+      setInterviewQuestionDrafts([]);
+    } catch (e) {
+      setSelectedQuestionGroupIds([]);
+      setInterviewQuestionDrafts([]);
+    }
   };
 
   const updateInterviewQuestionDraft = (
@@ -1499,11 +1817,61 @@ const ApplicantData = () => {
     });
   };
 
-  const createInterviewForQuestionSave = async (): Promise<string> => {
+  const createInterviewForQuestionSave = async (
+    questionsToSave: Array<{
+      question: string;
+      score: number;
+      achievedScore: number;
+      notes: string;
+    }>
+  ): Promise<string> => {
     if (!id) return '';
 
     const scheduledAt = new Date().toISOString();
     const creationNotes = `Created from interview edit on ${new Date().toLocaleDateString()}`;
+    const knownInterviewIds = new Set(
+      (applicantInterviews || [])
+        .map((iv: any) => String(iv?._id || ''))
+        .filter(Boolean)
+    );
+
+    const resolveInterviewId = (sourceInterviews: any[] = []): string => {
+      const interviews = Array.isArray(sourceInterviews) ? sourceInterviews : [];
+
+      const exactMatch = interviews.find(
+        (iv: any) =>
+          String(iv?.scheduledAt || '') === String(scheduledAt) &&
+          String(iv?.notes || '') === creationNotes
+      );
+
+      if (exactMatch?._id) {
+        return String(exactMatch._id);
+      }
+
+      const noteMatch = interviews.find(
+        (iv: any) => String(iv?.notes || '') === creationNotes
+      );
+
+      if (noteMatch?._id) {
+        return String(noteMatch._id);
+      }
+
+      const firstNewInterview = sortInterviewsByPriority(interviews).find((iv: any) => {
+        const candidateId = String(iv?._id || '');
+        return Boolean(candidateId) && !knownInterviewIds.has(candidateId);
+      });
+
+      if (firstNewInterview?._id) {
+        return String(firstNewInterview._id);
+      }
+
+      const newestInterview = sortInterviewsByPriority(interviews)[0];
+      if (newestInterview?._id) {
+        return String(newestInterview._id);
+      }
+
+      return '';
+    };
 
     const updatedApplicant = await scheduleInterviewMutation.mutateAsync({
       id,
@@ -1512,27 +1880,50 @@ const ApplicantData = () => {
         type: 'phone',
         status: 'scheduled',
         notes: creationNotes,
-        questions: [],
+        questions: questionsToSave,
       },
     });
+
+    const directInterviewId = String(
+      (updatedApplicant as any)?._id || (updatedApplicant as any)?.id || ''
+    );
+
+    if (
+      directInterviewId &&
+      directInterviewId !== String(id) &&
+      !knownInterviewIds.has(directInterviewId)
+    ) {
+      return directInterviewId;
+    }
 
     const interviewsFromResponse = Array.isArray((updatedApplicant as any)?.interviews)
       ? [...((updatedApplicant as any).interviews || [])]
       : [];
 
-    const exactMatch = interviewsFromResponse.find(
-      (iv: any) =>
-        String(iv?.scheduledAt || '') === String(scheduledAt) &&
-        String(iv?.notes || '') === creationNotes
-    );
-
-    if (exactMatch?._id) {
-      return String(exactMatch._id);
+    const interviewIdFromResponse = resolveInterviewId(interviewsFromResponse);
+    if (interviewIdFromResponse) {
+      return interviewIdFromResponse;
     }
 
-    const newestInterview = sortInterviewsByPriority(interviewsFromResponse)[0];
-    if (newestInterview?._id) {
-      return String(newestInterview._id);
+    // Some schedule endpoints return partial payloads without interviews.
+    // Re-fetch applicant detail to reliably resolve the newly created interview id.
+    try {
+      const refreshedApplicant = await applicantsService.getApplicantById(id);
+
+      if (refreshedApplicant && typeof refreshedApplicant === 'object') {
+        queryClient.setQueryData(applicantsKeys.detail(id), refreshedApplicant);
+      }
+
+      const interviewsFromRefetch = Array.isArray((refreshedApplicant as any)?.interviews)
+        ? [...((refreshedApplicant as any).interviews || [])]
+        : [];
+
+      const interviewIdFromRefetch = resolveInterviewId(interviewsFromRefetch);
+      if (interviewIdFromRefetch) {
+        return interviewIdFromRefetch;
+      }
+    } catch {
+      // Let caller surface a clear fallback error.
     }
 
     return '';
@@ -1593,7 +1984,10 @@ const ApplicantData = () => {
       return;
     }
 
-    const availableCustomFields = getAvailableCustomFieldsForInterview();
+    const availableCustomFields =
+      interviewEditableCustomFields.length > 0
+        ? interviewEditableCustomFields
+        : getAvailableCustomFieldsForInterview();
     const customResponsesPayload: Record<string, any> = {
       ...(interviewUnmappedCustomResponses || {}),
     };
@@ -1649,7 +2043,7 @@ const ApplicantData = () => {
 
       if (interviewQuestionsPayload.length > 0) {
         if (interviewTargetMode === 'new') {
-          interviewIdToUpdate = await createInterviewForQuestionSave();
+          interviewIdToUpdate = await createInterviewForQuestionSave(interviewQuestionsPayload);
           if (!interviewIdToUpdate) {
             throw new Error(
               'Interview was created, but no interview id was returned. Please try again.'
@@ -1675,6 +2069,7 @@ const ApplicantData = () => {
       setInterviewTargetId('');
       setSelectedQuestionGroupIds([]);
       setInterviewQuestionDrafts([]);
+      setInterviewEditableCustomFields([]);
 
       Swal.fire(
         'Saved',
@@ -1704,6 +2099,7 @@ const ApplicantData = () => {
     setInterviewTargetId('');
     setSelectedQuestionGroupIds([]);
     setInterviewQuestionDrafts([]);
+    setInterviewEditableCustomFields([]);
   };
 
   
@@ -1728,7 +2124,7 @@ const ApplicantData = () => {
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
 
-  // Sanitize message template: remove quoted blocks and normalize whitespace
+  // Sanitize message template: remove quoted/duplicated blocks (including Interview Details) and normalize whitespace
   const sanitizeMessageTemplate = (htmlOrText: string) => {
     if (!htmlOrText) return '';
     let out = String(htmlOrText);
@@ -1736,12 +2132,28 @@ const ApplicantData = () => {
     // Remove blockquotes which often contain quoted/repeated content
     out = out.replace(/<blockquote[\s\S]*?<\/blockquote>/gi, '');
 
+    // If this looks like HTML, try removing 'Interview Details' blocks and related list items
+    if (out.indexOf('<') !== -1) {
+      // Remove <p>Interview Details</p> plus following <ul> or <ol>
+      out = out.replace(/<p[^>]*>\s*Interview Details\s*<\/p>\s*(?:<ul[\s\S]*?<\/ul>|<ol[\s\S]*?<\/ol>)/i, '');
+      // Remove list items containing Date:, Time:, Type:, Location:, Link:
+      out = out.replace(/<li[^>]*>\s*(?:Date|Time|Type|Location|Link):[\s\S]*?<\/li>/gi, '');
+      // Remove paragraphs that begin with 'Interview Details' or bullets
+      out = out.replace(/<p[^>]*>\s*(?:Interview Details|•|\-|\*)[\s\S]*?<\/p>/gi, '');
+      // Remove leading encoded or literal '>' inside paragraph/div starts
+      out = out.replace(/(<(p|div|li|span)[^>]*>)\s*(?:&gt;|>)+\s*/gi, '$1');
+    } else {
+      // Plain text: remove 'Interview Details' block and following lines starting with bullets or labels
+      out = out.replace(/Interview Details[\s\S]*?(?=\n\s*\n|$)/i, '');
+      out = out.replace(/(^|\n)\s*[•\-*]\s*(Date|Time|Type|Location|Link):.*(?=\n|$)/gi, '');
+    }
+
     // Remove any leading quote-lines in plain text (lines starting with >)
     out = out.replace(/(^|\n)\s*>.*(?=\n|$)/g, '');
     // Remove HTML-encoded greater-than quote markers
     out = out.replace(/(^|\n)\s*&gt;+\s*/gi, '$1');
 
-    // Remove any leading '>' or '&gt;' inside HTML paragraphs (e.g. <p>&gt;Dear...</p> -> <p>Dear...</p>)
+    // Remove any leading '>' or '&gt;' inside HTML paragraphs
     out = out.replace(/<p([^>]*)>\s*(?:&gt;|>)+\s*/gi, '<p$1>');
 
     // Remove a leading greeting like "Dear Name," if it's the very first content — avoids duplicate greetings
@@ -1963,57 +2375,6 @@ const ApplicantData = () => {
       // Notifications: if email channel selected, send email and save message
       if (notificationChannels.email) {
         try {
-          // Ensure Quill HTML has basic inline styles for email clients
-          const inlineStyleHtml = (html: string) => {
-            if (!html) return '';
-            let out = String(html);
-            // style paragraphs
-            out = out.replace(/<p\b([^>]*)>/g, (match, attrs) => attrs.includes('style=') ? match : `<p style="margin:0 0 12px;color:#444;"${attrs}>`);
-            // style unordered lists
-            out = out.replace(/<ul\b([^>]*)>/g, (match, attrs) => attrs.includes('style=') ? match : `<ul style="margin:0 0 12px 18px;padding-left:18px;"${attrs}>`);
-            // style ordered lists
-            out = out.replace(/<ol\b([^>]*)>/g, (match, attrs) => attrs.includes('style=') ? match : `<ol style="margin:0 0 12px 18px;padding-left:18px;"${attrs}>`);
-            // style list items
-            out = out.replace(/<li\b([^>]*)>/g, (match, attrs) => attrs.includes('style=') ? match : `<li style="margin-bottom:6px;"${attrs}>`);
-            return out;
-          };
-
-          // Remove interview details that may be duplicated inside the message template
-          const sanitizeMessageTemplate = (htmlOrText: string) => {
-            if (!htmlOrText) return '';
-            let out = String(htmlOrText);
-
-            // Remove any blockquote sections
-            out = out.replace(/<blockquote[\s\S]*?<\/blockquote>/gi, '');
-
-            // If it's HTML, try removing a paragraph titled 'Interview Details' and following list
-            if (out.indexOf('<') !== -1) {
-              // Remove <p>Interview Details</p> plus following <ul> or <ol>
-              out = out.replace(/<p[^>]*>\s*Interview Details\s*<\/p>\s*(?:<ul[\s\S]*?<\/ul>|<ol[\s\S]*?<\/ol>)/i, '');
-              // Remove any remaining list items that contain Date:, Time:, Type:, Location:, Link:
-              out = out.replace(/<li[^>]*>\s*(?:Date|Time|Type|Location|Link):[\s\S]*?<\/li>/gi, '');
-              // Also remove standalone paragraphs that start with 'Interview Details' or bullets
-              out = out.replace(/<p[^>]*>\s*(?:Interview Details|•|\-|\*)[\s\S]*?<\/p>/gi, '');
-
-              // Remove leading encoded or literal '>' inside paragraph starts (e.g. <p>&gt;Text</p> or <p>>Text</p>)
-              out = out.replace(/(<(p|div|li|span)[^>]*>)\s*(?:&gt;|>)+\s*/gi, '$1');
-            } else {
-              // Plain text: remove 'Interview Details' block and following lines starting with bullets or labels
-              out = out.replace(/Interview Details[\s\S]*?(?=\n\s*\n|$)/i, '');
-              out = out.replace(/(^|\n)\s*[•\-*]\s*(Date|Time|Type|Location|Link):.*(?=\n|$)/gi, '');
-            }
-
-            // Remove any leading quote-lines in plain text (lines starting with >)
-            out = out.replace(/(^|\n)\s*>+\s*/g, '$1');
-            // Remove HTML encoded greater-than markers at line starts
-            out = out.replace(/(^|\n)\s*&gt;+\s*/gi, '$1');
-
-            // Remove a leading greeting like "Dear Name," if it's the very first content — avoids duplicate greetings
-            out = out.replace(/^\s*(?:<p[^>]*>\s*)?(Dear\s+[A-Za-z0-9\-\s,.]{1,80}[,:]?)(?:<\/p>\s*)?/i, '');
-
-            return out.trim();
-          };
-
           const toEmail = applicant.email;
           // Fallback logic exactly matching the UI in InterviewScheduleModal
           const mailDefault = companyObj?.settings?.mailSettings?.defaultMail || companyObj?.mailSettings?.defaultMail || companyObj?.contactEmail || companyObj?.email || '';
@@ -2278,6 +2639,10 @@ const ApplicantData = () => {
   };
 
   const customFieldsForInterview = getAvailableCustomFieldsForInterview();
+  const editableCustomFieldsForInterview =
+    isInterviewEditMode && interviewEditableCustomFields.length > 0
+      ? interviewEditableCustomFields
+      : customFieldsForInterview;
 
   return (
     <>
@@ -2303,7 +2668,7 @@ const ApplicantData = () => {
             >
               <span className="hidden sm:inline">{applicant.status.charAt(0).toUpperCase() + applicant.status.slice(1)}</span> 
             </button>
-            {/* <button
+            <button
               onClick={openInterviewEditMode}
               disabled={isInterviewEditMode}
               className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-amber-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-60 disabled:cursor-not-allowed"
@@ -2312,7 +2677,7 @@ const ApplicantData = () => {
                 <path d="M8 5v14l11-7z" />
               </svg>
               Interview
-            </button> */}
+            </button>
             {isInterviewEditMode && (
               <>
                 <button
@@ -2441,6 +2806,8 @@ const ApplicantData = () => {
         </div>
       </div>
       
+        
+
       {/* Profile Photo in header */}
       <div className="flex-shrink-0">
         {applicant.profilePhoto ? (
@@ -2461,6 +2828,7 @@ const ApplicantData = () => {
             {applicant.fullName ? applicant.fullName.split(' ').map((n: string) => n.charAt(0)).slice(0,2).join('').toUpperCase() : 'NA'}
           </div>
         )}
+
       </div>
     </div>
 
@@ -3015,13 +3383,13 @@ const ApplicantData = () => {
               <p className="text-sm text-blue-100 mt-0.5">Edit applicant responses using this job&apos;s custom fields</p>
             </div>
             <div className="p-8 space-y-5">
-              {customFieldsForInterview.length === 0 ? (
+              {editableCustomFieldsForInterview.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-blue-200 bg-white/70 p-4 text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-300">
                   No custom fields found for this job position.
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  {[...customFieldsForInterview]
+                  {[...editableCustomFieldsForInterview]
                     .sort((a: any, b: any) => {
                       const ao = Number(a?.displayOrder ?? a?.order ?? 0);
                       const bo = Number(b?.displayOrder ?? b?.order ?? 0);
@@ -3030,10 +3398,13 @@ const ApplicantData = () => {
                     .map((field: any, fieldIndex: number) => {
                       const fieldId = getCustomFieldId(field, fieldIndex);
                       const fieldLabel = getCustomFieldLabelText(field);
-                      const inputType = String(field?.inputType || 'text').toLowerCase();
+                      const rawValue = interviewEditForm.customResponses?.[fieldId];
+                      const inputType = String(
+                        field?.inputType || inferCustomResponseInputType(rawValue) || 'text'
+                      ).toLowerCase();
                       const choices = getCustomFieldChoices(field);
                       const groupFields = getCustomFieldGroupFields(field);
-                      const rawValue = interviewEditForm.customResponses?.[fieldId];
+                      const isInferredField = Boolean(field?.__inferredFromResponse);
 
                       return (
                         <div
@@ -3044,9 +3415,16 @@ const ApplicantData = () => {
                             <Label className="text-xs text-blue-700 dark:text-blue-300 font-bold uppercase">
                               {fieldLabel}
                             </Label>
-                            <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-blue-700 dark:bg-blue-900/40 dark:text-blue-200">
-                              {inputType.replace(/_/g, ' ')}
-                            </span>
+                            <div className="flex items-center gap-1.5">
+                              {isInferredField && (
+                                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:bg-amber-900/40 dark:text-amber-200">
+                                  from request
+                                </span>
+                              )}
+                              <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-blue-700 dark:bg-blue-900/40 dark:text-blue-200">
+                                {inputType.replace(/_/g, ' ')}
+                              </span>
+                            </div>
                           </div>
 
                           {inputType === 'repeatable_group' ? (
@@ -3084,9 +3462,11 @@ const ApplicantData = () => {
                                         {groupFields.map((subField: any, subFieldIndex: number) => {
                                           const subFieldId = getCustomFieldId(subField, subFieldIndex);
                                           const subLabel = getCustomFieldLabelText(subField);
-                                          const subInputType = String(subField?.inputType || 'text').toLowerCase();
-                                          const subChoices = getCustomFieldChoices(subField);
                                           const subValue = row?.[subFieldId];
+                                          const subInputType = String(
+                                            subField?.inputType || inferCustomResponseInputType(subValue) || 'text'
+                                          ).toLowerCase();
+                                          const subChoices = getCustomFieldChoices(subField);
 
                                           return (
                                             <div key={`${fieldId}_${subFieldId}_${subFieldIndex}`}>
@@ -3102,6 +3482,16 @@ const ApplicantData = () => {
                                                   }
                                                   rows={3}
                                                   className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                                                />
+                                              ) : subInputType === 'json' ? (
+                                                <textarea
+                                                  value={subValue ?? ''}
+                                                  onChange={(e) =>
+                                                    updateInterviewRepeatableCell(fieldId, rowIndex, subFieldId, e.target.value)
+                                                  }
+                                                  rows={5}
+                                                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-mono text-gray-900 outline-none focus:border-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                                                  placeholder='{"key": "value"}'
                                                 />
                                               ) : subInputType === 'dropdown' ? (
                                                 <select
@@ -3172,19 +3562,92 @@ const ApplicantData = () => {
                                                   </label>
                                                 )
                                               ) : subInputType === 'tags' ? (
-                                                <input
-                                                  type="text"
-                                                  value={Array.isArray(subValue) ? subValue.join(', ') : ''}
-                                                  onChange={(e) => {
-                                                    const next = e.target.value
-                                                      .split(',')
-                                                      .map((v) => v.trim())
-                                                      .filter(Boolean);
-                                                    updateInterviewRepeatableCell(fieldId, rowIndex, subFieldId, next);
-                                                  }}
-                                                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-                                                  placeholder="tag1, tag2, tag3"
-                                                />
+                                                <div className="mb-2 flex min-h-11 rounded-lg border border-gray-300 py-1.5 pl-3 pr-3 shadow-theme-xs outline-hidden transition focus-within:border-blue-500 dark:border-gray-700 dark:bg-gray-900">
+                                                  <div className="flex flex-wrap flex-auto gap-2 items-center">
+                                                    {Array.isArray(subValue) && subValue.length > 0 ? (
+                                                      subValue.map((tagVal: any) => {
+                                                        const text = String(tagVal);
+                                                        return (
+                                                          <div
+                                                            key={`${fieldId}_${rowIndex}_${subFieldId}_${text}`}
+                                                            className="group flex items-center justify-center rounded-full border-[0.7px] border-transparent bg-gray-100 py-1 pl-2.5 pr-2 text-sm text-gray-800 hover:border-gray-200 dark:bg-gray-800 dark:text-white/90 dark:hover:border-gray-800"
+                                                          >
+                                                            <span className="flex-initial max-w-full">{text}</span>
+                                                            <button
+                                                              type="button"
+                                                              onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                const curr = Array.isArray(subValue) ? subValue : [];
+                                                                const next = curr.filter((t: any) => String(t) !== String(tagVal));
+                                                                updateInterviewRepeatableCell(fieldId, rowIndex, subFieldId, next);
+                                                              }}
+                                                              className="pl-2 text-gray-500 cursor-pointer group-hover:text-gray-400 dark:text-gray-400"
+                                                              aria-label={`Remove ${text}`}
+                                                            >
+                                                              <svg className="fill-current" width="14" height="14" viewBox="0 0 14 14" xmlns="http://www.w3.org/2000/svg">
+                                                                <path fillRule="evenodd" clipRule="evenodd" d="M3.40717 4.46881C3.11428 4.17591 3.11428 3.70104 3.40717 3.40815C3.70006 3.11525 4.17494 3.11525 4.46783 3.40815L6.99943 5.93975L9.53095 3.40822C9.82385 3.11533 10.2987 3.11533 10.5916 3.40822C10.8845 3.70112 10.8845 4.17599 10.5916 4.46888L8.06009 7.00041L10.5916 9.53193C10.8845 9.82482 10.8845 10.2997 10.5916 10.5926C10.2987 10.8855 9.82385 10.8855 9.53095 10.5926L6.99943 8.06107L4.46783 10.5927C4.17494 10.8856 3.70006 10.8856 3.40717 10.5927C3.11428 10.2998 3.11428 9.8249 3.40717 9.53201L5.93877 7.00041L3.40717 4.46881Z" />
+                                                              </svg>
+                                                            </button>
+                                                          </div>
+                                                        );
+                                                      })
+                                                    ) : null}
+
+                                                    <input
+                                                      type="text"
+                                                      value={tagInputBuffers[`${fieldId}__${rowIndex}__${subFieldId}`] ?? ''}
+                                                      onChange={(e) => {
+                                                        const key = `${fieldId}__${rowIndex}__${subFieldId}`;
+                                                        const v = e.target.value;
+                                                        setTagInputBuffers((prev) => ({ ...prev, [key]: v }));
+                                                        if (v.includes(',')) {
+                                                          const next = v
+                                                            .split(',')
+                                                            .map((vv) => vv.trim())
+                                                            .filter(Boolean);
+                                                          const currentArr = Array.isArray(subValue) ? subValue : [];
+                                                          const merged = mergeTags(currentArr, next);
+                                                          updateInterviewRepeatableCell(fieldId, rowIndex, subFieldId, merged);
+                                                          setTagInputBuffers((prev) => ({ ...prev, [key]: '' }));
+                                                        }
+                                                      }}
+                                                      onKeyDown={(e) => {
+                                                        if (e.key === 'Enter') {
+                                                          e.preventDefault();
+                                                          const key = `${fieldId}__${rowIndex}__${subFieldId}`;
+                                                          const buf = (tagInputBuffers[key] ?? '').toString();
+                                                          if (!buf || !buf.trim()) {
+                                                            setTagInputBuffers((prev) => ({ ...prev, [key]: '' }));
+                                                            return;
+                                                          }
+                                                          const next = buf
+                                                            .split(',')
+                                                            .map((vv) => vv.trim())
+                                                            .filter(Boolean);
+                                                          if (next.length) {
+                                                            const currentArr = Array.isArray(subValue) ? subValue : [];
+                                                            const merged = mergeTags(currentArr, next);
+                                                            updateInterviewRepeatableCell(fieldId, rowIndex, subFieldId, merged);
+                                                          }
+                                                          setTagInputBuffers((prev) => ({ ...prev, [key]: '' }));
+                                                        }
+                                                      }}
+                                                      onBlur={() => {
+                                                        const key = `${fieldId}__${rowIndex}__${subFieldId}`;
+                                                        const buf = (tagInputBuffers[key] ?? '').toString();
+                                                        if (buf && buf.trim()) {
+                                                          const next = buf.split(',').map((vv) => vv.trim()).filter(Boolean);
+                                                          const currentArr = Array.isArray(subValue) ? subValue : [];
+                                                          const merged = mergeTags(currentArr, next);
+                                                          updateInterviewRepeatableCell(fieldId, rowIndex, subFieldId, merged);
+                                                          setTagInputBuffers((prev) => ({ ...prev, [key]: '' }));
+                                                        }
+                                                      }}
+                                                      className="flex-1 bg-transparent p-1 text-sm text-gray-800 outline-none dark:text-white/90"
+                                                      placeholder="tag1, tag2, tag3"
+                                                    />
+                                                  </div>
+                                                </div>
                                               ) : (
                                                 <input
                                                   type={
@@ -3226,6 +3689,14 @@ const ApplicantData = () => {
                               onChange={(e) => setInterviewCustomFieldValue(fieldId, e.target.value)}
                               rows={4}
                               className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                            />
+                          ) : inputType === 'json' ? (
+                            <textarea
+                              value={rawValue ?? ''}
+                              onChange={(e) => setInterviewCustomFieldValue(fieldId, e.target.value)}
+                              rows={6}
+                              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-mono text-gray-900 outline-none focus:border-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                              placeholder='{"key": "value"}'
                             />
                           ) : inputType === 'dropdown' ? (
                             <select
@@ -3290,19 +3761,80 @@ const ApplicantData = () => {
                               </label>
                             )
                           ) : inputType === 'tags' ? (
-                            <input
-                              type="text"
-                              value={Array.isArray(rawValue) ? rawValue.join(', ') : ''}
-                              onChange={(e) => {
-                                const next = e.target.value
-                                  .split(',')
-                                  .map((v) => v.trim())
-                                  .filter(Boolean);
-                                setInterviewCustomFieldValue(fieldId, next);
-                              }}
-                              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-                              placeholder="tag1, tag2, tag3"
-                            />
+                            <div className="mb-2 flex min-h-11 rounded-lg border border-gray-300 py-1.5 pl-3 pr-3 shadow-theme-xs outline-hidden transition focus-within:border-blue-500 dark:border-gray-700 dark:bg-gray-900">
+                              <div className="flex flex-wrap flex-auto gap-2 items-center">
+                                {Array.isArray(rawValue) && rawValue.length > 0 ? (
+                                  rawValue.map((tagVal: any) => {
+                                    const text = String(tagVal);
+                                    return (
+                                      <div key={`${fieldId}_tag_${text}`} className="group flex items-center justify-center rounded-full border-[0.7px] border-transparent bg-gray-100 py-1 pl-2.5 pr-2 text-sm text-gray-800 hover:border-gray-200 dark:bg-gray-800 dark:text-white/90 dark:hover:border-gray-800">
+                                        <span className="flex-initial max-w-full">{text}</span>
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            const curr = Array.isArray(rawValue) ? rawValue : [];
+                                            const next = curr.filter((t: any) => String(t) !== String(tagVal));
+                                            setInterviewCustomFieldValue(fieldId, next);
+                                          }}
+                                          className="pl-2 text-gray-500 cursor-pointer group-hover:text-gray-400 dark:text-gray-400"
+                                          aria-label={`Remove ${text}`}
+                                        >
+                                          <svg className="fill-current" width="14" height="14" viewBox="0 0 14 14" xmlns="http://www.w3.org/2000/svg">
+                                            <path fillRule="evenodd" clipRule="evenodd" d="M3.40717 4.46881C3.11428 4.17591 3.11428 3.70104 3.40717 3.40815C3.70006 3.11525 4.17494 3.11525 4.46783 3.40815L6.99943 5.93975L9.53095 3.40822C9.82385 3.11533 10.2987 3.11533 10.5916 3.40822C10.8845 3.70112 10.8845 4.17599 10.5916 4.46888L8.06009 7.00041L10.5916 9.53193C10.8845 9.82482 10.8845 10.2997 10.5916 10.5926C10.2987 10.8855 9.82385 10.8855 9.53095 10.5926L6.99943 8.06107L4.46783 10.5927C4.17494 10.8856 3.70006 10.8856 3.40717 10.5927C3.11428 10.2998 3.11428 9.8249 3.40717 9.53201L5.93877 7.00041L3.40717 4.46881Z" />
+                                          </svg>
+                                        </button>
+                                      </div>
+                                    );
+                                  })
+                                ) : null}
+
+                                <input
+                                  type="text"
+                                  value={tagInputBuffers[fieldId] ?? ''}
+                                  onChange={(e) => {
+                                    const v = e.target.value;
+                                    setTagInputBuffers((prev) => ({ ...prev, [fieldId]: v }));
+                                    if (v.includes(',')) {
+                                      const next = v.split(',').map((vv) => vv.trim()).filter(Boolean);
+                                      const currentArr = Array.isArray(rawValue) ? rawValue : [];
+                                      const merged = mergeTags(currentArr, next);
+                                      setInterviewCustomFieldValue(fieldId, merged);
+                                      setTagInputBuffers((prev) => ({ ...prev, [fieldId]: '' }));
+                                    }
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      e.preventDefault();
+                                      const buf = (tagInputBuffers[fieldId] ?? '').toString();
+                                      if (!buf || !buf.trim()) {
+                                        setTagInputBuffers((prev) => ({ ...prev, [fieldId]: '' }));
+                                        return;
+                                      }
+                                      const next = buf.split(',').map((vv) => vv.trim()).filter(Boolean);
+                                      if (next.length) {
+                                        const currentArr = Array.isArray(rawValue) ? rawValue : [];
+                                        const merged = mergeTags(currentArr, next);
+                                        setInterviewCustomFieldValue(fieldId, merged);
+                                      }
+                                      setTagInputBuffers((prev) => ({ ...prev, [fieldId]: '' }));
+                                    }
+                                  }}
+                                  onBlur={() => {
+                                    const buf = (tagInputBuffers[fieldId] ?? '').toString();
+                                    if (buf && buf.trim()) {
+                                      const next = buf.split(',').map((vv) => vv.trim()).filter(Boolean);
+                                      const currentArr = Array.isArray(rawValue) ? rawValue : [];
+                                      const merged = mergeTags(currentArr, next);
+                                      setInterviewCustomFieldValue(fieldId, merged);
+                                      setTagInputBuffers((prev) => ({ ...prev, [fieldId]: '' }));
+                                    }
+                                  }}
+                                  className="flex-1 bg-transparent p-1 text-sm text-gray-800 outline-none dark:text-white/90"
+                                  placeholder="tag1, tag2, tag3"
+                                />
+                              </div>
+                            </div>
                           ) : (
                             <input
                               type={
@@ -3332,6 +3864,14 @@ const ApplicantData = () => {
           </div>
         ) : (
           <CustomResponses applicant={applicant} customFields={customFieldsForInterview} />
+        )}
+
+        {!isInterviewEditMode && (
+          <Questions
+            status={applicant?.status}
+            interviews={applicantInterviews}
+            className="mt-4"
+          />
         )}
 
         {isInterviewEditMode && (
@@ -3536,39 +4076,156 @@ const ApplicantData = () => {
                             <Label className="mb-1 block text-[11px] font-semibold uppercase text-gray-500 dark:text-gray-400">
                               Answer ({String(item.answerType || 'text')})
                             </Label>
-                            {String(item.answerType || 'text').toLowerCase() === 'number' ? (
-                              <input
-                                type="number"
-                                value={item.notes}
-                                onChange={(e) =>
-                                  updateInterviewQuestionDraft(item.localId, 'notes', e.target.value)
-                                }
-                                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-violet-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-                                placeholder="Type numeric answer"
-                              />
-                            ) : String(item.answerType || 'text').toLowerCase() === 'checkbox' ? (
-                              <select
-                                value={item.notes}
-                                onChange={(e) =>
-                                  updateInterviewQuestionDraft(item.localId, 'notes', e.target.value)
-                                }
-                                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-violet-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-                              >
-                                <option value="">Select answer</option>
-                                <option value="true">True</option>
-                                <option value="false">False</option>
-                              </select>
-                            ) : (
-                              <input
-                                type="text"
-                                value={item.notes}
-                                onChange={(e) =>
-                                  updateInterviewQuestionDraft(item.localId, 'notes', e.target.value)
-                                }
-                                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-violet-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-                                placeholder="Type answer"
-                              />
-                            )}
+                            {(() => {
+                              const atype = String(item.answerType || 'text').toLowerCase();
+                              if (atype === 'number') {
+                                return (
+                                  <input
+                                    type="number"
+                                    value={item.notes}
+                                    onChange={(e) =>
+                                      updateInterviewQuestionDraft(item.localId, 'notes', e.target.value)
+                                    }
+                                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-violet-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                                    placeholder="Type numeric answer"
+                                  />
+                                );
+                              }
+
+                              if (atype === 'checkbox') {
+                                return (
+                                  <select
+                                    value={item.notes}
+                                    onChange={(e) =>
+                                      updateInterviewQuestionDraft(item.localId, 'notes', e.target.value)
+                                    }
+                                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-violet-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                                  >
+                                    <option value="">Select answer</option>
+                                    <option value="true">True</option>
+                                    <option value="false">False</option>
+                                  </select>
+                                );
+                              }
+
+                              if (atype === 'radio' || atype === 'dropdown') {
+                                const options = Array.isArray(item.choices) ? item.choices : [];
+                                return (
+                                  <select
+                                    value={item.notes}
+                                    onChange={(e) =>
+                                      updateInterviewQuestionDraft(item.localId, 'notes', e.target.value)
+                                    }
+                                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-violet-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                                  >
+                                    <option value="">Select answer</option>
+                                    {options.map((opt) => (
+                                      <option key={opt} value={opt}>
+                                        {opt}
+                                      </option>
+                                    ))}
+                                  </select>
+                                );
+                              }
+
+                              if (atype === 'tags') {
+                                const key = `ivq_${item.localId}`;
+                                const currentArr = String(item.notes || '')
+                                  .split(',')
+                                  .map((v) => String(v || '').trim())
+                                  .filter(Boolean);
+
+                                return (
+                                  <>
+                                    <div className="mb-2">
+                                      <input
+                                        type="text"
+                                        value={tagInputBuffers[key] ?? ''}
+                                        onChange={(e) => {
+                                          const v = e.target.value;
+                                          setTagInputBuffers((prev) => ({ ...prev, [key]: v }));
+                                          if (v.includes(',')) {
+                                            const next = v.split(',').map((vv) => vv.trim()).filter(Boolean);
+                                            const merged = mergeTags(currentArr, next);
+                                            updateInterviewQuestionDraft(item.localId, 'notes', merged.join(', '));
+                                            setTagInputBuffers((prev) => ({ ...prev, [key]: '' }));
+                                          }
+                                        }}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') {
+                                            e.preventDefault();
+                                            const buf = (tagInputBuffers[key] ?? '').toString();
+                                            if (!buf || !buf.trim()) {
+                                              setTagInputBuffers((prev) => ({ ...prev, [key]: '' }));
+                                              return;
+                                            }
+                                            const next = buf.split(',').map((vv) => vv.trim()).filter(Boolean);
+                                            if (next.length) {
+                                              const merged = mergeTags(currentArr, next);
+                                              updateInterviewQuestionDraft(item.localId, 'notes', merged.join(', '));
+                                            }
+                                            setTagInputBuffers((prev) => ({ ...prev, [key]: '' }));
+                                          }
+                                        }}
+                                        onBlur={() => {
+                                          const buf = (tagInputBuffers[key] ?? '').toString();
+                                          if (buf && buf.trim()) {
+                                            const next = buf.split(',').map((vv) => vv.trim()).filter(Boolean);
+                                            const merged = mergeTags(currentArr, next);
+                                            updateInterviewQuestionDraft(item.localId, 'notes', merged.join(', '));
+                                            setTagInputBuffers((prev) => ({ ...prev, [key]: '' }));
+                                          }
+                                        }}
+                                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-violet-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                                        placeholder="tag1, tag2, tag3"
+                                      />
+                                    </div>
+
+                                    <div className="flex flex-wrap gap-2">
+                                      {currentArr.length > 0
+                                        ? currentArr.map((tagVal) => {
+                                            const text = String(tagVal);
+                                            return (
+                                              <div
+                                                key={`${item.localId}_tag_${text}`}
+                                                className="group flex items-center justify-center rounded-full border-[0.7px] border-transparent bg-gray-100 py-1 pl-2.5 pr-2 text-sm text-gray-800 hover:border-gray-200 dark:bg-gray-800 dark:text-white/90 dark:hover:border-gray-800"
+                                              >
+                                                <span className="flex-initial max-w-full">{text}</span>
+                                                <button
+                                                  type="button"
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    const next = currentArr.filter((t) => String(t) !== String(tagVal));
+                                                    updateInterviewQuestionDraft(item.localId, 'notes', next.join(', '));
+                                                  }}
+                                                  className="pl-2 text-gray-500 cursor-pointer group-hover:text-gray-400 dark:text-gray-400"
+                                                  aria-label={`Remove ${text}`}
+                                                >
+                                                  <svg className="fill-current" width="14" height="14" viewBox="0 0 14 14" xmlns="http://www.w3.org/2000/svg">
+                                                    <path fillRule="evenodd" clipRule="evenodd" d="M3.40717 4.46881C3.11428 4.17591 3.11428 3.70104 3.40717 3.40815C3.70006 3.11525 4.17494 3.11525 4.46783 3.40815L6.99943 5.93975L9.53095 3.40822C9.82385 3.11533 10.2987 3.11533 10.5916 3.40822C10.8845 3.70112 10.8845 4.17599 10.5916 4.46888L8.06009 7.00041L10.5916 9.53193C10.8845 9.82482 10.8845 10.2997 10.5916 10.5926C10.2987 10.8855 9.82385 10.8855 9.53095 10.5926L6.99943 8.06107L4.46783 10.5927C4.17494 10.8856 3.70006 10.8856 3.40717 10.5927C3.11428 10.2998 3.11428 9.8249 3.40717 9.53201L5.93877 7.00041L3.40717 4.46881Z" />
+                                                  </svg>
+                                                </button>
+                                              </div>
+                                            );
+                                          })
+                                        : null}
+                                    </div>
+                                  </>
+                                );
+                              }
+
+                              return (
+                                <input
+                                  type="text"
+                                  value={item.notes}
+                                  onChange={(e) =>
+                                    updateInterviewQuestionDraft(item.localId, 'notes', e.target.value)
+                                  }
+                                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-violet-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                                  placeholder="Type answer"
+                                />
+                              );
+                            })()}
                           </div>
 
                           <div className="md:col-span-2">
@@ -3727,3 +4384,4 @@ const ApplicantData = () => {
 };
 
 export default ApplicantData;
+

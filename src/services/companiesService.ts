@@ -60,6 +60,7 @@ export interface InterviewQuestion {
   question: string;
   score: number;
   answerType: InterviewAnswerType;
+  choices?: string[];
 }
 
 export interface InterviewGroup {
@@ -188,12 +189,34 @@ const normalizeInterviewSettings = (payload: any): InterviewSettings | null => {
     root?.settings?.interviewSettings ??
     (Array.isArray(root?.groups) ? root : null);
 
+  const normalizeQuestion = (q: any): InterviewQuestion => {
+    const score = Number(q?.score);
+    const answerType =
+      q?.answerType && ["text", "number", "radio", "checkbox", "dropdown", "tags"].includes(q.answerType)
+        ? q.answerType
+        : "text";
+
+    return {
+      question: String(q?.question ?? ""),
+      score: Number.isFinite(score) ? score : 0,
+      answerType,
+      choices: Array.isArray(q?.choices)
+        ? (q.choices as any[]).map((c) => String(c ?? "").trim()).filter(Boolean)
+        : [],
+    };
+  };
+
+  const normalizeGroup = (g: any): InterviewGroup => ({
+    name: String(g?.name ?? ""),
+    questions: Array.isArray(g?.questions) ? g.questions.map(normalizeQuestion) : [],
+  });
+
   if (candidate && Array.isArray(candidate.groups)) {
-    return { groups: candidate.groups as InterviewGroup[] };
+    return { groups: candidate.groups.map(normalizeGroup) };
   }
 
   if (Array.isArray(candidate)) {
-    return { groups: candidate as InterviewGroup[] };
+    return { groups: candidate.map(normalizeGroup) };
   }
 
   return null;

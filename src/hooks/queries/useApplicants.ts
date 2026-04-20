@@ -57,11 +57,11 @@ export function useApplicants(
 }
 
 // Get applicant by ID
-export function useApplicant(id: string, options?: { initialData?: any }) {
+export function useApplicant(id: string, options?: { initialData?: any; enabled?: boolean }) {
   return useQuery<import("../../services/applicantsService").Applicant>({
     queryKey: applicantsKeys.detail(id),
     queryFn: () => applicantsService.getApplicantById(id),
-    enabled: !!id,
+    enabled: !!id && (options?.enabled !== undefined ? options.enabled : true),
     staleTime: 30 * 1000, // 30s - keep relatively fresh
     // If caller supplied initialData (e.g. from list cache or navigation), avoid forcing a refetch on mount.
     // Otherwise preserve existing behavior of refreshing details on mount.
@@ -121,8 +121,28 @@ export function useUpdateApplicant() {
         queryClient.setQueryData(applicantsKeys.detail(_variables.id), context.previousDetail);
       }
     },
-    onSettled: () => {
-      // No refetch
+    onSettled: async (_data, _error, variables) => {
+      // Perform a background refresh of the applicant detail after an update.
+      // We intentionally do NOT call react-query refetch APIs so we don't toggle
+      // the `isFetching` flag (which the UI uses to show a loading state). Instead
+      // fetch directly and update the cache with `setQueryData`.
+      try {
+        const id = (variables as any)?.id as string | undefined;
+        if (!id) return;
+        const refreshed = await applicantsService.getApplicantById(id);
+        if (refreshed && typeof refreshed === 'object') {
+          queryClient.setQueryData(applicantsKeys.detail(id), refreshed);
+          // Also update list queries if present so lists stay consistent.
+          queryClient.setQueriesData({ queryKey: applicantsKeys.lists() }, (old: any) => {
+            if (!old) return old;
+            if (Array.isArray(old)) return old.map((applicant: any) => (applicant && applicant._id === id ? { ...applicant, ...refreshed } : applicant));
+            if (old.data && Array.isArray(old.data)) return { ...old, data: old.data.map((applicant: any) => (applicant && applicant._id === id ? { ...applicant, ...refreshed } : applicant)) };
+            return old;
+          });
+        }
+      } catch (e) {
+        // Background refresh failure is non-fatal — ignore.
+      }
     },
   });
 }
@@ -298,11 +318,15 @@ export function useScheduleInterview() {
       }
     },
     onSuccess: (updatedApplicant, variables) => {
+      const candidate = updatedApplicant as any;
+      const candidateId = String(candidate?._id || candidate?.id || '');
+      const expectedApplicantId = String(variables.id || '');
+      const hasInterviewsArray = Array.isArray(candidate?.interviews);
+
       if (
-        updatedApplicant &&
-        typeof updatedApplicant === 'object' &&
-        (((updatedApplicant as any)._id && String((updatedApplicant as any)._id)) ||
-          ((updatedApplicant as any).id && String((updatedApplicant as any).id)))
+        candidate &&
+        typeof candidate === 'object' &&
+        (hasInterviewsArray || (candidateId && candidateId === expectedApplicantId))
       ) {
         queryClient.setQueryData(applicantsKeys.detail(variables.id), updatedApplicant);
         return;

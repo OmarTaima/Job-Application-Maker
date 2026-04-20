@@ -55,6 +55,9 @@ const normalizeGroups = (
 					question: String(question?.question ?? ""),
 					score: Number.isFinite(score) ? score : 0,
 					answerType,
+					choices: Array.isArray(question?.choices)
+						? (question as any).choices.map((c: any) => String(c ?? "").trim()).filter(Boolean)
+						: [],
 				};
 			})
 			: [],
@@ -72,6 +75,7 @@ export default function SavedQuestionsPage() {
 
 	const [groups, setGroups] = useState<SavedQuestionGroup[]>([]);
 	const [isSaving, setIsSaving] = useState(false);
+	const [choiceBuffers, setChoiceBuffers] = useState<Record<string, string>>({});
 
 	const isLoading = isGroupsLoading || isGroupsFetching;
 
@@ -207,6 +211,18 @@ export default function SavedQuestionsPage() {
 					);
 					return null;
 				}
+
+				if (
+					(question.answerType === 'radio' || question.answerType === 'dropdown') &&
+					(!Array.isArray(question.choices) || question.choices.length === 0)
+				) {
+					Swal.fire(
+						"Validation",
+						`Question ${questionIndex + 1} in group ${groupIndex + 1} must include at least one choice for radio/dropdown.`,
+						"warning"
+					);
+					return null;
+				}
 			}
 		}
 
@@ -216,6 +232,9 @@ export default function SavedQuestionsPage() {
 				question: question.question.trim(),
 				score: Number(question.score),
 				answerType: question.answerType,
+				choices: Array.isArray((question as any).choices)
+					? (question as any).choices.map((c: any) => String(c ?? "").trim()).filter(Boolean)
+					: [],
 			})),
 		}));
 	};
@@ -453,6 +472,62 @@ export default function SavedQuestionsPage() {
 													<Trash2 className="size-4" /> Remove
 												</button>
 											</div>
+
+											{(question.answerType === 'radio' || question.answerType === 'dropdown') && (
+												<div className="lg:col-span-4">
+													<label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+														Choices
+													</label>
+													<div className="mb-2 flex flex-wrap gap-2">
+														{(Array.isArray(question.choices) ? question.choices : []).map((c) => (
+															<div key={c} className="group flex items-center justify-center rounded-full border-[0.7px] border-transparent bg-gray-100 py-1 pl-2.5 pr-2 text-sm text-gray-800 hover:border-gray-200 dark:bg-gray-800 dark:text-white/90 dark:hover:border-gray-800">
+																<span className="flex-initial max-w-full">{c}</span>
+																<button
+																	type="button"
+																	onClick={() => {
+																	const existing = Array.isArray(question.choices) ? question.choices : [];
+																	const next = existing.filter((x) => String(x) !== String(c));
+																	updateQuestion(groupIndex, questionIndex, { choices: next });
+																}}
+																	className="pl-2 text-gray-500 cursor-pointer group-hover:text-gray-400 dark:text-gray-400"
+																	aria-label={`Remove ${c}`}
+																>
+																	<svg className="fill-current" width="14" height="14" viewBox="0 0 14 14" xmlns="http://www.w3.org/2000/svg">
+																		<path fillRule="evenodd" clipRule="evenodd" d="M3.40717 4.46881C3.11428 4.17591 3.11428 3.70104 3.40717 3.40815C3.70006 3.11525 4.17494 3.11525 4.46783 3.40815L6.99943 5.93975L9.53095 3.40822C9.82385 3.11533 10.2987 3.11533 10.5916 3.40822C10.8845 3.70112 10.8845 4.17599 10.5916 4.46888L8.06009 7.00041L10.5916 9.53193C10.8845 9.82482 10.8845 10.2997 10.5916 10.5926C10.2987 10.8855 9.82385 10.8855 9.53095 10.5926L6.99943 8.06107L4.46783 10.5927C4.17494 10.8856 3.70006 10.8856 3.40717 10.5927C3.11428 10.2998 3.11428 9.8249 3.40717 9.53201L5.93877 7.00041L3.40717 4.46881Z" />
+																	</svg>
+																</button>
+															</div>
+														))}
+													</div>
+													<input
+														type="text"
+														value={choiceBuffers[`${groupIndex}_${questionIndex}`] ?? ''}
+														onChange={(e) => setChoiceBuffers((prev) => ({ ...prev, [`${groupIndex}_${questionIndex}`]: e.target.value }))}
+														onKeyDown={(e) => {
+															if (e.key === 'Enter') {
+																e.preventDefault();
+																const key = `${groupIndex}_${questionIndex}`;
+																const buf = (choiceBuffers[key] ?? '').trim();
+																if (!buf) return;
+																const existing = Array.isArray(question.choices) ? question.choices : [];
+																const next = [...existing, buf];
+																updateQuestion(groupIndex, questionIndex, { choices: next });
+																setChoiceBuffers((prev) => ({ ...prev, [key]: '' }));
+															}
+														}}
+														onBlur={() => {
+															const key = `${groupIndex}_${questionIndex}`;
+															const buf = (choiceBuffers[key] ?? '').trim();
+															if (!buf) return;
+															const existing = Array.isArray(question.choices) ? question.choices : [];
+															updateQuestion(groupIndex, questionIndex, { choices: [...existing, buf] });
+															setChoiceBuffers((prev) => ({ ...prev, [key]: '' }));
+														}}
+														placeholder="Type a choice and press Enter"
+														className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 dark:border-slate-700 dark:bg-slate-900"
+													/>
+												</div>
+											)}
 										</div>
 									))}
 

@@ -25,7 +25,7 @@ const navItems: NavItem[] = [
     subItems: [
       { name: "All Applicants", path: "/applicants", pro: false },
       { name: "Rejected", path: "/applicants/rejected", pro: false },
-      // {name: "interview", path: "/applicant/interview", pro: false}
+      {name: "interview", path: "/applicant/interview", pro: false}
     ],
   },
   {

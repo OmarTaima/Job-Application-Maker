@@ -48,6 +48,8 @@ export type InterviewAnswer = {
   score: number;
   achievedScore?: number;
   notes?: string | null;
+  answerType?: string;
+  choices?: string[];
 };
 
 export type Message = {
