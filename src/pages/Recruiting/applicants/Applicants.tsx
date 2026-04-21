@@ -237,10 +237,18 @@ function ColumnMultiSelectHeader({
     setAnchorEl(null);
   };
 
-  const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+  const handleDropdownClick = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
-    event.stopPropagation();
+    event.stopPropagation(); // only stop propagation on the dropdown button
     setAnchorEl(event.currentTarget);
+  };
+
+  // NEW: handle label click for sorting
+  const handleLabelClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (column.getCanSort()) {
+      column.toggleSorting();
+    }
   };
 
   const handleClose = () => setAnchorEl(null);
@@ -251,10 +259,20 @@ function ColumnMultiSelectHeader({
       onMouseDown={(e) => e.stopPropagation()}
     >
       <div className="flex items-center gap-2">
-        <span className="text-sm font-medium">{label}</span>
+        {/* Make label clickable for sorting */}
+        <span
+          className="text-sm font-medium cursor-pointer select-none hover:text-brand-500"
+          onClick={handleLabelClick}
+        >
+          {label}
+          {/* Show sort indicator */}
+          {column.getIsSorted() === 'asc' && ' ▲'}
+          {column.getIsSorted() === 'desc' && ' ▼'}
+        </span>
+
         <button
           type="button"
-          onClick={handleClick}
+          onClick={handleDropdownClick}
           className={`inline-flex items-center gap-1 rounded bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200 ${
             isLaptopViewport ? 'px-1.5 py-0.5 text-[10px]' : 'px-2 py-1 text-xs'
           }`}
