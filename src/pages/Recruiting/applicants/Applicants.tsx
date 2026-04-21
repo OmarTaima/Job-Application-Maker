@@ -3065,7 +3065,7 @@ const Applicants = () => {
         header: isLaptopViewport ? 'ID' : 'ApplicantNo',
         size: columnSizeConfig.applicantNo,
         enableColumnFilter: false,
-        enableSorting: false,
+        enableSorting: true,
         Cell: ({ row, table }) => {
           if (isTableLoading) return renderCellSkeleton('text', '40%');
           const orig: any = row.original as any;
@@ -3170,7 +3170,7 @@ const Applicants = () => {
         header: 'Name',
         size: columnSizeConfig.fullName,
         enableColumnFilter: true,
-        enableSorting: false,
+        enableSorting: true,
         Cell: ({ row }: { row: { original: Applicant } }) => {
           if (isTableLoading) return renderCellSkeleton('text');
           const orig: any = row.original;
@@ -3205,7 +3205,7 @@ const Applicants = () => {
         header: 'Email',
         size: columnSizeConfig.email,
         enableColumnFilter: true,
-        enableSorting: false,
+        enableSorting: true,
         Cell: ({ row }: { row: { original: Applicant } }) => {
           if (isTableLoading) return renderCellSkeleton('text');
           const href = getApplicantHref(row);
@@ -3226,7 +3226,7 @@ const Applicants = () => {
         header: 'Phone',
         size: columnSizeConfig.phone,
         enableColumnFilter: true,
-        enableSorting: false,
+        enableSorting: true,
         Cell: ({ row }: { row: { original: Applicant } }) => {
           if (isTableLoading) return renderCellSkeleton('text');
           const href = getApplicantHref(row);
@@ -3255,7 +3255,7 @@ const Applicants = () => {
         header: 'Gender',
         size: columnSizeConfig.gender,
         enableColumnFilter: true,
-        enableSorting: false,
+        enableSorting: true,
         Header: ({ column }: { column: any }) => (
           <ColumnMultiSelectHeader
             column={column}
@@ -3302,7 +3302,7 @@ const Applicants = () => {
               header: 'Company',
               size: columnSizeConfig.companyId,
               enableColumnFilter: true,
-              enableSorting: false,
+              enableSorting: true,
               accessorFn: (row: any) => {
                 const raw = row?.jobPositionId;
                 const getId = (v: any) =>
@@ -3373,7 +3373,7 @@ const Applicants = () => {
       {
         id: 'jobPositionId',
         header: 'Job Position',
-        enableSorting: false,
+        enableSorting: true,
 
         accessorFn: (row: any) => {
           const raw = row?.jobPositionId;
@@ -3503,7 +3503,7 @@ const Applicants = () => {
       {
         accessorKey: 'status',
         header: 'Status',
-        enableSorting: false,
+        enableSorting: true,
 
         Header: ({ column }: { column: any }) => (
           <ColumnMultiSelectHeader
