@@ -2662,12 +2662,12 @@ const ApplicantData = () => {
             ← Back to Applicants
           </button>
           <div className="flex flex-wrap gap-2 sm:gap-3 sm:ml-auto">
-            <button
-              onClick={() => setShowStatusModal(true)}
-              className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-green-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-green-700"
-            >
-              <span className="hidden sm:inline">{applicant.status.charAt(0).toUpperCase() + applicant.status.slice(1)}</span> 
-            </button>
+         <button
+  onClick={() => setShowStatusModal(true)}
+  className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-green-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-green-700"
+>
+  {applicant.status ? applicant.status.charAt(0).toUpperCase() + applicant.status.slice(1) : 'Status'}
+</button>
             <button
               onClick={openInterviewEditMode}
               disabled={isInterviewEditMode}
@@ -3094,8 +3094,8 @@ const ApplicantData = () => {
               </svg>
             </div>
             <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Status</Label>
-            <span className={`inline-block rounded-full px-4 py-2 text-xs font-bold ${getStatusColor(applicant.status)}`}>
-              {applicant.status.charAt(0).toUpperCase() + applicant.status.slice(1)}
+            <span className={`inline-block rounded-full px-4 py-2 text-xs font-bold ${getStatusColor(String(applicant.status || ''))}`}>
+              {String(applicant.status || '').charAt(0).toUpperCase() + String(applicant.status || '').slice(1)}
             </span>
           </div>
         </div>
@@ -3277,12 +3277,21 @@ const ApplicantData = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           {specs.map((s: any, idx: number) => {
             const specText: string = (() => {
-              if (typeof s.spec === 'string') return s.spec;
-              if (s.spec && typeof s.spec === 'object') {
-                return s.spec.en ?? s.spec.ar ?? s.spec.value ?? '';
-              }
-              return '';
-            })();
+  // 1. Try applicant's own spec (from jobSpecsWithDetails) - already populated
+  const appSpec = appSpecs[idx];
+  if (appSpec?.spec) {
+    if (typeof appSpec.spec === 'string') return appSpec.spec;
+    if (typeof appSpec.spec === 'object') {
+      return appSpec.spec.en ?? appSpec.spec.ar ?? appSpec.spec.value ?? '';
+    }
+  }
+  // 2. Try the spec entry from jobPositionDetail (fallback)
+  if (typeof s.spec === 'string') return s.spec;
+  if (s.spec && typeof s.spec === 'object') {
+    return s.spec.en ?? s.spec.ar ?? s.spec.value ?? '';
+  }
+  return '';
+})();
 
             const weight: number = typeof s.weight === 'number' ? s.weight : Number(s.weight ?? 0);
             const specResponseId = getSpecResponseId(s);

@@ -3139,16 +3139,26 @@ const Applicants = () => {
               onAuxClick={handleApplicantLinkAuxClick}
             >
               <div className="h-10 w-10 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700 transition hover:ring-2 hover:ring-brand-500 cursor-pointer">
-                {row.original.profilePhoto ? (
-                  <ImageThumbnail
-                    src={row.original.profilePhoto}
-                    alt={row.original.fullName}
-                  />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center text-sm font-semibold text-gray-500 dark:text-gray-400">
-                    {row.original.fullName.charAt(0).toUpperCase()}
-                  </div>
-                )}
+                        {row.original.profilePhoto ? (
+                          <ImageThumbnail
+                            src={row.original.profilePhoto}
+                            alt={row.original.fullName}
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center text-sm font-semibold text-gray-500 dark:text-gray-400">
+                            {(() => {
+                              const fullName =
+                                (row?.original as any)?.fullName ||
+                                (row?.original as any)?.name ||
+                                (row?.original as any)?.firstName ||
+                                '';
+                              const initial = fullName
+                                ? String(fullName).charAt(0).toUpperCase()
+                                : '-';
+                              return initial;
+                            })()}
+                          </div>
+                        )}
               </div>
             </a>
           );
@@ -3522,6 +3532,10 @@ const Applicants = () => {
           if (isTableLoading) return renderCellSkeleton('text', '80px');
           const colors = getStatusColor(row.original.status);
           const href = getApplicantHref(row);
+          const statusStr = String((row?.original as any)?.status || '');
+          const statusLabel = statusStr
+            ? statusStr.charAt(0).toUpperCase() + statusStr.slice(1)
+            : '-';
 
           return (
             <a
@@ -3537,8 +3551,7 @@ const Applicants = () => {
                 }}
                 className="inline-block rounded-full px-3 py-1 text-xs font-semibold"
               >
-                {row.original.status.charAt(0).toUpperCase() +
-                  row.original.status.slice(1)}
+                {statusLabel}
               </span>
             </a>
           );
