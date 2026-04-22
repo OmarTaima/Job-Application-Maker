@@ -1,7 +1,7 @@
 import Swal from '../../utils/swal';
 import { Modal } from '../ui/modal';
-import { useState, useRef, useEffect } from 'react';
-import { useSendMessage, useSendEmail, useCompany, useUpdateCompanySettings } from '../../hooks/queries'; // Add useSendEmail
+import { useState, useRef, useEffect, useMemo } from 'react';
+import { useSendMessage, useSendEmail, useCompany, useJobPositions } from '../../hooks/queries'; // Add useSendEmail + useJobPositions
 import { getErrorMessage } from '../../utils/errorHandler';
 import { companiesService } from '../../services/companiesService';
 import Label from '../form/Label';
@@ -98,6 +98,18 @@ const MessageModal = ({
   const { data: companyFromQuery } = useCompany(companyIdForQuery || '', { enabled: !!companyIdForQuery });
 
   const company = propCompany || (applicant && (applicant.company || applicant.companyObj)) || companyFromQuery || null;
+
+  // Fetch job positions scoped to the company (if available) so we can resolve job titles by id
+  const { data: jobPositions = [] } = useJobPositions(companyIdForQuery ? [companyIdForQuery] : undefined as any);
+  const jobTitleById = useMemo(() => {
+    const map = new Map<string, string>();
+    (jobPositions || []).forEach((j: any) => {
+      const id = (j && (j._id || j.id)) || undefined;
+      if (!id) return;
+      map.set(id, toDisplayText((j as any)?.title || (j as any)?.name, ''));
+    });
+    return map;
+  }, [jobPositions]);
 
   const extractDomain = (email?: string | null) => {
     if (!email) return '';
@@ -280,7 +292,6 @@ const MessageModal = ({
 
   const sendMessageMutation = useSendMessage();
   const sendEmailMutation = useSendEmail(); // New email mutation
-  const updateCompanySettings = useUpdateCompanySettings();
 
   const buildEmailHtml = (subject: string, body: string) => `
 <!DOCTYPE html>
@@ -306,6 +317,106 @@ const MessageModal = ({
 </html>
 `;
 
+  // Simple HTML escape utility
+  const escapeHtml = (str: string) =>
+    String(str || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+
+ 
+
+// In MessageModal.tsx, move these helper functions BEFORE the useMemo that uses them
+
+// Helper to normalize displayable text from strings or localized objects
+function toDisplayText(value: unknown, fallback = ''): string {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed || fallback;
+  }
+  if (value && typeof value === 'object') {
+    const localized = value as { en?: unknown; ar?: unknown; name?: unknown; title?: unknown };
+    const candidates = [localized.en, localized.ar, localized.name, localized.title];
+    for (const candidate of candidates) {
+      if (typeof candidate === 'string' && candidate.trim()) return candidate.trim();
+    }
+  }
+  return fallback;
+}
+
+// Also move getCandidateName and getJobTitleFromApplicant if they use toDisplayText
+const getCandidateName = () => {
+  if (!applicant) return 'Candidate';
+  const rawName =
+    (applicant.fullName && String(applicant.fullName).trim()) ||
+    (applicant.applicantName && String(applicant.applicantName).trim()) ||
+    (applicant.name && String(applicant.name).trim()) ||
+    ((String(applicant.firstName || '') + ' ' + String(applicant.lastName || '')).trim()) ||
+    (applicant.email && String(applicant.email).split('@')[0]) ||
+    'Candidate';
+  return String(rawName).trim() || 'Candidate';
+};
+
+const getJobTitleFromApplicant = (): string => {
+  if (!applicant) return '';
+  try {
+    const jp = (applicant as any)?.jobPositionId || (applicant as any)?.jobPosition;
+    if (jp) {
+      if (typeof jp === 'string' && jp.trim()) {
+        const mapped = jobTitleById.get(jp.trim());
+        if (mapped) return mapped;
+      }
+      if (typeof jp === 'object') {
+        const id = jp._id || jp.id;
+        if (id) {
+          const mapped = jobTitleById.get(id as string);
+          if (mapped) return mapped;
+        }
+      }
+    }
+  } catch (e) {
+    /* ignore */
+  }
+
+  const titleFromJobPositionId = toDisplayText((applicant as any)?.jobPositionId?.title || (applicant as any)?.jobPositionId?.name, '');
+  if (titleFromJobPositionId) return titleFromJobPositionId;
+  const titleFromJobPosition = toDisplayText((applicant as any)?.jobPosition?.title || (applicant as any)?.jobPosition?.name, '');
+  if (titleFromJobPosition) return titleFromJobPosition;
+  return '';
+};
+
+
+
+  const escapeRegex = (s: string) => String(s || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  const buildInterleavedRegex = (token: string) => {
+    const chars = String(token || '').split('');
+    const part = chars.map((ch) => escapeRegex(ch) + '(?:<[^>]+>|\\s|&nbsp;|&#160;)*').join('');
+    return new RegExp('\\{\\{\\s*' + part + '\\s*\\}\\}', 'gi');
+  };
+
+  // Replace tokens in HTML content (escape inserted values) — supports tokens split by HTML tags
+  const applyTemplateToHtml = (html: string) => {
+    if (!html) return '';
+    const nameEsc = escapeHtml(getCandidateName());
+    const jobEsc = escapeHtml(getJobTitleFromApplicant());
+    let out = String(html);
+    out = out.replace(buildInterleavedRegex('candidateName'), nameEsc);
+    out = out.replace(buildInterleavedRegex('position'), jobEsc);
+    out = out.replace(buildInterleavedRegex('jobTitle'), jobEsc);
+    return out;
+  };
+
+  // Replace tokens in plain text (subject)
+  const applyTemplateToPlain = (plain: string) => {
+    if (!plain) return '';
+    return String(plain)
+      .replace(/\{\{\s*candidateName\s*\}\}/gi, getCandidateName())
+      .replace(/\{\{\s*(?:position|jobTitle)\s*\}\}/gi, getJobTitleFromApplicant());
+  };
+
   const handlePreviewEmail = () => {
     if (messageForm.type !== 'email') return;
     if (!messageForm.body?.trim()) {
@@ -314,7 +425,9 @@ const MessageModal = ({
     }
 
     const subjectForPreview = messageForm.subject?.trim() || 'No Subject';
-    const html = buildEmailHtml(subjectForPreview, messageForm.body || '');
+    const substitutedSubject = applyTemplateToPlain(subjectForPreview);
+    const substitutedBody = applyTemplateToHtml(messageForm.body || '');
+    const html = buildEmailHtml(escapeHtml(substitutedSubject), substitutedBody);
     setPreviewHtml(html);
     setShowEmailPreview(true);
   };
@@ -326,161 +439,104 @@ const MessageModal = ({
     setPreviewHtml('');
   };
 
-  const handleMessageSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!id || !applicant) return;
+ const handleMessageSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  if (!id || !applicant) return;
 
-    // Validate required fields
-    if (messageForm.type === 'email' && !messageForm.subject?.trim()) {
-      setMessageError('Subject is required when sending an email');
-      return;
-    }
-    if (!messageForm.body?.trim()) {
-      setMessageError('Message body is required');
-      return;
-    }
+  if (messageForm.type === 'email' && !messageForm.subject?.trim()) {
+    setMessageError('Subject is required when sending an email');
+    return;
+  }
+  if (!messageForm.body?.trim()) {
+    setMessageError('Message body is required');
+    return;
+  }
 
-    setIsSubmittingMessage(true);
+  setIsSubmittingMessage(true);
 
-    try {
-      // 2. If it's an email, ALSO send via email service
-      if (messageForm.type === 'email') {
-        const mailDefault = company?.mailSettings?.defaultMail || company?.email || '';
-        // determine 'from' address based on selection
-        let fromAddr = '';
+  try {
+    if (messageForm.type === 'email') {
+      // Get the actual values
+      const candidateName = getCandidateName();
+      const jobTitle = getJobTitleFromApplicant();
+      
+      console.log('Substituting values:', { candidateName, jobTitle });
+      console.log('Original body:', messageForm.body);
+      
+      // Apply substitutions to subject
+      let substitutedSubject = messageForm.subject || '';
+      substitutedSubject = substitutedSubject
+        .replace(/\{\{\s*candidateName\s*\}\}/gi, candidateName)
+        .replace(/\{\{\s*(?:position|jobTitle)\s*\}\}/gi, jobTitle);
+      
+      // Apply substitutions to body (this is the critical part)
+      let substitutedBody = messageForm.body || '';
+      substitutedBody = substitutedBody
+        .replace(/\{\{\s*candidateName\s*\}\}/gi, candidateName)
+        .replace(/\{\{\s*(?:position|jobTitle)\s*\}\}/gi, jobTitle);
+      
+      console.log('Substituted body:', substitutedBody);
+      
+      // Build email HTML with the SUBSTITUTED body
+      const emailHtml = buildEmailHtml(escapeHtml(substitutedSubject), substitutedBody);
+      
+      // Determine sender
+      const mailDefault = company?.mailSettings?.defaultMail || company?.email || '';
+      let fromAddr = '';
 
-        // If user entered a new local email (senderOption === 'custom'), create full email and persist it
-        if (senderOption === 'custom' && newLocalEmail && newLocalEmail.trim()) {
-          const local = newLocalEmail.trim();
-          // Use resolved domain (from fetched settings) first, then computed companyDomain
-          const domainToUse = resolvedCompanyDomain || companyDomain;
-
-          if (!domainToUse) {
-            setMessageError('Company domain not configured. Please select an existing sender or configure company settings first.');
-            setIsSubmittingMessage(false);
-            return;
-          }
-
-          const newEmail = `${local}@${domainToUse}`;
-          // Determine target company id (prefer `company._id`, fallback to applicant-derived id)
-          const targetCompanyId = (company && (company._id || company.id || company.id === 0 ? (company._id || company.id) : undefined)) || companyIdForQuery || undefined;
-
-          if (targetCompanyId) {
-            try {
-              // Fetch latest settings to avoid overwriting existing mails
-              let latestSettings: any = null;
-              try {
-                latestSettings = await companiesService.getCompanySettingsByCompany(targetCompanyId) || null;
-              } catch (e) {
-                // ignore, we'll merge with whatever we have
-              }
-
-              const collectExisting = (obj: any): string[] => {
-                const out: string[] = [];
-                try {
-                  if (!obj) return out;
-                  const pushIfArray = (a: any) => { if (Array.isArray(a)) out.push(...a.filter(Boolean).map(String)); };
-                  pushIfArray(obj?.mailSettings?.availableMails);
-                  pushIfArray(obj?.settings?.mailSettings?.availableMails);
-                  pushIfArray(obj?.availableMails);
-                  pushIfArray(obj?.available_senders);
-                  pushIfArray(obj?.availableSenders);
-                  pushIfArray(obj?.mail?.availableMails);
-                } catch (e) { /* ignore */ }
-                return Array.from(new Set(out));
-              };
-
-              const existing = collectExisting(latestSettings || company);
-              const merged = Array.from(new Set([...(existing || []), newEmail]));
-
-              const findSettingsId = (obj: any): string | undefined => {
-                if (!obj || typeof obj !== 'object') return undefined;
-                if (obj.settings && obj.settings._id) return obj.settings._id;
-                if (obj._id && typeof obj._id === 'string' && obj._id.match(/^[0-9a-fA-F]{24}$/)) return obj._id;
-                if (obj.company && obj.company.settings && obj.company.settings._id) return obj.company.settings._id;
-                if (obj.company && obj.company._id && typeof obj.company._id === 'string' && obj.company._id.match(/^[0-9a-fA-F]{24}$/)) return obj.company._id;
-                if (obj.mailSettings && obj.mailSettings._id) return obj.mailSettings._id;
-                for (const k of Object.keys(obj)) {
-                  if (k.endsWith('_id') && typeof obj[k] === 'string' && obj[k].match(/^[0-9a-fA-F]{24}$/)) return obj[k];
-                }
-                return undefined;
-              };
-
-              const companySettingsId = (company && company.settings && (company.settings as any)._id) || undefined;
-              const generatedSettingsId = companySettingsId ?? findSettingsId(latestSettings || company);
-              const idToSend = generatedSettingsId ?? targetCompanyId; // fallback to company id
-              try { console.debug('MessageModal.updateCompanySettings', { idToSend, merged, latestSettings, company }); } catch (e) { /* ignore */ }
-              await updateCompanySettings.mutateAsync({ id: idToSend, data: { mailSettings: { availableMails: merged } } });
-
-              // update local UI
-              setSenderOptions((prev) => {
-                if (prev.find(p => p.value === newEmail)) return prev;
-                return [{ value: newEmail, label: newEmail }, ...prev];
-              });
-              setCustomSender(newEmail);
-              fromAddr = newEmail;
-            } catch (err: any) {
-              setMessageError(getErrorMessage(err));
-              setIsSubmittingMessage(false);
-              return;
-            }
-          } else {
-            fromAddr = newEmail;
-          }
-        } else if (senderOption === 'available' && customSender) {
-          fromAddr = customSender;
-        } else {
-          fromAddr = mailDefault || '';
+      if (senderOption === 'custom' && newLocalEmail && newLocalEmail.trim()) {
+        const local = newLocalEmail.trim();
+        const domainToUse = resolvedCompanyDomain || companyDomain;
+        if (!domainToUse) {
+          setMessageError('Company domain not configured');
+          setIsSubmittingMessage(false);
+          return;
         }
-        // Always use only the email address in the From header (no company name prefix)
-        const companyConfig = (typeof fromAddr === 'string' && fromAddr.includes('<')) ? fromAddr.replace(/.*<\s*([^>]+)\s*>.*/, '$1') : String(fromAddr).replace(/[<>]/g, '');
+        fromAddr = `${local}@${domainToUse}`;
+      } else if (senderOption === 'available' && customSender) {
+        fromAddr = customSender;
+      } else {
+        fromAddr = mailDefault || '';
+      }
+      
+      const companyConfig = (typeof fromAddr === 'string' && fromAddr.includes('<')) 
+        ? fromAddr.replace(/.*<\s*([^>]+)\s*>.*/, '$1') 
+        : String(fromAddr).replace(/[<>]/g, '');
 
-        const emailHtml = buildEmailHtml(messageForm.subject, messageForm.body || '');
-
-        // Send email via new service
-        // include company id per backend schema
-        const companyToSend = (company && (company._id || (company as any).id)) || companyIdForQuery || undefined;
-        let jobPositionId = applicant?.jobPositionId || (applicant?.jobPosition && typeof applicant.jobPosition === 'object' ? applicant.jobPosition._id : applicant?.jobPosition);
-        
-        // Ensure jobPositionId is sent as a string if it's an object somehow
-        if (jobPositionId && typeof jobPositionId === 'object') {
-          jobPositionId = jobPositionId._id || jobPositionId.id || String(jobPositionId);
-        }
-
-        await sendEmailMutation.mutateAsync({
-          company: companyToSend,
-          applicant: applicant?._id,
-          to: applicant.email,
-          from: companyConfig,
-          subject: messageForm.subject,
-          html: emailHtml,
-          jobPosition: typeof jobPositionId === 'string' ? jobPositionId : undefined,
-        } as any);
-        console.debug('MessageModal: sendEmail payload:', { company: companyToSend, to: applicant.email, from: companyConfig, subject: messageForm.subject, jobPosition: jobPositionId });
+      const companyToSend = (company && (company._id || (company as any).id)) || companyIdForQuery || undefined;
+      let jobPositionId = applicant?.jobPositionId || (applicant?.jobPosition && typeof applicant.jobPosition === 'object' ? applicant.jobPosition._id : applicant?.jobPosition);
+      
+      if (jobPositionId && typeof jobPositionId === 'object') {
+        jobPositionId = jobPositionId._id || jobPositionId.id || String(jobPositionId);
       }
 
-      // 3. Save to messages (old functionality)
-      // NOTE: disabled temporarily while verifying settings update behavior — re-enable after confirmation
+      // Send email with SUBSTITUTED content
+      await sendEmailMutation.mutateAsync({
+        company: companyToSend,
+        applicant: applicant?._id,
+        to: applicant.email,
+        from: companyConfig,
+        subject: substitutedSubject,  // Use substituted subject
+        html: emailHtml,              // Use HTML with substituted content
+        jobPosition: typeof jobPositionId === 'string' ? jobPositionId : undefined,
+      } as any);
+      
+      // Save to message history with SUBSTITUTED content
       await sendMessageMutation.mutateAsync({
         id,
         data: {
           type: messageForm.type,
-          content: messageForm.body,
+          content: substitutedBody,  // Use substituted body
         },
       });
-      console.debug('MessageModal: saveMessage skipped (testing). message payload would be:', { id, type: messageForm.type });
 
-      // Close and reset
+      // Reset and close
       setMessageForm({ subject: '', body: '', type: 'email' });
       onClose();
 
-      // Success message
       await Swal.fire({
         title: 'Success!',
-        text:
-          messageForm.type === 'email'
-            ? 'Email sent and saved to history.'
-            : 'Message sent successfully.',
+        text: 'Email sent and saved to history.',
         icon: 'success',
         position: 'center',
         timer: 2000,
@@ -489,14 +545,15 @@ const MessageModal = ({
           container: '!mt-16',
         },
       });
-    } catch (err: any) {
-      const errorMsg = getErrorMessage(err);
-      setMessageError(errorMsg);
-      console.error('Error:', err);
-    } finally {
-      setIsSubmittingMessage(false);
     }
-  };
+  } catch (err: any) {
+    const errorMsg = getErrorMessage(err);
+    setMessageError(errorMsg);
+    console.error('Error:', err);
+  } finally {
+    setIsSubmittingMessage(false);
+  }
+};
 
   return (
     <>

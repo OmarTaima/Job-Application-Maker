@@ -323,12 +323,19 @@ function ColumnMultiSelectHeader({
   );
 }
 
-const Applicants = () => {
+type ApplicantsProps = {
+  layoutKey?: string;
+  defaultLayout?: TableLayout;
+  onlyStatus?: string | string[];
+  companyIdOverride?: string | string[] | undefined;
+};
+
+const Applicants = ({ layoutKey, defaultLayout, onlyStatus, companyIdOverride }: ApplicantsProps = {}) => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { layout, saveLayout} = useTableLayout(
-    'applicants_table',
-    APPLICANTS_DEFAULT_LAYOUT
+    layoutKey || 'applicants_table',
+    defaultLayout || APPLICANTS_DEFAULT_LAYOUT
   );
 
   const isSuperAdmin = useMemo(() => {
@@ -350,6 +357,22 @@ const Applicants = () => {
       return null;
     }
   }, []);
+
+  // If this component is used as a fixed-status view (onlyStatus provided),
+  // drop any persisted `status` column filter so the page isn't affected
+  // by filters saved from other views.
+  const initialColumnFilters = useMemo(() => {
+    try {
+      const persisted = persistedTableState?.columnFilters ?? [];
+      if (!Array.isArray(persisted)) return persisted;
+      if (onlyStatus !== undefined && onlyStatus !== null) {
+        return persisted.filter((f: any) => f?.id !== 'status');
+      }
+      return persisted;
+    } catch (e) {
+      return persistedTableState?.columnFilters ?? [];
+    }
+  }, [persistedTableState, onlyStatus]);
 
   const openApplicantDetailsInNewTab = useCallback((row: any) => {
     try {
@@ -462,7 +485,7 @@ const Applicants = () => {
   // MRT will manage pagination internally (page size set in initialState)
   const [rowSelection, setRowSelection] = useState<MRT_RowSelectionState>({});
   const [columnFilters, setColumnFilters] = useState<MRT_ColumnFiltersState>(
-    persistedTableState?.columnFilters ?? []
+    initialColumnFilters ?? []
   );
   // MRT sorting state (control sorting externally so we can offer only asc/desc for Submitted)
   const [sorting, setSorting] = useState<Array<any>>(
@@ -521,6 +544,8 @@ const Applicants = () => {
   // MRT will reset pagination when filters/sorting change internally
   // Memoize user-derived values
   const companyId = useMemo(() => {
+    // If caller provided an override, prefer that
+    if (companyIdOverride !== undefined) return companyIdOverride as any;
     if (!user) return undefined;
 
     const roleName = user?.roleId?.name?.toLowerCase();
@@ -534,7 +559,7 @@ const Applicants = () => {
 
     // Regular users get their assigned companies only
     return usercompanyId?.length ? usercompanyId : undefined;
-  }, [user?._id, user?.roleId?.name, user?.companies]);
+  }, [companyIdOverride, user?._id, user?.roleId?.name, user?.companies]);
 
   // Determine whether to show the Company column: hide when user is assigned to a single company
   const showCompanyColumn = useMemo(() => {
@@ -1163,6 +1188,11 @@ const Applicants = () => {
   // the user explicitly filters for status === 'trashed'. This makes "All Statuses"
   // hide trashed rows while still allowing an explicit trashed view.
   const displayedApplicants = useMemo(() => {
+    // If caller requested a fixed status view, honor it and short-circuit
+    if (onlyStatus !== undefined && onlyStatus !== null) {
+      const allowed = Array.isArray(onlyStatus) ? onlyStatus : [onlyStatus];
+      return (applicants || []).filter((a: Applicant) => allowed.includes(a.status));
+    }
     const statusFilter = columnFilters.find((f) => f.id === 'status');
     const statusVal = statusFilter?.value;
 
@@ -2971,7 +3001,7 @@ const Applicants = () => {
 
   const handleBulkChangeStatus = useCallback(async () => {
     if (selectedApplicantIds.length === 0 || !bulkAction) return;
-
+void handleBulkChangeStatus();
     // For rejected status we open the StatusChangeModal to collect reasons/notes
     if (bulkAction === 'rejected') {
       setBulkStatusForm({ status: 'rejected', reasons: [], notes: '' });
@@ -3593,16 +3623,21 @@ const Applicants = () => {
         header: 'Status',
         enableSorting: true,
 
-        Header: ({ column }: { column: any }) => (
-          <ColumnMultiSelectHeader
-            column={column}
-            label="Status"
-            options={statusFilterOptions}
-            isLaptopViewport={isLaptopViewport}
-            menuWidth={220}
-            menuMaxHeight={240}
-          />
-        ),
+        Header: ({ column }: { column: any }) => {
+          if (onlyStatus !== undefined && onlyStatus !== null) {
+            return <span className="text-sm font-medium">Status</span>;
+          }
+          return (
+            <ColumnMultiSelectHeader
+              column={column}
+              label="Status"
+              options={statusFilterOptions}
+              isLaptopViewport={isLaptopViewport}
+              menuWidth={220}
+              menuMaxHeight={240}
+            />
+          );
+        },
 
         filterFn: (row: any, columnId: string, filterValue: any) => {
           if (!filterValue) return true;
@@ -3614,7 +3649,7 @@ const Applicants = () => {
         },
 
         size: columnSizeConfig.status,
-        enableColumnFilter: true,
+        enableColumnFilter: onlyStatus === undefined,
 
         Cell: ({ row }: { row: { original: Applicant } }) => {
           if (isTableLoading) return renderCellSkeleton('text', '80px');
@@ -3645,6 +3680,67 @@ const Applicants = () => {
           );
         },
       },
+        // Rejection reasons column - shown only when this view is fixed to 'rejected'
+        ...( (onlyStatus !== undefined && (Array.isArray(onlyStatus) ? onlyStatus.includes('rejected') : String(onlyStatus) === 'rejected'))
+          ? [
+              {
+                id: 'rejectionReasons',
+                header: 'Rejection Reasons',
+                enableSorting: true,
+                enableColumnFilter: false,
+                size: 260,
+                Cell: ({ row }: { row: { original: any } }) => {
+                  if (isTableLoading) return renderCellSkeleton('text');
+                  const a = row.original || {};
+
+                  const extractFromHistory = (hist: any[] | undefined) => {
+                    try {
+                      if (!Array.isArray(hist) || hist.length === 0) return [];
+                      const rejected = hist.filter((h: any) => String(h?.status || '').toLowerCase() === 'rejected');
+                      if (!rejected.length) return [];
+                      // pick latest by changedAt
+                      rejected.sort((x: any, y: any) => {
+                        const tx = x?.changedAt ? new Date(x.changedAt).getTime() : 0;
+                        const ty = y?.changedAt ? new Date(y.changedAt).getTime() : 0;
+                        return ty - tx;
+                      });
+                      const latest = rejected[0] || {};
+                      const r = latest.reasons ?? latest.rejectionReasons ?? latest.reasonsSelected ?? [];
+                      if (Array.isArray(r)) return r.map((v: any) => String(v ?? '').trim()).filter(Boolean);
+                      if (typeof r === 'string' && r) return [r];
+                      return [];
+                    } catch (e) {
+                      return [];
+                    }
+                  };
+
+                  const extractFromTop = (obj: any) => {
+                    try {
+                      const candidates = obj?.reasons ?? obj?.rejectionReasons ?? obj?.rejectReasons ?? obj?.reasonsSelected ?? [];
+                      if (Array.isArray(candidates) && candidates.length) return candidates.map((v: any) => String(v ?? '').trim()).filter(Boolean);
+                      if (typeof candidates === 'string' && candidates) return [candidates];
+                      return [];
+                    } catch (e) {
+                      return [];
+                    }
+                  };
+
+                  const fromHistory = extractFromHistory(a?.statusHistory);
+                  const fromTop = extractFromTop(a);
+                  const reasons = fromHistory.length ? fromHistory : fromTop;
+
+                  if (!reasons || reasons.length === 0) return <span className="text-sm text-gray-500">-</span>;
+                  return (
+                    <div className="flex flex-wrap gap-1">
+                      {reasons.map((r: string, i: number) => (
+                        <span key={i} className="inline-block rounded-full bg-brand-50 px-2 py-0.5 text-xs text-brand-700">{r}</span>
+                      ))}
+                    </div>
+                  );
+                },
+              },
+            ]
+          : []),
       {
         accessorKey: 'submittedAt',
         header: 'Submitted',
@@ -3781,6 +3877,7 @@ const Applicants = () => {
       companyOptions,
       showCompanyColumn,
       statusFilterOptions,
+      onlyStatus,
       genderOptions,
       columnSizeConfig,
       isLaptopViewport,
@@ -4659,6 +4756,8 @@ const Applicants = () => {
     </>
   );
 };
+
+  export { Applicants };
 
 export default function ApplicantsWrapper() {
   const [isMobile, setIsMobile] = useState<boolean>(() =>

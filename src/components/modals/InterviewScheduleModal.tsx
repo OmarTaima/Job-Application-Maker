@@ -117,7 +117,7 @@ export default function InterviewScheduleModal(props: Props) {
     companyData,
     bulkMode = false,
     bulkCount = 0,
-    intervalMinutes = 15,
+    intervalMinutes = 10,
     setIntervalMinutes,
     onPreview,
   } = props;
@@ -670,14 +670,22 @@ export default function InterviewScheduleModal(props: Props) {
               }} />
             </div>
             <div>
-              <DatePicker id="interview-time" label="Interview Time" mode="time" placeholder="Select interview time" onChange={(selectedDates: Date[]) => {
-                if (selectedDates.length > 0) {
-                  const date = selectedDates[0];
-                  const hours = date.getHours().toString().padStart(2, '0');
-                  const minutes = date.getMinutes().toString().padStart(2, '0');
-                  setInterviewForm({ ...interviewForm, time: `${hours}:${minutes}` });
-                }
-              }} />
+             <div onClick={(e) => e.stopPropagation()}>
+  <DatePicker 
+    id="interview-time" 
+    label="Interview Time" 
+    mode="time" 
+    placeholder="Select interview time" 
+    onChange={(selectedDates: Date[]) => {
+      if (selectedDates.length > 0) {
+        const date = selectedDates[0];
+        const hours = date.getHours().toString().padStart(2, '0');
+        const minutes = date.getMinutes().toString().padStart(2, '0');
+        setInterviewForm({ ...interviewForm, time: `${hours}:${minutes}` });
+      }
+    }} 
+  />
+</div>
             </div>
             <div>
               <Label htmlFor="interview-type">Interview Type</Label>
