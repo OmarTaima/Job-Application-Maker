@@ -65,7 +65,10 @@ export default function DatePicker({
       defaultDate,
       monthSelectorType: "static",
       static: true,
-      closeOnSelect: !isRange,
+      // Keep the time picker open while the user edits hours/minutes (e.g. using spinner buttons)
+      // Previously closeOnSelect was true for time mode which caused the picker to close
+      // when clicking the minute decrement/increment buttons. Disable closeOnSelect for time.
+      closeOnSelect: mode !== 'time' && !isRange,
       onValueUpdate: handleChange,
     });
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import 'quill/dist/quill.snow.css';
 import { Modal } from '../ui/modal';
 import { companiesService } from '../../services/companiesService';
@@ -376,6 +376,24 @@ export default function InterviewScheduleModal(props: Props) {
     setMessageTemplate(generateMessageTemplate());
   };
 
+  // Stable handlers for DatePicker to avoid re-initialization which closes the picker
+  const handleDateChange = useCallback((selectedDates: Date[]) => {
+    if (selectedDates.length > 0) {
+      const date = selectedDates[0];
+      const formattedDate = date.toISOString().split('T')[0];
+      setInterviewForm((prev: any) => ({ ...prev, date: formattedDate }));
+    }
+  }, [setInterviewForm]);
+
+  const handleTimeChange = useCallback((selectedDates: Date[]) => {
+    if (selectedDates.length > 0) {
+      const date = selectedDates[0];
+      const hours = date.getHours().toString().padStart(2, '0');
+      const minutes = date.getMinutes().toString().padStart(2, '0');
+      setInterviewForm((prev: any) => ({ ...prev, time: `${hours}:${minutes}` }));
+    }
+  }, [setInterviewForm]);
+
   const company = companyData || (applicant && (applicant.company || applicant.companyObj)) || null;
   // If company not present directly on applicant, try nested jobPosition/companyId paths
   const companyCompany = company || (applicant as any)?.jobPositionId?.companyId || (applicant as any)?.jobPositionId?.company || (applicant as any)?.jobPositionId?.companyObj || null;
@@ -661,13 +679,7 @@ export default function InterviewScheduleModal(props: Props) {
         <div className="mt-6 space-y-4">
           <div className={`grid grid-cols-1 gap-4 ${bulkMode ? 'sm:grid-cols-4' : 'sm:grid-cols-3'}`}>
             <div>
-              <DatePicker id="interview-date" label="Interview Date" placeholder="Select interview date" onChange={(selectedDates: Date[]) => {
-                if (selectedDates.length > 0) {
-                  const date = selectedDates[0];
-                  const formattedDate = date.toISOString().split('T')[0];
-                  setInterviewForm({ ...interviewForm, date: formattedDate });
-                }
-              }} />
+              <DatePicker id="interview-date" label="Interview Date" placeholder="Select interview date" onChange={handleDateChange} />
             </div>
             <div>
              <div onClick={(e) => e.stopPropagation()}>
@@ -676,14 +688,7 @@ export default function InterviewScheduleModal(props: Props) {
     label="Interview Time" 
     mode="time" 
     placeholder="Select interview time" 
-    onChange={(selectedDates: Date[]) => {
-      if (selectedDates.length > 0) {
-        const date = selectedDates[0];
-        const hours = date.getHours().toString().padStart(2, '0');
-        const minutes = date.getMinutes().toString().padStart(2, '0');
-        setInterviewForm({ ...interviewForm, time: `${hours}:${minutes}` });
-      }
-    }} 
+    onChange={handleTimeChange} 
   />
 </div>
             </div>

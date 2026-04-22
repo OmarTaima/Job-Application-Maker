@@ -21,6 +21,7 @@ import {
   useUpdateInterviewStatus,
   useAddComment,
   useSendEmail,
+  useSendMessage,
   useMarkApplicantSeen,
   applicantsKeys,
 } from '../../../hooks/queries';
@@ -277,6 +278,7 @@ const ApplicantData = () => {
   const updateInterviewMutation = useUpdateInterviewStatus();
   const addCommentMutation = useAddComment();
   const sendEmailMutation = useSendEmail();
+  const sendMessageMutation = useSendMessage();
   const markSeenMutation = useMarkApplicantSeen();
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -2442,6 +2444,18 @@ const ApplicantData = () => {
             subject,
             html: emailHtml,
           });
+          // Also save the sent message to applicant message history
+          try {
+            await sendMessageMutation.mutateAsync({
+              id: id!,
+              data: {
+                type: 'email',
+                content: sanitizedBody,
+              },
+            });
+          } catch (e) {
+            console.warn('ApplicantData: failed to save interview message to history', e);
+          }
         } catch (err: any) {
           const errMsg = getErrorMessage(err);
           console.error('Error sending interview notification:', err);

@@ -6,6 +6,7 @@ import {
   useRef,
   useDeferredValue,
 } from 'react';
+import { ChatIcon } from '../../../icons';
 // simple in-memory cache for compressed thumbnails
 const _thumbnailCache: Map<string, string> = new Map();
 
@@ -168,6 +169,7 @@ import {
   useUpdateApplicantStatus,
   useCompanies,
   useScheduleBulkInterviews,
+  useSendMessage,
 } from '../../../hooks/queries';
 import BulkMessageModal from '../../../components/modals/BulkMessageModal';
 import InterviewScheduleModal from '../../../components/modals/InterviewScheduleModal';
@@ -735,6 +737,7 @@ const Applicants = ({ layoutKey, defaultLayout, onlyStatus, companyIdOverride }:
   const updateStatusMutation = useUpdateApplicantStatus();
   const scheduleBulkInterviewsMutation = useScheduleBulkInterviews();
   const sendBatchEmailMutation = useSendBatchEmail();
+  const sendMessageMutation = useSendMessage();
   // Mounted ref to avoid state updates after unmount
   const mountedRef = useRef(false);
 
@@ -2960,6 +2963,24 @@ const Applicants = ({ layoutKey, defaultLayout, onlyStatus, companyIdOverride }:
           batch,
         });
 
+        // Persist each sent email into applicant message history
+        try {
+          await Promise.allSettled(
+            emailableItems.map((item: any) =>
+              sendMessageMutation.mutateAsync({
+                id: item.applicantId,
+                data: {
+                  type: 'email',
+                  content: item.html,
+                },
+              })
+            )
+          );
+        } catch (e) {
+          // best-effort: don't fail the whole flow if saving messages fails
+          console.warn('Failed to save some interview messages to history', e);
+        }
+
         if (missingEmails.length > 0) {
           emailResultNote = `Email sent to ${emailableItems.length} applicant(s); ${missingEmails.length} without email were skipped.`;
         }
@@ -3336,6 +3357,42 @@ void handleBulkChangeStatus();
             >
               {row.original.email || '-'}
             </a>
+          );
+        },
+      },
+      {
+        id: 'messages',
+        header: 'Messages',
+        size: 90,
+        enableSorting: true,
+        accessorFn: (row: any) => {
+          const orig: any = row || {};
+          const countFromArray = Array.isArray(orig.messages) ? orig.messages.length : undefined;
+          const countFromNumber = typeof orig.messageCount === 'number' ? orig.messageCount : (typeof orig.messages === 'number' ? orig.messages : undefined);
+          const countFallback = typeof orig.messagesCount === 'number' ? orig.messagesCount : 0;
+          return Number(countFromArray ?? countFromNumber ?? countFallback ?? 0);
+        },
+        sortingFn: (rowA: any, rowB: any, columnId: string) => {
+          const a = Number(rowA.getValue(columnId) ?? 0);
+          const b = Number(rowB.getValue(columnId) ?? 0);
+          if (a === b) return 0;
+          return a > b ? 1 : -1;
+        },
+        enableColumnFilter: false,
+        Cell: ({ row }: { row: { original: Applicant } }) => {
+          if (isTableLoading) return renderCellSkeleton('text');
+          const orig: any = row.original || {};
+          // Support various shapes: messages array, messageCount number, messagesCount
+          const countFromArray = Array.isArray(orig.messages) ? orig.messages.length : undefined;
+          const countFromNumber = typeof orig.messageCount === 'number' ? orig.messageCount : (typeof orig.messages === 'number' ? orig.messages : undefined);
+          const countFallback = typeof orig.messagesCount === 'number' ? orig.messagesCount : 0;
+          const msgs = countFromArray ?? countFromNumber ?? countFallback ?? 0;
+
+          return (
+            <div className="flex items-center gap-2 text-sm text-gray-600">
+              <ChatIcon className="w-4 h-4 text-gray-500" />
+              <span className="whitespace-nowrap">{msgs}</span>
+            </div>
           );
         },
       },
