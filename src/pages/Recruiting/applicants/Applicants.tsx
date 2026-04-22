@@ -171,6 +171,7 @@ import {
 } from '../../../hooks/queries';
 import BulkMessageModal from '../../../components/modals/BulkMessageModal';
 import InterviewScheduleModal from '../../../components/modals/InterviewScheduleModal';
+import StatusChangeModal from '../../../components/modals/StatusChangeModal';
 import { Menu, MenuItem, Checkbox, ListItemText, Skeleton } from '@mui/material';
 import useSendBatchEmail from '../../../hooks/queries/useSendBatchEmail';
 import {
@@ -451,6 +452,13 @@ const Applicants = () => {
       status?: string;
     }>
   >([]);
+  const [showBulkStatusModal, setShowBulkStatusModal] = useState(false);
+  const [bulkStatusForm, setBulkStatusForm] = useState<{
+    status?: string;
+    reasons?: string[];
+    notes?: string;
+  }>({ status: '', reasons: [], notes: '' });
+  const [isSubmittingBulkStatus, setIsSubmittingBulkStatus] = useState(false);
   // MRT will manage pagination internally (page size set in initialState)
   const [rowSelection, setRowSelection] = useState<MRT_RowSelectionState>({});
   const [columnFilters, setColumnFilters] = useState<MRT_ColumnFiltersState>(
@@ -2964,6 +2972,14 @@ const Applicants = () => {
   const handleBulkChangeStatus = useCallback(async () => {
     if (selectedApplicantIds.length === 0 || !bulkAction) return;
 
+    // For rejected status we open the StatusChangeModal to collect reasons/notes
+    if (bulkAction === 'rejected') {
+      setBulkStatusForm({ status: 'rejected', reasons: [], notes: '' });
+      setBulkStatusError('');
+      setShowBulkStatusModal(true);
+      return;
+    }
+
     const result = await Swal.fire({
       title: 'Change Status?',
       text: `Are you sure you want to change the status of ${selectedApplicantIds.length} applicant(s) to ${bulkAction}?`,
@@ -3009,6 +3025,60 @@ const Applicants = () => {
       if (mountedRef.current) setIsProcessing(false);
     }
   }, [selectedApplicantIds, bulkAction, updateStatusMutation]);
+
+  const handleBulkStatusChange = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (selectedApplicantIds.length === 0) return;
+
+      const payload: any = {
+        status: bulkStatusForm.status,
+        notes: bulkStatusForm.notes,
+      };
+      if (Array.isArray(bulkStatusForm.reasons) && bulkStatusForm.reasons.length) {
+        payload.reasons = bulkStatusForm.reasons.map((r) => String(r ?? '').trim()).filter(Boolean);
+      }
+
+      try {
+        setIsSubmittingBulkStatus(true);
+        setBulkStatusError('');
+
+        const results = await Promise.allSettled(
+          selectedApplicantIds.map((aid) =>
+            updateStatusMutation.mutateAsync({ id: aid, data: payload })
+          )
+        );
+
+        const failed = results.filter((r) => r.status === 'rejected');
+        if (failed.length > 0) {
+          const messages = failed
+            .map((f: any) => (f as any).reason?.message || String((f as any).reason || 'Error'))
+            .slice(0, 5);
+          setBulkStatusError(`Failed for ${failed.length} applicant(s): ${messages.join('; ')}`);
+        } else {
+          await Swal.fire({
+            title: 'Success!',
+            text: `Status updated for ${selectedApplicantIds.length} applicant(s).`,
+            icon: 'success',
+            position: 'center',
+            timer: 2000,
+            showConfirmButton: false,
+          });
+          if (mountedRef.current) {
+            setRowSelection({});
+            setBulkAction('');
+            setShowBulkStatusModal(false);
+          }
+        }
+      } catch (err: any) {
+        console.error('Error bulk changing status:', err);
+        if (mountedRef.current) setBulkStatusError(getErrorMessage(err));
+      } finally {
+        if (mountedRef.current) setIsSubmittingBulkStatus(false);
+      }
+    },
+    [selectedApplicantIds, bulkStatusForm, updateStatusMutation]
+  );
 
   const handleBulkDelete = useCallback(async () => {
     if (selectedApplicantIds.length === 0) return;
@@ -4347,21 +4417,14 @@ const Applicants = () => {
                 </span>
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 w-full sm:w-auto">
                   <div className="flex items-center gap-2">
-                    <select
-                      value={bulkAction}
-                      onChange={(e) => setBulkAction(e.target.value)}
-                      className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-transparent"
-                    >
-                      <option value="">Select Status</option>
-                      <option value="pending">Pending</option>
-                      <option value="approved">Approved</option>
-                      <option value="interview">Interview</option>
-                      <option value="interviewed">Interviewed</option>
-                      <option value="rejected">Rejected</option>
-                    </select>
                     <button
-                      onClick={handleBulkChangeStatus}
-                      disabled={isProcessing || !bulkAction}
+                      type="button"
+                      onClick={() => {
+                        setBulkStatusForm({ status: '', reasons: [], notes: '' });
+                        setBulkStatusError('');
+                        setShowBulkStatusModal(true);
+                      }}
+                      disabled={isProcessing || selectedApplicantIds.length === 0}
                       className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {isProcessing ? 'Changing...' : 'Change Status'}
@@ -4418,6 +4481,22 @@ const Applicants = () => {
                 setRowSelection({});
                 setShowBulkModal(false);
               }}
+            />
+
+            <StatusChangeModal
+              isOpen={showBulkStatusModal}
+              onClose={() => {
+                setShowBulkStatusModal(false);
+                setBulkStatusError('');
+              }}
+              statusForm={bulkStatusForm}
+              setStatusForm={setBulkStatusForm}
+              statusError={bulkStatusError}
+              setStatusError={setBulkStatusError}
+              handleStatusChange={handleBulkStatusChange}
+              isSubmittingStatus={isSubmittingBulkStatus}
+              statusOptions={statusOptions}
+              companyId={selectedApplicantCompanyId ?? undefined}
             />
 
             <InterviewScheduleModal
