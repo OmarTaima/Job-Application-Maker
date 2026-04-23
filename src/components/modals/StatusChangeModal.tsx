@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo,  useEffect } from 'react';
 import { Modal } from '../ui/modal';
 import Label from '../form/Label';
 import Select from '../form/Select';
@@ -33,7 +33,7 @@ export default function StatusChangeModal({
   const { data: companySettings } = useCompanySettings(companyId, { enabled: !!companyId });
   
   // Get statuses from the hook using company settings
-  const { statusOptions, getColor, getTextColor, getDescription, defaultStatus } = useStatusSettings(companySettings);
+  const { statusOptions, getColor, getTextColor, getDescription} = useStatusSettings(companySettings);
 
   // Debug: Log when statusForm changes
   useEffect(() => {
