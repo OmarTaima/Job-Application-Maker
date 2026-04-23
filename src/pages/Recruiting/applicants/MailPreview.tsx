@@ -19,7 +19,7 @@ import { useJobPositions } from '../../../hooks/queries/useJobPositions';
 import { useApplicants } from '../../../hooks/queries/useApplicants';
 import { useAppSelector } from '../../../store/hooks';
 
-type MailStatus = 'queued' | 'sending' | 'delivered' | 'opened' | 'clicked' | 'bounced' | 'failed';
+type MailStatus = 'queued' | 'sending' | 'sent' | 'delivered' | 'opened' | 'clicked' | 'bounced' | 'failed';
 
 type MailEventType = 'queued' | 'provider_accepted' | 'delivered' | 'open' | 'click' | 'bounce' | 'complaint' | 'custom';
 
@@ -137,14 +137,36 @@ const getFallbackNameFromEmail = (email: string) => {
 };
 
 const resolveUiStatus = (mail: ApiMailRecord): MailStatus => {
-	if (mail.complainedAt) return 'failed';
-	if (mail.bouncedAt) return 'bounced';
-	if (mail.clickedAt) return 'clicked';
-	if (mail.openedAt) return 'opened';
-	if (mail.deliveredAt) return 'delivered';
-	if (mail.status === 'queued') return 'queued';
-	if (mail.status === 'failed') return 'failed';
-	return 'sending';
+  // First, check the backend status field
+  const backendStatus = String(mail.status || '').toLowerCase();
+  
+  // Map backend status to our MailStatus type
+  switch (backendStatus) {
+    case 'queued':
+      return 'queued';
+    case 'sending':
+      return 'sending';
+    case 'sent':
+      return 'sent';
+    case 'delivered':
+      return 'delivered';
+    case 'opened':
+      return 'opened';
+    case 'clicked':
+      return 'clicked';
+    case 'bounced':
+      return 'bounced';
+    case 'failed':
+      return 'failed';
+    default:
+      // If backend status is not recognized, fall back to deriving from timestamps
+      if (mail.clickedAt) return 'clicked';
+      if (mail.openedAt) return 'opened';
+      if (mail.deliveredAt) return 'delivered';
+      if (mail.bouncedAt) return 'bounced';
+      if (mail.complainedAt) return 'failed';
+      return 'sending';
+  }
 };
 
 const buildEvents = (mail: ApiMailRecord): MailEvent[] => {
@@ -198,6 +220,7 @@ const toUiRecord = (mail: ApiMailRecord): UiMailRecord => {
 const statusChipClasses: Record<MailStatus, string> = {
 	queued: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
 	sending: 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400',
+	sent: 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400',
 	delivered: 'bg-green-50 text-green-600 dark:bg-green-900/20 dark:text-green-400',
 	opened: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-400',
 	clicked: 'bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400',
