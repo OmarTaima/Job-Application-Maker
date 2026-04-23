@@ -7,6 +7,10 @@ import {
   useDeferredValue,
 } from 'react';
 import { ChatIcon } from '../../../icons';
+import { useStatusSettings } from '../../../utils/useStatusSettings';
+import { useQueryClient } from '@tanstack/react-query';
+
+
 // simple in-memory cache for compressed thumbnails
 const _thumbnailCache: Map<string, string> = new Map();
 
@@ -221,9 +225,10 @@ function ColumnMultiSelectHeader({
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const current = column.getFilterValue();
 
+  // Add type check for current
   const selected: string[] = Array.isArray(current)
     ? current.map(String)
-    : current
+    : current 
       ? [String(current)]
       : [];
 
@@ -234,7 +239,6 @@ function ColumnMultiSelectHeader({
     const arr = Array.from(next);
     column.setFilterValue(arr.length ? arr : undefined);
   };
-
   const clear = () => {
     column.setFilterValue(undefined);
     setAnchorEl(null);
@@ -334,11 +338,13 @@ type ApplicantsProps = {
 
 const Applicants = ({ layoutKey, defaultLayout, onlyStatus, companyIdOverride }: ApplicantsProps = {}) => {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { user } = useAuth();
   const { layout, saveLayout} = useTableLayout(
     layoutKey || 'applicants_table',
     defaultLayout || APPLICANTS_DEFAULT_LAYOUT
   );
+const [companyStatusCache, setCompanyStatusCache] = useState<Map<string, any>>(new Map());
 
   const isSuperAdmin = useMemo(() => {
     const roleName = user?.roleId?.name;
@@ -978,29 +984,19 @@ const Applicants = ({ layoutKey, defaultLayout, onlyStatus, companyIdOverride }:
     return s.charAt(0).toUpperCase() + s.slice(1);
   };
 
-  // Build filter options
-  const statusOptions = useMemo(() => {
-    const defaultStatuses = [
-      'pending',
-      'approved',
-      'interview',
-      'interviewed',
-      'rejected',
-      'trashed',
-    ];
-    const s = new Set<string>();
-    applicants.forEach((a: any) => a?.status && s.add(a.status));
-    // include default statuses always (in this order), then any additional dynamic statuses
-    const extra = Array.from(s).filter((st) => !defaultStatuses.includes(st));
-    return [...defaultStatuses, ...extra];
-  }, [applicants]);
+
 
   const statusFilterOptions = useMemo<ColumnFilterOption[]>(() => {
-    return statusOptions.map((status) => ({
-      id: status,
-      title: status.charAt(0).toUpperCase() + status.slice(1),
-    }));
-  }, [statusOptions]);
+  // Get unique statuses from applicants
+  const uniqueStatuses = Array.from(new Set(applicants.map((a: any) => a?.status).filter(Boolean)));
+  // Sort to keep default order first then custom
+  const defaultOrder = ['pending', 'approved', 'interview', 'interviewed', 'rejected', 'trashed'];
+  const sorted = [...defaultOrder, ...uniqueStatuses.filter(s => !defaultOrder.includes(s))];
+  return sorted.map((status) => ({
+    id: status,
+    title: status.charAt(0).toUpperCase() + status.slice(1),
+  }));
+}, [applicants]);
 
   const jobOptions = useMemo(() => {
     const getIdValue = (v: any) =>
@@ -1147,6 +1143,24 @@ const Applicants = ({ layoutKey, defaultLayout, onlyStatus, companyIdOverride }:
     }
   }, [customFilters]);
 
+  // Listen for company settings changes and refresh the cache
+useEffect(() => {
+  if (!isSuperAdmin) return;
+  
+  // Create a subscription to query invalidation events
+  const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
+    if (event?.query?.queryKey?.[0] === 'company-settings') {
+      // Company settings were updated, clear the cache
+      setCompanyStatusCache(new Map());
+      
+      // Force a re-render by updating a state
+      setLastRefetch(new Date());
+    }
+  });
+  
+  return () => unsubscribe();
+}, [queryClient, isSuperAdmin]);
+
   // Clear persisted localStorage state when navigating away from Applicants/ApplicantData pages
   useEffect(() => {
     return () => {
@@ -1190,38 +1204,38 @@ const Applicants = ({ layoutKey, defaultLayout, onlyStatus, companyIdOverride }:
   // Determine dataset to pass to MRT: by default exclude trashed applicants unless
   // the user explicitly filters for status === 'trashed'. This makes "All Statuses"
   // hide trashed rows while still allowing an explicit trashed view.
-  const displayedApplicants = useMemo(() => {
-    // If caller requested a fixed status view, honor it and short-circuit
-    if (onlyStatus !== undefined && onlyStatus !== null) {
-      const allowed = Array.isArray(onlyStatus) ? onlyStatus : [onlyStatus];
-      return (applicants || []).filter((a: Applicant) => allowed.includes(a.status));
-    }
-    const statusFilter = columnFilters.find((f) => f.id === 'status');
-    const statusVal = statusFilter?.value;
+const displayedApplicants = useMemo(() => {
+  // If caller requested a fixed status view, honor it and short-circuit
+  if (onlyStatus !== undefined && onlyStatus !== null) {
+    const allowed = Array.isArray(onlyStatus) ? onlyStatus : [onlyStatus];
+    return (applicants || []).filter((a: Applicant) => allowed.includes(a.status));
+  }
+  const statusFilter = columnFilters.find((f) => f.id === 'status');
+  const statusVal = statusFilter?.value;
 
-    // Super admin: allow viewing trashed when explicitly filtered
-    if (isSuperAdmin) {
-      if (statusVal === 'trashed') return applicants;
-      if (Array.isArray(statusVal) && statusVal.length > 0) {
-        return applicants.filter((a: Applicant) =>
-          statusVal.includes(a.status)
-        );
-      }
-      return applicants.filter((a: Applicant) => a.status !== 'trashed');
-    }
-
-    // Non-super-admin: never show trashed applicants regardless of filters
+  // Super admin: allow viewing trashed when explicitly filtered
+  if (isSuperAdmin) {
+    if (statusVal === 'trashed') return applicants;
     if (Array.isArray(statusVal) && statusVal.length > 0) {
-      const allowed = statusVal.filter((s: any) => s !== 'trashed');
-      if (allowed.length === 0)
-        return applicants.filter((a: Applicant) => a.status !== 'trashed');
-      return applicants.filter(
-        (a: Applicant) => allowed.includes(a.status) && a.status !== 'trashed'
+      return (applicants || []).filter((a: Applicant) =>
+        statusVal.includes(a.status)
       );
     }
+    return (applicants || []).filter((a: Applicant) => a.status !== 'trashed');
+  }
 
-    return applicants.filter((a: Applicant) => a.status !== 'trashed');
-  }, [applicants, columnFilters, isSuperAdmin]);
+  // Non-super-admin: never show trashed applicants regardless of filters
+  if (Array.isArray(statusVal) && statusVal.length > 0) {
+    const allowed = statusVal.filter((s: any) => s !== 'trashed');
+    if (allowed.length === 0)
+      return (applicants || []).filter((a: Applicant) => a.status !== 'trashed');
+    return (applicants || []).filter(
+      (a: Applicant) => allowed.includes(a.status) && a.status !== 'trashed'
+    );
+  }
+
+  return (applicants || []).filter((a: Applicant) => a.status !== 'trashed');
+}, [applicants, columnFilters, isSuperAdmin, onlyStatus]);
 
   const deferredDisplayedApplicants = useDeferredValue(displayedApplicants);
 
@@ -1436,6 +1450,129 @@ const Applicants = ({ layoutKey, defaultLayout, onlyStatus, companyIdOverride }:
     return Array.from(out);
   };
 
+const statusSettingsCompany = useMemo(() => {
+  // For Super Admin, we need to get the company from the applicants' data
+  if (isSuperAdmin) {
+    // Get unique companies from the currently displayed applicants
+    const uniqueCompanyIds = new Set<string>();
+    const displayedApplicantsList = displayedApplicants || [];
+    
+    for (const applicant of displayedApplicantsList) {
+      let companyId: string | null = null;
+      
+      // Try to get company from applicant
+      const rawCompany = applicant?.companyId || (applicant as any)?.company || (applicant as any)?.companyObj;
+      if (rawCompany) {
+        companyId = typeof rawCompany === 'string' ? rawCompany : (rawCompany as any)?._id || (rawCompany as any)?.id;
+      } else {
+        // Try to get from job position
+        const jobId = typeof applicant?.jobPositionId === 'string' 
+          ? applicant.jobPositionId 
+          : (applicant?.jobPositionId as any)?._id || (applicant?.jobPositionId as any)?.id;
+        if (jobId && jobPositionMap[jobId]) {
+          const job = jobPositionMap[jobId];
+          const jobCompany = (job as any)?.companyId || (job as any)?.company;
+          companyId = typeof jobCompany === 'string' ? jobCompany : (jobCompany as any)?._id;
+        }
+      }
+      
+      if (companyId) uniqueCompanyIds.add(companyId);
+    }
+    
+    // If all applicants belong to one company, use that company
+    if (uniqueCompanyIds.size === 1) {
+      const singleCompanyId = Array.from(uniqueCompanyIds)[0];
+      return allCompaniesRaw.find((c: any) => c._id === singleCompanyId);
+    }
+    
+    // For mixed companies, return null to handle colors per applicant
+    return null;
+  }
+  
+  // For non-super-admin (original logic)
+  if (companyId && !Array.isArray(companyId) && typeof companyId === 'string') {
+    return allCompaniesRaw.find((c: any) => c._id === companyId);
+  }
+  if (selectedApplicantCompanyId) {
+    return allCompaniesRaw.find((c: any) => c._id === selectedApplicantCompanyId);
+  }
+  return allCompaniesRaw[0];
+}, [companyId, selectedApplicantCompanyId, allCompaniesRaw, isSuperAdmin, displayedApplicants, jobPositionMap]);
+
+
+
+const { getColor, getTextColor, getDescription } = useStatusSettings(statusSettingsCompany);    
+const getStatusColorForCompany = useCallback((status: string, companyId: string) => {
+  if (!status) {
+    return { bg: '#F3F4F6', color: '#1F2937' };
+  }
+  
+  // Get cached status settings for this company
+  let companyStatusSettings = companyStatusCache.get(companyId);
+  
+  if (!companyStatusSettings && allCompaniesRaw.length > 0) {
+    const company = allCompaniesRaw.find((c: any) => c._id === companyId);
+    if (company) {
+      // Use the hook for this specific company
+      const { getColor, getTextColor } = useStatusSettings(company);
+      companyStatusSettings = { getColor, getTextColor };
+      setCompanyStatusCache(prev => new Map(prev).set(companyId, companyStatusSettings));
+    }
+  }
+  
+  if (companyStatusSettings) {
+    const bgColor = companyStatusSettings.getColor(status);
+    const textColor = companyStatusSettings.getTextColor(status);
+    return { 
+      bg: bgColor || '#F3F4F6', 
+      color: textColor || '#1F2937' 
+    };
+  }
+  
+  // Fallback to default colors
+  return { bg: '#F3F4F6', color: '#1F2937' };
+}, [allCompaniesRaw, companyStatusCache]);
+
+// Update the getStatusColor to use per-company colors
+const getStatusColor = useCallback((status: string, applicantCompanyId?: string) => {
+  if (!status) {
+    return { bg: '#F3F4F6', color: '#1F2937' };
+  }
+  
+  // If we have a company ID for this applicant, use company-specific colors
+  if (applicantCompanyId && isSuperAdmin) {
+    return getStatusColorForCompany(status, applicantCompanyId);
+  }
+  
+  // Fall back to the main statusSettingsCompany
+  const bgColor = getColor(status);
+  const textColor = getTextColor(status);
+  
+  return { 
+    bg: bgColor || '#F3F4F6', 
+    color: textColor || '#1F2937' 
+  };
+}, [getColor, getTextColor, getStatusColorForCompany, isSuperAdmin]);
+
+// In Applicants component, add a useEffect to refetch company settings when the modal closes
+// or when the page becomes visible again
+
+useEffect(() => {
+  if (!statusSettingsCompany) return;
+  
+  // Refetch status settings when the component mounts or when the company changes
+  const refetch = async () => {
+    try {
+      // This will trigger the useStatusSettings hook to re-evaluate
+      // by forcing a re-fetch of company settings
+      await queryClient.invalidateQueries({ queryKey: ['company-settings', statusSettingsCompany?._id] });
+    } catch (e) {
+      // ignore
+    }
+  };
+  
+  refetch();
+}, [statusSettingsCompany?._id, queryClient]);
   const filteredApplicants = useMemo(() => {
     const effectiveCustomFilters = Array.isArray(customFilters)
       ? customFilters.filter(
@@ -1937,7 +2074,9 @@ const Applicants = ({ layoutKey, defaultLayout, onlyStatus, companyIdOverride }:
             continue;
           }
 
-          // TEXT / CONTAINS
+
+
+// TEXT / CONTAINS
           if (f.type === 'text') {
             const needle = normalizeForCompare(f.value || '');
             if (!needle) continue;
@@ -2259,24 +2398,7 @@ const Applicants = ({ layoutKey, defaultLayout, onlyStatus, companyIdOverride }:
 
   // MRT will handle pagination (we pass full dataset to the table)
 
-  const getStatusColor = useCallback((status: string) => {
-    switch (status) {
-      case 'pending':
-        return { bg: '#FEF3C7', color: '#92400E' };
-      case 'approved':
-        return { bg: '#D1FAE5', color: '#065F46' };
-      case 'interview':
-        return { bg: '#DBEAFE', color: '#1E40AF' };
-      case 'interviewed':
-        return { bg: '#DBEAFE', color: '#065F46' };
-      case 'rejected':
-        return { bg: '#FEE2E2', color: '#991B1B' };
-      case 'trashed':
-        return { bg: '#6B7280', color: '#FFFFFF' };
-      default:
-        return { bg: '#F3F4F6', color: '#1F2937' };
-    }
-  }, []);
+
 
   const formatDate = useCallback((dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -2729,91 +2851,92 @@ const Applicants = ({ layoutKey, defaultLayout, onlyStatus, companyIdOverride }:
     return `${yyyy}-${mm}-${dd}T${hh}:${min}:00`;
   };
 
-  const buildBulkInterviewPreview = () => {
-    if (selectedApplicantsForInterview.length === 0) {
-      return { error: 'Please select at least one applicant.', items: [] as any[] };
-    }
-    if (!bulkInterviewForm.date || !bulkInterviewForm.time) {
-      return {
-        error: 'Interview date and time are required.',
-        items: [] as any[],
-      };
-    }
+ const buildBulkInterviewPreview = () => {
+  if (selectedApplicantsForInterview.length === 0) {
+    return { error: 'Please select at least one applicant.', items: [] as any[] };
+  }
+  if (!bulkInterviewForm.date || !bulkInterviewForm.time) {
+    return {
+      error: 'Interview date and time are required.',
+      items: [] as any[],
+    };
+  }
 
-    const baseDate = new Date(
-      `${bulkInterviewForm.date}T${bulkInterviewForm.time}:00`
-    );
-    if (Number.isNaN(baseDate.getTime())) {
-      return { error: 'Invalid interview date/time.', items: [] as any[] };
-    }
+  const baseDate = new Date(
+    `${bulkInterviewForm.date}T${bulkInterviewForm.time}:00`
+  );
+  if (Number.isNaN(baseDate.getTime())) {
+    return { error: 'Invalid interview date/time.', items: [] as any[] };
+  }
 
-    const interval = Math.max(1, Number(bulkInterviewIntervalMinutes) || 1);
-    const typeLabel = String(bulkInterviewForm.type || 'phone')
-      .charAt(0)
-      .toUpperCase() + String(bulkInterviewForm.type || 'phone').slice(1);
-    const subject =
-      String(bulkInterviewEmailSubject || '').trim() || 'Interview Invitation';
-    const sourceTemplate =
-      String(bulkMessageTemplate || '').trim() || getDefaultBulkInterviewTemplate();
+  const interval = Math.max(1, Number(bulkInterviewIntervalMinutes) || 1);
+  const typeLabel = String(bulkInterviewForm.type || 'phone')
+    .charAt(0)
+    .toUpperCase() + String(bulkInterviewForm.type || 'phone').slice(1);
+  const subject =
+    String(bulkInterviewEmailSubject || '').trim() || 'Interview Invitation';
+  const sourceTemplate =
+    String(bulkMessageTemplate || '').trim() || getDefaultBulkInterviewTemplate();
 
-    const items = selectedApplicantsForInterview.map((candidate, index) => {
-      const scheduled = new Date(baseDate.getTime() + index * interval * 60000);
-      const interviewDate = scheduled.toLocaleDateString('en-US', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      });
-      const interviewTime = scheduled.toLocaleTimeString('en-US', {
-        hour: 'numeric',
-        minute: '2-digit',
-      });
-      const scheduledAt = toLocalIsoWithoutTimezone(scheduled);
+  // Add explicit type annotations here
+  const items = selectedApplicantsForInterview.map((candidate: { applicantId: string; applicantName: string; applicantNo: number | null; email: string; companyId: string; jobPositionId?: string; status: string }, index: number) => {
+    const scheduled = new Date(baseDate.getTime() + index * interval * 60000);
+    const interviewDate = scheduled.toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+    const interviewTime = scheduled.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+    const scheduledAt = toLocalIsoWithoutTimezone(scheduled);
 
-      const replacements: Record<string, string> = {
-        '{{candidateName}}': candidate.applicantName || 'Candidate',
-        '{{applicantNo}}':
-          typeof candidate.applicantNo === 'number'
-            ? String(candidate.applicantNo)
-            : '-',
-        '{{interviewDate}}': interviewDate,
-        '{{interviewTime}}': interviewTime,
-        '{{interviewType}}': typeLabel,
-        '{{interviewLocation}}': String(
-          bulkInterviewForm.location || '[Location]'
-        ),
-        '{{interviewLink}}': String(bulkInterviewForm.link || ''),
-        '{{interviewDescription}}': String(bulkInterviewForm.description || ''),
-        '{{interviewComment}}': String(bulkInterviewForm.comment || ''),
-      };
+    const replacements: Record<string, string> = {
+      '{{candidateName}}': candidate.applicantName || 'Candidate',
+      '{{applicantNo}}':
+        typeof candidate.applicantNo === 'number'
+          ? String(candidate.applicantNo)
+          : '-',
+      '{{interviewDate}}': interviewDate,
+      '{{interviewTime}}': interviewTime,
+      '{{interviewType}}': typeLabel,
+      '{{interviewLocation}}': String(
+        bulkInterviewForm.location || '[Location]'
+      ),
+      '{{interviewLink}}': String(bulkInterviewForm.link || ''),
+      '{{interviewDescription}}': String(bulkInterviewForm.description || ''),
+      '{{interviewComment}}': String(bulkInterviewForm.comment || ''),
+    };
 
-      let messageBody = sourceTemplate;
-      Object.entries(replacements).forEach(([token, value]) => {
-        messageBody = messageBody.split(token).join(value);
-      });
-
-      const html = buildInterviewEmailHtml(subject, messageBody);
-
-      return {
-        applicantId: candidate.applicantId,
-        applicantName: candidate.applicantName,
-        applicantNo:
-          typeof candidate.applicantNo === 'number'
-            ? String(candidate.applicantNo)
-            : '-',
-        to: candidate.email || '',
-        companyId: candidate.companyId || selectedApplicantCompanyId || '',
-        jobPositionId: candidate.jobPositionId,
-        scheduledAt,
-        scheduledLabel: `${interviewDate} at ${interviewTime}`,
-        subject,
-        html,
-        status: candidate.status,
-      };
+    let messageBody = sourceTemplate;
+    Object.entries(replacements).forEach(([token, value]) => {
+      messageBody = messageBody.split(token).join(value);
     });
 
-    return { error: '', items };
-  };
+    const html = buildInterviewEmailHtml(subject, messageBody);
+
+    return {
+      applicantId: candidate.applicantId,
+      applicantName: candidate.applicantName,
+      applicantNo:
+        typeof candidate.applicantNo === 'number'
+          ? String(candidate.applicantNo)
+          : '-',
+      to: candidate.email || '',
+      companyId: candidate.companyId || selectedApplicantCompanyId || '',
+      jobPositionId: candidate.jobPositionId,
+      scheduledAt,
+      scheduledLabel: `${interviewDate} at ${interviewTime}`,
+      subject,
+      html,
+      status: candidate.status,
+    };
+  });
+
+  return { error: '', items };
+};
 
   const handlePreviewBulkInterviews = () => {
     setBulkInterviewError('');
@@ -3077,59 +3200,66 @@ void handleBulkChangeStatus();
     }
   }, [selectedApplicantIds, bulkAction, updateStatusMutation]);
 
-  const handleBulkStatusChange = useCallback(
-    async (e: React.FormEvent) => {
-      e.preventDefault();
-      if (selectedApplicantIds.length === 0) return;
 
-      const payload: any = {
-        status: bulkStatusForm.status,
-        notes: bulkStatusForm.notes,
-      };
-      if (Array.isArray(bulkStatusForm.reasons) && bulkStatusForm.reasons.length) {
-        payload.reasons = bulkStatusForm.reasons.map((r) => String(r ?? '').trim()).filter(Boolean);
-      }
+const handleBulkStatusChange = useCallback(
+  async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (selectedApplicantIds.length === 0) return;
 
-      try {
-        setIsSubmittingBulkStatus(true);
-        setBulkStatusError('');
+    // Add validation - check if status is selected
+    if (!bulkStatusForm.status || bulkStatusForm.status.trim() === '') {
+      setBulkStatusError('Please select a status before submitting.');
+      return;
+    }
 
-        const results = await Promise.allSettled(
-          selectedApplicantIds.map((aid) =>
-            updateStatusMutation.mutateAsync({ id: aid, data: payload })
-          )
-        );
+    const payload: any = {
+      status: bulkStatusForm.status, // This should never be empty now
+      notes: bulkStatusForm.notes,
+    };
+    if (Array.isArray(bulkStatusForm.reasons) && bulkStatusForm.reasons.length) {
+      payload.reasons = bulkStatusForm.reasons.map((r) => String(r ?? '').trim()).filter(Boolean);
+    }
 
-        const failed = results.filter((r) => r.status === 'rejected');
-        if (failed.length > 0) {
-          const messages = failed
-            .map((f: any) => (f as any).reason?.message || String((f as any).reason || 'Error'))
-            .slice(0, 5);
-          setBulkStatusError(`Failed for ${failed.length} applicant(s): ${messages.join('; ')}`);
-        } else {
-          await Swal.fire({
-            title: 'Success!',
-            text: `Status updated for ${selectedApplicantIds.length} applicant(s).`,
-            icon: 'success',
-            position: 'center',
-            timer: 2000,
-            showConfirmButton: false,
-          });
-          if (mountedRef.current) {
-            setRowSelection({});
-            setBulkAction('');
-            setShowBulkStatusModal(false);
-          }
+    try {
+      setIsSubmittingBulkStatus(true);
+      setBulkStatusError('');
+
+      const results = await Promise.allSettled(
+        selectedApplicantIds.map((aid) =>
+          updateStatusMutation.mutateAsync({ id: aid, data: payload })
+        )
+      );
+
+      const failed = results.filter((r) => r.status === 'rejected');
+      if (failed.length > 0) {
+        const messages = failed
+          .map((f: any) => (f as any).reason?.message || String((f as any).reason || 'Error'))
+          .slice(0, 5);
+        setBulkStatusError(`Failed for ${failed.length} applicant(s): ${messages.join('; ')}`);
+      } else {
+        await Swal.fire({
+          title: 'Success!',
+          text: `Status updated for ${selectedApplicantIds.length} applicant(s).`,
+          icon: 'success',
+          position: 'center',
+          timer: 2000,
+          showConfirmButton: false,
+        });
+        if (mountedRef.current) {
+          setRowSelection({});
+          setBulkAction('');
+          setShowBulkStatusModal(false);
         }
-      } catch (err: any) {
-        console.error('Error bulk changing status:', err);
-        if (mountedRef.current) setBulkStatusError(getErrorMessage(err));
-      } finally {
-        if (mountedRef.current) setIsSubmittingBulkStatus(false);
       }
-    },
-    [selectedApplicantIds, bulkStatusForm, updateStatusMutation]
-  );
+    } catch (err: any) {
+      console.error('Error bulk changing status:', err);
+      if (mountedRef.current) setBulkStatusError(getErrorMessage(err));
+    } finally {
+      if (mountedRef.current) setIsSubmittingBulkStatus(false);
+    }
+  },
+  [selectedApplicantIds, bulkStatusForm, updateStatusMutation]
+);
 
   const handleBulkDelete = useCallback(async () => {
     if (selectedApplicantIds.length === 0) return;
@@ -3675,68 +3805,94 @@ void handleBulkChangeStatus();
           );
         },
       },
-      {
-        accessorKey: 'status',
-        header: 'Status',
-        enableSorting: true,
+   {
+  accessorKey: 'status',
+  header: 'Status',
+  enableSorting: true,
+  Header: ({ column }: { column: any }) => {
+    if (onlyStatus !== undefined && onlyStatus !== null) {
+      return <span className="text-sm font-medium">Status</span>;
+    }
+    return (
+      <ColumnMultiSelectHeader
+        column={column}
+        label="Status"
+        options={statusFilterOptions}
+        isLaptopViewport={isLaptopViewport}
+        menuWidth={220}
+        menuMaxHeight={240}
+      />
+    );
+  },
+  filterFn: (row: any, columnId: string, filterValue: any) => {
+    if (!filterValue) return true;
+    const vals = Array.isArray(filterValue) ? filterValue : [filterValue];
+    if (!vals.length) return true;
+    const cell = String(row.getValue(columnId) ?? '');
+    return vals.includes(cell);
+  },
+  size: columnSizeConfig.status,
+  enableColumnFilter: onlyStatus === undefined,
+  Cell: ({ row }: { row: { original: Applicant } }) => {
+    if (isTableLoading) return renderCellSkeleton('text', '80px');
+    
+    // Get the applicant's company ID with proper null checking
+    let applicantCompanyId: string | null = null;
+    const original = row.original as any;
+    
+    if (original) {
+      const rawCompany = original.companyId;
+      if (rawCompany) {
+        applicantCompanyId = typeof rawCompany === 'string' ? rawCompany : (rawCompany as any)?._id || (rawCompany as any)?.id;
+      } else {
+        // Safely get job ID
+        const jobId = typeof original.jobPositionId === 'string' 
+          ? original.jobPositionId 
+          : (original.jobPositionId as any)?._id || (original.jobPositionId as any)?.id;
+        
+        // Safely get job from map - check if it exists first
+        const job = jobId && jobPositionMap ? jobPositionMap[jobId] : null;
+        if (job) {
+          const jobCompany = (job as any)?.companyId || (job as any)?.company;
+          applicantCompanyId = typeof jobCompany === 'string' ? jobCompany : (jobCompany as any)?._id;
+        }
+      }
+    }
+    
+    // Get colors based on the applicant's company
+    const colors = isSuperAdmin && applicantCompanyId
+      ? getStatusColorForCompany(original?.status || '', applicantCompanyId)
+      : getStatusColor(original?.status || '');
+      
+    const href = getApplicantHref(row);
+    const statusStr = String(original?.status || '');
+    const statusLabel = statusStr
+      ? statusStr.charAt(0).toUpperCase() + statusStr.slice(1)
+      : '-';
 
-        Header: ({ column }: { column: any }) => {
-          if (onlyStatus !== undefined && onlyStatus !== null) {
-            return <span className="text-sm font-medium">Status</span>;
-          }
-          return (
-            <ColumnMultiSelectHeader
-              column={column}
-              label="Status"
-              options={statusFilterOptions}
-              isLaptopViewport={isLaptopViewport}
-              menuWidth={220}
-              menuMaxHeight={240}
-            />
-          );
-        },
+    const statusDescription = getDescription(statusStr);
 
-        filterFn: (row: any, columnId: string, filterValue: any) => {
-          if (!filterValue) return true;
-          const vals = Array.isArray(filterValue) ? filterValue : [filterValue];
-          if (!vals.length) return true;
-
-          const cell = String(row.getValue(columnId) ?? '');
-          return vals.includes(cell);
-        },
-
-        size: columnSizeConfig.status,
-        enableColumnFilter: onlyStatus === undefined,
-
-        Cell: ({ row }: { row: { original: Applicant } }) => {
-          if (isTableLoading) return renderCellSkeleton('text', '80px');
-          const colors = getStatusColor(row.original.status);
-          const href = getApplicantHref(row);
-          const statusStr = String((row?.original as any)?.status || '');
-          const statusLabel = statusStr
-            ? statusStr.charAt(0).toUpperCase() + statusStr.slice(1)
-            : '-';
-
-          return (
-            <a
-              href={href}
-              className="block h-full w-full"
-              onClick={(e) => handleApplicantLinkClick(e, row)}
-              onAuxClick={handleApplicantLinkAuxClick}
-            >
-              <span
-                style={{
-                  backgroundColor: colors.bg,
-                  color: colors.color,
-                }}
-                className="inline-block rounded-full px-3 py-1 text-xs font-semibold"
-              >
-                {statusLabel}
-              </span>
-            </a>
-          );
-        },
-      },
+    return (
+      <a
+        href={href}
+        className="block h-full w-full"
+        onClick={(e) => handleApplicantLinkClick(e, row)}
+        onAuxClick={handleApplicantLinkAuxClick}
+        title={statusDescription || undefined}
+      >
+        <span
+          style={{
+            backgroundColor: colors.bg,
+            color: colors.color,
+          }}
+          className="inline-block rounded-full px-3 py-1 text-xs font-semibold"
+        >
+          {statusLabel}
+        </span>
+      </a>
+    );
+  },
+},
         // Rejection reasons column - shown only when this view is fixed to 'rejected'
         ...( (onlyStatus !== undefined && (Array.isArray(onlyStatus) ? onlyStatus.includes('rejected') : String(onlyStatus) === 'rejected'))
           ? [
@@ -3940,6 +4096,7 @@ void handleBulkChangeStatus();
       isLaptopViewport,
       isTableLoading,
       getStatusColor,
+      getDescription,
       formatDate,
       parseComparableNumber,
       getExpectedSalaryDisplay,
@@ -4638,20 +4795,20 @@ void handleBulkChangeStatus();
             />
 
             <StatusChangeModal
-              isOpen={showBulkStatusModal}
-              onClose={() => {
-                setShowBulkStatusModal(false);
-                setBulkStatusError('');
-              }}
-              statusForm={bulkStatusForm}
-              setStatusForm={setBulkStatusForm}
-              statusError={bulkStatusError}
-              setStatusError={setBulkStatusError}
-              handleStatusChange={handleBulkStatusChange}
-              isSubmittingStatus={isSubmittingBulkStatus}
-              statusOptions={statusOptions}
-              companyId={selectedApplicantCompanyId ?? undefined}
-            />
+  isOpen={showBulkStatusModal}
+  onClose={() => {
+    setShowBulkStatusModal(false);
+    setBulkStatusError('');
+  }}
+  statusForm={bulkStatusForm}
+  setStatusForm={setBulkStatusForm}
+  statusError={bulkStatusError}
+  setStatusError={setBulkStatusError}
+  handleStatusChange={handleBulkStatusChange}
+  isSubmittingStatus={isSubmittingBulkStatus}
+  companyId={selectedApplicantCompanyId ?? undefined}
+  // Remove statusOptions prop - no longer needed
+/>
 
             <InterviewScheduleModal
               isOpen={showBulkInterviewModal}

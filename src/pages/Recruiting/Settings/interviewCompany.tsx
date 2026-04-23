@@ -9,6 +9,7 @@ import {
 	ArrowRight,
 	ShieldCheck,
 	CircleCheckBig,
+	Settings,
 } from "lucide-react";
 import Swal from "../../../utils/swal";
 import PageMeta from "../../../components/common/PageMeta";
@@ -20,6 +21,7 @@ import {
 	useUpdateCompanyInterviewSettings,
 } from "../../../hooks/queries/useCompanies";
 import RejectionTab from "./Rejectiontab";
+import StatusSettings from "./StatusSettings";
 import type {
 	InterviewAnswerType,
 	InterviewGroup,
@@ -174,9 +176,13 @@ export default function InterviewCompanySettingsPage() {
 	const [groups, setGroups] = useState<InterviewGroup[]>([]);
 	const [isSaving, setIsSaving] = useState(false);
 	const [choiceBuffers, setChoiceBuffers] = useState<Record<string, string>>({});
-	const [activeTab, setActiveTab] = useState<"interview-groups" | "rejection-reasons">(
+	const [activeTab, setActiveTab] = useState<"interview-groups" | "rejection-reasons" | "lead-statuses">(
 		"interview-groups"
 	);
+
+	const isInterviewGroupsTab = activeTab === "interview-groups";
+	const isRejectionTab = activeTab === "rejection-reasons";
+	const isapplicantStatusTab = activeTab === "lead-statuses";
 
 	const selectedCompany = useMemo(
 		() => (companies as CompanyShape[]).find((company) => company._id === selectedCompanyId),
@@ -196,7 +202,6 @@ export default function InterviewCompanySettingsPage() {
 		: interviewSettingsFromQuery;
 
 	const isLoading = isSuperAdmin ? isCompaniesLoading : isInterviewLoading || isInterviewFetching;
-	const isInterviewGroupsTab = activeTab === "interview-groups";
 
 	useEffect(() => {
 		if (!selectedCompanyId && companies.length > 0) {
@@ -503,16 +508,29 @@ export default function InterviewCompanySettingsPage() {
 						>
 							<ClipboardList className="size-4" /> Interview Groups
 						</button>
+
 						<button
 							type="button"
 							onClick={() => setActiveTab("rejection-reasons")}
 							className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition ${
-								!isInterviewGroupsTab
+								isRejectionTab
 									? "bg-brand-500 text-white"
 									: "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
 							}`}
 						>
 							<Ban className="size-4" /> Rejection Reasons
+						</button>
+
+						<button
+							type="button"
+							onClick={() => setActiveTab("lead-statuses")}
+							className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition ${
+								isapplicantStatusTab
+									? "bg-brand-500 text-white"
+									: "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+							}`}
+						>
+							<Settings className="size-4" /> Statuses
 						</button>
 					</div>
 
@@ -803,12 +821,14 @@ export default function InterviewCompanySettingsPage() {
 								))}
 							</div>
 							</div>
-						) : (
+						) : isRejectionTab ? (
 							<RejectionTab
 								companyId={selectedCompanyId}
 								hideCompanySelector
 								embedded
 							/>
+						) : (
+							<StatusSettings companyId={selectedCompanyId} hideCompanySelector embedded />
 						)}
 					</div>
 				</div>

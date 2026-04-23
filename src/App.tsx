@@ -23,8 +23,8 @@ const RecruitingDashboard = lazy(() => import("./pages/Recruiting/companies/crea
 const Companies = lazy(() => import("./pages/Recruiting/companies/Companies"));
 const PreviewCompany = lazy(() => import("./pages/Recruiting/companies/PreviewCompany"));
 const CompanySettingsPage = lazy(() => import("./pages/Recruiting/companies/companysettings"));
-const InterviewCompanySettingsPage = lazy(() => import("./pages/Recruiting/Interview/interviewCompany"));
-const SavedQuestions = lazy(() => import("./pages/Recruiting/Interview/interviewPerUser"));
+const InterviewCompanySettingsPage = lazy(() => import("./pages/Recruiting/Settings/interviewCompany"));
+const SavedQuestions = lazy(() => import("./pages/Recruiting/Settings/interviewPerUser"));
 const Jobs = lazy(() => import("./pages/Recruiting/jobs/Jobs"));
 const CreateJob = lazy(() => import("./pages/Recruiting/jobs/CreateJob"));
 const PreviewJob = lazy(() => import("./pages/Recruiting/jobs/PreviewJob"));

@@ -8,6 +8,20 @@ import type {
   UpdateInterviewSettingsRequest,
 } from "../../services/companiesService";
 
+import type { Applicant } from "./applicantsSlice";
+
+
+
+
+export type CompanyStatus = {
+  name: string;
+  color: string;
+  textColor?: string;
+  description?: string;
+  isDefault?: boolean;
+  statusKey?: string; // Add this field to store the original status key
+};
+
 export interface Company {
   _id: string;
   name: string | { en: string; ar: string };
@@ -21,7 +35,24 @@ export interface Company {
   description?: string | { en: string; ar: string };
   createdAt?: string;
   __v?: number;
+  settings?: CompanySet;
 }
+
+
+export type CompanySet = {
+  leadModal: {
+    visibleFields: { field: Applicant; defaultValue: any }[];
+    requiredFields: Applicant[];
+  };
+  leadTable?: {
+    visibleColumns: string[];
+  };
+  statuses?: CompanyStatus[];
+  _id?: string;
+  company: string;
+};
+
+
 
 export interface CreateCompanyRequest {
   name: { en: string; ar: string };

@@ -94,16 +94,7 @@ export type Applicant = {
   companyId: string;
   jobPositionId: string;
   departmentId: string;
-  status:
-    | "applied"
-    | "under_review"
-    | "pending"
-    | "interview"
-    | "interviewed"
-    | "accepted"
-    | "approved"
-    | "rejected"
-    | "trashed";
+  status: string; // Changed from union type to string to support dynamic status names
   submittedAt: string;
   fullName: string;
   firstName?: string;
@@ -151,17 +142,19 @@ export type UpdateApplicantRequest = {
 };
 
 export type UpdateStatusRequest = {
-  status:
-    | "applied"
-    | "under_review"
-    | "pending"
-    | "interview"
-    | "interviewed"
-    | "accepted"
-    | "approved"
-    | "rejected"
-    | "trashed";
+  status: string; // Change from union type to string
   notes?: string;
+  notifications?: {
+    channels: {
+      email: boolean;
+      sms: boolean;
+      whatsapp: boolean;
+    };
+    emailOption?: "company" | "user" | "custom";
+    customEmail?: string;
+    phoneOption?: "company" | "user" | "whatsapp" | "custom";
+    customPhone?: string;
+  };
   reasons?: string[];
 };
 

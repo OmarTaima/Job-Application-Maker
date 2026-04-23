@@ -65,16 +65,7 @@ export type Applicant = {
   companyId: string;
   jobPositionId: string;
   departmentId: string;
-  status:
-    | "applied"
-    | "under_review"
-    | "pending"
-    | "interview"
-    | "interviewed"
-    | "accepted"
-    | "approved"
-    | "rejected"
-    | "trashed";
+  status: string; // Changed from union type to string to support dynamic status names
   submittedAt: string;
   fullName: string;
   firstName?: string;
@@ -120,8 +111,10 @@ export type UpdateApplicantRequest = {
   customResponses?: Record<string, any>;
 };
 
+// In applicantsService.ts, update the UpdateStatusRequest type:
+
 export type UpdateStatusRequest = {
-  status: "pending" | "interview" | "interviewed" | "approved" | "rejected" | "trashed";
+  status: string; // Change from union type to string
   notes?: string;
   notifications?: {
     channels: {

@@ -10,6 +10,8 @@ import type {
   AddCommentRequest,
   SendMessageRequest,
 } from "../../services/applicantsService";
+import type { Applicant } from '../../services/applicantsService';
+
 
 // Query keys
 export const applicantsKeys = {
@@ -47,11 +49,10 @@ export function useApplicants(
   // Prefer explicit caller filter, otherwise use all companies available to logged-in non-admin user.
   const effectiveCompanyId = companyId && companyId.length > 0 ? companyId : userCompanyIds;
 
-  return useQuery<import("../../services/applicantsService").Applicant[]>({
-    queryKey: applicantsKeys.list(effectiveCompanyId,  jobPositionId),
-    // cast second arg to any to satisfy service signature when types differ
+   return useQuery<Applicant[]>({  // Add explicit type parameter
+    queryKey: applicantsKeys.list(effectiveCompanyId, jobPositionId),
     queryFn: () => applicantsService.getAllApplicants(effectiveCompanyId, jobPositionId as any),
-    staleTime: 2 * 60 * 1000, // 2 minutes
+    staleTime: 2 * 60 * 1000,
     initialData: reduxApplicants && reduxApplicants.length > 0 ? reduxApplicants : undefined,
   });
 }
@@ -448,32 +449,95 @@ export function useSendMessage() {
     mutationFn: ({ id, data }: { id: string; data: SendMessageRequest }) =>
       applicantsService.sendMessage(id, data),
     onMutate: async ({ id, data }) => {
+      // Cancel list and detail queries to avoid overwriting optimistic updates
+      await queryClient.cancelQueries({ queryKey: applicantsKeys.lists() });
       await queryClient.cancelQueries({ queryKey: applicantsKeys.detail(id) });
+
+      const previousLists = queryClient.getQueriesData({ queryKey: applicantsKeys.lists() });
       const previousDetail = queryClient.getQueryData(applicantsKeys.detail(id));
 
+      // Prepare an optimistic message object
+      const optimisticMessage = {
+        ...data,
+        _id: `temp-${Date.now()}`,
+        sentAt: new Date().toISOString(),
+        status: 'pending',
+      };
+
+      // Optimistically update the detail query
       queryClient.setQueryData(applicantsKeys.detail(id), (old: any) => {
         if (!old) return old;
-        const newMessage = {
-          ...data,
-          _id: `temp-${Date.now()}`,
-          sentAt: new Date().toISOString(),
-          status: 'pending',
-        };
         return {
           ...old,
-          messages: [...(old.messages || []), newMessage],
+          messages: [...(old.messages || []), optimisticMessage],
         };
       });
 
-      return { previousDetail };
+      // Optimistically update any list queries so the messages counter updates immediately
+      queryClient.setQueriesData({ queryKey: applicantsKeys.lists() }, (old: any) => {
+        if (!old) return old;
+        const applyUpdateToApplicant = (applicant: any) => {
+          if (!applicant) return applicant;
+          if (String(applicant._id) !== String(id)) return applicant;
+
+          const copy = { ...applicant };
+
+          // If messages array exists, append optimistic message
+          if (Array.isArray(copy.messages)) {
+            copy.messages = [...copy.messages, optimisticMessage];
+          }
+
+          // If explicit messageCount or messages numeric field exists, increment it
+          if (typeof copy.messageCount === 'number') {
+            copy.messageCount = copy.messageCount + 1;
+          } else if (typeof copy.messages === 'number') {
+            copy.messages = copy.messages + 1;
+          } else if (typeof copy.messagesCount === 'number') {
+            copy.messagesCount = copy.messagesCount + 1;
+          } else if (!Array.isArray(applicant.messages) && typeof copy.messageCount !== 'number') {
+            // If no explicit counters exist, initialize messageCount to 1
+            copy.messageCount = 1;
+          }
+
+          return copy;
+        };
+
+        if (Array.isArray(old)) return old.map((a: any) => applyUpdateToApplicant(a));
+        if (old.data && Array.isArray(old.data)) return { ...old, data: old.data.map((a: any) => applyUpdateToApplicant(a)) };
+        return old;
+      });
+
+      return { previousLists, previousDetail };
     },
     onError: (_err, _variables, context) => {
+      // Rollback both lists and detail on error
+      if (context?.previousLists) {
+        context.previousLists.forEach(([queryKey, data]) => {
+          queryClient.setQueryData(queryKey, data);
+        });
+      }
       if (context?.previousDetail) {
         queryClient.setQueryData(applicantsKeys.detail(_variables.id), context.previousDetail);
       }
     },
     onSuccess: (updatedApplicant, variables) => {
+      // Update detail with server response
       queryClient.setQueryData(applicantsKeys.detail(variables.id), updatedApplicant);
+
+      // Also reconcile list queries with the server response when possible
+      queryClient.setQueriesData({ queryKey: applicantsKeys.lists() }, (old: any) => {
+        if (!old) return old;
+        const applyServerUpdate = (applicant: any) => {
+          if (!applicant) return applicant;
+          if (String(applicant._id) !== String(variables.id)) return applicant;
+          // Merge server-updated fields while preserving other list fields
+          return { ...applicant, ...(updatedApplicant || {}) };
+        };
+
+        if (Array.isArray(old)) return old.map((a: any) => applyServerUpdate(a));
+        if (old.data && Array.isArray(old.data)) return { ...old, data: old.data.map((a: any) => applyServerUpdate(a)) };
+        return old;
+      });
     },
     onSettled: () => {
       // No refetch

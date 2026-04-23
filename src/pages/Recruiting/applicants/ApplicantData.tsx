@@ -1,5 +1,6 @@
 // Core React imports
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { useStatusSettings } from '../../../utils/useStatusSettings';
 // UI helpers and third-party utilities
 import Swal from '../../../utils/swal';
 import { useParams, useNavigate, useLocation } from 'react-router';
@@ -47,7 +48,6 @@ import 'quill/dist/quill.snow.css';
 
 // Lightweight Quill editor wrapper
 // Dynamically imports Quill to avoid bundling react-quill and to enable server-safe loading.
-
 
 // Main page component
 // Renders applicant details, activity timeline, and provides actions (schedule interview, send messages, comments, status updates)
@@ -684,6 +684,15 @@ const ApplicantData = () => {
     return null as any;
   }, [fetchedCompany, jobPositionDetail, applicant?._id, companies, resolvedCompanyId]);
 
+  const { getColor, getTextColor, defaultStatus: hookDefaultStatus } = useStatusSettings(companyObj || fetchedCompany || jobPosCompany);
+
+// Also define the getStatusColor function using the hook's methods:
+const getStatusColor = (status: string) => {
+  const bgColor = getColor(status);
+  const textColor = getTextColor(status);
+  return { backgroundColor: bgColor, color: textColor };
+};
+
   const jobTitle = useMemo(() => getJobTitle(), [applicant?._id, jobPositionDetail, jobPositions, jobPosCompany]);
   const companyName = useMemo(() => getCompanyName(), [applicant?._id, jobPositionDetail, companies, jobPosCompany, fetchedCompany]);
   const departmentName = useMemo(() => getDepartmentName(), [applicant?._id, jobPositionDetail, companies, jobPosCompany]);
@@ -754,10 +763,11 @@ const ApplicantData = () => {
     text: '',
   });
   const [statusForm, setStatusForm] = useState({
-    status: '' as Applicant['status'] | '',
-    notes: '',
-    reasons: [] as string[],
-  });
+  status: '' as Applicant['status'] | '',
+  notes: '',
+  reasons: [] as string[],
+});
+
   const [interviewError, setInterviewError] = useState('');
   const [commentError, setCommentError] = useState('');
   const [statusError, setStatusError] = useState('');
@@ -2241,13 +2251,8 @@ const ApplicantData = () => {
 
   // UI options and form handlers
   // Status options used in the change-status flow
-  const statusOptions = [
-    { value: 'pending', label: 'Pending' },
-    { value: 'interview', label: 'Interview' },
-    { value: 'interviewed', label: 'Interviewed' },
-    { value: 'approved', label: 'Approved' },
-    { value: 'rejected', label: 'Rejected' },
-  ];
+ 
+
 
   // Form handler: submit interview scheduling data, create interview and optionally send notifications
   const handleInterviewSubmit = async (e: React.FormEvent) => {
@@ -2586,23 +2591,8 @@ const ApplicantData = () => {
     }
   };
 
-  // UI helper: map applicant status to Tailwind color classes for badges
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'pending':
-        return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
-      case 'interview':
-        return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400';
-      case 'interviewed':
-        return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400';
-      case 'approved':
-        return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
-      case 'rejected':
-        return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
-      default:
-        return 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400';
-    }
-  };
+ 
+
 
   // Render loading state while applicant data is being fetched
   if (loading) {
@@ -2677,7 +2667,14 @@ const ApplicantData = () => {
           </button>
           <div className="flex flex-wrap gap-2 sm:gap-3 sm:ml-auto">
          <button
-  onClick={() => setShowStatusModal(true)}
+  onClick={() => {
+    // Optionally pre-select the current status or default
+    setStatusForm(prev => ({ 
+      ...prev, 
+      status: applicant?.status || hookDefaultStatus || '' 
+    }));
+    setShowStatusModal(true);
+  }}
   className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-green-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-green-700"
 >
   {applicant.status ? applicant.status.charAt(0).toUpperCase() + applicant.status.slice(1) : 'Status'}
@@ -3101,18 +3098,21 @@ const ApplicantData = () => {
 
         {/* Status: shows current applicant status badge */}
         <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-yellow-500 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
-          <div className="flex items-baseline gap-4">
-            <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-yellow-100 dark:bg-yellow-900/30 rounded-lg group-hover:scale-110 transition-transform">
-              <svg className="w-6 h-6 text-yellow-600 dark:text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-            <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Status</Label>
-            <span className={`inline-block rounded-full px-4 py-2 text-xs font-bold ${getStatusColor(String(applicant.status || ''))}`}>
-              {String(applicant.status || '').charAt(0).toUpperCase() + String(applicant.status || '').slice(1)}
-            </span>
-          </div>
-        </div>
+  <div className="flex items-baseline gap-4">
+    <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-yellow-100 dark:bg-yellow-900/30 rounded-lg group-hover:scale-110 transition-transform">
+      <svg className="w-6 h-6 text-yellow-600 dark:text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    </div>
+    <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Status</Label>
+    <span 
+      className="inline-block rounded-full px-4 py-2 text-xs font-bold"
+      style={getStatusColor(String(applicant.status || ''))}
+    >
+      {String(applicant.status || '').charAt(0).toUpperCase() + String(applicant.status || '').slice(1)}
+    </span>
+  </div>
+</div>
 
         {/* Submitted: timestamp when application was submitted */}
         <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-indigo-500 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
@@ -4387,21 +4387,20 @@ const ApplicantData = () => {
       />
 
       <StatusChangeModal
-        isOpen={showStatusModal}
-        onClose={() => {
-          setShowStatusModal(false);
-          setStatusError('');
-          setStatusForm({ status: '', notes: '', reasons: [] });
-        }}
-        statusForm={statusForm}
-        setStatusForm={setStatusForm}
-        statusError={statusError}
-        setStatusError={setStatusError}
-        handleStatusChange={handleStatusChange}
-        isSubmittingStatus={isSubmittingStatus}
-        statusOptions={statusOptions}
-        companyId={resolvedCompanyId}
-      />
+  isOpen={showStatusModal}
+  onClose={() => {
+    setShowStatusModal(false);
+    setStatusError('');
+    setStatusForm({ status: '', notes: '', reasons: [] });
+  }}
+  statusForm={statusForm}
+  setStatusForm={setStatusForm}
+  statusError={statusError}
+  setStatusError={setStatusError}
+  handleStatusChange={handleStatusChange}
+  isSubmittingStatus={isSubmittingStatus}
+  companyId={resolvedCompanyId}
+/>
     </>
   );
 };

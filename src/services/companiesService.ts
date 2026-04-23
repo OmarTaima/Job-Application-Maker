@@ -111,6 +111,8 @@ export interface CompanySettings {
   };
   defaultColorGradient?: string[];
   rejectReasons?: string[];
+  // Custom per-company lead status/pipeline configuration
+  statuses?: any[];
   interviewSettings?: InterviewSettings;
   // Company-like fields that may be present when the API returns a full company
   // object from the settings query.
@@ -142,6 +144,8 @@ export interface CreateCompanySettingsRequest {
   interviewSettings?: InterviewSettings;
   defaultColorGradient?: string[];
   rejectReasons?: string[];
+  applicantStatus?: any[];
+  statuses?: any[];
 }
 
 export interface UpdateCompanySettingsRequest {
@@ -160,6 +164,8 @@ export interface UpdateCompanySettingsRequest {
   interviewSettings?: InterviewSettings;
   defaultColorGradient?: string[];
   rejectReasons?: string[];
+  applicantStatus?: any[];
+  statuses?: any[];
 }
 
 export interface UpdateInterviewSettingsRequest {
@@ -549,11 +555,13 @@ export const companiesService = {
 
   async updateCompanySettings(id: string, payload: UpdateCompanySettingsRequest): Promise<CompanySettings> {
     try {
-      const body: any = {};
+        const body: any = {};
       if (payload?.mailSettings) body.mailSettings = payload.mailSettings;
       if (payload?.interviewSettings) body.interviewSettings = payload.interviewSettings;
       if (payload?.defaultColorGradient) body.defaultColorGradient = payload.defaultColorGradient;
       if (payload?.rejectReasons) body.rejectReasons = payload.rejectReasons;
+        if (payload?.applicantStatus) body.applicantStatus = payload.applicantStatus;
+        if (payload?.statuses) body.statuses = payload.statuses;
 
       const response = await axios.put<any>(`/companies/${id}/settings`, body);
       const data = response.data?.data ?? response.data ?? null;
@@ -567,6 +575,7 @@ export const companiesService = {
           interviewSettings: (data as any).interviewSettings,
           defaultColorGradient: (data as any).defaultColorGradient,
           rejectReasons: (data as any).rejectReasons,
+          statuses: (data as any).statuses ?? (data as any).leadStatuses ?? (data as any).applicantStatus,
         } as CompanySettings;
       }
 
