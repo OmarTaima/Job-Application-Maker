@@ -33,7 +33,7 @@ export default function StatusChangeModal({
   const { data: companySettings } = useCompanySettings(companyId, { enabled: !!companyId });
   
   // Get statuses from the hook using company settings
-  const { statusOptions, getColor, getTextColor, getDescription } = useStatusSettings(companySettings);
+  const { statusOptions, getDescription } = useStatusSettings(companySettings);
 
   // Debug: Log when statusForm changes
   useEffect(() => {
@@ -55,8 +55,6 @@ export default function StatusChangeModal({
   }, [statusForm?.status]);
 
   // Get the color for the selected status badge
-  const selectedStatusColor = statusForm?.status ? getColor(statusForm.status) : '#94a3b8';
-  const selectedStatusTextColor = statusForm?.status ? getTextColor(statusForm.status) : '#111827';
   const selectedStatusDescription = statusForm?.status ? getDescription(statusForm.status) : '';
 
   // Modal class - taller when rejected reasons are shown
@@ -152,24 +150,21 @@ export default function StatusChangeModal({
         </div>
         
         {/* Show reasons section when status is rejected (case-insensitive) */}
-        {isRejected && (
-          <div className="rejected-reasons-section p-4 bg-red-50 dark:bg-red-900/10 rounded-lg border border-red-200 dark:border-red-800">
-            <Label>Reasons for Rejection</Label>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-              Please select or type the reasons for rejection
-            </p>
-            <MultiSelect
-  options={reasonOptions}
-  value={statusForm.reasons ?? []}
-  onChange={(selected: string[]) => setStatusForm({ ...statusForm, reasons: selected })}
-  placeholder="Select or type a reason"
-  disabled={isSubmittingStatus}
-  maxHeightClass="max-h-48" // Changed from max-h-64 to max-h-48 (192px)
-  allowCustomValues
-  customInputPlaceholder="Type a reason and press Enter"
-/>
-          </div>
-        )}
+       {isRejected && (
+  <div className="rejected-reasons-section p-4 bg-red-50 dark:bg-red-900/10 rounded-lg border border-red-200 dark:border-red-800">
+    <MultiSelect
+      options={reasonOptions}
+      value={statusForm.reasons ?? []}
+      onChange={(selected: string[]) => setStatusForm({ ...statusForm, reasons: selected })}
+      placeholder="Select or type a reason"
+      label="Reasons for Rejection"  // Add this required prop
+      disabled={isSubmittingStatus}
+      maxHeightClass="max-h-48"
+      allowCustomValues
+      customInputPlaceholder="Type a reason and press Enter"
+    />
+  </div>
+)}
         
         <div className="flex justify-end gap-3 sticky bottom-0 bg-white dark:bg-gray-900 pt-4 border-t border-gray-200 dark:border-gray-700 mt-6">
           <button 
