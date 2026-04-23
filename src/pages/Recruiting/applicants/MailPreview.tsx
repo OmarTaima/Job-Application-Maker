@@ -19,7 +19,7 @@ import { useJobPositions } from '../../../hooks/queries/useJobPositions';
 import { useApplicants } from '../../../hooks/queries/useApplicants';
 import { useAppSelector } from '../../../store/hooks';
 
-type MailStatus = 'queued' | 'sending' | 'sent' | 'delivered' | 'opened' | 'clicked' | 'bounced' | 'failed';
+type MailStatus = 'queued' | 'delivery delayed' | 'sent' | 'delivered' | 'opened' | 'clicked' | 'bounced' | 'failed';
 
 type MailEventType = 'queued' | 'provider_accepted' | 'delivered' | 'open' | 'click' | 'bounce' | 'complaint' | 'custom';
 
@@ -96,7 +96,7 @@ type UiMailRecord = {
 const STATUS_OPTIONS: Array<{ key: 'all' | MailStatus; label: string }> = [
 	{ key: 'all', label: 'All' },
 	{ key: 'queued', label: 'Queued' },
-	{ key: 'sending', label: 'Sending' },
+	{ key: 'delivery delayed', label: 'Delivery Delayed' },
 	{ key: 'delivered', label: 'Delivered' },
 	{ key: 'opened', label: 'Opened' },
 	{ key: 'clicked', label: 'Clicked' },
@@ -144,8 +144,8 @@ const resolveUiStatus = (mail: ApiMailRecord): MailStatus => {
   switch (backendStatus) {
     case 'queued':
       return 'queued';
-    case 'sending':
-      return 'sending';
+    case 'delivery delayed':
+      return 'delivery delayed';
     case 'sent':
       return 'sent';
     case 'delivered':
@@ -165,7 +165,7 @@ const resolveUiStatus = (mail: ApiMailRecord): MailStatus => {
       if (mail.deliveredAt) return 'delivered';
       if (mail.bouncedAt) return 'bounced';
       if (mail.complainedAt) return 'failed';
-      return 'sending';
+      return 'delivery delayed';
   }
 };
 
@@ -219,7 +219,7 @@ const toUiRecord = (mail: ApiMailRecord): UiMailRecord => {
 
 const statusChipClasses: Record<MailStatus, string> = {
 	queued: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
-	sending: 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400',
+	'delivery delayed': 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400',
 	sent: 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400',
 	delivered: 'bg-green-50 text-green-600 dark:bg-green-900/20 dark:text-green-400',
 	opened: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-400',
