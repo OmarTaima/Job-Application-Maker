@@ -3490,42 +3490,47 @@ const handleBulkStatusChange = useCallback(
           );
         },
       },
-      {
-        id: 'messages',
-        header: 'Messages',
-        size: 90,
-        enableSorting: true,
-        accessorFn: (row: any) => {
-          const orig: any = row || {};
-          const countFromArray = Array.isArray(orig.messages) ? orig.messages.length : undefined;
-          const countFromNumber = typeof orig.messageCount === 'number' ? orig.messageCount : (typeof orig.messages === 'number' ? orig.messages : undefined);
-          const countFallback = typeof orig.messagesCount === 'number' ? orig.messagesCount : 0;
-          return Number(countFromArray ?? countFromNumber ?? countFallback ?? 0);
-        },
-        sortingFn: (rowA: any, rowB: any, columnId: string) => {
-          const a = Number(rowA.getValue(columnId) ?? 0);
-          const b = Number(rowB.getValue(columnId) ?? 0);
-          if (a === b) return 0;
-          return a > b ? 1 : -1;
-        },
-        enableColumnFilter: false,
-        Cell: ({ row }: { row: { original: Applicant } }) => {
-          if (isTableLoading) return renderCellSkeleton('text');
-          const orig: any = row.original || {};
-          // Support various shapes: messages array, messageCount number, messagesCount
-          const countFromArray = Array.isArray(orig.messages) ? orig.messages.length : undefined;
-          const countFromNumber = typeof orig.messageCount === 'number' ? orig.messageCount : (typeof orig.messages === 'number' ? orig.messages : undefined);
-          const countFallback = typeof orig.messagesCount === 'number' ? orig.messagesCount : 0;
-          const msgs = countFromArray ?? countFromNumber ?? countFallback ?? 0;
+     {
+  id: 'messages',
+  header: 'Messages',
+  size: 90,
+  enableSorting: true,
+  accessorFn: (row: any) => {
+    const orig: any = row || {};
+    const countFromArray = Array.isArray(orig.messages) ? orig.messages.length : undefined;
+    const countFromNumber = typeof orig.messageCount === 'number' ? orig.messageCount : (typeof orig.messages === 'number' ? orig.messages : undefined);
+    const countFallback = typeof orig.messagesCount === 'number' ? orig.messagesCount : 0;
+    return Number(countFromArray ?? countFromNumber ?? countFallback ?? 0);
+  },
+  sortingFn: (rowA: any, rowB: any, columnId: string) => {
+    const a = Number(rowA.getValue(columnId) ?? 0);
+    const b = Number(rowB.getValue(columnId) ?? 0);
+    if (a === b) return 0;
+    return a > b ? 1 : -1;
+  },
+  enableColumnFilter: false,
+  Cell: ({ row }: { row: { original: Applicant } }) => {
+    if (isTableLoading) return renderCellSkeleton('text');
+    const orig: any = row.original || {};
+    // Support various shapes: messages array, messageCount number, messagesCount
+    const countFromArray = Array.isArray(orig.messages) ? orig.messages.length : undefined;
+    const countFromNumber = typeof orig.messageCount === 'number' ? orig.messageCount : (typeof orig.messages === 'number' ? orig.messages : undefined);
+    const countFallback = typeof orig.messagesCount === 'number' ? orig.messagesCount : 0;
+    const msgs = countFromArray ?? countFromNumber ?? countFallback ?? 0;
 
-          return (
-            <div className="flex items-center gap-2 text-sm text-gray-600">
-              <ChatIcon className="w-4 h-4 text-gray-500" />
-              <span className="whitespace-nowrap">{msgs}</span>
-            </div>
-          );
-        },
-      },
+    // Return empty div if no messages (0)
+    if (msgs === 0) {
+      return <div className="flex items-center gap-2 text-sm text-gray-600"></div>;
+    }
+
+    return (
+      <div className="flex items-center gap-2 text-sm text-gray-600">
+        <ChatIcon className="w-4 h-4 text-gray-500" />
+        <span className="whitespace-nowrap">{msgs}</span>
+      </div>
+    );
+  },
+},
       {
         accessorKey: 'phone',
         header: 'Phone',
