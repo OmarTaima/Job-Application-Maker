@@ -1,4 +1,4 @@
-import React, { useMemo,  useEffect } from 'react';
+import React, { useMemo, useEffect} from 'react';
 import { Modal } from '../ui/modal';
 import Label from '../form/Label';
 import Select from '../form/Select';
@@ -33,11 +33,13 @@ export default function StatusChangeModal({
   const { data: companySettings } = useCompanySettings(companyId, { enabled: !!companyId });
   
   // Get statuses from the hook using company settings
-  const { statusOptions, getColor, getTextColor, getDescription} = useStatusSettings(companySettings);
+  const { statusOptions, getColor, getTextColor, getDescription } = useStatusSettings(companySettings);
 
   // Debug: Log when statusForm changes
   useEffect(() => {
     console.log('StatusForm changed:', statusForm);
+    console.log('Current status value:', statusForm?.status);
+    console.log('Is rejected?', statusForm?.status?.toLowerCase() === 'rejected');
   }, [statusForm]);
 
   const reasonOptions = useMemo(() => {
@@ -47,25 +49,36 @@ export default function StatusChangeModal({
     return list.map((r: any) => ({ value: String(r ?? ''), text: String(r ?? '') }));
   }, [companySettings]);
 
+  // Check if selected status is rejected (case-insensitive)
+  const isRejected = useMemo(() => {
+    return statusForm?.status && statusForm.status.toLowerCase() === 'rejected';
+  }, [statusForm?.status]);
+
   // Get the color for the selected status badge
   const selectedStatusColor = statusForm?.status ? getColor(statusForm.status) : '#94a3b8';
   const selectedStatusTextColor = statusForm?.status ? getTextColor(statusForm.status) : '#111827';
   const selectedStatusDescription = statusForm?.status ? getDescription(statusForm.status) : '';
 
-  const modalClass = statusForm?.status === 'rejected' ? 'max-w-4xl p-6' : 'max-w-2xl p-6';
+  // Modal class - taller when rejected reasons are shown
+  const modalClass = isRejected 
+    ? 'max-w-2xl p-6 max-h-[90vh] overflow-y-auto' 
+    : 'max-w-2xl p-6';
 
   // Handle status change with proper logging
- const handleStatusSelect = (value: any) => {
-  // If the Select component returns an object with a value property
-  const selectedValue = typeof value === 'object' ? value.value : value;
-  console.log('Status selected:', selectedValue);
-  
-  setStatusForm({
-    ...statusForm,
-    status: selectedValue,
-    ...(selectedValue !== 'rejected' ? { reasons: [] } : {}),
-  });
-};
+  const handleStatusSelect = (value: any) => {
+    // If the Select component returns an object with a value property
+    const selectedValue = typeof value === 'object' ? value.value : value;
+    console.log('Status selected:', selectedValue);
+    
+    const isRejectedStatus = selectedValue && selectedValue.toLowerCase() === 'rejected';
+    
+    setStatusForm({
+      ...statusForm,
+      status: selectedValue,
+      // Clear reasons if not rejected
+      ...(!isRejectedStatus ? { reasons: [] } : {}),
+    });
+  };
 
   // Validate before submit
   const handleSubmit = (e: React.FormEvent) => {
@@ -77,26 +90,30 @@ export default function StatusChangeModal({
       return;
     }
     
+    // If rejected, check if reasons are provided (optional - you can remove this validation)
+    // if (isRejected && (!statusForm.reasons || statusForm.reasons.length === 0)) {
+    //   setStatusError('Please provide at least one reason for rejection.');
+    //   return;
+    // }
+    
     // Call the parent's handleStatusChange
     handleStatusChange(e);
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={() => { onClose(); setStatusError(''); }} className={modalClass} closeOnBackdrop={false}>
+    <Modal 
+      isOpen={isOpen} 
+      onClose={() => { 
+        onClose(); 
+        setStatusError(''); 
+      }} 
+      className={modalClass} 
+      closeOnBackdrop={false}
+    >
       <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between sticky top-0 bg-white dark:bg-gray-900 pb-4 border-b border-gray-200 dark:border-gray-700 z-10">
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Change Status</h2>
-          {statusForm?.status && (
-            <span 
-              className="inline-flex items-center rounded-full px-3 py-1 text-sm font-medium"
-              style={{ 
-                backgroundColor: selectedStatusColor, 
-                color: selectedStatusTextColor 
-              }}
-            >
-              {statusForm.status}
-            </span>
-          )}
+        
         </div>
 
         {statusError && (
@@ -134,23 +151,27 @@ export default function StatusChangeModal({
           />
         </div>
         
-        {statusForm.status === 'rejected' && (
-          <div>
+        {/* Show reasons section when status is rejected (case-insensitive) */}
+        {isRejected && (
+          <div className="rejected-reasons-section p-4 bg-red-50 dark:bg-red-900/10 rounded-lg border border-red-200 dark:border-red-800">
+            <Label>Reasons for Rejection</Label>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+              Please select or type the reasons for rejection
+            </p>
             <MultiSelect
-              label="Reasons"
-              options={reasonOptions}
-              value={statusForm.reasons ?? []}
-              onChange={(selected: string[]) => setStatusForm({ ...statusForm, reasons: selected })}
-              placeholder="Select or type a reason"
-              disabled={isSubmittingStatus}
-              maxHeightClass="max-h-96"
-              allowCustomValues
-              customInputPlaceholder="Type a reason and press Enter"
-            />
+  options={reasonOptions}
+  value={statusForm.reasons ?? []}
+  onChange={(selected: string[]) => setStatusForm({ ...statusForm, reasons: selected })}
+  placeholder="Select or type a reason"
+  disabled={isSubmittingStatus}
+  maxHeightClass="max-h-48" // Changed from max-h-64 to max-h-48 (192px)
+  allowCustomValues
+  customInputPlaceholder="Type a reason and press Enter"
+/>
           </div>
         )}
         
-        <div className="flex justify-end gap-3">
+        <div className="flex justify-end gap-3 sticky bottom-0 bg-white dark:bg-gray-900 pt-4 border-t border-gray-200 dark:border-gray-700 mt-6">
           <button 
             type="button" 
             onClick={onClose} 
