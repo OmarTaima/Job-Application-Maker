@@ -140,6 +140,7 @@ export const buildApplicantDuplicateLookup = (
   void processedDuplicates
   
   groups.forEach((items, key) => {
+    void processedDuplicates.add(key);
     if (items.length < 2) return;
     const groupId = `dup_group_${nextGroupId++}`;
     items.forEach((a) => {
