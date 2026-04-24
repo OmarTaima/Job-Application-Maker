@@ -226,88 +226,113 @@ export default function StatusLabelsSettings({ companyId, hideCompanySelector, e
     setStatusIds((prev) => arrayMove(prev, fromIndex, statusIds.length - 1));
   };
 
-  const handleSave = async () => {
-    if (!selectedCompanyId) {
-      Swal.fire("Validation", "Please select a company first.", "warning");
-      return;
+ const handleSave = async () => {
+  if (!selectedCompanyId) {
+    Swal.fire("Validation", "Please select a company first.", "warning");
+    return;
+  }
+
+  const targetCompanyId = getCompanyIdFromPayload(selectedCompany, selectedCompanyId);
+  const companySettingsId = getCompanySettingsIdFromPayload(selectedCompany);
+  const primarySaveId = companySettingsId ?? targetCompanyId;
+  const fallbackSaveId = companySettingsId && targetCompanyId && companySettingsId !== targetCompanyId ? targetCompanyId : undefined;
+
+  if (!primarySaveId) {
+    Swal.fire("Validation", "Unable to resolve company identity for saving.", "warning");
+    return;
+  }
+
+  // Get the original statuses from the company settings to preserve _id
+  const originalStatuses = deriveStatuses(selectedCompanySettings ?? selectedCompany ?? {});
+  
+  // Create a map of original statuses by name/statusKey for matching
+  const originalStatusMap = new Map();
+  originalStatuses.forEach((originalStatus: LeadStatus) => {
+    // Store by name and statusKey for matching
+    if (originalStatus.name) {
+      originalStatusMap.set(originalStatus.name.toLowerCase(), originalStatus);
     }
-
-    const targetCompanyId = getCompanyIdFromPayload(selectedCompany, selectedCompanyId);
-    const companySettingsId = getCompanySettingsIdFromPayload(selectedCompany);
-    const primarySaveId = companySettingsId ?? targetCompanyId;
-    const fallbackSaveId = companySettingsId && targetCompanyId && companySettingsId !== targetCompanyId ? targetCompanyId : undefined;
-
-    if (!primarySaveId) {
-      Swal.fire("Validation", "Unable to resolve company identity for saving.", "warning");
-      return;
+    if (originalStatus.statusKey) {
+      originalStatusMap.set(originalStatus.statusKey.toLowerCase(), originalStatus);
     }
+  });
 
-    // Prepare payload WITHOUT statusKey (backend doesn't accept it)
-    const payload = statuses.map((s) => ({
+  // Prepare payload WITH _id for existing statuses, WITHOUT for new ones
+  const payload = statuses.map((s) => {
+    // Try to find matching original status by name or statusKey
+    let originalStatus = originalStatusMap.get(s.name?.toLowerCase());
+    if (!originalStatus && s.statusKey) {
+      originalStatus = originalStatusMap.get(s.statusKey.toLowerCase());
+    }
+    
+    return {
+      // Include _id if this is an existing status (has an original)
+      ...(originalStatus && (originalStatus as any)._id ? { _id: (originalStatus as any)._id } : {}),
       name: String(s.name ?? "").trim(),
       color: s.color,
       textColor: s.textColor,
       description: isStaticStatus(s.statusKey || s.name) ? "" : String(s.description ?? "").trim(),
       isDefault: !!s.isDefault,
-    }));
+    };
+  });
 
-    setIsSaving(true);
+  setIsSaving(true);
+  
+  try {
+    await updateMutation.mutateAsync({ id: primarySaveId, data: { statuses: payload } as any });
     
-    try {
-      await updateMutation.mutateAsync({ id: primarySaveId, data: { statuses: payload } as any });
-      
-      // Invalidate queries to refresh data across the app
-      queryClient.invalidateQueries({ queryKey: ['company-settings', selectedCompanyId] });
-      queryClient.invalidateQueries({ queryKey: ['company', selectedCompanyId] });
-      queryClient.invalidateQueries({ queryKey: ['companies'] });
-      queryClient.invalidateQueries({ queryKey: ['applicants'] });
-      
-      if (targetCompanyId && targetCompanyId !== selectedCompanyId) {
-        queryClient.invalidateQueries({ queryKey: ['company-settings', targetCompanyId] });
-        queryClient.invalidateQueries({ queryKey: ['company', targetCompanyId] });
-      }
-      
-      if (companySettingsId) {
-        queryClient.invalidateQueries({ queryKey: ['company-settings', companySettingsId] });
-      }
-      
-      Swal.fire({ title: "Saved", icon: "success", timer: 1200, showConfirmButton: false });
-      
-      const payloadWithoutKeys = payload.map((p, idx) => ({
-        ...p,
-        statusKey: statuses[idx].statusKey,
-      }));
-      setOriginalStatusesJson(JSON.stringify(payloadWithoutKeys));
-      
-    } catch (err: any) {
-      if (fallbackSaveId) {
-        try {
-          await updateMutation.mutateAsync({ id: fallbackSaveId, data: { statuses: payload } as any });
-          
-          queryClient.invalidateQueries({ queryKey: ['company-settings', fallbackSaveId] });
-          queryClient.invalidateQueries({ queryKey: ['company', fallbackSaveId] });
-          queryClient.invalidateQueries({ queryKey: ['companies'] });
-          queryClient.invalidateQueries({ queryKey: ['applicants'] });
-          
-          Swal.fire({ title: "Saved", icon: "success", timer: 1200, showConfirmButton: false });
-          
-          const payloadWithoutKeys = payload.map((p, idx) => ({
-            ...p,
-            statusKey: statuses[idx].statusKey,
-          }));
-          setOriginalStatusesJson(JSON.stringify(payloadWithoutKeys));
-          setIsSaving(false);
-          return;
-        } catch (e) {
-          // fall through
-        }
-      }
-      Swal.fire("Failure", err?.message || "Failed to update configuration", "error");
-    } finally {
-      setIsSaving(false);
+    // Invalidate queries to refresh data across the app
+    queryClient.invalidateQueries({ queryKey: ['company-settings', selectedCompanyId] });
+    queryClient.invalidateQueries({ queryKey: ['company', selectedCompanyId] });
+    queryClient.invalidateQueries({ queryKey: ['companies'] });
+    queryClient.invalidateQueries({ queryKey: ['applicants'] });
+    
+    if (targetCompanyId && targetCompanyId !== selectedCompanyId) {
+      queryClient.invalidateQueries({ queryKey: ['company-settings', targetCompanyId] });
+      queryClient.invalidateQueries({ queryKey: ['company', targetCompanyId] });
     }
-  };
-
+    
+    if (companySettingsId) {
+      queryClient.invalidateQueries({ queryKey: ['company-settings', companySettingsId] });
+    }
+    
+    Swal.fire({ title: "Saved", icon: "success", timer: 1200, showConfirmButton: false });
+    
+    // Update the original statuses JSON to reflect saved state
+    const payloadWithKeys = statuses.map((s, idx) => ({
+      ...payload[idx],
+      statusKey: s.statusKey,
+    }));
+    setOriginalStatusesJson(JSON.stringify(payloadWithKeys));
+    
+  } catch (err: any) {
+    if (fallbackSaveId) {
+      try {
+        await updateMutation.mutateAsync({ id: fallbackSaveId, data: { statuses: payload } as any });
+        
+        queryClient.invalidateQueries({ queryKey: ['company-settings', fallbackSaveId] });
+        queryClient.invalidateQueries({ queryKey: ['company', fallbackSaveId] });
+        queryClient.invalidateQueries({ queryKey: ['companies'] });
+        queryClient.invalidateQueries({ queryKey: ['applicants'] });
+        
+        Swal.fire({ title: "Saved", icon: "success", timer: 1200, showConfirmButton: false });
+        
+        const payloadWithKeys = statuses.map((s, idx) => ({
+          ...payload[idx],
+          statusKey: s.statusKey,
+        }));
+        setOriginalStatusesJson(JSON.stringify(payloadWithKeys));
+        setIsSaving(false);
+        return;
+      } catch (e) {
+        // fall through
+      }
+    }
+    Swal.fire("Failure", err?.message || "Failed to update configuration", "error");
+  } finally {
+    setIsSaving(false);
+  }
+};
   return (
     <div className={embedded ? "space-y-6" : "min-h-screen bg-slate-50 p-4 text-slate-900 dark:bg-slate-950 dark:text-slate-100 sm:p-8"}>
       {!embedded && (
