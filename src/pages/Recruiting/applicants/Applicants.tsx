@@ -344,7 +344,6 @@ const Applicants = ({ layoutKey, defaultLayout, onlyStatus, companyIdOverride }:
     layoutKey || 'applicants_table',
     defaultLayout || APPLICANTS_DEFAULT_LAYOUT
   );
-const [companyStatusCache, setCompanyStatusCache] = useState<Map<string, any>>(new Map());
 
   const isSuperAdmin = useMemo(() => {
     const roleName = user?.roleId?.name;
@@ -1140,7 +1139,6 @@ useEffect(() => {
   const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
     if (event?.query?.queryKey?.[0] === 'company-settings') {
       // Company settings were updated, clear the cache
-      setCompanyStatusCache(new Map());
       
       // Force a re-render by updating a state
       setLastRefetch(new Date());
@@ -1592,36 +1590,7 @@ const statusSettingsCompany = useMemo(() => {
 
 
 const { getColor, getTextColor, getDescription } = useStatusSettings(statusSettingsCompany);    
-const getStatusColorForCompany = useCallback((status: string, companyId: string) => {
-  if (!status) {
-    return { bg: '#F3F4F6', color: '#1F2937' };
-  }
-  
-  // Get cached status settings for this company
-  let companyStatusSettings = companyStatusCache.get(companyId);
-  
-  if (!companyStatusSettings && allCompaniesRaw.length > 0) {
-    const company = allCompaniesRaw.find((c: any) => c._id === companyId);
-    if (company) {
-      // Use the hook for this specific company
-      const { getColor, getTextColor } = useStatusSettings(company);
-      companyStatusSettings = { getColor, getTextColor };
-      setCompanyStatusCache(prev => new Map(prev).set(companyId, companyStatusSettings));
-    }
-  }
-  
-  if (companyStatusSettings) {
-    const bgColor = companyStatusSettings.getColor(status);
-    const textColor = companyStatusSettings.getTextColor(status);
-    return { 
-      bg: bgColor || '#F3F4F6', 
-      color: textColor || '#1F2937' 
-    };
-  }
-  
-  // Fallback to default colors
-  return { bg: '#F3F4F6', color: '#1F2937' };
-}, [allCompaniesRaw, companyStatusCache]);
+
 
 const getStatusColor = useCallback((status: string) => {
   if (!status) {
