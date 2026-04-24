@@ -42,7 +42,8 @@ import StatusChangeModal from '../../../components/modals/StatusChangeModal';
 import StatusHistory from './StatusHistory';
 import CustomResponses from './CustomResponses';
 import Questions from './Questions';
-
+import { MenuItem } from '@mui/material';
+import { Menu } from '@mui/material';
 // Simple Quill editor integration (dynamic import to avoid react-quill)
 import 'quill/dist/quill.snow.css';
 
@@ -588,7 +589,8 @@ const ApplicantData = () => {
   const jobTitle = useMemo(() => getJobTitle(), [applicant?._id, jobPositionDetail, jobPositions, jobPosCompany]);
   const companyName = useMemo(() => getCompanyName(), [applicant?._id, jobPositionDetail, companies, jobPosCompany, fetchedCompany]);
   const departmentName = useMemo(() => getDepartmentName(), [applicant?._id, jobPositionDetail, companies, jobPosCompany]);
-
+const [phoneMenuAnchor, setPhoneMenuAnchor] = useState<null | HTMLElement>(null);
+const [selectedPhoneNumber, setSelectedPhoneNumber] = useState<string>('');
   const [lastRefetch, setLastRefetch] = useState<Date | null>(null);
   const [showInterviewModal, setShowInterviewModal] = useState(false);
   const [showMessageModal, setShowMessageModal] = useState(false);
@@ -987,6 +989,80 @@ const ApplicantData = () => {
       };
     });
   };
+
+  const formatWhatsAppNumber = (phone: string): string => {
+  // Remove all non-digit characters
+  let cleaned = phone.replace(/\D/g, '');
+  
+  // If number doesn't start with 2, add it
+  if (!cleaned.startsWith('2')) {
+    cleaned = '2' + cleaned;
+  }
+  
+  // If number starts with 200, keep as is
+  if (cleaned.startsWith('200')) {
+    return cleaned;
+  }
+  
+  // If number starts with 20, add another 0 if needed
+  if (cleaned.startsWith('20') && !cleaned.startsWith('200')) {
+    cleaned = '20' + cleaned.substring(2);
+  }
+  
+  return cleaned;
+};
+
+// Copy phone number to clipboard
+const copyPhoneNumber = async (phone: string) => {
+  try {
+    await navigator.clipboard.writeText(phone);
+    Swal.fire({
+      title: 'Copied!',
+      text: 'Phone number copied to clipboard.',
+      icon: 'success',
+      timer: 1500,
+      showConfirmButton: false,
+      position: 'center',
+    });
+  } catch (err) {
+    console.error('Failed to copy:', err);
+    Swal.fire({
+      title: 'Error',
+      text: 'Failed to copy phone number.',
+      icon: 'error',
+      timer: 1500,
+      showConfirmButton: false,
+    });
+  }
+};
+
+// Make a phone call (opens native dialer)
+const makePhoneCall = (phone: string) => {
+  // Remove any non-digit characters except '+'
+  const cleaned = phone.replace(/[^\d+]/g, '');
+  window.location.href = `tel:${cleaned}`;
+};
+
+// Open WhatsApp with formatted number
+const openWhatsApp = (phone: string) => {
+  const formattedNumber = formatWhatsAppNumber(phone);
+  const url = `https://wa.me/${formattedNumber}`;
+  window.open(url, '_blank', 'noopener,noreferrer');
+};
+
+// Handle phone number click
+const handlePhoneClick = (event: React.MouseEvent<HTMLAnchorElement>, phone: string) => {
+  event.preventDefault();
+  event.stopPropagation();
+  setSelectedPhoneNumber(phone);
+  setPhoneMenuAnchor(event.currentTarget);
+};
+
+// Close phone menu
+const handlePhoneMenuClose = () => {
+  setPhoneMenuAnchor(null);
+  setSelectedPhoneNumber('');
+};
 
   const buildInferredCustomFieldsFromResponses = (
     responses: Record<string, any>
@@ -2944,39 +3020,98 @@ const handleDeleteApplicant = async () => {
               </div>
 
               {/* Phone */}
-              <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-green-500 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
-                <div className="flex items-baseline gap-4">
-                  <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-green-100 dark:bg-green-900/30 rounded-lg group-hover:scale-110 transition-transform">
-                    <svg className="w-6 h-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                    </svg>
-                  </div>
-                  <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Phone</Label>
-                  {(isInterviewEditMode || isEditOnlyMode) ? (
-                    <input
-                      type="tel"
-                      value={interviewEditForm.phone}
-                      onChange={(e) =>
-                        setInterviewEditForm((prev) => ({ ...prev, phone: e.target.value }))
-                      }
-                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-green-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-                      placeholder="Phone"
-                    />
-                  ) : applicant.phone ? (
-                    <a
-                      href={`https://wa.me/${(applicant.phone || '').toString().replace(/\D/g, '')}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      aria-label={`Open WhatsApp chat with ${applicant.phone}`}
-                      className="text-sm text-gray-900 dark:text-white"
-                    >
-                      {applicant.phone}
-                    </a>
-                  ) : (
-                    <p className="text-sm text-gray-900 dark:text-white">-</p>
-                  )}
-                </div>
-              </div>
+             {/* Phone */}
+<div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-green-500 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
+  <div className="flex items-baseline gap-4">
+    <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-green-100 dark:bg-green-900/30 rounded-lg group-hover:scale-110 transition-transform">
+      <svg className="w-6 h-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+      </svg>
+    </div>
+    <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Phone</Label>
+    {(isInterviewEditMode || isEditOnlyMode) ? (
+      <input
+        type="tel"
+        value={interviewEditForm.phone}
+        onChange={(e) =>
+          setInterviewEditForm((prev) => ({ ...prev, phone: e.target.value }))
+        }
+        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-green-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+        placeholder="Phone"
+      />
+    ) : applicant.phone ? (
+      <>
+        <a
+          href="#"
+          onClick={(e) => handlePhoneClick(e, applicant.phone)}
+          className="text-sm text-gray-900 dark:text-white cursor-pointer hover:text-green-600 dark:hover:text-green-400 transition-colors"
+          aria-label={`Phone options for ${applicant.phone}`}
+        >
+          {applicant.phone}
+        </a>
+        
+        {/* Phone Options Menu */}
+        <Menu
+          anchorEl={phoneMenuAnchor}
+          open={Boolean(phoneMenuAnchor)}
+          onClose={handlePhoneMenuClose}
+          onClick={(e) => e.stopPropagation()}
+          PaperProps={{
+            style: {
+              width: '200px',
+              marginTop: '8px',
+            },
+            className: 'rounded-lg shadow-lg',
+          }}
+        >
+          <MenuItem 
+            onClick={(e) => {
+              e.stopPropagation();
+              copyPhoneNumber(selectedPhoneNumber);
+              handlePhoneMenuClose();
+            }}
+            className="flex items-center gap-3 py-2"
+          >
+            <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+            </svg>
+            <span>Copy Number</span>
+          </MenuItem>
+          
+          <MenuItem 
+            onClick={(e) => {
+              e.stopPropagation();
+              openWhatsApp(selectedPhoneNumber);
+              handlePhoneMenuClose();
+            }}
+            className="flex items-center gap-3 py-2"
+          >
+            <svg className="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.582 2.128 2.164-.573c.918.496 1.956.759 3.166.759 3.181 0 5.768-2.586 5.769-5.766.001-3.181-2.587-5.767-5.768-5.768zm3.392 8.244c-.144.405-.837.826-1.15.89-.312.064-.586.096-.946-.086-.36-.181-1.347-.655-1.693-1.164-.346-.509-.361-.764-.252-1.069.108-.305.264-.477.504-.765.24-.288.288-.432.432-.72.144-.288.072-.504-.036-.702-.108-.198-.612-1.274-.828-1.746-.216-.468-.432-.486-.612-.486s-.324-.018-.504-.018c-.252 0-.576.072-.864.36-.288.288-1.098 1.07-1.098 2.619 0 1.548 1.098 2.762 1.266 2.97.168.207 1.85 2.973 4.046 3.831.576.225.936.36 1.26.45.504.162.954.126 1.314.072.36-.054 1.026-.414 1.17-.81.144-.396.252-.81.144-.882-.108-.072-.504-.252-1.098-.702-.414-.306-.918-.666-1.134-.882-.216-.216-.36-.576-.108-.9.252-.324 1.008-1.26 1.134-1.512.126-.252.126-.432-.036-.666-.18-.234-.54-.468-.9-.648-.324-.162-.594-.288-.792-.234-.18.054-.324.234-.432.378-.108.144-.864 1.098-1.134 1.26s-.468.216-.72.036c-.288-.18-1.152-.558-1.368-.756-.216-.198-.36-.738-.144-1.08.216-.342.36-.486.54-.666.18-.18.24-.324.36-.522.12-.198.072-.414-.036-.648-.108-.234-.468-1.188-.612-1.584-.126-.36-.252-.36-.594-.36h-.648z"/>
+            </svg>
+            <span>WhatsApp</span>
+          </MenuItem>
+          
+          <MenuItem 
+            onClick={(e) => {
+              e.stopPropagation();
+              makePhoneCall(selectedPhoneNumber);
+              handlePhoneMenuClose();
+            }}
+            className="flex items-center gap-3 py-2"
+          >
+            <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+            </svg>
+            <span>Call</span>
+          </MenuItem>
+        </Menu>
+      </>
+    ) : (
+      <p className="text-sm text-gray-900 dark:text-white">-</p>
+    )}
+  </div>
+</div>
 
               {/* Birth Date */}
               <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-teal-400 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">

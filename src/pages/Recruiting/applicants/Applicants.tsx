@@ -12,6 +12,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { sortApplicantsByDuplicatePriority } from '../../../utils/applicantDuplicateSort';
 import { useQuery } from '@tanstack/react-query';
 import axiosInstance from '../../../config/axios';
+import * as XLSX from 'xlsx';
+
 
 type ApiMailResponse = {
   message: string;
@@ -497,6 +499,8 @@ const Applicants = ({ layoutKey, defaultLayout, onlyStatus, companyIdOverride }:
     'company'
   );
   const [bulkCustomEmail, setBulkCustomEmail] = useState('');
+  const [isExporting, setIsExporting] = useState(false);
+
   const [bulkPhoneOption, setBulkPhoneOption] = useState<
     'company' | 'user' | 'whatsapp' | 'custom'
   >('company');
@@ -2722,6 +2726,259 @@ useEffect(() => {
     [jobPositionMap, resolveAnyId]
   );
 
+// Export selected applicants to Excel
+const handleExportToExcel = useCallback(async () => {
+  if (selectedApplicantIds.length === 0) {
+    Swal.fire({
+      title: 'No Selection',
+      text: 'Please select at least one applicant to export.',
+      icon: 'warning',
+      timer: 2000,
+      showConfirmButton: false,
+    });
+    return;
+  }
+
+  setIsExporting(true);
+  
+  try {
+    // Get the selected applicants data
+    const selectedApplicantsData = applicants.filter((a: any) => {
+      const id = typeof a._id === 'string' ? a._id : a._id?._id || a.id || a._id;
+      return selectedApplicantIds.includes(id);
+    });
+
+    // Helper function to format custom response values for display
+    const formatCustomResponseValue = (value: any): string => {
+      if (value === null || value === undefined) return '';
+      if (typeof value === 'string') {
+        // Clean up HTML tags if present
+        return value.replace(/<[^>]*>/g, '').trim();
+      }
+      if (typeof value === 'number') return String(value);
+      if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+      
+      if (Array.isArray(value)) {
+        if (value.length === 0) return '';
+        
+        // Check if it's an array of objects
+        if (value.length > 0 && typeof value[0] === 'object' && value[0] !== null) {
+          return value.map((item, index) => {
+            const formatted = Object.entries(item)
+              .map(([key, val]) => {
+                const displayKey = key.replace(/[_-]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                let displayVal = val;
+                if (typeof val === 'object' && val !== null) {
+                  displayVal = JSON.stringify(val);
+                } else if (typeof val === 'string') {
+                  displayVal = val;
+                }
+                return `${displayKey}: ${displayVal}`;
+              })
+              .join(', ');
+            return `${index + 1}. { ${formatted} }`;
+          }).join('; ');
+        }
+        // Simple array
+        return value.join(', ');
+      }
+      
+      if (typeof value === 'object' && value !== null) {
+        try {
+          const formatted = Object.entries(value)
+            .map(([key, val]) => {
+              const displayKey = key.replace(/[_-]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+              let displayVal = val;
+              if (typeof val === 'object' && val !== null) {
+                displayVal = JSON.stringify(val);
+              }
+              return `${displayKey}: ${displayVal}`;
+            })
+            .join(', ');
+          return `{ ${formatted} }`;
+        } catch (e) {
+          return JSON.stringify(value);
+        }
+      }
+      
+      return String(value);
+    };
+
+    // Create a map of display key to original key (declare this FIRST)
+    const customFieldKeyMap = new Map<string, string>();
+    
+    // Collect all unique custom field keys from all selected applicants
+    const allCustomFieldKeys = new Set<string>();
+    selectedApplicantsData.forEach((applicant: any) => {
+      const customResponses = applicant.customResponses || applicant.customFieldResponses || {};
+      Object.keys(customResponses).forEach(key => {
+        // Format key for display (convert snake_case/camelCase to readable format)
+        const displayKey = key
+          .replace(/[_-]/g, ' ')
+          .replace(/([A-Z])/g, ' $1')
+          .replace(/\b\w/g, l => l.toUpperCase())
+          .trim();
+        allCustomFieldKeys.add(displayKey);
+        // Also store original key mapping
+        if (!customFieldKeyMap.has(displayKey)) {
+          customFieldKeyMap.set(displayKey, key);
+        }
+      });
+    });
+    
+    // Also collect job spec responses keys
+    const allJobSpecKeys = new Set<string>();
+    selectedApplicantsData.forEach((applicant: any) => {
+      const jobSpecsResponses = applicant.jobSpecsResponses || [];
+      jobSpecsResponses.forEach((spec: any) => {
+        if (spec.spec) {
+          const specText = typeof spec.spec === 'string' ? spec.spec : (spec.spec?.en || '');
+          if (specText) allJobSpecKeys.add(specText);
+        }
+      });
+    });
+
+    // Prepare data for Excel export
+    const exportData = selectedApplicantsData.map((applicant: any) => {
+      // Base applicant information
+      const baseData: any = {
+        'Applicant No': applicant.applicantNo || applicant.applicantNumber || applicant.applicationNo || '-',
+        'Full Name': applicant.fullName || '-',
+        'Email': applicant.email || '-',
+        'Phone': applicant.phone || '-',
+        'Gender': (() => {
+          const g = normalizeGender(
+            applicant.gender ||
+              applicant.customResponses?.gender ||
+              applicant.customResponses?.['النوع'] ||
+              (applicant as any)['النوع'] ||
+              ''
+          );
+          return g || '-';
+        })(),
+        'Birth Date': (() => {
+          const bd = applicant.birthDate ||
+            applicant.birthdate ||
+            applicant.customResponses?.birthdate ||
+            applicant.customResponses?.birthDate ||
+            applicant.customResponses?.['تاريخ_الميلاد'] ||
+            applicant.customResponses?.['تاريخ الميلاد'];
+          return bd ? new Date(bd).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '-';
+        })(),
+        'Job Position': (() => {
+          const raw = applicant.jobPositionId;
+          const getId = (v: any) => {
+            if (!v) return '';
+            if (typeof v === 'string') return v;
+            return v._id ?? v.id ?? '';
+          };
+          const jobId = getId(raw);
+          const job = jobPositionMap[jobId];
+          const title = typeof job?.title === 'string' ? job.title : (job?.title?.en || '');
+          return title || '-';
+        })(),
+        'Company': (() => {
+          const raw = applicant.jobPositionId;
+          const getId = (v: any) => {
+            if (!v) return '';
+            if (typeof v === 'string') return v;
+            return v._id ?? v.id ?? '';
+          };
+          const jobId = getId(raw);
+          const job = jobPositionMap[jobId];
+          const comp = job?.companyId ? getId(job.companyId) : '';
+          const company = companyMap[comp];
+          return toPlainString(company?.name) || company?.title || 'N/A';
+        })(),
+        'Expected Salary': getExpectedSalaryDisplay(applicant) || '-',
+        'Score': (() => {
+          const score = getApplicantSScore(applicant);
+          return score !== null ? `${score}%` : '-';
+        })(),
+        'Status': applicant.status ? applicant.status.charAt(0).toUpperCase() + applicant.status.slice(1) : '-',
+        'Submitted': applicant.submittedAt ? new Date(applicant.submittedAt).toLocaleDateString() : '-',
+        'Address': applicant.address || '-',
+      };
+
+      // Add custom responses dynamically
+      const customResponses = applicant.customResponses || applicant.customFieldResponses || {};
+      Array.from(allCustomFieldKeys).forEach(displayKey => {
+        const originalKey = customFieldKeyMap.get(displayKey) || displayKey;
+        // Try to find the value using different key variations
+        let value = customResponses[originalKey];
+        if (value === undefined) {
+          // Try alternative key formats
+          const altKey1 = originalKey.toLowerCase().replace(/ /g, '_');
+          const altKey2 = originalKey.toLowerCase().replace(/ /g, '');
+          value = customResponses[altKey1] || customResponses[altKey2];
+        }
+        baseData[displayKey] = formatCustomResponseValue(value) || '-';
+      });
+
+      // Add job specifications responses dynamically
+      const jobSpecsResponses = applicant.jobSpecsResponses || [];
+      const jobSpecsMap = new Map();
+      jobSpecsResponses.forEach((spec: any) => {
+        const specText = typeof spec.spec === 'string' ? spec.spec : (spec.spec?.en || '');
+        if (specText) {
+          const answer = typeof spec.answer === 'boolean' ? (spec.answer ? 'Met' : 'Not Met') : (spec.answer || 'No');
+          jobSpecsMap.set(specText, answer);
+        }
+      });
+
+      Array.from(allJobSpecKeys).forEach(specText => {
+        baseData[`[Spec] ${specText}`] = jobSpecsMap.get(specText) || 'Not Answered';
+      });
+
+      return baseData;
+    });
+
+    if (exportData.length === 0) {
+      throw new Error('No data to export');
+    }
+
+    // Create worksheet
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    
+    // Auto-size columns
+    const maxWidth = 60;
+    const minWidth = 12;
+    const colWidths = Object.keys(exportData[0] || {}).map(key => ({
+      wch: Math.min(maxWidth, Math.max(minWidth, key.length + 3, 
+        Math.max(...exportData.map(row => String(row[key] || '').length)) + 2))
+    }));
+    worksheet['!cols'] = colWidths;
+
+    // Create workbook
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Selected Applicants');
+
+    // Generate filename
+    const date = new Date();
+    const filename = `applicants_export_${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}_${selectedApplicantIds.length}_applicants.xlsx`;
+
+    // Download file
+    XLSX.writeFile(workbook, filename);
+
+    await Swal.fire({
+      title: 'Export Successful!',
+      text: `${selectedApplicantIds.length} applicant(s) exported to Excel.`,
+      icon: 'success',
+      position: 'center',
+      timer: 2000,
+      showConfirmButton: false,
+    });
+  } catch (error) {
+    console.error('Export error:', error);
+    Swal.fire({
+      title: 'Export Failed',
+      text: error instanceof Error ? error.message : 'An error occurred while exporting data.',
+      icon: 'error',
+    });
+  } finally {
+    setIsExporting(false);
+  }
+}, [selectedApplicantIds, applicants, jobPositionMap, companyMap, getExpectedSalaryDisplay, getApplicantSScore, normalizeGender]);
   const getSelectedCompanyAddress = () => {
     const c: any = selectedApplicantCompany || {};
     const isInvalidAddressString = (value: string) => {
@@ -5057,58 +5314,73 @@ const isFilterElement = (target: HTMLElement): boolean => {
             )}
 
             {/* Bulk Actions Bar */}
-            {selectedApplicantIds.length > 0 && (
-              <div className="mb-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-lg bg-brand-50 px-4 py-3 dark:bg-brand-900/20">
-                <span className="text-sm font-medium text-brand-700 dark:text-brand-300">
-                  {selectedApplicantIds.length} applicant(s) selected
-                </span>
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 w-full sm:w-auto">
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setBulkStatusForm({ status: '', reasons: [], notes: '' });
-                        setBulkStatusError('');
-                        setShowBulkStatusModal(true);
-                      }}
-                      disabled={isProcessing || selectedApplicantIds.length === 0}
-                      className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {isProcessing ? 'Changing...' : 'Change Status'}
-                    </button>
-                  </div>
-                  <button
-                    onClick={() => setShowBulkModal(true)}
-                    disabled={
-                      isProcessing || selectedApplicantRecipients.length === 0
-                    }
-                    className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {`Send Mail (${selectedApplicantRecipients.length})`}
-                  </button>
-                  <button
-                    onClick={openBulkInterviewModal}
-                    disabled={
-                      isSubmittingBulkInterview ||
-                      selectedApplicantsForInterview.length === 0
-                    }
-                    className="inline-flex items-center gap-2 rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isSubmittingBulkInterview
-                      ? 'Scheduling...'
-                      : `Schedule Interviews (${selectedApplicantsForInterview.length})`}
-                  </button>
-                  <button
-                    onClick={handleBulkDelete}
-                    disabled={isDeleting}
-                    className="inline-flex items-center gap-2 rounded-lg bg-red-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <TrashBinIcon className="h-4 w-4" />
-                    {isDeleting ? 'Deleting...' : 'Delete'}
-                  </button>
-                </div>
-              </div>
-            )}
+        {selectedApplicantIds.length > 0 && (
+  <div className="mb-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-lg bg-brand-50 px-4 py-3 dark:bg-brand-900/20">
+    <span className="text-sm font-medium text-brand-700 dark:text-brand-300">
+      {selectedApplicantIds.length} applicant(s) selected
+    </span>
+    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 w-full sm:w-auto">
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            setBulkStatusForm({ status: '', reasons: [], notes: '' });
+            setBulkStatusError('');
+            setShowBulkStatusModal(true);
+          }}
+          disabled={isProcessing || selectedApplicantIds.length === 0}
+          className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {isProcessing ? 'Changing...' : 'Change Status'}
+        </button>
+      </div>
+      
+      {/* Export Button */}
+      <button
+        onClick={handleExportToExcel}
+        disabled={isExporting || selectedApplicantIds.length === 0}
+        className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3M3 17V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+        </svg>
+        {isExporting ? 'Exporting...' : `Export (${selectedApplicantIds.length})`}
+      </button>
+      
+      <button
+        onClick={() => setShowBulkModal(true)}
+        disabled={
+          isProcessing || selectedApplicantRecipients.length === 0
+        }
+        className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        {`Send Mail (${selectedApplicantRecipients.length})`}
+      </button>
+      
+      <button
+        onClick={openBulkInterviewModal}
+        disabled={
+          isSubmittingBulkInterview ||
+          selectedApplicantsForInterview.length === 0
+        }
+        className="inline-flex items-center gap-2 rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        {isSubmittingBulkInterview
+          ? 'Scheduling...'
+          : `Schedule Interviews (${selectedApplicantsForInterview.length})`}
+      </button>
+      
+      <button
+        onClick={handleBulkDelete}
+        disabled={isDeleting}
+        className="inline-flex items-center gap-2 rounded-lg bg-red-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        <TrashBinIcon className="h-4 w-4" />
+        {isDeleting ? 'Deleting...' : 'Delete'}
+      </button>
+    </div>
+  </div>
+)}
 
             {/* Filter Settings moved to card header actions */}
 
