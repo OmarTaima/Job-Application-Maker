@@ -17,6 +17,7 @@ export type ApplicantDuplicateMeta = {
   isUnseenByCurrentUser: boolean;
   hasUpcomingInterview: boolean;
   priorityScore: number;
+  groupId?: string;
 };
 
 type DuplicateOptions = {
@@ -66,7 +67,7 @@ const isPlausiblePhone = (phone: string): boolean => {
   if (!phone) return false;
   if (phone.length < 8) return false;
   // ignore placeholders like 00000000 or 1111111111
-  if (/^(\d)\1+$/.test(phone)) return false;
+  if (/^(\d)\1+$/.test(phone)) return true;
   return true;
 };
 
@@ -98,6 +99,7 @@ export const buildApplicantDuplicateLookup = (
   options?: DuplicateOptions
 ): Map<string, ApplicantDuplicateMeta> => {
   const groups = new Map<string, ApplicantLike[]>();
+  const groupIdMap = new Map<string, string>();
 
   const addGroup = (key: string, applicant: ApplicantLike) => {
     if (!key) return;
@@ -132,6 +134,22 @@ export const buildApplicantDuplicateLookup = (
     });
   });
 
+  // Generate unique group IDs for duplicate groups
+  let nextGroupId = 1;
+  const processedDuplicates = new Set<string>();
+  void processedDuplicates
+  
+  groups.forEach((items, key) => {
+    if (items.length < 2) return;
+    const groupId = `dup_group_${nextGroupId++}`;
+    items.forEach((a) => {
+      const id = getId(a);
+      if (id) {
+        groupIdMap.set(id, groupId);
+      }
+    });
+  });
+
   const lookup = new Map<string, ApplicantDuplicateMeta>();
 
   (applicants || []).forEach((a) => {
@@ -154,6 +172,7 @@ export const buildApplicantDuplicateLookup = (
       isUnseenByCurrentUser: unseen,
       hasUpcomingInterview: upcomingInterview,
       priorityScore,
+      groupId: groupIdMap.get(id),
     });
   });
 
@@ -167,24 +186,86 @@ export const sortApplicantsByDuplicatePriority = <T extends ApplicantLike>(
   options?: DuplicateOptions
 ): T[] => {
   const lookup = buildApplicantDuplicateLookup(applicants, userId, options);
-
-  return [...(applicants || [])].sort((a, b) => {
-    const metaA = lookup.get(getId(a));
-    const metaB = lookup.get(getId(b));
-
-    const dupA = metaA?.isDuplicate ? 1 : 0;
-    const dupB = metaB?.isDuplicate ? 1 : 0;
-    if (dupA !== dupB) return dupB - dupA;
-
+  
+  // First, separate duplicates and non-duplicates
+  const duplicates: T[] = [];
+  const nonDuplicates: T[] = [];
+  
+  applicants.forEach((applicant) => {
+    const id = getId(applicant);
+    const meta = lookup.get(id);
+    if (meta?.isDuplicate) {
+      duplicates.push(applicant);
+    } else {
+      nonDuplicates.push(applicant);
+    }
+  });
+  
+  // Group duplicates by their group ID
+  const duplicateGroups = new Map<string, T[]>();
+  
+  duplicates.forEach((applicant) => {
+    const id = getId(applicant);
+    const meta = lookup.get(id);
+    const groupId = meta?.groupId || id;
+    
+    if (!duplicateGroups.has(groupId)) {
+      duplicateGroups.set(groupId, []);
+    }
+    duplicateGroups.get(groupId)!.push(applicant);
+  });
+  
+  // Sort each duplicate group by priority score (higher priority first)
+  const sortedDuplicateGroups = Array.from(duplicateGroups.values()).map((group) => {
+    return group.sort((a, b) => {
+      const idA = getId(a);
+      const idB = getId(b);
+      const metaA = lookup.get(idA);
+      const metaB = lookup.get(idB);
+      
+      const scoreA = metaA?.priorityScore ?? 0;
+      const scoreB = metaB?.priorityScore ?? 0;
+      if (scoreA !== scoreB) return scoreB - scoreA;
+      
+      // If same priority, sort by name as fallback
+      return String(a?.fullName || '').localeCompare(String(b?.fullName || ''));
+    });
+  });
+  
+  // Sort duplicate groups by the highest priority score in the group
+  sortedDuplicateGroups.sort((groupA, groupB) => {
+    const maxScoreA = Math.max(...groupA.map(a => lookup.get(getId(a))?.priorityScore ?? 0));
+    const maxScoreB = Math.max(...groupB.map(b => lookup.get(getId(b))?.priorityScore ?? 0));
+    if (maxScoreA !== maxScoreB) return maxScoreB - maxScoreA;
+    
+    // If same max priority, sort by the first applicant's name
+    const nameA = groupA[0]?.fullName || '';
+    const nameB = groupB[0]?.fullName || '';
+    return String(nameA).localeCompare(String(nameB));
+  });
+  
+  // Flatten the groups
+  const groupedDuplicates = sortedDuplicateGroups.flat();
+  
+  // Sort non-duplicates by priority score
+  const sortedNonDuplicates = nonDuplicates.sort((a, b) => {
+    const idA = getId(a);
+    const idB = getId(b);
+    const metaA = lookup.get(idA);
+    const metaB = lookup.get(idB);
+    
     const scoreA = metaA?.priorityScore ?? 0;
     const scoreB = metaB?.priorityScore ?? 0;
     if (scoreA !== scoreB) return scoreB - scoreA;
-
+    
     if (fallbackComparator) {
       const result = fallbackComparator(a, b);
       if (result !== 0) return result;
     }
-
+    
     return String(a?.fullName || '').localeCompare(String(b?.fullName || ''));
   });
+  
+  // Return duplicates first (grouped together), then non-duplicates
+  return [...groupedDuplicates, ...sortedNonDuplicates];
 };

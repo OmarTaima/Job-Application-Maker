@@ -691,12 +691,15 @@ class ApplicantsService {
     }
   }
 
- async batchUpdateStatus(
+async batchUpdateStatus(
   updates: Array<{ applicantId: string; status: string; notes?: string; reasons?: string[] }>
 ): Promise<any> {
   try {
-    // Send the array directly, not wrapped in an object
-    const response = await axios.put('/applicants/batch-status', updates);
+    // Wrap the array in an object with an empty string as the key
+    const payload = {
+      items: updates
+    };
+    const response = await axios.put('/applicants/batch-status', payload);
     return response.data;
   } catch (error: any) {
     throw new ApiError(

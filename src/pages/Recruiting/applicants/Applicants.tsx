@@ -9,7 +9,7 @@ import {
 import { ChatIcon } from '../../../icons';
 import { useStatusSettings } from '../../../utils/useStatusSettings';
 import { useQueryClient } from '@tanstack/react-query';
-
+import { sortApplicantsByDuplicatePriority } from '../../../utils/applicantDuplicateSort';
 
 // simple in-memory cache for compressed thumbnails
 const _thumbnailCache: Map<string, string> = new Map();
@@ -174,6 +174,7 @@ import {
   useCompanies,
   useScheduleBulkInterviews,
   useSendMessage,
+  useBatchUpdateApplicantStatus
 } from '../../../hooks/queries';
 import BulkMessageModal from '../../../components/modals/BulkMessageModal';
 import InterviewScheduleModal from '../../../components/modals/InterviewScheduleModal';
@@ -345,6 +346,8 @@ const Applicants = ({ layoutKey, defaultLayout, onlyStatus, companyIdOverride }:
     defaultLayout || APPLICANTS_DEFAULT_LAYOUT
   );
 
+
+  
   const isSuperAdmin = useMemo(() => {
     const roleName = user?.roleId?.name;
     return (
@@ -625,6 +628,9 @@ const Applicants = ({ layoutKey, defaultLayout, onlyStatus, companyIdOverride }:
     }
   }, [selectedApplicantIds, applicants]);
 
+  const batchUpdateStatusMutation = useBatchUpdateApplicantStatus();
+
+
   const selectedApplicantsForInterview = useMemo(() => {
     try {
       const ids = new Set(selectedApplicantIds);
@@ -842,6 +848,7 @@ const Applicants = ({ layoutKey, defaultLayout, onlyStatus, companyIdOverride }:
       return null;
     }
   };
+// Create axios instance with base URL and auth interceptor
 
   const downloadViaFetch = async (u: string, filename?: string) => {
     try {
@@ -1643,210 +1650,65 @@ useEffect(() => {
 
 
 
-  const filteredApplicants = useMemo(() => {
-    const effectiveCustomFilters = Array.isArray(customFilters)
-      ? customFilters.filter(
+ const filteredApplicants = useMemo(() => {
+  const effectiveCustomFilters = Array.isArray(customFilters)
+    ? customFilters.filter(
       (f: any) => f?.fieldId !== '__duplicates_only'
     )
-      : [];
+    : [];
 
-    const baseFiltered =
-      effectiveCustomFilters.length === 0
-        ? deferredDisplayedApplicants
-        : deferredDisplayedApplicants.filter((a: any) => {
-      try {
-        for (const f of effectiveCustomFilters) {
+  const getApplicantCompanyId = (applicant: any) => {
+    const rawCompany = applicant?.companyId || applicant?.company || applicant?.companyObj;
+    if (rawCompany) {
+      if (typeof rawCompany === 'string' || typeof rawCompany === 'number') {
+        return String(rawCompany);
+      }
+      return String(rawCompany?._id || rawCompany?.id || '');
+    }
+    const rawJob = applicant?.jobPositionId;
+    const jobId = typeof rawJob === 'string'
+      ? rawJob
+      : (rawJob?._id ?? rawJob?.id ?? '');
+    const job = jobPositionMap[jobId];
+    const jobCompany = job?.companyId || job?.company || job?.companyObj;
+    if (!jobCompany) return undefined;
+    if (typeof jobCompany === 'string' || typeof jobCompany === 'number') {
+      return String(jobCompany);
+    }
+    return String(jobCompany?._id || jobCompany?.id || '');
+  };
 
-          let raw = getCustomResponseValue(a, f);
-          // Override for hardcoded personal-info filters that are not stored
-          // as job custom fields.
+  const baseFiltered =
+    effectiveCustomFilters.length === 0
+      ? deferredDisplayedApplicants
+      : deferredDisplayedApplicants.filter((a: any) => {
           try {
-            if (f.fieldId === '__gender') {
-              raw =
-                a?.gender ||
-                a?.customResponses?.gender ||
-                a?.customResponses?.['النوع'] ||
-                (a as any)['النوع'] ||
-                raw ||
-                '';
-            }
-            if (f.fieldId === '__birthdate') {
-              raw =
-                a?.birthdate ||
-                a?.dateOfBirth ||
-                a?.dob ||
-                a?.customResponses?.birthdate ||
-                a?.customResponses?.['تarih'] ||
-                a?.customResponses?.['تاريخ الميلاد'] ||
-                raw ||
-                '';
-            }
-            if (f.fieldId === '__has_cv') {
-              const hasTop = Boolean(
-                a?.resume ||
-                a?.cv ||
-                a?.attachments ||
-                a?.resumeUrl ||
-                a?.cvFilePath ||
-                a?.cvFile ||
-                a?.cvUrl ||
-                a?.resumeFilePath ||
-                a?.resumeFile ||
-                a?.cv_file_path ||
-                a?.cv_file ||
-                a?.cv_path
-              );
-              let has = hasTop;
+            for (const f of effectiveCustomFilters) {
+              let raw = getCustomResponseValue(a, f);
+              // Override for hardcoded personal-info filters that are not stored
+              // as job custom fields.
               try {
-                const resp =
-                  a?.customResponses || a?.customFieldResponses || {};
-                for (const [k, v] of Object.entries(resp || {})) {
-                  const lk = String(k || '').toLowerCase();
-                  if ((lk.includes('cv') ||
-                                     lk.includes('resume') ||
-                                      lk.includes('cvfile') ||
-                                      lk.includes('cv_file') ||
-                                      lk.includes('cvfilepath')) && v) {
-                        has = true;
-                   break;
-                  }
+                if (f.fieldId === '__gender') {
+                  raw =
+                    a?.gender ||
+                    a?.customResponses?.gender ||
+                    a?.customResponses?.['النوع'] ||
+                    (a as any)['النوع'] ||
+                    raw ||
+                    '';
                 }
-              } catch (e) {
-                // ignore
-              }
-              raw = has;
-            }
-          } catch (e) {
-            // ignore overrides on error
-          }
-
-          // Only enforce job-based exclusion for engineering specialization
-          // (fields that truly belong to a single job). All other custom filters
-          // are evaluated across applicants regardless of jobPositionId.
-          try {
-            const canonical = getCanonicalType(f);
-            if (canonical === 'engineering_specialization') {
-              const rawLabel = `${f.labelEn || f.label?.en || ''} ${f.labelAr || f.label?.ar || ''} ${f.fieldId || ''}`;
-              const keyNorm =
-                normalizeLabelSimple(rawLabel) || String(f.fieldId || '');
-              const allowedUnion = new Set<string>();
-              const addSet = (s?: Set<string>) => {
-                if (!s) return;
-                s.forEach((x) => allowedUnion.add(String(x)));
-              };
-              addSet(fieldToJobIds[keyNorm]);
-              addSet(fieldToJobIds[String(f.fieldId || '')]);
-              try {
-                addSet(fieldToJobIds[canonical]);
-                (canonicalMap[canonical] || []).forEach((v) => {
-                  const nk = normalizeLabelSimple(v);
-                  if (nk) addSet(fieldToJobIds[nk]);
-                });
-              } catch (e) {
-                // ignore
-              }
-
-              // If this canonical field maps to a single job, exclude applicants
-              // whose jobPositionId isn't that job unless the applicant already
-              // contains a matching canonical response key.
-              if (allowedUnion.size === 1) {
-                const getId = (v: any) =>
-                  typeof v === 'string' ? v : (v?._id ?? v?.id ?? '');
-                const applicantJobId = getId(a.jobPositionId);
-                try {
-                  const topLevelKeys = Object.keys(a || {}).filter(
-                    (k) =>
-                      k !== 'customResponses' &&
-                      k !== 'customFieldResponses' &&
-                      k !== 'customFields'
-                  );
-                  const customRespKeys = Object.keys(a?.customResponses || {});
-                  const customFieldRespKeys = Object.keys(
-                    a?.customFieldResponses || {}
-                  );
-                  const cfKeys = Object.keys(a?.customFields || {});
-                  const allKeys = Array.from(
-                    new Set([
-                      ...topLevelKeys,
-                      ...customRespKeys,
-                      ...customFieldRespKeys,
-                      ...cfKeys,
-                    ])
-                  );
-                  const respKeys = allKeys.map((k) => normalizeLabelSimple(k));
-                  const allowedLabels = canonicalMap[canonical].map((s) =>
-                    normalizeLabelSimple(s)
-                  );
-                  const hasRespKeyMatch = respKeys.some((rk) =>
-                    allowedLabels.some(
-                      (al) => rk === al || rk.includes(al) || al.includes(rk)
-                    )
-                  );
-                  if (!hasRespKeyMatch && (!applicantJobId ||
-                                       !allowedUnion.has(String(applicantJobId)))) {
-                        return false;
-                  }
-                } catch (e) {
-                  if (
-                    !applicantJobId ||
-                    !allowedUnion.has(String(applicantJobId))
-                  ) {
-                    return false;
-                  }
+                if (f.fieldId === '__birthdate') {
+                  raw =
+                    a?.birthdate ||
+                    a?.dateOfBirth ||
+                    a?.dob ||
+                    a?.customResponses?.birthdate ||
+                    a?.customResponses?.['تarih'] ||
+                    a?.customResponses?.['تاريخ الميلاد'] ||
+                    raw ||
+                    '';
                 }
-              }
-            }
-          } catch (e) {
-            // ignore and continue
-          }
-
-          // Special: boolean presence filters (work experience, courses, personal skills)
-          if (
-            f.type === 'hasWorkExperience' ||
-            f.type === 'hasField' ||
-            f.type === 'hasCV' ||
-            f.fieldId === '__has_cv'
-          ) {
-            const want = f.value; // true/false/'any'
-            if (want === 'any' || want === undefined) continue;
-
-            const evaluateHas = () => {
-              try {
-                if (f.type === 'hasWorkExperience') {
-                  if (
-                    Array.isArray(a.workExperiences) &&
-                    a.workExperiences.length
-                  )
-                    return true;
-                  if (Array.isArray(a.experiences) && a.experiences.length)
-                    return true;
-                  const resp =
-                    a?.customResponses || a?.customFieldResponses || {};
-                  const keys = [
-                    'work_experience',
-                    'workExperience',
-                    'workexperience',
-                    'الخبرة',
-                    'خبرة',
-                  ];
-                  for (const k of keys) {
-                    if (Object.prototype.hasOwnProperty.call(resp, k)) {
-                      const v = resp[k];
-                      if (v === true) return true;
-                      if (Array.isArray(v) && v.length) return true;
-                      if (typeof v === 'string' && v.trim()) return true;
-                      if (typeof v === 'object' && Object.keys(v).length)
-                        return true;
-                    }
-                  }
-                  for (const v of Object.values(resp)) {
-                    if (Array.isArray(v) && v.length) return true;
-                  }
-                  return false;
-                }
-
-                // hardcoded CV presence filter
-                if (f.fieldId === '__has_cv' || f.type === 'hasCV') {
+                if (f.fieldId === '__has_cv') {
                   const hasTop = Boolean(
                     a?.resume ||
                     a?.cv ||
@@ -1861,513 +1723,487 @@ useEffect(() => {
                     a?.cv_file ||
                     a?.cv_path
                   );
-                  if (hasTop) return true;
+                  let has = hasTop;
                   try {
-                    const resp =
-                      a?.customResponses || a?.customFieldResponses || {};
+                    const resp = a?.customResponses || a?.customFieldResponses || {};
                     for (const [k, v] of Object.entries(resp || {})) {
                       const lk = String(k || '').toLowerCase();
-                      if (
-                        lk.includes('cv') ||
+                      if ((lk.includes('cv') ||
                         lk.includes('resume') ||
                         lk.includes('cvfile') ||
                         lk.includes('cv_file') ||
-                        lk.includes('cvfilepath')
-                      ) {
-                        if (v) return true;
+                        lk.includes('cvfilepath')) && v) {
+                        has = true;
+                        break;
                       }
-                      // also consider string values containing a file URL
-                      if (
-                        typeof v === 'string' &&
-                        /https?:\/\/.+\.(pdf|docx?|rtf|txt|zip)$/i.test(v)
-                      )
-                        return true;
                     }
                   } catch (e) {
                     // ignore
                   }
+                  raw = has;
+                }
+              } catch (e) {
+                // ignore overrides on error
+              }
+
+              // Only enforce job-based exclusion for engineering specialization
+              // (fields that truly belong to a single job). All other custom filters
+              // are evaluated across applicants regardless of jobPositionId.
+              try {
+                const canonical = getCanonicalType(f);
+                if (canonical === 'engineering_specialization') {
+                  const rawLabel = `${f.labelEn || f.label?.en || ''} ${f.labelAr || f.label?.ar || ''} ${f.fieldId || ''}`;
+                  const keyNorm = normalizeLabelSimple(rawLabel) || String(f.fieldId || '');
+                  const allowedUnion = new Set<string>();
+                  const addSet = (s?: Set<string>) => {
+                    if (!s) return;
+                    s.forEach((x) => allowedUnion.add(String(x)));
+                  };
+                  addSet(fieldToJobIds[keyNorm]);
+                  addSet(fieldToJobIds[String(f.fieldId || '')]);
+                  try {
+                    addSet(fieldToJobIds[canonical]);
+                    (canonicalMap[canonical] || []).forEach((v) => {
+                      const nk = normalizeLabelSimple(v);
+                      if (nk) addSet(fieldToJobIds[nk]);
+                    });
+                  } catch (e) {
+                    // ignore
+                  }
+
+                  // If this canonical field maps to a single job, exclude applicants
+                  // whose jobPositionId isn't that job unless the applicant already
+                  // contains a matching canonical response key.
+                  if (allowedUnion.size === 1) {
+                    const getId = (v: any) => typeof v === 'string' ? v : (v?._id ?? v?.id ?? '');
+                    const applicantJobId = getId(a.jobPositionId);
+                    try {
+                      const topLevelKeys = Object.keys(a || {}).filter(
+                        (k) => k !== 'customResponses' && k !== 'customFieldResponses' && k !== 'customFields'
+                      );
+                      const customRespKeys = Object.keys(a?.customResponses || {});
+                      const customFieldRespKeys = Object.keys(a?.customFieldResponses || {});
+                      const cfKeys = Object.keys(a?.customFields || {});
+                      const allKeys = Array.from(new Set([...topLevelKeys, ...customRespKeys, ...customFieldRespKeys, ...cfKeys]));
+                      const respKeys = allKeys.map((k) => normalizeLabelSimple(k));
+                      const allowedLabels = canonicalMap[canonical].map((s) => normalizeLabelSimple(s));
+                      const hasRespKeyMatch = respKeys.some((rk) =>
+                        allowedLabels.some((al) => rk === al || rk.includes(al) || al.includes(rk))
+                      );
+                      if (!hasRespKeyMatch && (!applicantJobId || !allowedUnion.has(String(applicantJobId)))) {
+                        return false;
+                      }
+                    } catch (e) {
+                      if (!applicantJobId || !allowedUnion.has(String(applicantJobId))) {
+                        return false;
+                      }
+                    }
+                  }
+                }
+              } catch (e) {
+                // ignore and continue
+              }
+
+              // Special: boolean presence filters (work experience, courses, personal skills)
+              if (
+                f.type === 'hasWorkExperience' ||
+                f.type === 'hasField' ||
+                f.type === 'hasCV' ||
+                f.fieldId === '__has_cv'
+              ) {
+                const want = f.value; // true/false/'any'
+                if (want === 'any' || want === undefined) continue;
+
+                const evaluateHas = () => {
+                  try {
+                    if (f.type === 'hasWorkExperience') {
+                      if (Array.isArray(a.workExperiences) && a.workExperiences.length) return true;
+                      if (Array.isArray(a.experiences) && a.experiences.length) return true;
+                      const resp = a?.customResponses || a?.customFieldResponses || {};
+                      const keys = ['work_experience', 'workExperience', 'workexperience', 'الخبرة', 'خبرة'];
+                      for (const k of keys) {
+                        if (Object.prototype.hasOwnProperty.call(resp, k)) {
+                          const v = resp[k];
+                          if (v === true) return true;
+                          if (Array.isArray(v) && v.length) return true;
+                          if (typeof v === 'string' && v.trim()) return true;
+                          if (typeof v === 'object' && Object.keys(v).length) return true;
+                        }
+                      }
+                      for (const v of Object.values(resp)) {
+                        if (Array.isArray(v) && v.length) return true;
+                      }
+                      return false;
+                    }
+
+                    // hardcoded CV presence filter
+                    if (f.fieldId === '__has_cv' || f.type === 'hasCV') {
+                      const hasTop = Boolean(
+                        a?.resume ||
+                        a?.cv ||
+                        a?.attachments ||
+                        a?.resumeUrl ||
+                        a?.cvFilePath ||
+                        a?.cvFile ||
+                        a?.cvUrl ||
+                        a?.resumeFilePath ||
+                        a?.resumeFile ||
+                        a?.cv_file_path ||
+                        a?.cv_file ||
+                        a?.cv_path
+                      );
+                      if (hasTop) return true;
+                      try {
+                        const resp = a?.customResponses || a?.customFieldResponses || {};
+                        for (const [k, v] of Object.entries(resp || {})) {
+                          const lk = String(k || '').toLowerCase();
+                          if (lk.includes('cv') || lk.includes('resume') || lk.includes('cvfile') || lk.includes('cv_file') || lk.includes('cvfilepath')) {
+                            if (v) return true;
+                          }
+                          if (typeof v === 'string' && /https?:\/\/.+\.(pdf|docx?|rtf|txt|zip)$/i.test(v)) return true;
+                        }
+                      } catch (e) {
+                        // ignore
+                      }
+                      return false;
+                    }
+
+                    // generic hasField: consider getCustomResponseValue truthy -> has response
+                    const rawVal = getCustomResponseValue(a, f);
+                    if (rawVal === undefined || rawVal === null) return false;
+                    if (rawVal === '') return false;
+                    if (Array.isArray(rawVal)) return rawVal.length > 0;
+                    if (typeof rawVal === 'object') return Object.keys(rawVal).length > 0;
+                    if (typeof rawVal === 'string') return rawVal.trim().length > 0;
+                    if (typeof rawVal === 'number') return true;
+                    if (typeof rawVal === 'boolean') return rawVal === true;
+                    return false;
+                  } catch (e) {
+                    return false;
+                  }
+                };
+
+                const hasIt = evaluateHas();
+                if ((want === true && !hasIt) || (want === false && hasIt)) {
                   return false;
                 }
-
-                // generic hasField: consider getCustomResponseValue truthy -> has response
-                const rawVal = getCustomResponseValue(a, f);
-                if (rawVal === undefined || rawVal === null) return false;
-                if (rawVal === '') return false;
-                if (Array.isArray(rawVal)) return rawVal.length > 0;
-                if (typeof rawVal === 'object')
-                  return Object.keys(rawVal).length > 0;
-                if (typeof rawVal === 'string') return rawVal.trim().length > 0;
-                if (typeof rawVal === 'number') return true;
-                if (typeof rawVal === 'boolean') return rawVal === true;
-                return false;
-              } catch (e) {
-                return false;
+                continue;
               }
-            };
 
-            const hasIt = evaluateHas();
-            if ((want === true && !hasIt) || (want === false && hasIt)) {
-              return false;
-            }
-            continue;
-          }
-
-          // RANGE / NUMBER
-          if (f.type === 'range') {
-            // If this filter corresponds to a canonical salary field, prefer the
-            // top-level applicant expected salary properties which are not
-            // stored in customResponses/customFieldResponses.
-            try {
-              const canonical = getCanonicalType(f);
-              if (canonical === 'salary') {
-                raw = a?.expectedSalary ?? a?.expected_salary ?? a?.expected ?? raw;
-              }
-            } catch (e) {
-              // ignore
-            }
-            let num: number | null = null;
-            if (raw === null || raw === undefined || raw === '') return false;
-            const toNum = (v: any) => {
-              if (v === null || v === undefined) return NaN;
-              if (typeof v === 'number') return v;
-              const rawS = String(v);
-              // normalize Arabic-Indic and Extended-Indic digits to ASCII
-              const conv = (str: string) => {
-                const map: Record<string, string> = {
-                  '\u0660': '0',
-                  '\u0661': '1',
-                  '\u0662': '2',
-                  '\u0663': '3',
-                  '\u0664': '4',
-                  '\u0665': '5',
-                  '\u0666': '6',
-                  '\u0667': '7',
-                  '\u0668': '8',
-                  '\u0669': '9',
-                  '\u06F0': '0',
-                  '\u06F1': '1',
-                  '\u06F2': '2',
-                  '\u06F3': '3',
-                  '\u06F4': '4',
-                  '\u06F5': '5',
-                  '\u06F6': '6',
-                  '\u06F7': '7',
-                  '\u06F8': '8',
-                  '\u06F9': '9',
+              // RANGE / NUMBER
+              if (f.type === 'range') {
+                // If this filter corresponds to a canonical salary field, prefer the
+                // top-level applicant expected salary properties which are not
+                // stored in customResponses/customFieldResponses.
+                try {
+                  const canonical = getCanonicalType(f);
+                  if (canonical === 'salary') {
+                    raw = a?.expectedSalary ?? a?.expected_salary ?? a?.expected ?? raw;
+                  }
+                } catch (e) {
+                  // ignore
+                }
+                let num: number | null = null;
+                if (raw === null || raw === undefined || raw === '') return false;
+                const toNum = (v: any) => {
+                  if (v === null || v === undefined) return NaN;
+                  if (typeof v === 'number') return v;
+                  const rawS = String(v);
+                  // normalize Arabic-Indic and Extended-Indic digits to ASCII
+                  const conv = (str: string) => {
+                    const map: Record<string, string> = {
+                      '\u0660': '0', '\u0661': '1', '\u0662': '2', '\u0663': '3', '\u0664': '4',
+                      '\u0665': '5', '\u0666': '6', '\u0667': '7', '\u0668': '8', '\u0669': '9',
+                      '\u06F0': '0', '\u06F1': '1', '\u06F2': '2', '\u06F3': '3', '\u06F4': '4',
+                      '\u06F5': '5', '\u06F6': '6', '\u06F7': '7', '\u06F8': '8', '\u06F9': '9',
+                    };
+                    return str.replace(/[\u0660-\u0669\u06F0-\u06F9]/g, (ch) => map[ch] || ch);
+                  };
+                  const s = conv(rawS).replace(/[^0-9.\-]/g, '');
+                  const p = Number(s);
+                  return Number.isFinite(p) ? p : NaN;
                 };
-                return str.replace(
-                  /[\u0660-\u0669\u06F0-\u06F9]/g,
-                  (ch) => map[ch] || ch
-                );
-              };
-              const s = conv(rawS).replace(/[^0-9.\-]/g, '');
-              const p = Number(s);
-              return Number.isFinite(p) ? p : NaN;
-            };
-            if (typeof raw === 'number') num = raw;
-            else if (typeof raw === 'string') {
-              const parsed = toNum(raw);
-              num = Number.isNaN(parsed) ? null : parsed;
-            } else if (Array.isArray(raw)) {
-              const nums = raw.map(toNum).filter((n) => Number.isFinite(n));
-              if (nums.length) num = Math.max(...nums);
-              else num = null;
-            } else if (typeof raw === 'object') {
-              // prefer explicit numeric keys (max/min/amount/value), otherwise try to extract any numeric child
-              const candKeys = [
-                'max',
-                'value',
-                'val',
-                'amount',
-                'salary',
-                'expectedSalary',
-                'min',
-                'amountValue',
-                'numeric',
-                '0',
-              ];
-              let found: number | null = null;
-              for (const ck of candKeys) {
-                if (Object.prototype.hasOwnProperty.call(raw, ck)) {
-                  const c = toNum((raw as any)[ck]);
-                  if (Number.isFinite(c)) {
-                    found = found === null ? c : Math.max(found, c);
+                if (typeof raw === 'number') num = raw;
+                else if (typeof raw === 'string') {
+                  const parsed = toNum(raw);
+                  num = Number.isNaN(parsed) ? null : parsed;
+                } else if (Array.isArray(raw)) {
+                  const nums = raw.map(toNum).filter((n) => Number.isFinite(n));
+                  if (nums.length) num = Math.max(...nums);
+                  else num = null;
+                } else if (typeof raw === 'object') {
+                  const candKeys = ['max', 'value', 'val', 'amount', 'salary', 'expectedSalary', 'min', 'amountValue', 'numeric', '0'];
+                  let found: number | null = null;
+                  for (const ck of candKeys) {
+                    if (Object.prototype.hasOwnProperty.call(raw, ck)) {
+                      const c = toNum((raw as any)[ck]);
+                      if (Number.isFinite(c)) {
+                        found = found === null ? c : Math.max(found, c);
+                      }
+                    }
                   }
-                }
-              }
-              if (found === null) {
-                // inspect object children
-                const children = Object.values(raw)
-                  .map(toNum)
-                  .filter((n) => Number.isFinite(n));
-                if (children.length) found = Math.max(...children);
-              }
-              num = found;
-            } else num = null;
-            if (num === null || !Number.isFinite(num)) {
-              return false;
-            }
-            const parseFilterNum = (v: any) => {
-              if (v === undefined || v === null || v === '') return undefined;
-              const s = String(v).replace(/[^0-9.\-]/g, '');
-              const p = Number(s);
-              return Number.isFinite(p) ? p : undefined;
-            };
-            const minFilter = parseFilterNum(f.value?.min);
-            const maxFilter = parseFilterNum(f.value?.max);
-            if (minFilter !== undefined && num < minFilter) {
-              return false;
-            }
-            if (maxFilter !== undefined && num > maxFilter) {
-              return false;
-            }
-            continue;
-          }
-
-          // MULTI / CHOICES
-          if (f.type === 'multi') {
-            const valsRaw = Array.isArray(f.value)
-              ? f.value
-              : f.value !== undefined && f.value !== null
-                ? [f.value]
-                : [];
-            const valsNormalized = valsRaw
-              .map((v: any) =>
-                normalizeForCompare(
-                  v && (v.id || v._id || v.en || v.ar)
-                    ? v.id || v._id || v.en || v.ar
-                    : v
-                )
-              )
-              .filter((x: string) => x);
-            if (!valsNormalized.length) continue;
-
-            const valsExpandedSet = new Set<string>();
-            valsNormalized.forEach((v: string) =>
-              expandForms(v).forEach((x) => valsExpandedSet.add(x))
-            );
-
-            const rawItems = extractResponseItems(raw).map(normalizeForCompare);
-
-            // Direct equality checks between the filter values and the raw response
-            // (handles primitives, arrays, objects and keyed-boolean maps). This
-            // ensures we compare the actual stored customResponse value to the
-            // selected filter value before falling back to normalized/expanded forms.
-            let matched = false;
-            try {
-              // primitives
-              if (
-                typeof raw === 'string' ||
-                typeof raw === 'number' ||
-                typeof raw === 'boolean'
-              ) {
-                const rv = normalizeForCompare(raw);
-                if (rv && valsExpandedSet.has(rv)) {
-                  matched = true;
-                }
-              }
-              // arrays
-              if (!matched && Array.isArray(raw)) {
-                for (const el of raw) {
-                  const v = normalizeForCompare(el);
-                  if (v && valsExpandedSet.has(v)) {
-                    matched = true;
-                    break;
+                  if (found === null) {
+                    const children = Object.values(raw).map(toNum).filter((n) => Number.isFinite(n));
+                    if (children.length) found = Math.max(...children);
                   }
+                  num = found;
+                } else num = null;
+                if (num === null || !Number.isFinite(num)) {
+                  return false;
                 }
+                const parseFilterNum = (v: any) => {
+                  if (v === undefined || v === null || v === '') return undefined;
+                  const s = String(v).replace(/[^0-9.\-]/g, '');
+                  const p = Number(s);
+                  return Number.isFinite(p) ? p : undefined;
+                };
+                const minFilter = parseFilterNum(f.value?.min);
+                const maxFilter = parseFilterNum(f.value?.max);
+                if (minFilter !== undefined && num < minFilter) {
+                  return false;
+                }
+                if (maxFilter !== undefined && num > maxFilter) {
+                  return false;
+                }
+                continue;
               }
-              // objects: check values first, then check keyed booleans (key name when value truthy)
-              if (!matched && raw && typeof raw === 'object') {
-                for (const v of Object.values(raw)) {
-                  const nv = normalizeForCompare(v);
-                  if (nv && valsExpandedSet.has(nv)) {
-                    matched = true;
-                    break;
+
+              // MULTI / CHOICES
+              if (f.type === 'multi') {
+                const valsRaw = Array.isArray(f.value) ? f.value : (f.value !== undefined && f.value !== null ? [f.value] : []);
+                const valsNormalized = valsRaw
+                  .map((v: any) => normalizeForCompare(v && (v.id || v._id || v.en || v.ar) ? v.id || v._id || v.en || v.ar : v))
+                  .filter((x: string) => x);
+                if (!valsNormalized.length) continue;
+
+                const valsExpandedSet = new Set<string>();
+                valsNormalized.forEach((v: string) => expandForms(v).forEach((x) => valsExpandedSet.add(x)));
+
+                const rawItems = extractResponseItems(raw).map(normalizeForCompare);
+
+                let matched = false;
+                try {
+                  if (typeof raw === 'string' || typeof raw === 'number' || typeof raw === 'boolean') {
+                    const rv = normalizeForCompare(raw);
+                    if (rv && valsExpandedSet.has(rv)) matched = true;
                   }
-                }
-                if (!matched) {
-                  for (const [k, v] of Object.entries(raw)) {
-                    if (v === true || v === 'true' || v === 1 || v === '1') {
-                      const nk = normalizeForCompare(k);
-                      if (nk && valsExpandedSet.has(nk)) {
+                  if (!matched && Array.isArray(raw)) {
+                    for (const el of raw) {
+                      const v = normalizeForCompare(el);
+                      if (v && valsExpandedSet.has(v)) {
                         matched = true;
                         break;
                       }
                     }
                   }
+                  if (!matched && raw && typeof raw === 'object') {
+                    for (const v of Object.values(raw)) {
+                      const nv = normalizeForCompare(v);
+                      if (nv && valsExpandedSet.has(nv)) {
+                        matched = true;
+                        break;
+                      }
+                    }
+                    if (!matched) {
+                      for (const [k, v] of Object.entries(raw)) {
+                        if (v === true || v === 'true' || v === 1 || v === '1') {
+                          const nk = normalizeForCompare(k);
+                          if (nk && valsExpandedSet.has(nk)) {
+                            matched = true;
+                            break;
+                          }
+                        }
+                      }
+                    }
+                  }
+                } catch (e) {
+                  // ignore
                 }
-              }
-            } catch (e) {
-              // ignore and fall back to normalized/rawItems matching
-            }
 
-            if (!matched && Array.isArray(f.choices) && f.choices.length) {
-              const choiceNormsForSelected = new Set<string>();
-              f.choices.forEach((c: any) => {
-                const forms = [
-                  c.id ??
-                    c._id ??
-                    c.en ??
-                    c.ar ??
-                    c.value ??
-                    c.val ??
-                    c.label ??
-                    '',
-                ];
-                if (c.en) forms.push(c.en);
-                if (c.ar) forms.push(c.ar);
-                if (c.value) forms.push(c.value);
-                const formsNorm = Array.from(
-                  new Set(
-                    forms
-                      .map((fm: any) => normalizeForCompare(fm))
-                      .filter(Boolean)
-                  )
-                );
-                const expanded = formsNorm.flatMap((fn: string) =>
-                  expandForms(fn)
-                );
-                if (expanded.some((fn: string) => valsExpandedSet.has(fn))) {
-                  expanded.forEach((fn: string) =>
-                    choiceNormsForSelected.add(fn)
-                  );
+                if (!matched && Array.isArray(f.choices) && f.choices.length) {
+                  const choiceNormsForSelected = new Set<string>();
+                  f.choices.forEach((c: any) => {
+                    const forms = [c.id ?? c._id ?? c.en ?? c.ar ?? c.value ?? c.val ?? c.label ?? ''];
+                    if (c.en) forms.push(c.en);
+                    if (c.ar) forms.push(c.ar);
+                    if (c.value) forms.push(c.value);
+                    const formsNorm = Array.from(new Set(forms.map((fm: any) => normalizeForCompare(fm)).filter(Boolean)));
+                    const expanded = formsNorm.flatMap((fn: string) => expandForms(fn));
+                    if (expanded.some((fn: string) => valsExpandedSet.has(fn))) {
+                      expanded.forEach((fn: string) => choiceNormsForSelected.add(fn));
+                    }
+                  });
+                  if (choiceNormsForSelected.size) matched = rawItems.some((rv) => choiceNormsForSelected.has(rv));
                 }
-              });
 
-              if (choiceNormsForSelected.size)
-                matched = rawItems.some((rv) => choiceNormsForSelected.has(rv));
-            }
+                if (!matched) return false;
+                continue;
+              }
 
-            if (!matched) {
-              return false;
-            }
-            continue;
-          }
+              // TEXT / CONTAINS
+              if (f.type === 'text') {
+                const needle = normalizeForCompare(f.value || '');
+                if (!needle) continue;
+                const rawItems = extractResponseItems(raw).map(normalizeForCompare);
+                let matched = rawItems.some((it) => it.includes(needle));
+                if (!matched) {
+                  try {
+                    const canonical = getCanonicalType(f);
+                    const allResp = a?.customResponses || a?.customFieldResponses || {};
+                    if (canonical === 'engineering_specialization' && canonicalMap[canonical]) {
+                      const allowed = canonicalMap[canonical].map((s) => normalizeLabelSimple(s));
+                      for (const [k, v] of Object.entries(allResp)) {
+                        const nk = normalizeLabelSimple(k);
+                        if (!nk) continue;
+                        if (!(allowed.includes(nk) || allowed.some((al) => nk.includes(al) || al.includes(nk)))) continue;
+                        const items = extractResponseItems(v).map(normalizeForCompare);
+                        if (items.some((it) => it.includes(needle))) {
+                          matched = true;
+                          break;
+                        }
+                      }
+                    } else if (canonical && canonicalMap[canonical]) {
+                      const allowed = canonicalMap[canonical].map((s) => normalizeLabelSimple(s));
+                      for (const [k, v] of Object.entries(allResp)) {
+                        const nk = normalizeLabelSimple(k);
+                        if (!nk) continue;
+                        if (!(allowed.includes(nk) || allowed.some((al) => nk.includes(al) || al.includes(nk)))) continue;
+                        const items = extractResponseItems(v).map(normalizeForCompare);
+                        if (items.some((it) => it.includes(needle))) {
+                          matched = true;
+                          break;
+                        }
+                      }
+                    } else {
+                      for (const v of Object.values(allResp)) {
+                        const items = extractResponseItems(v).map(normalizeForCompare);
+                        if (items.some((it) => it.includes(needle))) {
+                          matched = true;
+                          break;
+                        }
+                      }
+                    }
+                  } catch (e) {
+                    // ignore
+                  }
+                }
+                if (!matched) return false;
+                continue;
+              }
 
+              // BIRTH YEAR filter (choose year and Before/After)
+              if (f.type === 'birthYear') {
+                const v = f.value || {};
+                const selYear = Number(v.year);
+                if (!selYear || !Number.isFinite(selYear)) continue;
+                const mode = v.mode === 'before' ? 'before' : 'after';
+                const rawItems = extractResponseItems(raw);
+                const convDigits = (str: string) => {
+                  const map: Record<string, string> = {
+                    '\u0660': '0', '\u0661': '1', '\u0662': '2', '\u0663': '3', '\u0664': '4',
+                    '\u0665': '5', '\u0666': '6', '\u0667': '7', '\u0668': '8', '\u0669': '9',
+                    '\u06F0': '0', '\u06F1': '1', '\u06F2': '2', '\u06F3': '3', '\u06F4': '4',
+                    '\u06F5': '5', '\u06F6': '6', '\u06F7': '7', '\u06F8': '8', '\u06F9': '9',
+                  };
+                  return str.replace(/[\u0660-\u0669\u06F0-\u06F9]/g, (ch) => map[ch] || ch);
+                };
 
+                const extractYear = (r: any) => {
+                  if (r === null || r === undefined) return null;
+                  if (typeof r === 'number') {
+                    const n = Math.floor(r);
+                    if (n > 1900 && n < 2100) return n;
+                    return null;
+                  }
+                  let s = String(r).trim();
+                  if (!s) return null;
+                  s = convDigits(s);
+                  try {
+                    const d = new Date(s);
+                    if (!Number.isNaN(d.getTime())) return d.getFullYear();
+                  } catch { /* ignore */ }
+                  const m = s.match(/(19|20)\d{2}/);
+                  if (m) return Number(m[0]);
+                  return null;
+                };
 
-// TEXT / CONTAINS
-          if (f.type === 'text') {
-            const needle = normalizeForCompare(f.value || '');
-            if (!needle) continue;
-            const rawItems = extractResponseItems(raw).map(normalizeForCompare);
-            let matched = rawItems.some((it) => it.includes(needle));
-            // If this is engineering specialization, only search the canonical
-            // allowed response keys so we don't match unrelated fields.
-            if (!matched) {
-              try {
-                const canonical = getCanonicalType(f);
-                const allResp =
-                  a?.customResponses || a?.customFieldResponses || {};
-                 if (canonical === 'engineering_specialization' &&
-                                 canonicalMap[canonical]) {
-                                  const allowed = canonicalMap[canonical].map((s) =>
-                                    normalizeLabelSimple(s)
-                                  );
-                                  for (const [k, v] of Object.entries(allResp)) {
-                                   const nk = normalizeLabelSimple(k);
-                                   if (!nk) continue;
-                                    if (
-                                     !(
-                                       allowed.includes(nk) ||
-                                        allowed.some((al) => nk.includes(al) || al.includes(nk))
-                                     )
-                                   )
-                                     continue;
-                                    const items =
-                                      extractResponseItems(v).map(normalizeForCompare);
-                                    if (items.some((it) => it.includes(needle))) {
-                                     matched = true;
-                                      break;
-                                   }
-                                  }
-                               }
-                else if (canonical && canonicalMap[canonical]) {
-                                    const allowed = canonicalMap[canonical].map((s) =>
-                                      normalizeLabelSimple(s)
-                                    );
-                                    for (const [k, v] of Object.entries(allResp)) {
-                                      const nk = normalizeLabelSimple(k);
-                                      if (!nk) continue;
-                                     if (
-                                        !(
-                                         allowed.includes(nk) ||
-                                        allowed.some(
-                                          (al) => nk.includes(al) || al.includes(nk)
-                                        )
-                                      )
-                                     )
-                                        continue;
-                                     const items =
-                                        extractResponseItems(v).map(normalizeForCompare);
-                                     if (items.some((it) => it.includes(needle))) {
-                                       matched = true;
-                                        break;
-                                      }
-                                    }
-                                  }
-                else {
-                                    for (const v of Object.values(allResp)) {
-                                      const items =
-                                        extractResponseItems(v).map(normalizeForCompare);
-                                     if (items.some((it) => it.includes(needle))) {
-                                        matched = true;
-                                        break;
-                                     }
-                                   }
-                                 }
-              } catch (e) {
-                // ignore
+                const matched = rawItems.some((r) => {
+                  const y = extractYear(r);
+                  if (!y) return false;
+                  if (mode === 'before') return y < selYear;
+                  return y > selYear;
+                });
+                if (!matched) return false;
+                continue;
+              }
+
+              // DATE equality (yyyy-mm-dd)
+              if (f.type === 'date') {
+                const target = f.value;
+                if (!target) continue;
+                const rawItems = extractResponseItems(raw);
+                const matchFound = rawItems.some((r) => {
+                  try {
+                    const d = new Date(String(r));
+                    if (Number.isNaN(d.getTime())) return false;
+                    const iso = d.toISOString().slice(0, 10);
+                    return iso === String(target);
+                  } catch {
+                    return false;
+                  }
+                });
+                if (!matchFound) return false;
+                continue;
               }
             }
-            if (!matched) {
-              return false;
-            }
-            continue;
+            return true;
+          } catch (e) {
+            return false;
           }
+        });
 
-          // BIRTH YEAR filter (choose year and Before/After)
-          if (f.type === 'birthYear') {
-            const v = f.value || {};
-            const selYear = Number(v.year);
-            if (!selYear || !Number.isFinite(selYear)) continue;
-            const mode = v.mode === 'before' ? 'before' : 'after';
-            const rawItems = extractResponseItems(raw);
-            const convDigits = (str: string) => {
-              const map: Record<string, string> = {
-                '\u0660': '0',
-                '\u0661': '1',
-                '\u0662': '2',
-                '\u0663': '3',
-                '\u0664': '4',
-                '\u0665': '5',
-                '\u0666': '6',
-                '\u0667': '7',
-                '\u0668': '8',
-                '\u0669': '9',
-                '\u06F0': '0',
-                '\u06F1': '1',
-                '\u06F2': '2',
-                '\u06F3': '3',
-                '\u06F4': '4',
-                '\u06F5': '5',
-                '\u06F6': '6',
-                '\u06F7': '7',
-                '\u06F8': '8',
-                '\u06F9': '9',
-              };
-              return str.replace(
-                /[\u0660-\u0669\u06F0-\u06F9]/g,
-                (ch) => map[ch] || ch
-              );
-            };
+  if (!duplicatesOnlyEnabled) return baseFiltered;
 
-            const extractYear = (r: any) => {
-              if (r === null || r === undefined) return null;
-              if (typeof r === 'number') {
-                const n = Math.floor(r);
-                if (n > 1900 && n < 2100) return n;
-                return null;
-              }
-              let s = String(r).trim();
-              if (!s) return null;
-              s = convDigits(s);
-              // try Date parse
-              try {
-                const d = new Date(s);
-                if (!Number.isNaN(d.getTime())) return d.getFullYear();
-              } catch {
-                // ignore
-              }
-              // fallback: find a 4-digit year (1900-2099)
-              const m = s.match(/(19|20)\d{2}/);
-              if (m) return Number(m[0]);
-              return null;
-            };
-
-            const matched = rawItems.some((r) => {
-              const y = extractYear(r);
-              if (!y) return false;
-              if (mode === 'before') return y < selYear;
-              return y > selYear;
-            });
-            if (!matched) {
-              return false;
-            }
-            continue;
-          }
-
-          // DATE equality (yyyy-mm-dd)
-          if (f.type === 'date') {
-            const target = f.value;
-            if (!target) continue;
-            const rawItems = extractResponseItems(raw);
-            const matchFound = rawItems.some((r) => {
-              try {
-                const d = new Date(String(r));
-                if (Number.isNaN(d.getTime())) return false;
-                const iso = d.toISOString().slice(0, 10);
-                return iso === String(target);
-              } catch {
-                return false;
-              }
-            });
-            if (!matchFound) {
-              return false;
-            }
-            continue;
-          }
-        }
-        return true;
-      } catch (e) {
-        return false;
-      }
-    });
-
-    if (!duplicatesOnlyEnabled) return baseFiltered;
-
-    const duplicateLookup = buildApplicantDuplicateLookup(
-      baseFiltered as any[],
-      currentUserId,
-      {
-        getCompanyId: (applicant: any) => {
-          const rawCompany =
-            applicant?.companyId || applicant?.company || applicant?.companyObj;
-          if (rawCompany) {
-            if (typeof rawCompany === 'string' || typeof rawCompany === 'number') {
-              return String(rawCompany);
-            }
-            return String(rawCompany?._id || rawCompany?.id || '');
-          }
-
-          const rawJob = applicant?.jobPositionId;
-          const jobId =
-            typeof rawJob === 'string'
-              ? rawJob
-              : (rawJob?._id ?? rawJob?.id ?? '');
-          const job = jobPositionMap[jobId];
-          const jobCompany = job?.companyId || job?.company || job?.companyObj;
-          if (!jobCompany) return undefined;
-          if (typeof jobCompany === 'string' || typeof jobCompany === 'number') {
-            return String(jobCompany);
-          }
-          return String(jobCompany?._id || jobCompany?.id || '');
-        },
-      }
-    );
-
-    return baseFiltered.filter((a: any) => {
-      const aid = String(a?._id || a?.id || '');
-      return duplicateLookup.get(aid)?.isDuplicate === true;
-    });
-  }, [
-    deferredDisplayedApplicants,
-    customFilters,
-    duplicatesOnlyEnabled,
+  // Sort duplicates to group them together WITHOUT using applicant number
+  const sortedApplicants = sortApplicantsByDuplicatePriority(
+    baseFiltered as any[],
     currentUserId,
-    jobPositionMap,
-    fieldToJobIds,
-  ]);
+    (a, b) => {
+      // Custom fallback comparator that sorts by something else, NOT applicant number
+      // Sort by name instead of applicant number
+      const nameA = String(a?.fullName || '').toLowerCase();
+      const nameB = String(b?.fullName || '').toLowerCase();
+      if (nameA !== nameB) return nameA.localeCompare(nameB);
+      
+      // If names are the same, sort by ID to keep consistent ordering
+      const idA = String(a?._id || a?.id || '');
+      const idB = String(b?._id || b?.id || '');
+      return idA.localeCompare(idB);
+    },
+    { getCompanyId: getApplicantCompanyId }
+  );
+
+  // Filter to only show duplicates
+  const duplicateLookup = buildApplicantDuplicateLookup(
+    baseFiltered as any[],
+    currentUserId,
+    { getCompanyId: getApplicantCompanyId }
+  );
+
+  const onlyDuplicates = sortedApplicants.filter((a: any) => {
+    const id = String(a?._id || a?.id || '');
+    return duplicateLookup.get(id)?.isDuplicate === true;
+  });
+
+  return onlyDuplicates;
+}, [
+  deferredDisplayedApplicants,
+  customFilters,
+  duplicatesOnlyEnabled,
+  currentUserId,
+  jobPositionMap,
+  fieldToJobIds,
+]);
 
   // Build gender filter options from the applicants dataset but apply only
   // the trashed-visibility rule (so options persist after refresh even when
@@ -2926,10 +2762,7 @@ useEffect(() => {
     return { error: 'Please select at least one applicant.', items: [] as any[] };
   }
   if (!bulkInterviewForm.date || !bulkInterviewForm.time) {
-    return {
-      error: 'Interview date and time are required.',
-      items: [] as any[],
-    };
+   
   }
 
   const baseDate = new Date(
@@ -3276,106 +3109,114 @@ const handleBulkStatusChange = useCallback(
     e.preventDefault();
     if (selectedApplicantIds.length === 0) return;
 
-    // Add validation - check if status is selected
     if (!bulkStatusForm.status || bulkStatusForm.status.trim() === '') {
       setBulkStatusError('Please select a status before submitting.');
       return;
     }
 
-    const payload: any = {
-      status: bulkStatusForm.status, // This should never be empty now
-      notes: bulkStatusForm.notes,
-    };
-    if (Array.isArray(bulkStatusForm.reasons) && bulkStatusForm.reasons.length) {
-      payload.reasons = bulkStatusForm.reasons.map((r) => String(r ?? '').trim()).filter(Boolean);
-    }
+    // Prepare the updates array
+    const updates = selectedApplicantIds.map((applicantId) => {
+      const update: any = {
+        applicantId: applicantId,
+        status: bulkStatusForm.status,
+      };
+      
+      if (bulkStatusForm.notes && bulkStatusForm.notes.trim()) {
+        update.notes = bulkStatusForm.notes.trim();
+      }
+      
+      if (Array.isArray(bulkStatusForm.reasons) && bulkStatusForm.reasons.length) {
+        update.reasons = bulkStatusForm.reasons.map((r) => String(r ?? '').trim()).filter(Boolean);
+      }
+      
+      return update;
+    });
 
     try {
       setIsSubmittingBulkStatus(true);
       setBulkStatusError('');
 
-      const results = await Promise.allSettled(
-        selectedApplicantIds.map((aid) =>
-          updateStatusMutation.mutateAsync({ id: aid, data: payload })
-        )
-      );
-
-      const failed = results.filter((r) => r.status === 'rejected');
-      if (failed.length > 0) {
-        const messages = failed
-          .map((f: any) => (f as any).reason?.message || String((f as any).reason || 'Error'))
-          .slice(0, 5);
-        setBulkStatusError(`Failed for ${failed.length} applicant(s): ${messages.join('; ')}`);
-      } else {
-        await Swal.fire({
-          title: 'Success!',
-          text: `Status updated for ${selectedApplicantIds.length} applicant(s).`,
-          icon: 'success',
-          position: 'center',
-          timer: 2000,
-          showConfirmButton: false,
-        });
-        if (mountedRef.current) {
-          setRowSelection({});
-          setBulkAction('');
-          setShowBulkStatusModal(false);
-        }
-      }
-    } catch (err: any) {
-      console.error('Error bulk changing status:', err);
-      if (mountedRef.current) setBulkStatusError(getErrorMessage(err));
-    } finally {
-      if (mountedRef.current) setIsSubmittingBulkStatus(false);
-    }
-  },
-  [selectedApplicantIds, bulkStatusForm, updateStatusMutation]
-);
-
-  const handleBulkDelete = useCallback(async () => {
-    if (selectedApplicantIds.length === 0) return;
-
-    const result = await Swal.fire({
-      title: 'Delete Applicants?',
-      text: `Are you sure you want to delete ${selectedApplicantIds.length} applicant(s)? They will be moved to trash.`,
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonColor: '#3085d6',
-      cancelButtonColor: '#d33',
-      confirmButtonText: 'Yes, delete them!',
-    });
-
-    if (!result.isConfirmed) return;
-
-    try {
-      setIsDeleting(true);
-      // Optimistically mark as trashed
-      selectedApplicantIds.forEach((aid) =>
-        updateStatusMutation.mutate({
-          id: aid,
-          data: {
-            status: 'trashed',
-            notes: `Moved to trash on ${new Date().toLocaleDateString()}`,
-          },
-        })
-      );
+      // Use the batch mutation
+      await batchUpdateStatusMutation.mutateAsync(updates);
 
       await Swal.fire({
         title: 'Success!',
-        text: `${selectedApplicantIds.length} applicant(s) moved to trash.`,
+        text: `Status updated for ${selectedApplicantIds.length} applicant(s).`,
         icon: 'success',
         position: 'center',
         timer: 2000,
         showConfirmButton: false,
       });
-      if (mountedRef.current) setRowSelection({});
+      
+      if (mountedRef.current) {
+        setRowSelection({});
+        setBulkAction('');
+        setShowBulkStatusModal(false);
+        setBulkStatusForm({ status: '', reasons: [], notes: '' });
+        await refetchApplicants();
+        queryClient.invalidateQueries({ queryKey: ['applicants'] });
+      }
     } catch (err: any) {
-      console.error('Error deleting applicants:', err);
-      const errorMsg = getErrorMessage(err);
-      if (mountedRef.current) setBulkDeleteError(errorMsg);
+      console.error('Error bulk changing status:', err);
+      const errorMsg = err.message || 'Failed to update statuses';
+      setBulkStatusError(errorMsg);
     } finally {
-      if (mountedRef.current) setIsDeleting(false);
+      if (mountedRef.current) setIsSubmittingBulkStatus(false);
     }
-  }, [selectedApplicantIds, updateStatusMutation]);
+  },
+  [selectedApplicantIds, bulkStatusForm, refetchApplicants, queryClient, batchUpdateStatusMutation]
+);
+
+const handleBulkDelete = useCallback(async () => {
+  if (selectedApplicantIds.length === 0) return;
+
+  const result = await Swal.fire({
+    title: 'Delete Applicants?',
+    text: `Are you sure you want to delete ${selectedApplicantIds.length} applicant(s)? They will be moved to trash.`,
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonColor: '#3085d6',
+    cancelButtonColor: '#d33',
+    confirmButtonText: 'Yes, delete them!',
+  });
+
+  if (!result.isConfirmed) return;
+
+  // Prepare updates for moving to trash
+  const updates = selectedApplicantIds.map((applicantId) => ({
+    applicantId: applicantId,
+    status: 'trashed',
+    notes: `Moved to trash on ${new Date().toLocaleDateString()}`,
+  }));
+
+  try {
+    setIsDeleting(true);
+    
+    await batchUpdateStatusMutation.mutateAsync(updates);
+    
+    await Swal.fire({
+      title: 'Success!',
+      text: `${selectedApplicantIds.length} applicant(s) moved to trash.`,
+      icon: 'success',
+      position: 'center',
+      timer: 2000,
+      showConfirmButton: false,
+    });
+    
+    if (mountedRef.current) {
+      setRowSelection({});
+      await refetchApplicants();
+      queryClient.invalidateQueries({ queryKey: ['applicants'] });
+    }
+  } catch (err: any) {
+    console.error('Error deleting applicants:', err);
+    const errorMsg = err.message || 'Failed to delete applicants';
+    if (mountedRef.current) setBulkDeleteError(errorMsg);
+  } finally {
+    if (mountedRef.current) setIsDeleting(false);
+  }
+}, [selectedApplicantIds, refetchApplicants, queryClient, batchUpdateStatusMutation]);
+
 
   // Define table columns
   const isTableLoading = Boolean(
@@ -3496,62 +3337,78 @@ const extractRejectionReasons = useCallback((applicant: any): string[] => {
 
   const columns = useMemo<MRT_ColumnDef<Applicant>[]>(
     () => [
-      {
-        accessorKey: 'applicantNo',
-        header: isLaptopViewport ? 'ID' : 'ApplicantNo',
-        size: columnSizeConfig.applicantNo,
-        enableColumnFilter: false,
-        enableSorting: true,
-        Cell: ({ row, table }) => {
-          if (isTableLoading) return renderCellSkeleton('text', '40%');
-          const orig: any = row.original as any;
-          const href = getApplicantHref(row);
-          const possible =
-            orig?.applicantNo ||
-            orig?.applicantNumber ||
-            orig?.applicationNo ||
-            orig?.applicationId;
-          if (possible)
-            return (
-              <a
-                href={href}
-                className="block h-full w-full text-inherit underline-offset-2 hover:underline"
-                onClick={(e) => handleApplicantLinkClick(e, row)}
-                onAuxClick={handleApplicantLinkAuxClick}
-              >
-                {String(possible)}
-              </a>
-            );
-          // fallback to visible index + 1 for human-friendly numbering
-          const idx =
-            row.index ??
-            table.getRowModel().rows.findIndex((r) => r.id === row.id);
-          if (typeof idx === 'number' && idx >= 0)
-            return (
-              <a
-                href={href}
-                className="block h-full w-full text-inherit underline-offset-2 hover:underline"
-                onClick={(e) => handleApplicantLinkClick(e, row)}
-                onAuxClick={handleApplicantLinkAuxClick}
-              >
-                {String(idx + 1)}
-              </a>
-            );
-          // last resort: shortened id
-          const id = orig?._id || orig?.id || '';
-          if (!id) return '-';
-          return (
-            <a
-              href={href}
-              className="block h-full w-full text-inherit underline-offset-2 hover:underline"
-              onClick={(e) => handleApplicantLinkClick(e, row)}
-              onAuxClick={handleApplicantLinkAuxClick}
-            >
-              {String(id).slice(0, 8)}
-            </a>
-          );
-        },
-      },
+     {
+  accessorKey: 'applicantNo',
+  header: isLaptopViewport ? 'ID' : 'ApplicantNo',
+  size: columnSizeConfig.applicantNo,
+  enableColumnFilter: false,
+  enableSorting: !duplicatesOnlyEnabled, // Disable sorting when duplicates filter is active
+  sortingFn: (rowA, rowB, columnId) => {
+    if (duplicatesOnlyEnabled) {
+      // When showing duplicates, maintain the grouped order from sortApplicantsByDuplicatePriority
+      // Return 0 to preserve the original order
+      return 0;
+    }
+    // Normal sorting logic for when duplicates filter is not active
+    const a = rowA.getValue(columnId);
+    const b = rowB.getValue(columnId);
+    const numA = Number(a);
+    const numB = Number(b);
+    if (isNaN(numA) || isNaN(numB)) {
+      return String(a).localeCompare(String(b));
+    }
+    return numA - numB;
+  },
+  Cell: ({ row, table }) => {
+    if (isTableLoading) return renderCellSkeleton('text', '40%');
+    const orig: any = row.original as any;
+    const href = getApplicantHref(row);
+    const possible =
+      orig?.applicantNo ||
+      orig?.applicantNumber ||
+      orig?.applicationNo ||
+      orig?.applicationId;
+    if (possible)
+      return (
+        <a
+          href={href}
+          className="block h-full w-full text-inherit underline-offset-2 hover:underline"
+          onClick={(e) => handleApplicantLinkClick(e, row)}
+          onAuxClick={handleApplicantLinkAuxClick}
+        >
+          {String(possible)}
+        </a>
+      );
+    // fallback to visible index + 1 for human-friendly numbering
+    const idx =
+      row.index ??
+      table.getRowModel().rows.findIndex((r) => r.id === row.id);
+    if (typeof idx === 'number' && idx >= 0)
+      return (
+        <a
+          href={href}
+          className="block h-full w-full text-inherit underline-offset-2 hover:underline"
+          onClick={(e) => handleApplicantLinkClick(e, row)}
+          onAuxClick={handleApplicantLinkAuxClick}
+        >
+          {String(idx + 1)}
+        </a>
+      );
+    // last resort: shortened id
+    const id = orig?._id || orig?.id || '';
+    if (!id) return '-';
+    return (
+      <a
+        href={href}
+        className="block h-full w-full text-inherit underline-offset-2 hover:underline"
+        onClick={(e) => handleApplicantLinkClick(e, row)}
+        onAuxClick={handleApplicantLinkAuxClick}
+      >
+        {String(id).slice(0, 8)}
+      </a>
+    );
+  },
+},
      {
   accessorKey: 'profilePhoto',
   header: 'Photo',
@@ -4422,7 +4279,7 @@ const extractRejectionReasons = useCallback((applicant: any): string[] => {
 
   const table = useMaterialReactTable({
     columns,
-    // Pass the filteredApplicants list (applies custom filters on top of displayedApplicants)
+  enableSorting: !duplicatesOnlyEnabled, // Disable sorting when showing duplicates
     data: tableData as any,
     displayColumnDefOptions: {
       'mrt-row-select': {
@@ -4478,7 +4335,6 @@ const extractRejectionReasons = useCallback((applicant: any): string[] => {
     enableHiding: true,
     enableDensityToggle: false,
     enableFullScreenToggle: false,
-    enableSorting: true,
     enableColumnActions: false,
     enableColumnResizing: true,
     layoutMode: 'grid',
