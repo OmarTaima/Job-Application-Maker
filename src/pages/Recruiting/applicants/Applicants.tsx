@@ -2862,6 +2862,7 @@ const buildInterviewEmailHtml = (subject: string, rawBody: string, replacements?
     
     // Replace location patterns with styled links
     result = result.replace(locationPattern, (match, locationLabel, url) => {
+      void match
       let href = url;
       if (!href.startsWith('http://') && !href.startsWith('https://')) {
         href = 'https://' + href;

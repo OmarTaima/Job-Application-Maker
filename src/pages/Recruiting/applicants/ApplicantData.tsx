@@ -2184,6 +2184,7 @@ const ApplicantData = () => {
     
     // Replace location patterns with styled links
     result = result.replace(locationPattern, (match, locationLabel, url) => {
+       void match; // Unused parameter
       let href = url;
       if (!href.startsWith('http://') && !href.startsWith('https://')) {
         href = 'https://' + href;
