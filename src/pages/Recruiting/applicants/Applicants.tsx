@@ -10,6 +10,16 @@ import { ChatIcon } from '../../../icons';
 import { useStatusSettings } from '../../../utils/useStatusSettings';
 import { useQueryClient } from '@tanstack/react-query';
 import { sortApplicantsByDuplicatePriority } from '../../../utils/applicantDuplicateSort';
+import { useQuery } from '@tanstack/react-query';
+import axiosInstance from '../../../config/axios';
+
+type ApiMailResponse = {
+  message: string;
+  page: string;
+  PageCount: number | null;
+  TotalCount: number;
+  data: Array<{ _id: string; applicant: string | null; [key: string]: any }>;
+};
 
 // simple in-memory cache for compressed thumbnails
 const _thumbnailCache: Map<string, string> = new Map();
@@ -337,6 +347,26 @@ type ApplicantsProps = {
   companyIdOverride?: string | string[] | undefined;
 };
 
+const extractId = (value: unknown): string | null => {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const resolved = extractId(item);
+      if (resolved) return resolved;
+    }
+    return null;
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed || null;
+  }
+  if (value && typeof value === 'object') {
+    const maybeId = value as { _id?: unknown; id?: unknown };
+    if (typeof maybeId._id === 'string' && maybeId._id.trim()) return maybeId._id.trim();
+    if (typeof maybeId.id === 'string' && maybeId.id.trim()) return maybeId.id.trim();
+  }
+  return null;
+};
+
 const Applicants = ({ layoutKey, defaultLayout, onlyStatus, companyIdOverride }: ApplicantsProps = {}) => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -578,6 +608,15 @@ const Applicants = ({ layoutKey, defaultLayout, onlyStatus, companyIdOverride }:
     return true;
   }, [companyId]);
 
+  const assignedCompanyIds = useMemo(() => {
+  if (isSuperAdmin) return [];
+  const fromCompanies = Array.isArray(user?.companies)
+    ? user.companies.map((c: any) => extractId(c?.companyId))
+    : [];
+  const fromAssigned = Array.isArray(user?.assignedcompanyId) ? user.assignedcompanyId : [];
+  return Array.from(new Set([...fromCompanies, ...fromAssigned])).filter(Boolean) as string[];
+}, [user, isSuperAdmin]);
+
   // Use React Query hooks
   // Keep a full job-position map for the current user scope so MRT company/job
   // filters always resolve consistently even while filter values are changing.
@@ -602,6 +641,54 @@ const Applicants = ({ layoutKey, defaultLayout, onlyStatus, companyIdOverride }:
     isFetching: isCompaniesFetching,
     isFetched: isCompaniesFetched,
   } = useCompanies(companyId as any);
+
+ const queryCompanyIds = useMemo(() => {
+  if (!isSuperAdmin && assignedCompanyIds.length > 0) return assignedCompanyIds;
+  return [] as string[];
+}, [isSuperAdmin, assignedCompanyIds]);
+
+const { data: mailApiResponse } = useQuery<ApiMailResponse>({
+  queryKey: ['mail-logs', queryCompanyIds.join(',')],
+  queryFn: async () => {
+    const baseParams: Record<string, string> = { PageCount: 'all' };
+    if (queryCompanyIds.length <= 1) {
+      if (queryCompanyIds.length === 1) baseParams.company = queryCompanyIds[0];
+      const res = await axiosInstance.get<ApiMailResponse>('/mail', { params: baseParams });
+      return res.data;
+    }
+    const responses = await Promise.all(
+      queryCompanyIds.map((companyId: string) =>
+        axiosInstance.get<ApiMailResponse>('/mail', {
+          params: { ...baseParams, company: companyId },
+        })
+      )
+    );
+    const mergedMap = new Map<string, any>();
+    responses.forEach((r) => (r.data?.data || []).forEach((m: any) => mergedMap.set(m._id, m)));
+    const data = Array.from(mergedMap.values());
+    return { message: 'success', page: 'all', PageCount: null, TotalCount: data.length, data };
+  },
+  staleTime: 5 * 60 * 1000,
+  refetchInterval: 30 * 1000,
+  refetchIntervalInBackground: true,
+});
+
+const mailCountByApplicantId = useMemo(() => {
+  const map = new Map<string, number>();
+  (mailApiResponse?.data || []).forEach((mail: any) => {
+    const applicantId =
+      typeof mail.applicant === 'string'
+        ? mail.applicant.trim()
+        : (mail.applicant as any)?._id?.trim() || '';
+    if (!applicantId) return;
+    map.set(applicantId, (map.get(applicantId) || 0) + 1);
+  });
+  return map;
+}, [mailApiResponse]);
+
+
+
+
   const selectedApplicantRecipients = useMemo(() => {
     try {
       const ids = new Set(selectedApplicantIds);
@@ -3218,6 +3305,8 @@ const handleBulkDelete = useCallback(async () => {
 }, [selectedApplicantIds, refetchApplicants, queryClient, batchUpdateStatusMutation]);
 
 
+
+
   // Define table columns
   const isTableLoading = Boolean(
     isJobPositionsFetching || isApplicantsFetching || isCompaniesFetching
@@ -3514,43 +3603,32 @@ const extractRejectionReasons = useCallback((applicant: any): string[] => {
           );
         },
       },
-     {
+    {
   id: 'messages',
   header: 'Messages',
   size: 90,
   enableSorting: true,
   accessorFn: (row: any) => {
-    const orig: any = row || {};
-    const countFromArray = Array.isArray(orig.messages) ? orig.messages.length : undefined;
-    const countFromNumber = typeof orig.messageCount === 'number' ? orig.messageCount : (typeof orig.messages === 'number' ? orig.messages : undefined);
-    const countFallback = typeof orig.messagesCount === 'number' ? orig.messagesCount : 0;
-    return Number(countFromArray ?? countFromNumber ?? countFallback ?? 0);
+    const id = String(row?._id || row?.id || '');
+    return mailCountByApplicantId.get(id) ?? 0;
   },
   sortingFn: (rowA: any, rowB: any, columnId: string) => {
     const a = Number(rowA.getValue(columnId) ?? 0);
     const b = Number(rowB.getValue(columnId) ?? 0);
-    if (a === b) return 0;
-    return a > b ? 1 : -1;
+    return a === b ? 0 : a > b ? 1 : -1;
   },
   enableColumnFilter: false,
   Cell: ({ row }: { row: { original: Applicant } }) => {
     if (isTableLoading) return renderCellSkeleton('text');
-    const orig: any = row.original || {};
-    // Support various shapes: messages array, messageCount number, messagesCount
-    const countFromArray = Array.isArray(orig.messages) ? orig.messages.length : undefined;
-    const countFromNumber = typeof orig.messageCount === 'number' ? orig.messageCount : (typeof orig.messages === 'number' ? orig.messages : undefined);
-    const countFallback = typeof orig.messagesCount === 'number' ? orig.messagesCount : 0;
-    const msgs = countFromArray ?? countFromNumber ?? countFallback ?? 0;
+    const id = String((row.original as any)?._id || (row.original as any)?.id || '');
+    const count = mailCountByApplicantId.get(id) ?? 0;
 
-    // Return empty div if no messages (0)
-    if (msgs === 0) {
-      return <div className="flex items-center gap-2 text-sm text-gray-600"></div>;
-    }
+    if (count === 0) return <div />;
 
     return (
       <div className="flex items-center gap-2 text-sm text-gray-600">
         <ChatIcon className="w-4 h-4 text-gray-500" />
-        <span className="whitespace-nowrap">{msgs}</span>
+        <span className="whitespace-nowrap">{count}</span>
       </div>
     );
   },
@@ -4113,6 +4191,8 @@ const extractRejectionReasons = useCallback((applicant: any): string[] => {
       getExpectedSalaryDisplay,
       getApplicantSScore,
       selectedCompanyFilter,
+      selectedCompanyFilter,
+      mailCountByApplicantId,
     ]
   );
 
