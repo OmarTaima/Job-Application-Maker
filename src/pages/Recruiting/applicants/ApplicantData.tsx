@@ -2253,23 +2253,16 @@ const handlePhoneMenuClose = () => {
   };
   
   // Also convert specific location patterns
-  const formatLocationLinks = (text: string): string => {
-    // Look for Location: followed by a URL pattern
-    const locationPattern = /(Location:\s*)(https?:\/\/[^\s<]+|www\.[^\s<]+)/gi;
-    let result = text;
-    
-    // Replace location patterns with styled links
-    result = result.replace(locationPattern, (match, locationLabel, url) => {
-       void match; // Unused parameter
-      let href = url;
-      if (!href.startsWith('http://') && !href.startsWith('https://')) {
-        href = 'https://' + href;
-      }
-      return `${locationLabel}<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" style="color: #3b82f6; text-decoration: underline;">${escapeHtml(url)}</a>`;
-    });
-    
-    return result;
-  };
+ const formatLocationLinks = (text: string): string => {
+  const locationPattern = /(Location:\s*)(https?:\/\/[^\s<]+|www\.[^\s<]+)/gi;
+  return text.replace(locationPattern, (_, locationLabel, url) => {
+    let href = url;
+    if (!href.startsWith('http://') && !href.startsWith('https://')) {
+      href = 'https://' + href;
+    }
+    return `${locationLabel}<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" style="color: #3b82f6; text-decoration: underline;">${escapeHtml(url)}</a>`;
+  });
+};
   
   // Apply URL conversion
   let processedBodyWithLinks = formatLocationLinks(processedBody);
