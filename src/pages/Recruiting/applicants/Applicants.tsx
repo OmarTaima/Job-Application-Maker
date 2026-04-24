@@ -2761,7 +2761,7 @@ useEffect(() => {
   const getDefaultBulkInterviewTemplate = () => {
     return (
       '<p>Dear {{candidateName}},</p>' +
-      '<p>We are pleased to invite you for an interview for the position you applied for.</p>' +
+      '<p>We are pleased to invite you for an interview for the position you applied for {{jobtitle}}.</p>' +
       '<p><strong>Interview Details:</strong></p>' +
       '<p>Date: {{interviewDate}}</p>' +
       '<p>Time: {{interviewTime}}</p>' +
@@ -2809,32 +2809,54 @@ useEffect(() => {
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
 
-  const buildInterviewEmailHtml = (subject: string, rawBody: string) => {
-    const body = String(rawBody || '').trim();
-    const hasHtmlTags = /<[^>]+>/.test(body);
-    const normalizedBody = hasHtmlTags
-      ? inlineStyleHtml(body)
-      : String(body)
-          .split(/\r?\n/)
-          .map((line) => line.trim())
-          .filter(Boolean)
-          .map(
-            (line) =>
-              `<p style="margin:0 0 12px;color:#444;">${escapeHtml(line)}</p>`
-          )
-          .join('');
+// In the Applicants component, update the buildInterviewEmailHtml function (around line 1370)
+const buildInterviewEmailHtml = (subject: string, rawBody: string, replacements?: Record<string, string>) => {
+  // Create a case-insensitive replacement function
+  const applyReplacements = (text: string): string => {
+    if (!text || !replacements) return text;
+    
+    let result = text;
+    Object.entries(replacements).forEach(([token, value]) => {
+      // Create case-insensitive regex for each token
+      // Escape special regex characters in the token (like { and })
+      const escapedToken = token.replace(/[{}]/g, '\\$&');
+      const regex = new RegExp(escapedToken, 'gi');
+      result = result.replace(regex, value);
+    });
+    return result;
+  };
+  
+  // Apply substitutions to subject
+  let processedSubject = applyReplacements(subject);
+  
+  // Apply substitutions to body
+  let processedBody = applyReplacements(rawBody);
+  
+  const body = String(processedBody || '').trim();
+  const hasHtmlTags = /<[^>]+>/.test(body);
+  const normalizedBody = hasHtmlTags
+    ? inlineStyleHtml(body)
+    : String(body)
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map(
+          (line) =>
+            `<p style="margin:0 0 12px;color:#444;">${escapeHtml(line)}</p>`
+        )
+        .join('');
 
-    return `<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${escapeHtml(subject)}</title>
+  <title>${escapeHtml(processedSubject)}</title>
 </head>
 <body style="font-family: Arial, sans-serif; padding: 20px; margin: 0; background-color: #f5f5f5;">
   <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden;">
     <div style="background-color: #ffffff; border-bottom: 1px solid #e5e7eb; padding: 24px 30px; text-align: center;">
-      <h1 style="color: #111827; margin: 0; font-size: 22px; font-weight: 700;">${escapeHtml(subject)}</h1>
+      <h1 style="color: #111827; margin: 0; font-size: 22px; font-weight: 700;">${escapeHtml(processedSubject)}</h1>
     </div>
     <div style="padding: 30px;">
       <div style="font-size: 16px; line-height: 1.6; color: #444;">
@@ -2844,7 +2866,7 @@ useEffect(() => {
   </div>
 </body>
 </html>`;
-  };
+};
 
   const toLocalIsoWithoutTimezone = (d: Date) => {
     const yyyy = d.getFullYear();
@@ -2855,12 +2877,12 @@ useEffect(() => {
     return `${yyyy}-${mm}-${dd}T${hh}:${min}:00`;
   };
 
- const buildBulkInterviewPreview = () => {
+const buildBulkInterviewPreview = () => {
   if (selectedApplicantsForInterview.length === 0) {
     return { error: 'Please select at least one applicant.', items: [] as any[] };
   }
   if (!bulkInterviewForm.date || !bulkInterviewForm.time) {
-   
+    // Don't block preview if date/time missing, but show placeholder
   }
 
   const baseDate = new Date(
@@ -2874,12 +2896,11 @@ useEffect(() => {
   const typeLabel = String(bulkInterviewForm.type || 'phone')
     .charAt(0)
     .toUpperCase() + String(bulkInterviewForm.type || 'phone').slice(1);
-  const subject =
+  const sourceSubject =
     String(bulkInterviewEmailSubject || '').trim() || 'Interview Invitation';
   const sourceTemplate =
     String(bulkMessageTemplate || '').trim() || getDefaultBulkInterviewTemplate();
 
-  // Add explicit type annotations here
   const items = selectedApplicantsForInterview.map((candidate: { applicantId: string; applicantName: string; applicantNo: number | null; email: string; companyId: string; jobPositionId?: string; status: string }, index: number) => {
     const scheduled = new Date(baseDate.getTime() + index * interval * 60000);
     const interviewDate = scheduled.toLocaleDateString('en-US', {
@@ -2894,8 +2915,19 @@ useEffect(() => {
     });
     const scheduledAt = toLocalIsoWithoutTimezone(scheduled);
 
+    // Get job title from jobPositionId
+    const jobTitle = (() => {
+      if (!candidate.jobPositionId) return '';
+      const job = jobPositionMap[candidate.jobPositionId];
+      if (!job) return '';
+      return typeof job.title === 'string' ? job.title : (job.title?.en || '');
+    })();
+
     const replacements: Record<string, string> = {
       '{{candidateName}}': candidate.applicantName || 'Candidate',
+      '{{candidatename}}': candidate.applicantName || 'Candidate', // Add lowercase version
+      '{{jobTitle}}': jobTitle || '[Position]',
+      '{{jobtitle}}': jobTitle || '[Position]', // Add lowercase version
       '{{applicantNo}}':
         typeof candidate.applicantNo === 'number'
           ? String(candidate.applicantNo)
@@ -2911,12 +2943,20 @@ useEffect(() => {
       '{{interviewComment}}': String(bulkInterviewForm.comment || ''),
     };
 
-    let messageBody = sourceTemplate;
+    // Apply substitutions to subject using the new function
+    let processedSubject = sourceSubject;
     Object.entries(replacements).forEach(([token, value]) => {
-      messageBody = messageBody.split(token).join(value);
+      const regex = new RegExp(token.replace(/[{}]/g, '\\$&'), 'gi');
+      processedSubject = processedSubject.replace(regex, value);
     });
 
-    const html = buildInterviewEmailHtml(subject, messageBody);
+    let messageBody = sourceTemplate;
+    Object.entries(replacements).forEach(([token, value]) => {
+      const regex = new RegExp(token.replace(/[{}]/g, '\\$&'), 'gi');
+      messageBody = messageBody.replace(regex, value);
+    });
+
+    const html = buildInterviewEmailHtml(processedSubject, messageBody, replacements);
 
     return {
       applicantId: candidate.applicantId,
@@ -2930,7 +2970,7 @@ useEffect(() => {
       jobPositionId: candidate.jobPositionId,
       scheduledAt,
       scheduledLabel: `${interviewDate} at ${interviewTime}`,
-      subject,
+      subject: processedSubject,
       html,
       status: candidate.status,
     };
@@ -5068,6 +5108,7 @@ const isFilterElement = (target: HTMLElement): boolean => {
               emailOption={bulkEmailOption}
               setEmailOption={setBulkEmailOption}
               customEmail={bulkCustomEmail}
+              
               setCustomEmail={setBulkCustomEmail}
               phoneOption={bulkPhoneOption}
               setPhoneOption={setBulkPhoneOption}
@@ -5080,9 +5121,13 @@ const isFilterElement = (target: HTMLElement): boolean => {
               isSubmittingInterview={isSubmittingBulkInterview}
               setShowPreviewModal={setShowBulkPreviewFallbackModal}
               setPreviewHtml={setBulkPreviewHtml}
-              buildInterviewEmailHtml={({ subject, rawMessage }: any) =>
-                buildInterviewEmailHtml(String(subject || ''), String(rawMessage || ''))
-              }
+              buildInterviewEmailHtml={({ subject, rawMessage, replacements }: any) =>
+    buildInterviewEmailHtml(
+      String(subject || ''), 
+      String(rawMessage || ''),
+      replacements
+    )
+  }
               getJobTitle={() => ({ en: '' })}
               companyData={selectedApplicantCompany || null}
               applicant={{

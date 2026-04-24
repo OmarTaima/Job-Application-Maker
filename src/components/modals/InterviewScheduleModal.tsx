@@ -236,141 +236,141 @@ export default function InterviewScheduleModal(props: Props) {
   };
 
   // Template generation: build a default message depending on chosen notification channel(s)
-  const generateMessageTemplate = (channels: typeof notificationChannels = notificationChannels) => {
-    if (!applicant) return '';
+ const generateMessageTemplate = (channels: typeof notificationChannels = notificationChannels) => {
+  if (!applicant) return '';
 
-    const applicantName = bulkMode
-      ? '{{candidateName}}'
-      : (applicant.fullName || '').trim() || 'Candidate';
-    const positionTitle = (() => {
-      try {
-        const title = getJobTitle?.();
-        if (!title) return '';
-        if (typeof title === 'string') return title.trim();
-        const en = typeof (title as any).en === 'string' ? (title as any).en.trim() : '';
-        const ar = typeof (title as any).ar === 'string' ? (title as any).ar.trim() : '';
-        return en || ar || '';
-      } catch {
-        return '';
+  const applicantName = bulkMode
+    ? '{{candidateName}}'
+    : (applicant.fullName || '').trim() || 'Candidate';
+  const positionTitle = (() => {
+    try {
+      const title = getJobTitle?.();
+      if (!title) return '{{jobTitle}}'; // Return placeholder if no title
+      if (typeof title === 'string') return title.trim() || '{{jobTitle}}';
+      const en = typeof (title as any).en === 'string' ? (title as any).en.trim() : '';
+      const ar = typeof (title as any).ar === 'string' ? (title as any).ar.trim() : '';
+      return (en || ar) || '{{jobTitle}}';
+    } catch {
+      return '{{jobTitle}}';
+    }
+  })();
+  const interviewDate = interviewForm.date
+    ? new Date(interviewForm.date).toLocaleDateString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      })
+    : '[Interview Date]';
+  const interviewTime = bulkMode
+    ? '{{interviewTime}}'
+    : formatTime12Hour(interviewForm.time || '[Interview Time]');
+  const interviewType = interviewForm.type || 'phone';
+  const typeLabel = interviewType.charAt(0).toUpperCase() + interviewType.slice(1);
+  const location = (interviewForm.location || '').trim() || '[Location]';
+  const link = (interviewForm.link || '').trim();
+  const interviewDescription = (interviewForm.description || '').trim();
+  const interviewComment = (interviewForm.comment || '').trim();
+
+  const makeLocationHtml = (loc: string) => {
+    const esc = escapeHtml;
+    if (isUrl(loc)) {
+      let href = loc;
+      if (href.startsWith('//')) href = 'https:' + href;
+      else if (!href.toLowerCase().startsWith('http://') && !href.toLowerCase().startsWith('https://') && href.toLowerCase().startsWith('www.')) href = 'https://' + href;
+      const hrefEsc = esc(href);
+      const textEsc = esc(loc);
+      return `<a href="${hrefEsc}" target="_blank" rel="noopener noreferrer">${textEsc}</a>`;
+    }
+    return esc(loc);
+  };
+
+  const resolveAddressAndUrl = () => {
+    const raw = (interviewForm.location || '').trim();
+    const normalizedRaw = raw && isUrl(raw) ? normalizeUrl(raw) : raw;
+    const entries = getCompanyAddressEntries();
+
+    if (normalizedRaw) {
+      const matched = entries.find((entry) => areSameUrls(entry.url, normalizedRaw));
+      if (matched) {
+        return { addressValue: matched.label, locationUrl: matched.url };
       }
-    })();
-    const interviewDate = interviewForm.date
-      ? new Date(interviewForm.date).toLocaleDateString('en-US', {
-          weekday: 'long',
-          year: 'numeric',
-          month: 'long',
-          day: 'numeric',
-        })
-      : '[Interview Date]';
-    const interviewTime = bulkMode
-      ? '{{interviewTime}}'
-      : formatTime12Hour(interviewForm.time || '[Interview Time]');
-    const interviewType = interviewForm.type || 'phone';
-    const typeLabel = interviewType.charAt(0).toUpperCase() + interviewType.slice(1);
-    const location = (interviewForm.location || '').trim() || '[Location]';
-    const link = (interviewForm.link || '').trim();
-    const interviewDescription = (interviewForm.description || '').trim();
-    const interviewComment = (interviewForm.comment || '').trim();
-
-    const makeLocationHtml = (loc: string) => {
-      const esc = escapeHtml;
-      if (isUrl(loc)) {
-        let href = loc;
-        if (href.startsWith('//')) href = 'https:' + href;
-        else if (!href.toLowerCase().startsWith('http://') && !href.toLowerCase().startsWith('https://') && href.toLowerCase().startsWith('www.')) href = 'https://' + href;
-        const hrefEsc = esc(href);
-        const textEsc = esc(loc);
-        return `<a href="${hrefEsc}" target="_blank" rel="noopener noreferrer">${textEsc}</a>`;
-      }
-      return esc(loc);
-    };
-
-    const resolveAddressAndUrl = () => {
-      const raw = (interviewForm.location || '').trim();
-      const normalizedRaw = raw && isUrl(raw) ? normalizeUrl(raw) : raw;
-      const entries = getCompanyAddressEntries();
-
-      if (normalizedRaw) {
-        const matched = entries.find((entry) => areSameUrls(entry.url, normalizedRaw));
-        if (matched) {
-          return { addressValue: matched.label, locationUrl: matched.url };
-        }
-      }
-
-      if (normalizedRaw && isUrl(normalizedRaw)) {
-        return { addressValue: '[Address]', locationUrl: normalizedRaw };
-      }
-
-      if (normalizedRaw) {
-        return { addressValue: normalizedRaw, locationUrl: '' };
-      }
-
-      return { addressValue: '[Address]', locationUrl: '' };
-    };
-    
-    const makeLinkHtml = (lnk: string) => {
-      const esc = escapeHtml;
-      if (!lnk) return '';
-      if (isUrl(lnk)) {
-        let href = lnk;
-        if (href.startsWith('//')) href = 'https:' + href;
-        else if (!href.toLowerCase().startsWith('http://') && !href.toLowerCase().startsWith('https://') && href.toLowerCase().startsWith('www.')) href = 'https://' + href;
-        const hrefEsc = esc(href);
-        const textEsc = esc(lnk);
-        return `<a href="${hrefEsc}" target="_blank" rel="noopener noreferrer">${textEsc}</a>`;
-      }
-      return esc(lnk);
-    };
-
-    // Only one channel can be active at a time
-    if (channels.email) {
-      // Return HTML so Quill renders multiline content correctly
-      const esc = escapeHtml;
-      const { addressValue, locationUrl } = resolveAddressAndUrl();
-      const locationHtml = locationUrl ? makeLocationHtml(locationUrl) : '';
-      const detailLines = [
-        `Date: ${esc(interviewDate)}`,
-        `Time: ${esc(interviewTime)}`,
-        `Type: ${esc(typeLabel)}`,
-        `Address: ${esc(addressValue)}`,
-      ];
-      if (locationHtml) detailLines.push(`Location: ${locationHtml}`);
-      if (link) detailLines.push(`Video Link: ${makeLinkHtml(link)}`);
-      if (interviewDescription) detailLines.push(`Description: ${esc(interviewDescription)}`);
-      if (interviewComment) detailLines.push(`Comment: ${esc(interviewComment)}`);
-      const detailsBlock = detailLines.map((line) => `<p>${line}</p>`).join('');
-
-      return (
-        `<p>Dear ${esc(applicantName)},</p>` +
-        `<p>We are pleased to invite you for an interview for the position of ${esc(positionTitle)}.</p>` +
-        `<p><strong>Interview Details:</strong></p>${detailsBlock}` +
-        `<p>Please confirm your availability at your earliest convenience.</p>` +
-        `<p>Best regards,<br/>HR Team</p>`
-      );
-    } else if (channels.whatsapp) {
-      const detailLines = [
-        `📅 Date: ${interviewDate}`,
-        `⏰ Time: ${interviewTime}`,
-        `🧭 Type: ${typeLabel}`,
-        `📍 Location: ${location}`,
-      ];
-      if (link) detailLines.push(`🎥 Video Link: ${link}`);
-      if (interviewDescription) detailLines.push(`📝 Description: ${interviewDescription}`);
-      if (interviewComment) detailLines.push(`💬 Comment: ${interviewComment}`);
-
-      return `Hi ${applicantName}! 👋\n\nGreat news! We'd like to invite you for an interview.\n\nInterview details:\n${detailLines.join('\n')}\n\nPlease confirm if you're available. Looking forward to meeting you!`;
-    } else if (channels.sms) {
-      const detailParts = [`Date: ${interviewDate}`, `Time: ${interviewTime}`, `Type: ${typeLabel}`, `Location: ${location}`];
-      if (link) detailParts.push(`Video Link: ${link}`);
-      if (interviewDescription) detailParts.push(`Description: ${interviewDescription}`);
-
-      return `Hi ${applicantName}, you're invited for an interview. Interview details: ${detailParts.join(' | ')}.${
-        interviewComment ? ` Comment: ${interviewComment}.` : ''
-      } Please confirm. - HR Team`;
     }
 
-    return '';
+    if (normalizedRaw && isUrl(normalizedRaw)) {
+      return { addressValue: '[Address]', locationUrl: normalizedRaw };
+    }
+
+    if (normalizedRaw) {
+      return { addressValue: normalizedRaw, locationUrl: '' };
+    }
+
+    return { addressValue: '[Address]', locationUrl: '' };
   };
+  
+  const makeLinkHtml = (lnk: string) => {
+    const esc = escapeHtml;
+    if (!lnk) return '';
+    if (isUrl(lnk)) {
+      let href = lnk;
+      if (href.startsWith('//')) href = 'https:' + href;
+      else if (!href.toLowerCase().startsWith('http://') && !href.toLowerCase().startsWith('https://') && href.toLowerCase().startsWith('www.')) href = 'https://' + href;
+      const hrefEsc = esc(href);
+      const textEsc = esc(lnk);
+      return `<a href="${hrefEsc}" target="_blank" rel="noopener noreferrer">${textEsc}</a>`;
+    }
+    return esc(lnk);
+  };
+
+  // Only one channel can be active at a time
+  if (channels.email) {
+    // Return HTML so Quill renders multiline content correctly
+    const esc = escapeHtml;
+    const { addressValue, locationUrl } = resolveAddressAndUrl();
+    const locationHtml = locationUrl ? makeLocationHtml(locationUrl) : '';
+    const detailLines = [
+      `Date: ${esc(interviewDate)}`,
+      `Time: ${esc(interviewTime)}`,
+      `Type: ${esc(typeLabel)}`,
+      `Address: ${esc(addressValue)}`,
+    ];
+    if (locationHtml) detailLines.push(`Location: ${locationHtml}`);
+    if (link) detailLines.push(`Video Link: ${makeLinkHtml(link)}`);
+    if (interviewDescription) detailLines.push(`Description: ${esc(interviewDescription)}`);
+    if (interviewComment) detailLines.push(`Comment: ${esc(interviewComment)}`);
+    const detailsBlock = detailLines.map((line) => `<p>${line}</p>`).join('');
+
+    return (
+      `<p>Dear ${esc(applicantName)},</p>` +
+      `<p>We are pleased to invite you for an interview for the position of ${esc(positionTitle)}.</p>` +
+      `<p><strong>Interview Details:</strong></p>${detailsBlock}` +
+      `<p>Please confirm your availability at your earliest convenience.</p>` +
+      `<p>Best regards,<br/>HR Team</p>`
+    );
+  } else if (channels.whatsapp) {
+    const detailLines = [
+      `📅 Date: ${interviewDate}`,
+      `⏰ Time: ${interviewTime}`,
+      `🧭 Type: ${typeLabel}`,
+      `📍 Location: ${location}`,
+    ];
+    if (link) detailLines.push(`🎥 Video Link: ${link}`);
+    if (interviewDescription) detailLines.push(`📝 Description: ${interviewDescription}`);
+    if (interviewComment) detailLines.push(`💬 Comment: ${interviewComment}`);
+
+    return `Hi ${applicantName}! 👋\n\nGreat news! We'd like to invite you for an interview for the position of ${positionTitle}.\n\nInterview details:\n${detailLines.join('\n')}\n\nPlease confirm if you're available. Looking forward to meeting you!`;
+  } else if (channels.sms) {
+    const detailParts = [`Date: ${interviewDate}`, `Time: ${interviewTime}`, `Type: ${typeLabel}`, `Location: ${location}`];
+    if (link) detailParts.push(`Video Link: ${link}`);
+    if (interviewDescription) detailParts.push(`Description: ${interviewDescription}`);
+
+    return `Hi ${applicantName}, you're invited for an interview for ${positionTitle}. Interview details: ${detailParts.join(' | ')}.${
+      interviewComment ? ` Comment: ${interviewComment}.` : ''
+    } Please confirm. - HR Team`;
+  }
+
+  return '';
+};
 
   const handleRegenerateTemplate = () => {
     setMessageTemplate(generateMessageTemplate());
@@ -899,17 +899,58 @@ export default function InterviewScheduleModal(props: Props) {
 
         <div className="flex items-center gap-3 mt-6 sm:justify-end">
           <button type="button" onClick={onClose} disabled={isSubmittingInterview} className="flex w-full justify-center rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-white/[0.03] sm:w-auto">Cancel</button>
-          <button type="button" onClick={() => {
-            if (typeof onPreview === 'function') {
-              onPreview();
-              return;
-            }
-            const subject = interviewEmailSubject || 'Interview Invitation';
-            const jobTitle = getJobTitle().en || '';
-            const preview = buildInterviewEmailHtml({ subject, jobTitle, interview: interviewForm, rawMessage: messageTemplate, applicantName: applicant.fullName });
-            setPreviewHtml(preview);
-            setShowPreviewModal(true);
-          }} className="flex w-full justify-center rounded-lg border border-stroke px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:border-strokedark dark:hover:bg-gray-800 sm:w-auto">{bulkMode ? 'Preview All Emails' : 'Preview Email'}</button>
+          <button 
+  type="button" 
+  onClick={() => {
+    if (typeof onPreview === 'function') {
+      onPreview();
+      return;
+    }
+    
+    // Get job title for single interview
+    const jobTitle = (() => {
+      try {
+        const title = getJobTitle?.();
+        if (!title) return '';
+        if (typeof title === 'string') return title.trim();
+        const en = typeof (title as any).en === 'string' ? (title as any).en.trim() : '';
+        const ar = typeof (title as any).ar === 'string' ? (title as any).ar.trim() : '';
+        return en || ar || '';
+      } catch {
+        return '';
+      }
+    })();
+    
+    const applicantName = !bulkMode 
+      ? (applicant?.fullName || '').trim() || 'Candidate'
+      : '{{candidateName}}';
+    
+    const replacements: Record<string, string> = {
+      '{{candidateName}}': applicantName,
+      '{{jobTitle}}': jobTitle || '[Position]',
+    };
+    
+    // Apply subject substitutions
+    let processedSubject = interviewEmailSubject || 'Interview Invitation';
+    Object.entries(replacements).forEach(([token, value]) => {
+      processedSubject = processedSubject.split(token).join(value);
+    });
+    
+    const preview = buildInterviewEmailHtml({ 
+      subject: processedSubject, 
+      jobTitle, 
+      interview: interviewForm, 
+      rawMessage: messageTemplate, 
+      applicantName,
+      replacements 
+    });
+    setPreviewHtml(preview);
+    setShowPreviewModal(true);
+  }} 
+  className="flex w-full justify-center rounded-lg border border-stroke px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:border-strokedark dark:hover:bg-gray-800 sm:w-auto"
+>
+  {bulkMode ? 'Preview All Emails' : 'Preview Email'}
+</button>
           <button type="submit" disabled={isSubmittingInterview} className="flex w-full justify-center items-center gap-2 rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50 disabled:cursor-not-allowed sm:w-auto">{isSubmittingInterview ? (<><svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Scheduling...</span></>) : (<span>Schedule Interview</span>)}</button>
         </div>
 

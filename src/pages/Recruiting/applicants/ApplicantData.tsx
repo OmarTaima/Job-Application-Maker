@@ -2098,22 +2098,73 @@ const ApplicantData = () => {
     return out;
   };
 
-  const buildInterviewEmailHtml = (opts: { subject: string; jobTitle: string; interview: any; rawMessage: string; applicantName?: string }) => {
-    const { subject, rawMessage } = opts;
-    const sanitizedBody = sanitizeMessageTemplate(rawMessage || '');
-    let bodyHtml = '';
-    if (sanitizedBody.indexOf('<') !== -1) {
-      bodyHtml = inlineStyleHtml(sanitizedBody);
-    } else {
-      const parts = sanitizedBody.split(/\r?\n/).map(p => p.trim()).filter(p => p.length > 0);
-      bodyHtml = parts.map(p => `<p style="margin:0 0 12px;color:#444;">${escapeHtml(p)}</p>`).join('');
-    }
-    return `<!DOCTYPE html>
+ const buildInterviewEmailHtml = (opts: { 
+  subject: string; 
+  jobTitle: string; 
+  interview: any; 
+  rawMessage: string; 
+  applicantName?: string;
+  replacements?: Record<string, string>;
+}) => {
+  const { subject, rawMessage, applicantName, jobTitle, replacements: externalReplacements } = opts;
+  
+  // Build replacements object
+  const replacements: Record<string, string> = externalReplacements || {};
+  
+  // Add default replacements if not provided
+  if (!replacements['{{candidateName}}'] && applicantName) {
+    replacements['{{candidateName}}'] = applicantName;
+  }
+  if (!replacements['{{jobTitle}}'] && jobTitle) {
+    replacements['{{jobTitle}}'] = jobTitle;
+  }
+  
+  // Also add case-insensitive versions
+  const allReplacements: Record<string, string> = {};
+  
+  // Add original and case-insensitive versions
+  Object.entries(replacements).forEach(([token, value]) => {
+    allReplacements[token] = value;
+    // Add lowercase version
+    allReplacements[token.toLowerCase()] = value;
+    // Add version with first letter capitalized
+    const lowerToken = token.toLowerCase();
+    const capitalToken = lowerToken.charAt(0).toUpperCase() + lowerToken.slice(1);
+    allReplacements[capitalToken] = value;
+    // Add version without spaces
+    allReplacements[lowerToken.replace(/\s/g, '')] = value;
+  });
+  
+  // Apply substitutions to subject (case-insensitive)
+  let processedSubject = subject;
+  Object.entries(allReplacements).forEach(([token, value]) => {
+    // Create case-insensitive regex
+    const regex = new RegExp(token.replace(/[{}]/g, '\\$&'), 'gi');
+    processedSubject = processedSubject.replace(regex, value);
+  });
+  
+  // Apply substitutions to body (case-insensitive)
+  let processedBody = rawMessage || '';
+  Object.entries(allReplacements).forEach(([token, value]) => {
+    const regex = new RegExp(token.replace(/[{}]/g, '\\$&'), 'gi');
+    processedBody = processedBody.replace(regex, value);
+  });
+  
+  const sanitizedBody = sanitizeMessageTemplate(processedBody);
+  let bodyHtml = '';
+  if (sanitizedBody.indexOf('<') !== -1) {
+    bodyHtml = inlineStyleHtml(sanitizedBody);
+  } else {
+    const parts = sanitizedBody.split(/\r?\n/).map(p => p.trim()).filter(p => p.length > 0);
+    bodyHtml = parts.map(p => `<p style="margin:0 0 12px;color:#444;">${escapeHtml(p)}</p>`).join('');
+  }
+  
+  return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${subject}</title>
+  <title>${escapeHtml(processedSubject)}</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; background-color: #f5f5f5; margin:0; padding:0; }
     .container { max-width:600px; margin:24px auto; background:#fff; border-radius:8px; overflow:hidden; }
@@ -2125,14 +2176,14 @@ const ApplicantData = () => {
 </head>
 <body>
   <div class="container">
-    <div class="header"><h1>${subject}</h1></div>
+    <div class="header"><h1>${escapeHtml(processedSubject)}</h1></div>
       <div class="content">
       <div style="margin-top:12px;margin-bottom:18px;">${bodyHtml}</div>
     </div>
   </div>
 </body>
 </html>`;
-  };
+};
 
   const getErrorMessage = (err: any): string => {
     if (
@@ -2164,132 +2215,157 @@ const ApplicantData = () => {
   };
 
   const handleInterviewSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!id || !applicant) return;
+  e.preventDefault();
+  if (!id || !applicant) return;
 
-    if (emailOption === 'custom' && !customEmail.trim()) {
-      setInterviewError('Please provide a custom email address');
-      return;
+  if (emailOption === 'custom' && !customEmail.trim()) {
+    setInterviewError('Please provide a custom email address');
+    return;
+  }
+  if (
+    (notificationChannels.sms || notificationChannels.whatsapp) &&
+    phoneOption === 'custom' &&
+    !customPhone.trim()
+  ) {
+    setInterviewError('Please provide a custom phone number');
+    return;
+  }
+
+  setIsSubmittingInterview(true);
+  const interviewSnapshot = { ...interviewForm };
+  const notifEmailOption = emailOption || (customEmail ? 'custom' : undefined);
+  const notifCustomEmail = customEmail || undefined;
+  const notifPhoneOption = phoneOption || undefined;
+  const notifCustomPhone = phoneOption === 'custom' ? customPhone || undefined : undefined;
+  const notifChannels = { ...notificationChannels };
+  setInterviewForm({
+    date: '',
+    time: '',
+    description: '',
+    comment: '',
+    location: '',
+    link: '',
+    type: 'phone',
+  });
+  setNotificationChannels({ email: true, sms: false, whatsapp: false });
+  setEmailOption('company');
+  setCustomEmail('');
+  setPhoneOption('company');
+  setCustomPhone('');
+  setShowInterviewModal(false);
+
+  try {
+    let scheduledAt: string | undefined;
+    if (interviewSnapshot.date && interviewSnapshot.time) {
+      scheduledAt = `${interviewSnapshot.date}T${interviewSnapshot.time}:00`;
+    } else if (interviewSnapshot.date) {
+      scheduledAt = `${interviewSnapshot.date}T00:00:00`;
     }
-    if (
-      (notificationChannels.sms || notificationChannels.whatsapp) &&
-      phoneOption === 'custom' &&
-      !customPhone.trim()
-    ) {
-      setInterviewError('Please provide a custom phone number');
-      return;
-    }
 
-    setIsSubmittingInterview(true);
-    const interviewSnapshot = { ...interviewForm };
-    const notifEmailOption = emailOption || (customEmail ? 'custom' : undefined);
-    const notifCustomEmail = customEmail || undefined;
-    const notifPhoneOption = phoneOption || undefined;
-    const notifCustomPhone = phoneOption === 'custom' ? customPhone || undefined : undefined;
-    const notifChannels = { ...notificationChannels };
-    setInterviewForm({
-      date: '',
-      time: '',
-      description: '',
-      comment: '',
-      location: '',
-      link: '',
-      type: 'phone',
-    });
-    setNotificationChannels({ email: true, sms: false, whatsapp: false });
-    setEmailOption('company');
-    setCustomEmail('');
-    setPhoneOption('company');
-    setCustomPhone('');
-    setShowInterviewModal(false);
-
-    try {
-      let scheduledAt: string | undefined;
-      if (interviewSnapshot.date && interviewSnapshot.time) {
-        scheduledAt = `${interviewSnapshot.date}T${interviewSnapshot.time}:00`;
-      } else if (interviewSnapshot.date) {
-        scheduledAt = `${interviewSnapshot.date}T00:00:00`;
-      }
-
-      const interviewData: any = {
-        scheduledAt,
-        description: interviewSnapshot.description || undefined,
-        type: interviewSnapshot.type || undefined,
-        location: interviewSnapshot.location || undefined,
-        videoLink: interviewSnapshot.link || undefined,
-        notes: interviewSnapshot.comment || undefined,
-        companyId: companyObj?._id,
-        notifications: {
-          channels: {
-            email: notifChannels.email,
-            sms: notifChannels.sms,
-            whatsapp: notifChannels.whatsapp,
-          },
-          emailOption: notifEmailOption,
-          customEmail: notifCustomEmail,
-          phoneOption: notifPhoneOption,
-          customPhone: notifCustomPhone,
+    const interviewData: any = {
+      scheduledAt,
+      description: interviewSnapshot.description || undefined,
+      type: interviewSnapshot.type || undefined,
+      location: interviewSnapshot.location || undefined,
+      videoLink: interviewSnapshot.link || undefined,
+      notes: interviewSnapshot.comment || undefined,
+      companyId: companyObj?._id,
+      notifications: {
+        channels: {
+          email: notifChannels.email,
+          sms: notifChannels.sms,
+          whatsapp: notifChannels.whatsapp,
         },
-      };
+        emailOption: notifEmailOption,
+        customEmail: notifCustomEmail,
+        phoneOption: notifPhoneOption,
+        customPhone: notifCustomPhone,
+      },
+    };
 
-      if (applicant && applicant.status !== 'interview') {
-        updateStatusMutation.mutate({
-          id: id!,
-          data: {
-            status: 'interview',
-            notes: `Status automatically updated to interview upon scheduling an interview on ${new Date().toLocaleDateString()}`,
-          } as UpdateStatusRequest,
-        });
-      }
+    if (applicant && applicant.status !== 'interview') {
+      updateStatusMutation.mutate({
+        id: id!,
+        data: {
+          status: 'interview',
+          notes: `Status automatically updated to interview upon scheduling an interview on ${new Date().toLocaleDateString()}`,
+        } as UpdateStatusRequest,
+      });
+    }
 
-      const tempInterviewId = `temp-${Date.now()}`;
-      interviewData._id = tempInterviewId;
+    const tempInterviewId = `temp-${Date.now()}`;
+    interviewData._id = tempInterviewId;
 
-      const updatedApplicant = await scheduleInterviewMutation.mutateAsync({ id: id!, data: interviewData });
+    const updatedApplicant = await scheduleInterviewMutation.mutateAsync({ id: id!, data: interviewData });
 
-      let createdInterviewId: string | undefined;
+    let createdInterviewId: string | undefined;
+    try {
+      const interviews = (updatedApplicant as any)?.interviews || [];
+      createdInterviewId = interviews.find((iv: any) => {
+        if (!iv) return false;
+        return (
+          (iv.scheduledAt === interviewData.scheduledAt) &&
+          (iv.type === interviewData.type) &&
+          ((iv.notes || '') === (interviewData.notes || ''))
+        );
+      })?._id;
+    } catch (e) {}
+
+    if (createdInterviewId) {
+      await updateInterviewMutation.mutateAsync({
+        applicantId: id!,
+        interviewId: createdInterviewId,
+        data: { status: 'scheduled' },
+      });
+    }
+
+    if (notificationChannels.email) {
       try {
-        const interviews = (updatedApplicant as any)?.interviews || [];
-        createdInterviewId = interviews.find((iv: any) => {
-          if (!iv) return false;
-          return (
-            (iv.scheduledAt === interviewData.scheduledAt) &&
-            (iv.type === interviewData.type) &&
-            ((iv.notes || '') === (interviewData.notes || ''))
-          );
-        })?._id;
-      } catch (e) {}
-
-      if (createdInterviewId) {
-        await updateInterviewMutation.mutateAsync({
-          applicantId: id!,
-          interviewId: createdInterviewId,
-          data: { status: 'scheduled' },
+        const toEmail = applicant.email;
+        const mailDefault = companyObj?.settings?.mailSettings?.defaultMail || companyObj?.mailSettings?.defaultMail || companyObj?.contactEmail || companyObj?.email || '';
+        let fromEmail = notifCustomEmail || mailDefault;
+        if (!fromEmail || fromEmail.trim() === '') {
+          console.warn('ApplicantData: Email sender is empty, using fallback support@yourdomain.com for safety', { mailDefault, notifCustomEmail, companyObj });
+        }
+        
+        // Get job title
+        const jobTitleObj = getJobTitle();
+        const jobTitleText = jobTitleObj.en || '';
+        
+        // Get applicant name
+        const applicantName = applicant.fullName || 'Candidate';
+        
+        // Build replacements for variable substitution
+        const replacements: Record<string, string> = {
+          '{{candidateName}}': applicantName,
+          '{{jobTitle}}': jobTitleText,
+        };
+        
+        // Apply substitutions to subject
+        let processedSubject = interviewEmailSubject || 'Interview Invitation';
+        Object.entries(replacements).forEach(([token, value]) => {
+          processedSubject = processedSubject.split(token).join(value);
         });
-      }
-
-      if (notificationChannels.email) {
-        try {
-          const toEmail = applicant.email;
-          const mailDefault = companyObj?.settings?.mailSettings?.defaultMail || companyObj?.mailSettings?.defaultMail || companyObj?.contactEmail || companyObj?.email || '';
-          let fromEmail = notifCustomEmail || mailDefault;
-          if (!fromEmail || fromEmail.trim() === '') {
-            console.warn('ApplicantData: Email sender is empty, using fallback support@yourdomain.com for safety', { mailDefault, notifCustomEmail, companyObj });
-          }
-          const subject = interviewEmailSubject || `Interview Invitation`;
-          const sanitizedBody = sanitizeMessageTemplate(messageTemplate || '');
-          const emailHtml = `
+        
+        // Apply substitutions to message template
+        let processedMessage = messageTemplate || '';
+        Object.entries(replacements).forEach(([token, value]) => {
+          processedMessage = processedMessage.split(token).join(value);
+        });
+        
+        const sanitizedBody = sanitizeMessageTemplate(processedMessage);
+        const emailHtml = `
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${subject}</title>
+  <title>${escapeHtml(processedSubject)}</title>
 </head>
 <body style="font-family: Arial, sans-serif; padding: 20px; margin: 0; background-color: #f5f5f5;">
   <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden;">
     <div style="background-color: #ffffff; border-bottom: 1px solid #e5e7eb; padding: 24px 30px; text-align: center;">
-      <h1 style="color: #111827; margin: 0; font-size: 22px; font-weight: 700;">${subject}</h1>
+      <h1 style="color: #111827; margin: 0; font-size: 22px; font-weight: 700;">${escapeHtml(processedSubject)}</h1>
     </div>
     <div style="padding: 30px;">
       <div style="font-size: 16px; line-height: 1.6; color: #444;">
@@ -2301,83 +2377,84 @@ const ApplicantData = () => {
 </html>
 `;
 
-          const resolveJobPositionId = (value: any): string | undefined => {
-            if (!value) return undefined;
-            if (Array.isArray(value)) {
-              for (const item of value) {
-                const id = resolveJobPositionId(item);
-                if (id) return id;
-              }
-              return undefined;
-            }
-            if (typeof value === 'string') return value;
-            if (typeof value === 'object') {
-              if (typeof value._id === 'string') return value._id;
-              if (typeof value.id === 'string') return value.id;
+        const resolveJobPositionId = (value: any): string | undefined => {
+          if (!value) return undefined;
+          if (Array.isArray(value)) {
+            for (const item of value) {
+              const id = resolveJobPositionId(item);
+              if (id) return id;
             }
             return undefined;
-          };
-
-          const jobPositionId =
-            resolveJobPositionId(applicant?.jobPositionId) ||
-            resolveJobPositionId(applicant?.jobPosition);
-
-          await sendEmailMutation.mutateAsync({
-            company: companyObj?._id,
-            jobPosition: jobPositionId,
-            applicant: applicant?._id,
-            to: toEmail,
-            from: fromEmail,
-            subject,
-            html: emailHtml,
-          });
-          try {
-            await sendMessageMutation.mutateAsync({
-              id: id!,
-              data: {
-                type: 'email',
-                content: sanitizedBody,
-              },
-            });
-          } catch (e) {
-            console.warn('ApplicantData: failed to save interview message to history', e);
           }
-        } catch (err: any) {
-          const errMsg = getErrorMessage(err);
-          console.error('Error sending interview notification:', err);
-          setInterviewError(errMsg);
-          await Swal.fire({
-            title: 'Notification Error',
-            text: String(errMsg),
-            icon: 'error',
-          });
-        }
-      }
+          if (typeof value === 'string') return value;
+          if (typeof value === 'object') {
+            if (typeof value._id === 'string') return value._id;
+            if (typeof value.id === 'string') return value.id;
+          }
+          return undefined;
+        };
 
-      await Swal.fire({
-        title: 'Success!',
-        text: 'Interview scheduled successfully.',
-        icon: 'success',
-        position: 'center',
-        timer: 2000,
-        showConfirmButton: false,
-        customClass: {
-          container: '!mt-16',
-        },
-      });
-    } catch (err: any) {
-      const errorMsg = getErrorMessage(err);
-      setInterviewError(errorMsg);
-      console.error('Error scheduling interview:', err);
-      await Swal.fire({
-        title: 'Error',
-        text: String(errorMsg),
-        icon: 'error',
-      });
-    } finally {
-      setIsSubmittingInterview(false);
+        const jobPositionId =
+          resolveJobPositionId(applicant?.jobPositionId) ||
+          resolveJobPositionId(applicant?.jobPosition);
+
+        await sendEmailMutation.mutateAsync({
+          company: companyObj?._id,
+          jobPosition: jobPositionId,
+          applicant: applicant?._id,
+          to: toEmail,
+          from: fromEmail,
+          subject: processedSubject,
+          html: emailHtml,
+        });
+        
+        try {
+          await sendMessageMutation.mutateAsync({
+            id: id!,
+            data: {
+              type: 'email',
+              content: sanitizedBody,
+            },
+          });
+        } catch (e) {
+          console.warn('ApplicantData: failed to save interview message to history', e);
+        }
+      } catch (err: any) {
+        const errMsg = getErrorMessage(err);
+        console.error('Error sending interview notification:', err);
+        setInterviewError(errMsg);
+        await Swal.fire({
+          title: 'Notification Error',
+          text: String(errMsg),
+          icon: 'error',
+        });
+      }
     }
-  };
+
+    await Swal.fire({
+      title: 'Success!',
+      text: 'Interview scheduled successfully.',
+      icon: 'success',
+      position: 'center',
+      timer: 2000,
+      showConfirmButton: false,
+      customClass: {
+        container: '!mt-16',
+      },
+    });
+  } catch (err: any) {
+    const errorMsg = getErrorMessage(err);
+    setInterviewError(errorMsg);
+    console.error('Error scheduling interview:', err);
+    await Swal.fire({
+      title: 'Error',
+      text: String(errorMsg),
+      icon: 'error',
+    });
+  } finally {
+    setIsSubmittingInterview(false);
+  }
+};
 
   const handleCommentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
