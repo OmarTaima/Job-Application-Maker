@@ -93,22 +93,32 @@ const BulkMessageModal = ({
     return parts.length > 1 ? parts.slice(1).join('@') : '';
   };
 
-  const buildEmailHtml = (subject: string, body: string) => `
+ // Update the buildEmailHtml function to also process subject placeholders
+const buildEmailHtml = (subject: string, body: string, recipient?: any) => {
+  let processedSubject = subject;
+  let processedBody = body;
+  
+  if (recipient) {
+    processedSubject = applyTemplateToPlainForRecipient(subject, recipient);
+    processedBody = applyTemplateToHtmlForRecipient(body, recipient);
+  }
+  
+  return `
   <!DOCTYPE html>
   <html>
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${subject}</title>
+    <title>${escapeHtml(processedSubject)}</title>
   </head>
   <body style="font-family: Arial, sans-serif; padding: 20px; margin: 0; background-color: #f5f5f5;">
     <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden;">
       <div style="background-color: #ffffff; border-bottom: 1px solid #e5e7eb; padding: 24px 30px; text-align: center;">
-        <h1 style="color: #111827; margin: 0; font-size: 22px; font-weight: 700;">${subject || 'No Subject'}</h1>
+        <h1 style="color: #111827; margin: 0; font-size: 22px; font-weight: 700;">${escapeHtml(processedSubject) || 'No Subject'}</h1>
       </div>
       <div style="padding: 30px;">
         <div style="font-size: 16px; line-height: 1.6; color: #444;">
-          ${body || ''}
+          ${processedBody || ''}
         </div>
         <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;"/>
       </div>
@@ -116,6 +126,7 @@ const BulkMessageModal = ({
   </body>
   </html>
   `;
+};
 
   const escapeHtml = (str: string) =>
     String(str || '')
@@ -524,21 +535,22 @@ const BulkMessageModal = ({
         .filter((item) => item.to);
 
       // Build batch with proper substitution for each recipient
-      const batch = normalizedRecipients.map(({ to, applicant, jobPositionId, raw }) => {
-        const subSubject = applyTemplateToPlainForRecipient(form.subject, raw);
-        const subBody = applyTemplateToHtmlForRecipient(form.body, raw);
-        
-        return {
-          to,
-          from: (typeof fromAddress === 'string' && fromAddress.includes('<')) 
-            ? fromAddress.replace(/.*<\s*([^>]+)\s*>.*/, '$1') 
-            : String(fromAddress).replace(/[<>]/g, ''),
-          subject: subSubject,
-          html: buildEmailHtml(escapeHtml(subSubject), subBody),
-          applicant,
-          jobPosition: jobPositionId,
-        };
-      });
+     // In handleSubmit, when building the batch:
+const batch = normalizedRecipients.map(({ to, applicant, jobPositionId, raw }) => {
+  const subSubject = applyTemplateToPlainForRecipient(form.subject, raw);
+  const subBody = applyTemplateToHtmlForRecipient(form.body, raw);
+  
+  return {
+    to,
+    from: (typeof fromAddress === 'string' && fromAddress.includes('<')) 
+      ? fromAddress.replace(/.*<\s*([^>]+)\s*>.*/, '$1') 
+      : String(fromAddress).replace(/[<>]/g, ''),
+    subject: subSubject,
+    html: buildEmailHtml(subSubject, subBody, raw), // Pass raw for potential future use
+    applicant,
+    jobPosition: jobPositionId,
+  };
+});
 
       const companyToSend = companyId ||
         (company && (company._id || company.id)) ||
