@@ -6,7 +6,7 @@ import {
   useRef,
   useDeferredValue,
 } from 'react';
-import { ChatIcon,  CopyIcon } from '../../../icons';
+import { ChatIcon } from '../../../icons';
 import { useStatusSettings } from '../../../utils/useStatusSettings';
 import { useQueryClient } from '@tanstack/react-query';
 
