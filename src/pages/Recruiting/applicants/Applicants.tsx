@@ -257,13 +257,14 @@ function ColumnMultiSelectHeader({
 
   const handleDropdownClick = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
-    event.stopPropagation(); // only stop propagation on the dropdown button
+    event.stopPropagation(); // Stop propagation to prevent row click
     setAnchorEl(event.currentTarget);
   };
 
-  // NEW: handle label click for sorting
+  // Handle label click for sorting
   const handleLabelClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
+    e.preventDefault();
+    e.stopPropagation(); // Stop propagation
     if (column.getCanSort()) {
       column.toggleSorting();
     }
@@ -271,9 +272,14 @@ function ColumnMultiSelectHeader({
 
   const handleClose = () => setAnchorEl(null);
 
+  const handleMenuClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
   return (
     <div
-      onClick={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()} // Stop propagation on the container
       onMouseDown={(e) => e.stopPropagation()}
     >
       <div className="flex items-center gap-2">
@@ -311,13 +317,14 @@ function ColumnMultiSelectHeader({
           anchorEl={anchorEl}
           open={Boolean(anchorEl)}
           onClose={handleClose}
-          onClick={(e) => e.stopPropagation()}
+          onClick={handleMenuClick} // Prevent propagation on menu clicks
           PaperProps={{
             style: { maxHeight: menuMaxHeight, width: menuWidth },
             onMouseDown: (e: any) => e.stopPropagation(),
+            onClick: (e: any) => e.stopPropagation(),
           }}
         >
-          <MenuItem onClick={clear} dense>
+          <MenuItem onClick={(e) => { e.stopPropagation(); clear(); }} dense>
             Clear
           </MenuItem>
           {options.map((option) => (
@@ -532,9 +539,12 @@ const Applicants = ({ layoutKey, defaultLayout, onlyStatus, companyIdOverride }:
     [{ id: 'submittedAt', desc: true }]
   );
   // Pagination state persisted
-  const [pagination, setPagination] = useState(
-    () => persistedTableState?.pagination ?? { pageIndex: 0, pageSize: 10 }
-  );
+const [pagination, setPagination] = useState(
+  () => ({
+    pageIndex: 0,
+    pageSize: persistedTableState?.pagination?.pageSize ?? 10,
+  })
+);
   const [viewportWidth, setViewportWidth] = useState<number>(() =>
     typeof window !== 'undefined' ? window.innerWidth : 1920
   );
@@ -1765,6 +1775,7 @@ useEffect(() => {
     return String(jobCompany?._id || jobCompany?.id || '');
   };
 
+  
   const baseFiltered =
     effectiveCustomFilters.length === 0
       ? deferredDisplayedApplicants
@@ -3916,11 +3927,13 @@ const extractRejectionReasons = useCallback((applicant: any): string[] => {
   accessorKey: 'status',
   header: 'Status',
   enableSorting: true,
-  Header: ({ column }: { column: any }) => {
-    if (onlyStatus !== undefined && onlyStatus !== null) {
-      return <span className="text-sm font-medium">Status</span>;
-    }
-    return (
+ // Update the status column header (around line 1753)
+Header: ({ column }: { column: any }) => {
+  if (onlyStatus !== undefined && onlyStatus !== null) {
+    return <span className="text-sm font-medium">Status</span>;
+  }
+  return (
+    <div onClick={(e) => e.stopPropagation()}>
       <ColumnMultiSelectHeader
         column={column}
         label="Status"
@@ -3929,8 +3942,9 @@ const extractRejectionReasons = useCallback((applicant: any): string[] => {
         menuWidth={220}
         menuMaxHeight={240}
       />
-    );
-  },
+    </div>
+  );
+},
   filterFn: (row: any, columnId: string, filterValue: any) => {
     if (!filterValue) return true;
     const vals = Array.isArray(filterValue) ? filterValue : [filterValue];
@@ -4047,31 +4061,32 @@ const extractRejectionReasons = useCallback((applicant: any): string[] => {
         accessorKey: 'submittedAt',
         header: 'Submitted',
         // Custom header shows a two-state control (Newest / Oldest)
-        Header: ({ column, table }: { column: any; table: any }) => {
-          const sortingState = table.getState().sorting;
-          const submittedSort = sortingState.find(
-            (s: any) => s.id === column.id
-          );
-          const desc = submittedSort ? submittedSort.desc : true;
+       Header: ({ column, table }: { column: any; table: any }) => {
+  const sortingState = table.getState().sorting;
+  const submittedSort = sortingState.find(
+    (s: any) => s.id === column.id
+  );
+  const desc = submittedSort ? submittedSort.desc : true;
 
-          const toggle = (e: any) => {
-            e.stopPropagation();
-            // Force two-state sorting only (no unsorted state)
-            table.setSorting([{ id: column.id, desc: !desc }]);
-          };
+  const toggle = (e: any) => {
+    e.preventDefault();
+    e.stopPropagation(); // Stop propagation to prevent row click
+    // Force two-state sorting only (no unsorted state)
+    table.setSorting([{ id: column.id, desc: !desc }]);
+  };
 
-          return (
-            <button
-              onClick={toggle}
-              className="flex items-center gap-1 text-sm font-medium"
-              type="button"
-              title={desc ? 'Newest' : 'Oldest'}
-            >
-              <span>Submitted</span>
-              <span className="text-xs">{desc ? '▼' : '▲'}</span>
-            </button>
-          );
-        },
+  return (
+    <button
+      onClick={toggle}
+      className="flex items-center gap-1 text-sm font-medium"
+      type="button"
+      title={desc ? 'Newest' : 'Oldest'}
+    >
+      <span>Submitted</span>
+      <span className="text-xs">{desc ? '▼' : '▲'}</span>
+    </button>
+  );
+},
         size: columnSizeConfig.submittedAt,
         enableColumnFilter: false,
         // Disable MRT's built-in sort UI for this column so we can render a single up/down arrow
@@ -4355,7 +4370,20 @@ const extractRejectionReasons = useCallback((applicant: any): string[] => {
         return columnFilters;
       }
     }, [columnFilters, showCompanyColumn]);
-
+// Add a helper function to check if a click target is within a filter element
+const isFilterElement = (target: HTMLElement): boolean => {
+  return (
+    target.closest('.MuiMenu-paper') !== null || // Material-UI menu
+    target.closest('[role="menu"]') !== null || // Role menu
+    target.closest('.MuiPopover-root') !== null || // Popover
+    target.closest('.MuiModal-root') !== null || // Modal
+    target.closest('button[aria-haspopup="menu"]') !== null || // Dropdown buttons
+    target.closest('.MuiTableSortLabel-root') !== null || // Sort buttons
+    target.closest('.MuiCheckbox-root') !== null || // Checkboxes
+    target.closest('input') !== null || // Input fields
+    target.closest('select') !== null // Select dropdowns
+  );
+};
 
   const table = useMaterialReactTable({
     columns,
@@ -4743,48 +4771,63 @@ const extractRejectionReasons = useCallback((applicant: any): string[] => {
     </div>
   );
 },
+
+
+
     muiTableBodyRowProps: ({ row }) => ({
-      onClick: (e: any) => {
-        try {
-          const state = table.getState();
-          sessionStorage.setItem(
-            'applicants_table_state',
-            JSON.stringify({
-              pagination: state.pagination,
-              sorting: state.sorting,
-              columnFilters: state.columnFilters,
-            })
-          );
-        } catch (e) {
-          // ignore
-        }
+  onClick: (e: any) => {
+    // Prevent navigation if clicking on interactive elements
+    if (isFilterElement(e.target)) {
+      e.stopPropagation();
+      return;
+    }
 
-        // Support Ctrl/Cmd click on row to open details in new tab.
-        if (e?.ctrlKey || e?.metaKey) {
-          openApplicantDetailsInNewTab(row);
-          return;
-        }
+    try {
+      const state = table.getState();
+      sessionStorage.setItem(
+        'applicants_table_state',
+        JSON.stringify({
+          pagination: state.pagination,
+          sorting: state.sorting,
+          columnFilters: state.columnFilters,
+        })
+      );
+    } catch (e) {
+      // ignore
+    }
 
-        navigate(`/applicant-details/${row.id}`, {
-          state: { applicant: row.original },
-        });
-      },
-      onAuxClick: (e: any) => {
-        // Middle-click on row opens in new tab.
-        if (e?.button === 1) {
-          e.preventDefault();
-          e.stopPropagation();
-          openApplicantDetailsInNewTab(row);
-        }
-      },
-      sx: {
-        cursor: 'pointer',
-        backgroundColor: isDarkMode ? '#24303F' : '#FFFFFF',
-        '&:hover': {
-          backgroundColor: isDarkMode ? '#344054' : '#F9FAFB',
-        },
-      },
-    }),
+    // Support Ctrl/Cmd click on row to open details in new tab.
+    if (e?.ctrlKey || e?.metaKey) {
+      openApplicantDetailsInNewTab(row);
+      return;
+    }
+
+    navigate(`/applicant-details/${row.id}`, {
+      state: { applicant: row.original },
+    });
+  },
+  onAuxClick: (e: any) => {
+    // Prevent navigation on middle-click for filter elements
+    if (isFilterElement(e.target)) {
+      e.stopPropagation();
+      return;
+    }
+
+    // Middle-click on row opens in new tab.
+    if (e?.button === 1) {
+      e.preventDefault();
+      e.stopPropagation();
+      openApplicantDetailsInNewTab(row);
+    }
+  },
+  sx: {
+    cursor: 'pointer',
+    backgroundColor: isDarkMode ? '#24303F' : '#FFFFFF',
+    '&:hover': {
+      backgroundColor: isDarkMode ? '#344054' : '#F9FAFB',
+    },
+  },
+}),
   });
 
   // Persist table state to sessionStorage so pagination/filtering is restored when returning
@@ -4800,6 +4843,9 @@ const extractRejectionReasons = useCallback((applicant: any): string[] => {
       // ignore
     }
   }, [pagination, sorting, columnFilters]);
+  useEffect(() => {
+  setPagination((prev: any) => ({ ...prev, pageIndex: 0 }));
+}, [columnFilters, customFilters]);
 
   return (
     <>
