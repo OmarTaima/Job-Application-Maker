@@ -8,6 +8,7 @@ import {
 	Save,
 	ShieldCheck,
 	Trash2,
+	GripVertical,
 } from "lucide-react";
 import Swal from "../../../utils/swal";
 import PageMeta from "../../../components/common/PageMeta";
@@ -18,6 +19,23 @@ import {
 	useCompanySettings,
 	useUpdateCompanyRejectionReasons,
 } from "../../../hooks/queries/useCompanies";
+import {
+	DndContext,
+	closestCenter,
+	KeyboardSensor,
+	PointerSensor,
+	useSensor,
+	useSensors,
+	DragEndEvent,
+} from "@dnd-kit/core";
+import {
+	arrayMove,
+	SortableContext,
+	sortableKeyboardCoordinates,
+	verticalListSortingStrategy,
+	useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 type Props = {
 	companyId?: string;
@@ -106,6 +124,84 @@ const hasInvalidCompanyIdError = (error: any): boolean => {
 		return detailMessage.includes("company id");
 	});
 };
+
+// Sortable Item Component
+function SortableReasonItem({
+	id,
+	index,
+	reason,
+	canEdit,
+	onUpdateReason,
+	onRemoveReason,
+}: {
+	id: string;
+	index: number;
+	reason: string;
+	canEdit: boolean;
+	onUpdateReason: (index: number, value: string) => void;
+	onRemoveReason: (index: number) => void;
+}) {
+	const {
+		attributes,
+		listeners,
+		setNodeRef,
+		transform,
+		transition,
+		isDragging,
+	} = useSortable({ id });
+
+	const style = {
+		transform: CSS.Transform.toString(transform),
+		transition,
+		opacity: isDragging ? 0.5 : 1,
+	};
+
+	return (
+		<div
+			ref={setNodeRef}
+			style={style}
+			className={`grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 transition-all duration-200 dark:border-slate-700 dark:bg-slate-800/60 md:grid-cols-[auto_1fr_auto] ${
+				isDragging ? "shadow-lg ring-2 ring-brand-500" : "hover:shadow-sm"
+			}`}
+		>
+			<div className="flex items-center justify-center">
+				<div
+					{...attributes}
+					{...listeners}
+					className={`flex cursor-grab items-center justify-center rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-200 hover:text-slate-600 active:cursor-grabbing dark:hover:bg-slate-700 dark:hover:text-slate-300 ${
+						!canEdit ? "cursor-not-allowed opacity-50" : ""
+					}`}
+				>
+					<GripVertical className="size-5" />
+				</div>
+			</div>
+
+			<div>
+				<label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+					Reason {index + 1}
+				</label>
+				<input
+					value={reason}
+					onChange={(e) => onUpdateReason(index, e.target.value)}
+					disabled={!canEdit}
+					placeholder="Example: Candidate did not meet mandatory experience criteria"
+					className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition-all focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 disabled:cursor-not-allowed disabled:opacity-70 dark:border-slate-700 dark:bg-slate-900"
+				/>
+			</div>
+
+			<div className="flex items-end">
+				<button
+					type="button"
+					onClick={() => onRemoveReason(index)}
+					disabled={!canEdit}
+					className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-600 transition-all hover:bg-red-100 hover:scale-105 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300 dark:hover:bg-red-500/20"
+				>
+					<Trash2 className="size-4" />
+				</button>
+			</div>
+		</div>
+	);
+}
 
 export default function RejectionTab({
 	companyId,
@@ -201,6 +297,22 @@ export default function RejectionTab({
 		setRejectReasons((prev) => prev.filter((_, i) => i !== index));
 	};
 
+	const handleDragEnd = (event: DragEndEvent) => {
+		const { active, over } = event;
+		
+		if (over && active.id !== over.id) {
+			setRejectReasons((items) => {
+				const oldIndex = items.findIndex((_, i) => i.toString() === active.id);
+				const newIndex = items.findIndex((_, i) => i.toString() === over.id);
+				
+				if (oldIndex !== -1 && newIndex !== -1) {
+					return arrayMove(items, oldIndex, newIndex);
+				}
+				return items;
+			});
+		}
+	};
+
 	const handleSave = async () => {
 		if (!selectedCompanyId) {
 			Swal.fire("Validation", "Please select a company first.", "warning");
@@ -284,6 +396,18 @@ export default function RejectionTab({
 			setIsSaving(false);
 		}
 	};
+
+	// Set up sensors for drag and drop
+	const sensors = useSensors(
+		useSensor(PointerSensor, {
+			activationConstraint: {
+				distance: 5,
+			},
+		}),
+		useSensor(KeyboardSensor, {
+			coordinateGetter: sortableKeyboardCoordinates,
+		})
+	);
 
 	if (!canRead) {
 		return (
@@ -422,7 +546,7 @@ export default function RejectionTab({
 									<div>
 										<h2 className="text-xl font-semibold tracking-tight">Reason Library</h2>
 										<p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-											Keep reasons short and clear for consistent rejection communication.
+											Drag and drop to reorder reasons. Keep reasons short and clear for consistent rejection communication.
 										</p>
 									</div>
 								</div>
@@ -453,36 +577,32 @@ export default function RejectionTab({
 									</div>
 								)}
 
-								{rejectReasons.map((reason, index) => (
-									<div
-										key={`reject-reason-${index}`}
-										className="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/60 md:grid-cols-[1fr_auto]"
+								{!isLoading && rejectReasons.length > 0 && (
+									<DndContext
+										sensors={sensors}
+										collisionDetection={closestCenter}
+										onDragEnd={handleDragEnd}
 									>
-										<div>
-											<label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-												Reason {index + 1}
-											</label>
-											<input
-												value={reason}
-												onChange={(e) => updateReason(index, e.target.value)}
-												disabled={!canEdit}
-												placeholder="Example: Candidate did not meet mandatory experience criteria"
-												className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 disabled:cursor-not-allowed disabled:opacity-70 dark:border-slate-700 dark:bg-slate-900"
-											/>
-										</div>
-
-										<div className="flex items-end">
-											<button
-												type="button"
-												onClick={() => removeReason(index)}
-												disabled={!canEdit}
-												className="inline-flex h-10 items-center rounded-lg border border-red-200 bg-red-50 px-3 text-red-600 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300"
-											>
-												<Trash2 className="size-4" />
-											</button>
-										</div>
-									</div>
-								))}
+										<SortableContext
+											items={rejectReasons.map((_, index) => index.toString())}
+											strategy={verticalListSortingStrategy}
+										>
+											<div className="space-y-3">
+												{rejectReasons.map((reason, index) => (
+													<SortableReasonItem
+														key={index}
+														id={index.toString()}
+														index={index}
+														reason={reason}
+														canEdit={canEdit}
+														onUpdateReason={updateReason}
+														onRemoveReason={removeReason}
+													/>
+												))}
+											</div>
+										</SortableContext>
+									</DndContext>
+								)}
 							</div>
 						</div>
 					</div>

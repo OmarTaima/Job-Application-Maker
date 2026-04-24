@@ -46,40 +46,30 @@ import Questions from './Questions';
 // Simple Quill editor integration (dynamic import to avoid react-quill)
 import 'quill/dist/quill.snow.css';
 
-// Lightweight Quill editor wrapper
-// Dynamically imports Quill to avoid bundling react-quill and to enable server-safe loading.
-
 // Main page component
-// Renders applicant details, activity timeline, and provides actions (schedule interview, send messages, comments, status updates)
 const ApplicantData = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const location = useLocation();
 
- useEffect(() => {
-  // Check if this tab was opened in background
-  const params = new URLSearchParams(location.search);
-  if (params.get('bg') === '1' && (window.opener && !window.opener.closed)) {
-        try {
-          window.opener.focus();
-        } catch (e) {
-          // Ignore cross-origin errors
-        }
-        
-        // Also try to blur this window
-        try {
-          window.blur();
-        } catch (e) {}
+  useEffect(() => {
+    // Check if this tab was opened in background
+    const params = new URLSearchParams(location.search);
+    if (params.get('bg') === '1' && (window.opener && !window.opener.closed)) {
+      try {
+        window.opener.focus();
+      } catch (e) {
+        // Ignore cross-origin errors
       }
-}, [location.search]);
-  // Navigation / incoming state
-  // If the previous route passed applicant data via location.state we can use it for instant rendering
+      try {
+        window.blur();
+      } catch (e) {}
+    }
+  }, [location.search]);
+
   const stateApplicant = location.state?.applicant as Applicant | undefined;
   const wasNavigated = Boolean(location.state?.applicant);
 
-  // Detect whether this page load was a full browser reload so we can
-  // perform a manual silent fetch and prevent react-query from issuing
-  // its own simultaneous fetch.
   const isReload = (() => {
     try {
       if (typeof performance === 'undefined') return false;
@@ -96,7 +86,6 @@ const ApplicantData = () => {
 
   const [reloadFetchDone, setReloadFetchDone] = useState(false);
 
-  // Fetch applicant detail (prefer navigation state as initial data for instant render)
   const {
     data: fetchedApplicant,
     isLoading: isApplicantLoading,
@@ -104,12 +93,10 @@ const ApplicantData = () => {
     error: applicantError,
   } = useApplicant(id || '', { initialData: wasNavigated ? stateApplicant : undefined, enabled: !isReload || reloadFetchDone });
 
-  // Canonical applicant object used throughout the component
   const applicant = (fetchedApplicant ?? stateApplicant) as any;
   const loading = isApplicantLoading && !fetchedApplicant && !stateApplicant;
   const error = applicantError as any;
 
-  // Resolve job position id from various possible shapes on the applicant object
   const resolvedJobPosId = useMemo(() => {
     if (!applicant) return '';
     if (typeof (applicant as any).jobPositionId === 'string') return (applicant as any).jobPositionId;
@@ -119,24 +106,15 @@ const ApplicantData = () => {
     return '';
   }, [applicant?._id, (applicant as any)?.jobPositionId, (applicant as any)?.jobPosition]);
 
-  // Fallback (unscoped) job positions cache used when scoped data is unavailable
-  // Skip this fallback when we already resolved a single job position id.
   const { data: jobPositionsFallback = [], isFetched: isJobPositionsFallbackFetched } = useJobPositions(undefined, false, { enabled: !resolvedJobPosId });
-
-  // Job position detail for resolved job position id
   const { data: jobPositionDetail, isFetched: isJobPositionDetailFetched } = useJobPosition(resolvedJobPosId || '', { enabled: !!resolvedJobPosId });
 
-  // Company associated with the resolved job position (if present)
   const jobPosCompanyId = jobPositionDetail && (jobPositionDetail as any).companyId
     ? typeof (jobPositionDetail as any).companyId === 'string'
       ? (jobPositionDetail as any).companyId
       : (jobPositionDetail as any).companyId?._id || ''
     : '';
 
-  // Companies derived from this applicant (used to resolve fallback lookups)
-  // Only pass the minimal applicant shape containing `companyId` so the
-  // companies-with-applicants hook can compute company IDs without being
-  // invalidated by unrelated applicant field updates.
   const applicantCompanyId = useMemo(() => {
     if (!applicant) return undefined;
     if (typeof applicant.companyId === 'string') return applicant.companyId;
@@ -147,7 +125,6 @@ const ApplicantData = () => {
   const applicantArray = useMemo(() => (applicantCompanyId ? ([{ companyId: applicantCompanyId }] as any as Applicant[]) : undefined), [applicantCompanyId]);
   const { data: companies = [], isFetched: isCompaniesWithApplicantsFetched } = useCompaniesWithApplicants(applicantArray);
 
-  // Prefer company data from the previously fetched `companies` list to avoid extra network calls.
   const jobPosCompanyFromList = useMemo(() => {
     if (!jobPosCompanyId) return null as any;
     return (companies || []).find((c: any) => String(c?._id || c?.id || '') === String(jobPosCompanyId)) || null;
@@ -157,9 +134,6 @@ const ApplicantData = () => {
   const jobPosCompany = jobPosCompanyFromList ?? jobPosCompanyQuery.data;
   const isJobPosCompanyFetched = Boolean(jobPosCompanyFromList) ? true : jobPosCompanyQuery.isFetched;
 
-  
-  // Helper: detect Arabic characters in a string
-  // Used to apply RTL layout where appropriate
   const isArabic = (s: any) => (typeof s === 'string' && /[\u0600-\u06FF]/.test(s));
   
   const resolvedCompanyId = useMemo(() => {
@@ -182,29 +156,17 @@ const ApplicantData = () => {
   const fetchedCompanyQuery = useCompany(resolvedCompanyFromList ? '' : (resolvedCompanyId || ''), { enabled: !!resolvedCompanyId && !resolvedCompanyFromList && isJobPositionDetailFetched && resolvedCompanyId !== jobPosCompanyId });
   const fetchedCompany = resolvedCompanyFromList ?? fetchedCompanyQuery.data;
 
-  // Fetch job positions scoped to the applicant's company when available.
-  // Use the '__NO_COMPANY__' sentinel to avoid fetching all positions during initial load.
   const jobPositionsFetchParam = useMemo(() => {
     if (!applicant) return ['__NO_COMPANY__'];
-    // If we already resolved a specific job position id for this applicant,
-    // don't fetch the full company job list — prefer the job-by-id GET
-    // (available via `useJobPosition`) to avoid fetching all jobs.
     if (resolvedJobPosId) return ['__NO_COMPANY__'];
     return resolvedCompanyId ? [resolvedCompanyId] : ['__NO_COMPANY__'];
   }, [applicant?._id, resolvedCompanyId, resolvedJobPosId]);
 
-  // Replace the top-level job positions query with a company-scoped one.
-  // This prevents listing job positions for other companies on page refresh.
   const _jobPositionsScoped = useJobPositions(jobPositionsFetchParam as any);
-  // prefer scoped data if available; fall back to previously fetched jobPositions
   const jobPositionsScopedData = _jobPositionsScoped?.data ?? jobPositionsFallback;
   const isJobPositionsFetched = _jobPositionsScoped?.isFetched ?? isJobPositionsFallbackFetched;
-  // expose `jobPositions` variable for the rest of the component to consume
   const jobPositions = jobPositionsScopedData;
 
-  // Mutations: react-query mutation hooks for creating/updating comments, interviews, status and sending emails
-
-  // Utility: compute full CV download URL (handles relative paths and data URLs)
   const cvUrl = useMemo(() => {
     if (!applicant?.cvFilePath) return null;
     const path = applicant.cvFilePath;
@@ -213,11 +175,6 @@ const ApplicantData = () => {
     return base ? `${base}/${path.replace(/^\//, '')}` : path;
   }, [applicant?.cvFilePath]);
 
-  
-
-  // (internal preview removed) -- use the previewWithoutAttachment button to open inline
-
-  // Utility: Build Cloudinary URL that forces attachment download with a friendly filename
   const buildCloudinaryDownloadUrl = (u: string) => {
     try {
       if (!u) return null;
@@ -231,7 +188,6 @@ const ApplicantData = () => {
     }
   };
 
-  // Action: download CV with fallbacks (Cloudinary trick, fetch->blob, open in new tab)
   const downloadCv = async () => {
     if (!applicant?.cvFilePath) {
       Swal.fire('No CV', 'No CV file available for this applicant', 'info');
@@ -269,9 +225,6 @@ const ApplicantData = () => {
     window.open(url, '_blank');
   };
 
-  // (preview helper removed)
-
-  // Mutation hooks
   const updateApplicantMutation = useUpdateApplicant();
   const updateStatusMutation = useUpdateApplicantStatus();
   const scheduleInterviewMutation = useScheduleInterview();
@@ -284,12 +237,10 @@ const ApplicantData = () => {
   const queryClient = useQueryClient();
   const hasMarkedSeenRef = useRef(false);
 
-  // Reset the marked-seen guard when navigating between applicants without unmounting
   useEffect(() => {
     hasMarkedSeenRef.current = false;
   }, [id]);
 
-  // If this page was reloaded (browser refresh), ensure we fetch the applicant by id using react-query.
   useEffect(() => {
     if (!id) return;
     if (!isReload) return;
@@ -300,21 +251,16 @@ const ApplicantData = () => {
         const refreshedApplicant = await applicantsService.getApplicantById(id);
         if (!cancelled && refreshedApplicant && typeof refreshedApplicant === 'object') {
           queryClient.setQueryData(applicantsKeys.detail(id), refreshedApplicant);
-
-          // Also update any list queries so lists reflect the fresh data.
           queryClient.setQueriesData({ queryKey: applicantsKeys.lists() }, (old: any) => {
             if (!old) return old;
             if (Array.isArray(old)) return old.map((applicant: any) => (applicant && applicant._id === id ? { ...applicant, ...refreshedApplicant } : applicant));
             if (old.data && Array.isArray(old.data)) return { ...old, data: old.data.map((applicant: any) => (applicant && applicant._id === id ? { ...applicant, ...refreshedApplicant } : applicant)) };
             return old;
           });
-
-          // mark that our manual reload fetch completed so react-query can resume normal fetching
           try { setReloadFetchDone(true); } catch (e) { /* ignore */ }
         }
       } catch (e) {
         if (!cancelled) {
-          // fallback to invalidation if direct fetch fails
           try { queryClient.invalidateQueries({ queryKey: applicantsKeys.detail(id) }); } catch (_) {}
         }
       }
@@ -323,18 +269,16 @@ const ApplicantData = () => {
     return () => { cancelled = true; };
   }, [id, queryClient, isReload, setReloadFetchDone]);
 
-  // mark as seen by current user when applicant is viewed
   useEffect(() => {
     if (!applicant?._id || !user?._id || hasMarkedSeenRef.current) return;
     const userId = user._id as string;
 
     const seenBy = (applicant as any).seenBy ?? [];
     if (Array.isArray(seenBy) && seenBy.includes(userId)) {
-      hasMarkedSeenRef.current = true; // already marked
+      hasMarkedSeenRef.current = true;
       return;
     }
 
-    // mark once optimistically and trigger mutation
     hasMarkedSeenRef.current = true;
     try {
       queryClient.setQueryData(applicantsKeys.detail(applicant._id), (old: any) => {
@@ -359,23 +303,14 @@ const ApplicantData = () => {
           if (old.data && Array.isArray(old.data)) return { ...old, data: addSeenTo(old.data) };
           return old;
         });
-      } catch (e) {
-        // ignore list update failures
-      }
+      } catch (e) {}
 
       markSeenMutation.mutate(applicant._id);
-    } catch (e) {
-      // ignore errors silently
-    }
-  }, [applicant?._id, user?._id]); // eslint-disable-line react-hooks/exhaustive-deps
+    } catch (e) {}
+  }, [applicant?._id, user?._id]);
 
-  // Interview-related UI state and form helpers
-
-  // Derived data helpers: resolve job title, company name, department and address
-  // These helpers handle both string IDs and populated objects returned by the API
   const getJobTitle = (): { en: string } => {
     if (!applicant) return { en: '' };
-    // If jobPositionId is populated object, use its title directly
     if (
       typeof applicant.jobPositionId === 'object' &&
       (applicant.jobPositionId as any)?.title
@@ -385,12 +320,10 @@ const ApplicantData = () => {
       if (typeof title === 'object' && title?.en) return { en: title.en };
       return { en: '' };
     }
-    // Otherwise look it up
     const jobPosId =
       typeof applicant.jobPositionId === 'string'
         ? applicant.jobPositionId
         : (applicant.jobPositionId as any)?._id;
-    // Prefer the fetched jobPosition detail (single GET by id) when available
     if (jobPositionDetail && ((jobPositionDetail as any)?._id || (jobPositionDetail as any)?.id)) {
       const jpId = (jobPositionDetail as any)._id || (jobPositionDetail as any).id;
       if (String(jpId) === String(jobPosId)) {
@@ -405,8 +338,6 @@ const ApplicantData = () => {
 
   const getCompanyName = () => {
     if (!applicant) return '';
-    // Company info is nested in jobPositionId when populated
-    // If jobPosition is populated object, use its company
     if (typeof applicant.jobPositionId === 'object') {
       const jobPos = applicant.jobPositionId as any;
       if (typeof jobPos.companyId === 'object' && jobPos.companyId?.name) {
@@ -416,7 +347,6 @@ const ApplicantData = () => {
       const found = companies.find((c) => c._id === compId);
       if (found) return toPlainString((found as any).name);
     }
-    // If we have fetched the job position detail for a string id, use it
     if (jobPositionDetail && (jobPositionDetail as any).companyId) {
       const jp = jobPositionDetail as any;
       if (jobPosCompany && (jobPosCompany as any)._id) return toPlainString((jobPosCompany as any).name || '');
@@ -425,7 +355,6 @@ const ApplicantData = () => {
       const found = companies.find((c) => c._id === compId);
       if (found) return toPlainString((found as any).name);
     }
-    // Fallback to direct companyId if exists
     if (
       typeof applicant.companyId === 'object' &&
       (applicant.companyId as any)?.name
@@ -442,7 +371,6 @@ const ApplicantData = () => {
 
   const getDepartmentName = () => {
     if (!applicant) return '';
-    // Department info is nested in jobPositionId when populated
     if (typeof applicant.jobPositionId === 'object') {
       const jobPos = applicant.jobPositionId as any;
       if (typeof jobPos.departmentId === 'object' && jobPos.departmentId?.name) {
@@ -458,7 +386,6 @@ const ApplicantData = () => {
         if (found) return toPlainString(found.name || found);
       }
       if (typeof jp.departmentId === 'object' && jp.departmentId?.name) return toPlainString(jp.departmentId.name);
-      // departmentId might be string id; try to find in fetched companies list (departments may be nested there)
       const depId = typeof jp.departmentId === 'string' ? jp.departmentId : jp.departmentId?._id;
       if (depId) {
         for (const c of companies) {
@@ -468,7 +395,6 @@ const ApplicantData = () => {
         }
       }
     }
-    // Fallback to direct departmentId if exists
     if (
       typeof applicant.departmentId === 'object' &&
       (applicant.departmentId as any)?.name
@@ -478,7 +404,6 @@ const ApplicantData = () => {
     return '';
   };
 
-  // Fallback helpers: prefer top-level applicant fields, then customResponses
   const getBirthDateValue = () => {
     if (!applicant) return null;
     return (
@@ -486,7 +411,6 @@ const ApplicantData = () => {
       (applicant as any).birthdate ||
       applicant.customResponses?.birthdate ||
       applicant.customResponses?.birthDate ||
-      // Arabic keys fallback
       applicant.customResponses?.['تاريخ_الميلاد'] ||
       applicant.customResponses?.['تاريخ الميلاد'] ||
       (applicant as any)['تاريخ_الميلاد'] ||
@@ -500,7 +424,6 @@ const ApplicantData = () => {
     return (
       applicant.gender ||
       applicant.customResponses?.gender ||
-      // Arabic keys fallback
       applicant.customResponses?.['النوع'] ||
       applicant.customResponses?.['gender'] ||
       (applicant as any)['النوع'] ||
@@ -530,13 +453,9 @@ const ApplicantData = () => {
     return false;
   };
 
-  // Resolve and normalize an address string for the applicant's company
   const getCompanyAddress = () => {
     if (!applicant) return '';
-
-    // Resolve company object (prefer populated jobPosition -> company, then applicant.companyId, then lookup from companies list)
     let company: any = null;
-    // Prefer freshly fetched canonical company when available
     if ((fetchedCompany as any) && (fetchedCompany as any)?._id) {
       company = fetchedCompany as any;
     }
@@ -548,7 +467,6 @@ const ApplicantData = () => {
         if (compId) company = companies.find((c) => c._id === compId) || null;
       }
     }
-
     if (!company) {
       if (typeof applicant.companyId === 'object' && (applicant.companyId as any)?._id) company = applicant.companyId;
       else {
@@ -556,18 +474,12 @@ const ApplicantData = () => {
         if (compId) company = companies.find((c) => c._id === compId) || null;
       }
     }
-
     if (!company) return '';
-
-    // Try common address fields
     const addrCandidates: any = company.address ?? company.addresses ?? company.location ?? company.locations ?? company.officeAddress ?? null;
     let addr: any = null;
-
     if (addrCandidates) {
       addr = Array.isArray(addrCandidates) ? addrCandidates[0] : addrCandidates;
     }
-
-    // If still nothing, search for any key containing address/location
     if (!addr) {
       for (const key of Object.keys(company)) {
         if (/address|location/i.test(key)) {
@@ -578,19 +490,15 @@ const ApplicantData = () => {
         }
       }
     }
-
     const resolved = addr ? toPlainString(addr) : '';
-
     if (resolved && resolved.trim() && !isInvalidAddressString(resolved)) {
       return resolved.trim();
     }
     return '';
   };
 
-  // Clear persisted localStorage state when navigating away from Applicants/ApplicantData pages
   useEffect(() => {
     return () => {
-      // run after navigation completes so pathname reflects destination
       setTimeout(() => {
         try {
           const p = window.location.pathname || '';
@@ -599,28 +507,22 @@ const ApplicantData = () => {
             try { localStorage.removeItem('applicants_table_state'); } catch (e) { /* ignore */ }
             try { sessionStorage.removeItem('applicants_table_state'); } catch (e) { /* ignore */ }
           }
-        } catch (e) {
-          // ignore
-        }
+        } catch (e) {}
       }, 0);
     };
   }, []);
 
-  // Prefill interview form location from the best available company address
   const fillCompanyAddress = (): boolean => {
     try {
       const comp = (fetchedCompany as any && (fetchedCompany as any)?._id) ? (fetchedCompany as any) : companyObj;
       if (!comp) {
         return false;
       }
-
       const addrCandidates: any = comp.address ?? comp.addresses ?? comp.location ?? comp.locations ?? comp.officeAddress ?? null;
       let addr: any = null;
       if (addrCandidates) {
         addr = Array.isArray(addrCandidates) ? addrCandidates[0] : addrCandidates;
       }
-
-      // fallback: search any key containing address/location
       if (!addr) {
         for (const key of Object.keys(comp)) {
           if (/address|location/i.test(key)) {
@@ -631,9 +533,7 @@ const ApplicantData = () => {
           }
         }
       }
-
       const resolved = addr ? toPlainString(addr) : '';
-
       if (resolved && resolved.trim() && !isInvalidAddressString(resolved)) {
         setInterviewForm((prev) => ({ ...prev, location: resolved.trim() }));
         return true;
@@ -645,12 +545,9 @@ const ApplicantData = () => {
     }
   };
 
-  // Resolve canonical company object for the current applicant
   const companyObj = useMemo(() => {
     if (!applicant) return null as any;
-    // If we fetched the canonical company from server, prefer it
     if ((fetchedCompany as any) && (fetchedCompany as any)?._id) return fetchedCompany as any;
-    // If we fetched job position detail (for string jobPositionId), prefer company from it
     if (jobPositionDetail && (jobPositionDetail as any).companyId) {
       const jp = jobPositionDetail as any;
       if (typeof jp.companyId === 'object' && jp.companyId?._id) return jp.companyId;
@@ -660,7 +557,6 @@ const ApplicantData = () => {
         if (found) return found as any;
       }
     }
-    // If jobPositionId is populated with company info
     if (typeof applicant.jobPositionId === 'object') {
       const jobPos = applicant.jobPositionId as any;
       if (typeof jobPos.companyId === 'object' && jobPos.companyId?._id) return jobPos.companyId;
@@ -670,8 +566,6 @@ const ApplicantData = () => {
         if (found) return found as any;
       }
     }
-
-    // Fallback to direct applicant.companyId
     if (typeof applicant.companyId === 'object' && (applicant.companyId as any)?._id) {
       return applicant.companyId as any;
     }
@@ -680,24 +574,21 @@ const ApplicantData = () => {
       const found = companies.find((c) => c._id === compId);
       if (found) return found as any;
     }
-
     return null as any;
   }, [fetchedCompany, jobPositionDetail, applicant?._id, companies, resolvedCompanyId]);
 
   const { getColor, getTextColor, defaultStatus: hookDefaultStatus } = useStatusSettings(companyObj || fetchedCompany || jobPosCompany);
 
-// Also define the getStatusColor function using the hook's methods:
-const getStatusColor = (status: string) => {
-  const bgColor = getColor(status);
-  const textColor = getTextColor(status);
-  return { backgroundColor: bgColor, color: textColor };
-};
+  const getStatusColor = (status: string) => {
+    const bgColor = getColor(status);
+    const textColor = getTextColor(status);
+    return { backgroundColor: bgColor, color: textColor };
+  };
 
   const jobTitle = useMemo(() => getJobTitle(), [applicant?._id, jobPositionDetail, jobPositions, jobPosCompany]);
   const companyName = useMemo(() => getCompanyName(), [applicant?._id, jobPositionDetail, companies, jobPosCompany, fetchedCompany]);
   const departmentName = useMemo(() => getDepartmentName(), [applicant?._id, jobPositionDetail, companies, jobPosCompany]);
 
-  // Modal visibility and selected item state
   const [lastRefetch, setLastRefetch] = useState<Date | null>(null);
   const [showInterviewModal, setShowInterviewModal] = useState(false);
   const [showMessageModal, setShowMessageModal] = useState(false);
@@ -708,7 +599,6 @@ const getStatusColor = (status: string) => {
   const [selectedInterview, setSelectedInterview] = useState<any>(null);
   const [formResetKey, setFormResetKey] = useState(0);
 
-  // Interview form state and related flags
   const [interviewForm, setInterviewForm] = useState({
     date: '',
     time: '',
@@ -718,39 +608,30 @@ const getStatusColor = (status: string) => {
     link: '',
     type: 'phone' as 'phone' | 'video' | 'in-person',
   });
-  // If the canonical company arrives after opening the modal, prefill the location field
+
   useEffect(() => {
     if (!showInterviewModal) return;
     if (interviewForm.location && interviewForm.location.trim() !== '') return;
     try {
       const addr = getCompanyAddress();
       if (addr) setInterviewForm((prev) => ({ ...prev, location: addr }));
-    } catch (e) {
-      // ignore resolution errors
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    } catch (e) {}
   }, [fetchedCompany, showInterviewModal]);
 
   useEffect(() => {
     if (!lastRefetch && (isApplicantFetched || isJobPositionsFetched || isJobPositionDetailFetched || isJobPosCompanyFetched || isCompaniesWithApplicantsFetched)) {
       setLastRefetch(new Date());
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isApplicantFetched, isJobPositionsFetched, isJobPositionDetailFetched, isJobPosCompanyFetched, isCompaniesWithApplicantsFetched]);
 
- 
   const [notificationChannels, setNotificationChannels] = useState({
     email: true,
     sms: false,
     whatsapp: false,
   });
-  const [emailOption, setEmailOption] = useState<'company' | 'user' | 'custom'>(
-    'company'
-  );
+  const [emailOption, setEmailOption] = useState<'company' | 'user' | 'custom'>('company');
   const [customEmail, setCustomEmail] = useState('');
-  const [phoneOption, setPhoneOption] = useState<
-    'company' | 'user' | 'whatsapp' | 'custom'
-  >('company');
+  const [phoneOption, setPhoneOption] = useState<'company' | 'user' | 'whatsapp' | 'custom'>('company');
   const [customPhone, setCustomPhone] = useState('');
   const [messageTemplate, setMessageTemplate] = useState('');
   const [interviewEmailSubject, setInterviewEmailSubject] = useState('Interview Invitation');
@@ -763,10 +644,10 @@ const getStatusColor = (status: string) => {
     text: '',
   });
   const [statusForm, setStatusForm] = useState({
-  status: '' as Applicant['status'] | '',
-  notes: '',
-  reasons: [] as string[],
-});
+    status: '' as Applicant['status'] | '',
+    notes: '',
+    reasons: [] as string[],
+  });
 
   const [interviewError, setInterviewError] = useState('');
   const [commentError, setCommentError] = useState('');
@@ -829,10 +710,165 @@ const getStatusColor = (status: string) => {
       .trim();
   };
 
-  // Given an interview object and the available company groups, return an array
-  // of group ids that best match the interview's questions. Uses normalized
-  // token comparison and selects groups that have at least half of their
-  // questions present in the interview (or at least one when group is small).
+  // State for edit-only mode
+  const [isEditOnlyMode, setIsEditOnlyMode] = useState(false);
+
+  const openEditOnlyMode = () => {
+    if (!applicant) return;
+
+    const availableCustomFields = getAvailableCustomFieldsForInterview();
+    
+    const rawCustomResponses =
+      applicant?.customResponses && typeof applicant.customResponses === 'object'
+        ? applicant.customResponses
+        : applicant?.customFieldResponses && typeof applicant.customFieldResponses === 'object'
+        ? applicant.customFieldResponses
+        : {};
+
+    const mappedResponseKeys = new Set<string>();
+    const nextCustomResponses: Record<string, any> = {};
+
+    availableCustomFields.forEach((field: any, fieldIndex: number) => {
+      const fieldId = getCustomFieldId(field, fieldIndex);
+      const matchedKey = findMatchingResponseKeyForField(field, rawCustomResponses);
+      if (matchedKey) mappedResponseKeys.add(matchedKey);
+      const rawValue =
+        matchedKey && Object.prototype.hasOwnProperty.call(rawCustomResponses, matchedKey)
+          ? rawCustomResponses[matchedKey]
+          : rawCustomResponses[fieldId];
+
+      nextCustomResponses[fieldId] = coerceCustomFieldValueForForm(field, rawValue);
+    });
+
+    const unmappedCustomResponses = Object.fromEntries(
+      Object.entries(rawCustomResponses).filter(([key]) => !mappedResponseKeys.has(key))
+    );
+
+    const inferredCustomFields = buildInferredCustomFieldsFromResponses(unmappedCustomResponses);
+
+    inferredCustomFields.forEach((field: any, inferredIndex: number) => {
+      const fieldId = getCustomFieldId(field, availableCustomFields.length + inferredIndex);
+      const rawValue = rawCustomResponses[fieldId];
+      nextCustomResponses[fieldId] = coerceCustomFieldValueForForm(field, rawValue);
+    });
+
+    setInterviewUnmappedCustomResponses(unmappedCustomResponses);
+    setInterviewEditableCustomFields([...availableCustomFields, ...inferredCustomFields]);
+
+    setInterviewEditForm({
+      fullName: applicant?.fullName ? String(applicant.fullName) : '',
+      email: applicant?.email ? String(applicant.email) : '',
+      phone: applicant?.phone ? String(applicant.phone) : '',
+      gender: applicant?.gender ? normalizeGenderLocal(applicant.gender) : '',
+      birthDate: toInputDate(getBirthDateValue()),
+      address: applicant?.address ? String(applicant.address) : '',
+      expectedSalary:
+        applicant?.expectedSalary !== undefined && applicant?.expectedSalary !== null
+          ? String(applicant.expectedSalary)
+          : '',
+      customResponses: nextCustomResponses,
+      jobSpecsResponses: buildInitialJobSpecsResponses(applicant, []),
+    });
+
+    setIsEditOnlyMode(true);
+    setIsInterviewEditMode(false);
+  };
+
+  const handleEditSave = async () => {
+    if (!id || !applicant) return;
+
+    const expectedSalaryValue = interviewEditForm.expectedSalary.trim() === ''
+      ? undefined
+      : Number(interviewEditForm.expectedSalary);
+
+    if (
+      expectedSalaryValue !== undefined &&
+      (!Number.isFinite(expectedSalaryValue) || Number.isNaN(expectedSalaryValue))
+    ) {
+      Swal.fire('Invalid Salary', 'Expected salary must be a valid number.', 'error');
+      return;
+    }
+
+    const availableCustomFields =
+      interviewEditableCustomFields.length > 0
+        ? interviewEditableCustomFields
+        : getAvailableCustomFieldsForInterview();
+        
+    const customResponsesPayload: Record<string, any> = {
+      ...(interviewUnmappedCustomResponses || {}),
+    };
+
+    availableCustomFields.forEach((field: any, fieldIndex: number) => {
+      const fieldId = getCustomFieldId(field, fieldIndex);
+      customResponsesPayload[fieldId] = coerceCustomFieldValueForPayload(
+        field,
+        interviewEditForm.customResponses[fieldId]
+      );
+    });
+
+    const availableSpecs = getAvailableJobSpecsForInterview();
+    const jobSpecsResponseMap = new Map<string, boolean>();
+
+    interviewEditForm.jobSpecsResponses
+      .filter((r) => Boolean(r?.jobSpecId))
+      .forEach((r) => {
+        jobSpecsResponseMap.set(String(r.jobSpecId), Boolean(r.answer));
+      });
+
+    (availableSpecs || []).forEach((s: any) => {
+      const specId = normalizeSpecId(s?.jobSpecId ?? s?._id ?? s?.id);
+      if (!specId) return;
+      if (!jobSpecsResponseMap.has(String(specId))) {
+        jobSpecsResponseMap.set(String(specId), false);
+      }
+    });
+
+    const payload: any = {
+      fullName: interviewEditForm.fullName.trim(),
+      email: interviewEditForm.email.trim(),
+      phone: interviewEditForm.phone.trim(),
+      gender: interviewEditForm.gender.trim(),
+      address: interviewEditForm.address.trim(),
+      customResponses: customResponsesPayload,
+      jobSpecsResponses: Array.from(jobSpecsResponseMap.entries()).map(([jobSpecId, answer]) => ({
+        jobSpecId: String(jobSpecId),
+        answer: Boolean(answer),
+      })),
+    };
+
+    if (interviewEditForm.birthDate) payload.birthDate = interviewEditForm.birthDate;
+    if (expectedSalaryValue !== undefined) payload.expectedSalary = expectedSalaryValue;
+
+    try {
+      setIsSavingInterviewEdit(true);
+      await updateApplicantMutation.mutateAsync({ id, data: payload });
+      
+      setIsInterviewEditMode(false);
+      setIsEditOnlyMode(false);
+      setInterviewTargetMode('existing');
+      setInterviewTargetId('');
+      setSelectedQuestionGroupIds([]);
+      setInterviewQuestionDrafts([]);
+      setInterviewEditableCustomFields([]);
+
+      Swal.fire('Saved', 'Applicant data was updated successfully.', 'success');
+    } catch (err: any) {
+      Swal.fire('Update Failed', getErrorMessage(err), 'error');
+    } finally {
+      setIsSavingInterviewEdit(false);
+    }
+  };
+
+  const handleEditCancel = () => {
+    setIsInterviewEditMode(false);
+    setIsEditOnlyMode(false);
+    setInterviewTargetMode('existing');
+    setInterviewTargetId('');
+    setSelectedQuestionGroupIds([]);
+    setInterviewQuestionDrafts([]);
+    setInterviewEditableCustomFields([]);
+  };
+
   const inferGroupIdsFromInterview = (interview: any): string[] => {
     try {
       if (!interview || !Array.isArray(interview.questions) || companyInterviewGroups.length === 0) return [];
@@ -841,7 +877,6 @@ const getStatusColor = (status: string) => {
         const t = normalizeLookupToken(q?.question ?? q?.notes ?? q?.answer ?? '');
         if (t) qSet.add(t);
       }
-
       const matched: string[] = [];
       for (const g of companyInterviewGroups) {
         if (!g || !Array.isArray(g.questions) || g.questions.length === 0) continue;
@@ -868,7 +903,6 @@ const getStatusColor = (status: string) => {
     if (/[\u0600-\u06FF]/.test(key)) {
       return key.replace(/[_-]+/g, ' ');
     }
-
     return key
       .replace(/[_-]+/g, ' ')
       .replace(/([a-z])([A-Z])/g, '$1 $2')
@@ -895,11 +929,9 @@ const getStatusColor = (status: string) => {
       if (rawValue.every((item) => typeof item === 'boolean')) return 'checkbox';
       return 'tags';
     }
-
     if (typeof rawValue === 'boolean') return 'checkbox';
     if (typeof rawValue === 'number') return 'number';
     if (isPlainObject(rawValue)) return 'json';
-
     if (typeof rawValue === 'string') {
       const trimmed = rawValue.trim();
       if (!trimmed) return 'text';
@@ -912,7 +944,6 @@ const getStatusColor = (status: string) => {
         return 'checkbox';
       }
     }
-
     return 'text';
   };
 
@@ -937,19 +968,16 @@ const getStatusColor = (status: string) => {
 
   const inferRepeatableGroupFields = (rows: any[]): any[] => {
     const keys = new Set<string>();
-
     (rows || []).forEach((row: any) => {
       if (!isPlainObject(row)) return;
       Object.keys(row).forEach((key) => {
         if (key) keys.add(String(key));
       });
     });
-
     return Array.from(keys).map((key, index) => {
       const sampleValue = (rows || []).find((row: any) => isPlainObject(row) && row[key] !== undefined)?.[key];
       const inferredTypeRaw = inferCustomResponseInputType(sampleValue);
       const inferredType = inferredTypeRaw === 'repeatable_group' ? 'json' : inferredTypeRaw;
-
       return {
         fieldId: key,
         label: formatCustomResponseKeyLabel(key),
@@ -965,7 +993,6 @@ const getStatusColor = (status: string) => {
   ): any[] => {
     return Object.entries(responses || {}).map(([key, value], index) => {
       const inferredType = inferCustomResponseInputType(value);
-
       return {
         fieldId: String(key),
         label: formatCustomResponseKeyLabel(String(key)),
@@ -985,12 +1012,10 @@ const getStatusColor = (status: string) => {
     responses: Record<string, any>
   ): string => {
     if (!responses || typeof responses !== 'object') return '';
-
     const fieldId = String(field?.fieldId || '');
     if (fieldId && Object.prototype.hasOwnProperty.call(responses, fieldId)) {
       return fieldId;
     }
-
     const directCandidates = [
       field?.label?.en,
       field?.label?.ar,
@@ -998,13 +1023,11 @@ const getStatusColor = (status: string) => {
     ]
       .filter(Boolean)
       .map((v) => String(v));
-
     for (const candidate of directCandidates) {
       if (Object.prototype.hasOwnProperty.call(responses, candidate)) {
         return candidate;
       }
     }
-
     const normalizedTargets = new Set<string>();
     [fieldId, ...directCandidates]
       .filter(Boolean)
@@ -1015,12 +1038,10 @@ const getStatusColor = (status: string) => {
         normalizedTargets.add(normalized.replace(/^rec/, ''));
         normalizedTargets.add(normalized.replace(/^sav/, ''));
       });
-
     for (const key of Object.keys(responses || {})) {
       const normalizedKey = normalizeLookupToken(key);
       if (!normalizedKey) continue;
       if (normalizedTargets.has(normalizedKey)) return key;
-
       for (const target of normalizedTargets) {
         if (!target) continue;
         if (normalizedKey.includes(target) || target.includes(normalizedKey)) {
@@ -1028,7 +1049,6 @@ const getStatusColor = (status: string) => {
         }
       }
     }
-
     return '';
   };
 
@@ -1036,14 +1056,12 @@ const getStatusColor = (status: string) => {
     const inputType = String(
       field?.inputType || inferCustomResponseInputType(rawValue) || 'text'
     ).toLowerCase();
-
     if (inputType === 'repeatable_group') {
       if (!Array.isArray(rawValue)) return [];
       return rawValue.map((row: any) =>
         row && typeof row === 'object' && !Array.isArray(row) ? { ...row } : {}
       );
     }
-
     if (inputType === 'json') {
       if (rawValue === undefined || rawValue === null || rawValue === '') return '';
       if (typeof rawValue === 'string') {
@@ -1055,14 +1073,12 @@ const getStatusColor = (status: string) => {
           return rawValue;
         }
       }
-
       try {
         return JSON.stringify(rawValue, null, 2);
       } catch {
         return String(rawValue);
       }
     }
-
     if (inputType === 'checkbox') {
       const choices = getCustomFieldChoices(field);
       if (choices.length === 0) {
@@ -1085,7 +1101,6 @@ const getStatusColor = (status: string) => {
       if (rawValue === undefined || rawValue === null || rawValue === '') return [];
       return [String(rawValue)];
     }
-
     if (inputType === 'tags') {
       if (Array.isArray(rawValue)) return rawValue.map((v: any) => String(v));
       if (typeof rawValue === 'string') {
@@ -1097,16 +1112,13 @@ const getStatusColor = (status: string) => {
       if (rawValue === undefined || rawValue === null || rawValue === '') return [];
       return [String(rawValue)];
     }
-
     if (inputType === 'number') {
       if (rawValue === undefined || rawValue === null || rawValue === '') return '';
       return String(rawValue);
     }
-
     if (inputType === 'date') {
       return rawValue ? toInputDate(rawValue) : '';
     }
-
     if (rawValue === undefined || rawValue === null) return '';
     return String(rawValue);
   };
@@ -1115,7 +1127,6 @@ const getStatusColor = (status: string) => {
     const inputType = String(
       field?.inputType || inferCustomResponseInputType(rawValue) || 'text'
     ).toLowerCase();
-
     if (inputType === 'repeatable_group') {
       const rows = Array.isArray(rawValue) ? rawValue : [];
       const groupFields = getCustomFieldGroupFields(field);
@@ -1132,7 +1143,6 @@ const getStatusColor = (status: string) => {
         return normalizedRow;
       });
     }
-
     if (inputType === 'json') {
       if (rawValue === undefined || rawValue === null || rawValue === '') return '';
       if (typeof rawValue === 'string') {
@@ -1146,7 +1156,6 @@ const getStatusColor = (status: string) => {
       }
       return rawValue;
     }
-
     if (inputType === 'checkbox') {
       const choices = getCustomFieldChoices(field);
       if (choices.length === 0) {
@@ -1168,7 +1177,6 @@ const getStatusColor = (status: string) => {
       if (rawValue === undefined || rawValue === null || rawValue === '') return [];
       return [String(rawValue)];
     }
-
     if (inputType === 'tags') {
       if (Array.isArray(rawValue)) return rawValue.map((v: any) => String(v));
       if (typeof rawValue === 'string') {
@@ -1180,17 +1188,14 @@ const getStatusColor = (status: string) => {
       if (rawValue === undefined || rawValue === null || rawValue === '') return [];
       return [String(rawValue)];
     }
-
     if (inputType === 'number') {
       if (rawValue === undefined || rawValue === null || rawValue === '') return '';
       const parsed = Number(rawValue);
       return Number.isFinite(parsed) ? parsed : rawValue;
     }
-
     if (inputType === 'date') {
       return rawValue ? toInputDate(rawValue) : '';
     }
-
     if (rawValue === undefined || rawValue === null) return '';
     return rawValue;
   };
@@ -1208,19 +1213,15 @@ const getStatusColor = (status: string) => {
     if (fromDetail.length > 0) {
       return fromDetail;
     }
-
     const applicantCandidates = [applicant, fetchedApplicant, stateApplicant].filter(Boolean) as any[];
-
     for (const candidate of applicantCandidates) {
       const jobPosCandidates: any[] = [];
-
       if (candidate?.jobPositionId && typeof candidate.jobPositionId === 'object') {
         jobPosCandidates.push(candidate.jobPositionId);
       }
       if (candidate?.jobPosition && typeof candidate.jobPosition === 'object') {
         jobPosCandidates.push(candidate.jobPosition);
       }
-
       for (const jobPos of jobPosCandidates) {
         const fields = extractArrayField(jobPos, 'customFields');
         if (fields.length > 0) {
@@ -1228,7 +1229,6 @@ const getStatusColor = (status: string) => {
         }
       }
     }
-
     if (resolvedJobPosId && Array.isArray(jobPositions)) {
       const found = jobPositions.find(
         (j: any) => String(j?._id ?? j?.id ?? '') === String(resolvedJobPosId)
@@ -1238,7 +1238,6 @@ const getStatusColor = (status: string) => {
         return fromList;
       }
     }
-
     return [] as any[];
   };
 
@@ -1254,13 +1253,11 @@ const getStatusColor = (status: string) => {
         return (jobPositionDetail as any).jobSpecs;
       }
     }
-
     const populatedApplicant = (fetchedApplicant ?? stateApplicant ?? applicant) as any;
     const populatedJobPos =
       typeof populatedApplicant?.jobPositionId === 'object'
         ? populatedApplicant.jobPositionId
         : populatedApplicant?.jobPosition;
-
     if (populatedJobPos) {
       if (Array.isArray(populatedJobPos.jobSpecsWithDetails) && populatedJobPos.jobSpecsWithDetails.length) {
         return populatedJobPos.jobSpecsWithDetails;
@@ -1269,7 +1266,6 @@ const getStatusColor = (status: string) => {
         return populatedJobPos.jobSpecs;
       }
     }
-
     if (resolvedJobPosId && Array.isArray(jobPositions)) {
       const found = jobPositions.find((j: any) => String(j?._id) === String(resolvedJobPosId));
       if (found) {
@@ -1281,13 +1277,11 @@ const getStatusColor = (status: string) => {
         }
       }
     }
-
     return [] as any[];
   };
 
   const buildInitialJobSpecsResponses = (src: any, availableSpecs: any[] = []) => {
     const answerMap = new Map<string, boolean>();
-
     const direct = Array.isArray(src?.jobSpecsResponses) ? src.jobSpecsResponses : [];
     const fromDirect = direct
       .map((r: any) => ({
@@ -1295,28 +1289,23 @@ const getStatusColor = (status: string) => {
         answer: typeof r?.answer === 'boolean' ? r.answer : Boolean(r?.answer),
       }))
       .filter((r: any) => Boolean(r.jobSpecId));
-
     fromDirect.forEach((r: any) => answerMap.set(String(r.jobSpecId), Boolean(r.answer)));
-
     const fallbackSpecs = Array.isArray(src?.jobSpecsWithDetails)
       ? src.jobSpecsWithDetails
       : Array.isArray(src?.jobSpecs)
       ? src.jobSpecs
       : [];
-
     const fromFallback = fallbackSpecs
       .map((s: any) => ({
         jobSpecId: normalizeSpecId(s?.jobSpecId ?? s?._id ?? s?.id),
         answer: typeof s?.answer === 'boolean' ? s.answer : Boolean(s?.answer),
       }))
       .filter((r: any) => Boolean(r.jobSpecId));
-
     fromFallback.forEach((r: any) => {
       if (!answerMap.has(String(r.jobSpecId))) {
         answerMap.set(String(r.jobSpecId), Boolean(r.answer));
       }
     });
-
     (availableSpecs || []).forEach((s: any) => {
       const specId = normalizeSpecId(s?.jobSpecId ?? s?._id ?? s?.id);
       if (!specId) return;
@@ -1324,20 +1313,17 @@ const getStatusColor = (status: string) => {
         answerMap.set(String(specId), false);
       }
     });
-
     return Array.from(answerMap.entries()).map(([jobSpecId, answer]) => ({ jobSpecId, answer }));
   };
 
   const companyInterviewGroups = useMemo<CompanyInterviewGroup[]>(() => {
     const sources: any[] = [companyObj, fetchedCompany, jobPosCompany];
-
     if (resolvedCompanyId) {
       const fromList = (companies || []).find(
         (c: any) => String(c?._id || c?.id || '') === String(resolvedCompanyId)
       );
       if (fromList) sources.push(fromList);
     }
-
     const normalizeGroups = (rawGroups: any[]): CompanyInterviewGroup[] => {
       return (rawGroups || [])
         .map((g: any, groupIndex: number) => {
@@ -1353,7 +1339,6 @@ const getStatusColor = (status: string) => {
                 }))
                 .filter((q: any) => q.question)
             : [];
-
           return {
             id: groupId,
             name: groupName,
@@ -1362,7 +1347,6 @@ const getStatusColor = (status: string) => {
         })
         .filter((g: CompanyInterviewGroup) => g.questions.length > 0);
     };
-
     for (const source of sources) {
       if (!source || typeof source !== 'object') continue;
       const rawGroups =
@@ -1370,12 +1354,10 @@ const getStatusColor = (status: string) => {
         source?.interviewSettings?.groups ||
         source?.settings?.groups ||
         source?.groups;
-
       if (Array.isArray(rawGroups) && rawGroups.length > 0) {
         return normalizeGroups(rawGroups);
       }
     }
-
     return [];
   }, [companyObj, fetchedCompany, jobPosCompany, companies, resolvedCompanyId]);
 
@@ -1386,12 +1368,10 @@ const getStatusColor = (status: string) => {
       completed: 2,
       cancelled: 1,
     };
-
     return [...(sourceInterviews || [])].sort((a: any, b: any) => {
       const ra = rank[String(a?.status || 'scheduled')] || 0;
       const rb = rank[String(b?.status || 'scheduled')] || 0;
       if (rb !== ra) return rb - ra;
-
       const ta = new Date(a?.startedAt || a?.scheduledAt || a?.issuedAt || 0).getTime();
       const tb = new Date(b?.startedAt || b?.scheduledAt || b?.issuedAt || 0).getTime();
       return tb - ta;
@@ -1411,8 +1391,7 @@ const getStatusColor = (status: string) => {
 
   const [isInterviewEditMode, setIsInterviewEditMode] = useState(false);
   const [isSavingInterviewEdit, setIsSavingInterviewEdit] = useState(false);
-  const [interviewUnmappedCustomResponses, setInterviewUnmappedCustomResponses] =
-    useState<Record<string, any>>({});
+  const [interviewUnmappedCustomResponses, setInterviewUnmappedCustomResponses] = useState<Record<string, any>>({});
   const [interviewEditableCustomFields, setInterviewEditableCustomFields] = useState<any[]>([]);
   const [tagInputBuffers, setTagInputBuffers] = useState<Record<string, string>>({});
 
@@ -1430,6 +1409,7 @@ const getStatusColor = (status: string) => {
     });
     return out;
   };
+
   const [interviewEditForm, setInterviewEditForm] = useState<InterviewEditFormState>({
     fullName: '',
     email: '',
@@ -1441,6 +1421,7 @@ const getStatusColor = (status: string) => {
     customResponses: {},
     jobSpecsResponses: [],
   });
+
   const [interviewTargetMode, setInterviewTargetMode] = useState<InterviewTargetMode>('existing');
   const [interviewTargetId, setInterviewTargetId] = useState('');
   const [selectedQuestionGroupIds, setSelectedQuestionGroupIds] = useState<string[]>([]);
@@ -1463,8 +1444,8 @@ const getStatusColor = (status: string) => {
           achievedScore: 0,
           notes: '',
           source: 'group',
-              answerType: String(q.answerType || 'text'),
-              choices: Array.isArray((q as any).choices) ? (q as any).choices.map((c: any) => String(c ?? '').trim()).filter(Boolean) : [],
+          answerType: String(q.answerType || 'text'),
+          choices: Array.isArray((q as any).choices) ? (q as any).choices.map((c: any) => String(c ?? '').trim()).filter(Boolean) : [],
           includeInTotal: true,
           groupId: group.id,
           groupName: group.name,
@@ -1481,8 +1462,6 @@ const getStatusColor = (status: string) => {
       ? applicantInterviews.find((iv: any) => String(iv?._id || '') === resolvedInterviewId)
       : null;
 
-    // If no groups were selected, and the chosen interview already contains questions,
-    // show those questions/answers directly so the user can edit them.
     if (importedFromGroups.length === 0 && selectedInterview && Array.isArray(selectedInterview.questions) && selectedInterview.questions.length > 0) {
       const drafts: InterviewQuestionDraft[] = selectedInterview.questions.map((q: any, idx: number) => ({
         localId: `iv_${String(selectedInterview._id || '')}_${idx}`,
@@ -1491,11 +1470,10 @@ const getStatusColor = (status: string) => {
         achievedScore: Number.isFinite(Number(q?.achievedScore)) ? Number(q.achievedScore) : 0,
         notes: String(q?.notes ?? q?.answer ?? ''),
         source: 'existing',
-          answerType: String(q?.answerType || 'text'),
-          choices: Array.isArray(q?.choices) ? (q.choices as any[]).map((c) => String(c ?? '').trim()).filter(Boolean) : [],
+        answerType: String(q?.answerType || 'text'),
+        choices: Array.isArray(q?.choices) ? (q.choices as any[]).map((c) => String(c ?? '').trim()).filter(Boolean) : [],
         includeInTotal: !(Number.isFinite(Number(q?.score)) && Number(q?.score) === 0),
       }));
-
       setInterviewQuestionDrafts(drafts);
       return;
     }
@@ -1519,14 +1497,12 @@ const getStatusColor = (status: string) => {
 
     setInterviewQuestionDrafts((prev) => {
       const previousAnswers = new Map<string, InterviewQuestionDraft>();
-
       if (!isSwitchingInterview) {
         (prev || []).forEach((q) => {
           const key = `${q.groupId || ''}::${q.question}::${q.score}`;
           previousAnswers.set(key, q);
         });
       }
-
       const mergedGroupQuestions = importedFromGroups.map((q) => {
         const key = `${q.groupId || ''}::${q.question}::${q.score}`;
         const previous = previousAnswers.get(key);
@@ -1546,7 +1522,6 @@ const getStatusColor = (status: string) => {
           choices: previous?.choices || (Array.isArray((q as any).choices) ? (q as any).choices.map((c: any) => String(c ?? '').trim()).filter(Boolean) : []),
         };
       });
-
       lastResolvedInterviewIdRef.current = resolvedInterviewId || null;
       return mergedGroupQuestions;
     });
@@ -1623,7 +1598,6 @@ const getStatusColor = (status: string) => {
 
     setInterviewTargetMode(hasExistingInterview ? 'existing' : 'new');
     setInterviewTargetId(String(targetInterview?._id || ''));
-    // Auto-select groups that match the preferred interview, if any
     try {
       const inferred = targetInterview ? inferGroupIdsFromInterview(targetInterview) : [];
       setSelectedQuestionGroupIds(inferred);
@@ -1633,21 +1607,18 @@ const getStatusColor = (status: string) => {
     setInterviewQuestionDrafts([]);
 
     setIsInterviewEditMode(true);
+    setIsEditOnlyMode(false);
   };
 
   const handleInterviewTargetModeChange = (mode: InterviewTargetMode) => {
     setInterviewTargetMode(mode);
-
     if (mode === 'new') {
       setInterviewTargetId('');
       return;
     }
-
     const fallbackInterviewId = String(getPreferredInterviewToUpdate()?._id || '');
     const resolvedInterviewId = String(interviewTargetId || fallbackInterviewId || '');
     setInterviewTargetId(resolvedInterviewId);
-
-    // Auto-select groups for the resolved interview id
     try {
       const iv = applicantInterviews.find((x: any) => String(x?._id || '') === String(resolvedInterviewId));
       const inferred = iv ? inferGroupIdsFromInterview(iv) : [];
@@ -1697,11 +1668,9 @@ const getStatusColor = (status: string) => {
   const isQuestionAnswered = useCallback((q: InterviewQuestionDraft) => {
     const answerText = String(q.notes || '').trim();
     if (!answerText) return false;
-
     if (String(q.answerType || '').toLowerCase() === 'number') {
       return Number.isFinite(Number(answerText));
     }
-
     return true;
   }, []);
 
@@ -1724,12 +1693,10 @@ const getStatusColor = (status: string) => {
       (sum, q) => sum + getEffectiveQuestionScore(q),
       0
     );
-
     const achievedScore = (interviewQuestionDrafts || []).reduce(
       (sum, q) => sum + getComputedQuestionAchievedScore(q),
       0
     );
-
     return {
       totalScore,
       achievedScore,
@@ -1753,12 +1720,10 @@ const getStatusColor = (status: string) => {
         : [];
       const groupFields = getCustomFieldGroupFields(field);
       const newRow: Record<string, any> = {};
-
       groupFields.forEach((subField: any, subIndex: number) => {
         const subFieldId = getCustomFieldId(subField, subIndex);
         newRow[subFieldId] = coerceCustomFieldValueForForm(subField, undefined);
       });
-
       currentRows.push(newRow);
       return {
         ...prev,
@@ -1776,7 +1741,6 @@ const getStatusColor = (status: string) => {
         ? [...prev.customResponses[fieldId]]
         : [];
       const nextRows = currentRows.filter((_, idx) => idx !== rowIndex);
-
       return {
         ...prev,
         customResponses: {
@@ -1801,10 +1765,8 @@ const getStatusColor = (status: string) => {
         currentRows[rowIndex] && typeof currentRows[rowIndex] === 'object'
           ? { ...currentRows[rowIndex] }
           : {};
-
       row[subFieldId] = value;
       currentRows[rowIndex] = row;
-
       return {
         ...prev,
         customResponses: {
@@ -1849,39 +1811,31 @@ const getStatusColor = (status: string) => {
 
     const resolveInterviewId = (sourceInterviews: any[] = []): string => {
       const interviews = Array.isArray(sourceInterviews) ? sourceInterviews : [];
-
       const exactMatch = interviews.find(
         (iv: any) =>
           String(iv?.scheduledAt || '') === String(scheduledAt) &&
           String(iv?.notes || '') === creationNotes
       );
-
       if (exactMatch?._id) {
         return String(exactMatch._id);
       }
-
       const noteMatch = interviews.find(
         (iv: any) => String(iv?.notes || '') === creationNotes
       );
-
       if (noteMatch?._id) {
         return String(noteMatch._id);
       }
-
       const firstNewInterview = sortInterviewsByPriority(interviews).find((iv: any) => {
         const candidateId = String(iv?._id || '');
         return Boolean(candidateId) && !knownInterviewIds.has(candidateId);
       });
-
       if (firstNewInterview?._id) {
         return String(firstNewInterview._id);
       }
-
       const newestInterview = sortInterviewsByPriority(interviews)[0];
       if (newestInterview?._id) {
         return String(newestInterview._id);
       }
-
       return '';
     };
 
@@ -1899,7 +1853,6 @@ const getStatusColor = (status: string) => {
     const directInterviewId = String(
       (updatedApplicant as any)?._id || (updatedApplicant as any)?.id || ''
     );
-
     if (
       directInterviewId &&
       directInterviewId !== String(id) &&
@@ -1911,32 +1864,24 @@ const getStatusColor = (status: string) => {
     const interviewsFromResponse = Array.isArray((updatedApplicant as any)?.interviews)
       ? [...((updatedApplicant as any).interviews || [])]
       : [];
-
     const interviewIdFromResponse = resolveInterviewId(interviewsFromResponse);
     if (interviewIdFromResponse) {
       return interviewIdFromResponse;
     }
 
-    // Some schedule endpoints return partial payloads without interviews.
-    // Re-fetch applicant detail to reliably resolve the newly created interview id.
     try {
       const refreshedApplicant = await applicantsService.getApplicantById(id);
-
       if (refreshedApplicant && typeof refreshedApplicant === 'object') {
         queryClient.setQueryData(applicantsKeys.detail(id), refreshedApplicant);
       }
-
       const interviewsFromRefetch = Array.isArray((refreshedApplicant as any)?.interviews)
         ? [...((refreshedApplicant as any).interviews || [])]
         : [];
-
       const interviewIdFromRefetch = resolveInterviewId(interviewsFromRefetch);
       if (interviewIdFromRefetch) {
         return interviewIdFromRefetch;
       }
-    } catch {
-      // Let caller surface a clear fallback error.
-    }
+    } catch {}
 
     return '';
   };
@@ -1972,11 +1917,11 @@ const getStatusColor = (status: string) => {
     const interviewQuestionsPayload = (interviewQuestionDrafts || [])
       .filter((q) => String(q.question || '').trim() && Number.isFinite(Number(q.score)))
       .map((q) => ({
-      question: String(q.question || '').trim(),
-      score: getEffectiveQuestionScore(q),
-      achievedScore: getComputedQuestionAchievedScore(q),
-      notes: String(q.notes || '').trim(),
-    }));
+        question: String(q.question || '').trim(),
+        score: getEffectiveQuestionScore(q),
+        achievedScore: getComputedQuestionAchievedScore(q),
+        notes: String(q.notes || '').trim(),
+      }));
 
     let interviewIdToUpdate = '';
     if (interviewTargetMode === 'existing') {
@@ -2021,7 +1966,6 @@ const getStatusColor = (status: string) => {
         jobSpecsResponseMap.set(String(r.jobSpecId), Boolean(r.answer));
       });
 
-    // Ensure every available job spec is sent with an explicit boolean answer.
     (availableSpecs || []).forEach((s: any) => {
       const specId = normalizeSpecId(s?.jobSpecId ?? s?._id ?? s?.id);
       if (!specId) return;
@@ -2077,7 +2021,8 @@ const getStatusColor = (status: string) => {
       }
 
       setIsInterviewEditMode(false);
-  setInterviewTargetMode('existing');
+      setIsEditOnlyMode(false);
+      setInterviewTargetMode('existing');
       setInterviewTargetId('');
       setSelectedQuestionGroupIds([]);
       setInterviewQuestionDrafts([]);
@@ -2114,9 +2059,6 @@ const getStatusColor = (status: string) => {
     setInterviewEditableCustomFields([]);
   };
 
-  
-
-  // Email helper: add inline styles to Quill-produced HTML for better email client rendering
   const inlineStyleHtml = (html: string) => {
     if (!html) return '';
     let out = String(html);
@@ -2127,7 +2069,6 @@ const getStatusColor = (status: string) => {
     return out;
   };
 
-  // HTML utility: escape content for safe HTML embedding
   const escapeHtml = (s: string) =>
     String(s)
       .replace(/&/g, '&amp;')
@@ -2136,52 +2077,30 @@ const getStatusColor = (status: string) => {
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
 
-  // Sanitize message template: remove quoted/duplicated blocks (including Interview Details) and normalize whitespace
   const sanitizeMessageTemplate = (htmlOrText: string) => {
     if (!htmlOrText) return '';
     let out = String(htmlOrText);
-
-    // Remove blockquotes which often contain quoted/repeated content
     out = out.replace(/<blockquote[\s\S]*?<\/blockquote>/gi, '');
-
-    // If this looks like HTML, try removing 'Interview Details' blocks and related list items
     if (out.indexOf('<') !== -1) {
-      // Remove <p>Interview Details</p> plus following <ul> or <ol>
       out = out.replace(/<p[^>]*>\s*Interview Details\s*<\/p>\s*(?:<ul[\s\S]*?<\/ul>|<ol[\s\S]*?<\/ol>)/i, '');
-      // Remove list items containing Date:, Time:, Type:, Location:, Link:
       out = out.replace(/<li[^>]*>\s*(?:Date|Time|Type|Location|Link):[\s\S]*?<\/li>/gi, '');
-      // Remove paragraphs that begin with 'Interview Details' or bullets
       out = out.replace(/<p[^>]*>\s*(?:Interview Details|•|\-|\*)[\s\S]*?<\/p>/gi, '');
-      // Remove leading encoded or literal '>' inside paragraph/div starts
       out = out.replace(/(<(p|div|li|span)[^>]*>)\s*(?:&gt;|>)+\s*/gi, '$1');
     } else {
-      // Plain text: remove 'Interview Details' block and following lines starting with bullets or labels
       out = out.replace(/Interview Details[\s\S]*?(?=\n\s*\n|$)/i, '');
       out = out.replace(/(^|\n)\s*[•\-*]\s*(Date|Time|Type|Location|Link):.*(?=\n|$)/gi, '');
     }
-
-    // Remove any leading quote-lines in plain text (lines starting with >)
     out = out.replace(/(^|\n)\s*>.*(?=\n|$)/g, '');
-    // Remove HTML-encoded greater-than quote markers
     out = out.replace(/(^|\n)\s*&gt;+\s*/gi, '$1');
-
-    // Remove any leading '>' or '&gt;' inside HTML paragraphs
     out = out.replace(/<p([^>]*)>\s*(?:&gt;|>)+\s*/gi, '<p$1>');
-
-    // Remove a leading greeting like "Dear Name," if it's the very first content — avoids duplicate greetings
     out = out.replace(/^\s*(?:<p[^>]*>\s*)?(Dear\s+[A-Za-z0-9\-\s,.]{1,80}[,:]?)(?:<\/p>\s*)?/i, '');
-
-    // Normalize multiple blank lines and trim
     out = out.replace(/(\r?\n){2,}/g, '\n\n').trim();
     return out;
   };
 
-  // Build the full HTML email wrapper for interview invitations
   const buildInterviewEmailHtml = (opts: { subject: string; jobTitle: string; interview: any; rawMessage: string; applicantName?: string }) => {
     const { subject, rawMessage } = opts;
     const sanitizedBody = sanitizeMessageTemplate(rawMessage || '');
-
-    // If sanitizedBody is HTML (contains tags) keep it; otherwise convert plaintext newlines to paragraphs.
     let bodyHtml = '';
     if (sanitizedBody.indexOf('<') !== -1) {
       bodyHtml = inlineStyleHtml(sanitizedBody);
@@ -2189,8 +2108,6 @@ const getStatusColor = (status: string) => {
       const parts = sanitizedBody.split(/\r?\n/).map(p => p.trim()).filter(p => p.length > 0);
       bodyHtml = parts.map(p => `<p style="margin:0 0 12px;color:#444;">${escapeHtml(p)}</p>`).join('');
     }
-
-    // Do not inject any greeting/intro/signature — use exactly what user wrote in Quill (sanitized above)
     return `<!DOCTYPE html>
 <html>
 <head>
@@ -2217,9 +2134,7 @@ const getStatusColor = (status: string) => {
 </html>`;
   };
 
-  // Error helper: extract readable messages from API/network errors
   const getErrorMessage = (err: any): string => {
-    // Check for validation errors in 'details' array (new format)
     if (
       err.response?.data?.details &&
       Array.isArray(err.response.data.details)
@@ -2232,7 +2147,6 @@ const getStatusColor = (status: string) => {
         })
         .join(', ');
     }
-    // Check for validation errors in 'errors' array (old format)
     if (err.response?.data?.errors) {
       const {errors} = err.response.data;
       if (Array.isArray(errors)) {
@@ -2249,19 +2163,10 @@ const getStatusColor = (status: string) => {
     return 'An unexpected error occurred';
   };
 
-  // UI options and form handlers
-  // Status options used in the change-status flow
- 
-
-
-  // Form handler: submit interview scheduling data, create interview and optionally send notifications
   const handleInterviewSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!id || !applicant) return;
 
-   
-
-    // Validate notification options
     if (emailOption === 'custom' && !customEmail.trim()) {
       setInterviewError('Please provide a custom email address');
       return;
@@ -2276,15 +2181,12 @@ const getStatusColor = (status: string) => {
     }
 
     setIsSubmittingInterview(true);
-    // snapshot interview form before we reset UI state
     const interviewSnapshot = { ...interviewForm };
-    // Capture notification choices now so resetting UI doesn't clear them before we build payload
     const notifEmailOption = emailOption || (customEmail ? 'custom' : undefined);
     const notifCustomEmail = customEmail || undefined;
     const notifPhoneOption = phoneOption || undefined;
     const notifCustomPhone = phoneOption === 'custom' ? customPhone || undefined : undefined;
     const notifChannels = { ...notificationChannels };
-    // Close modal immediately when request is sent (reset UI)
     setInterviewForm({
       date: '',
       time: '',
@@ -2302,7 +2204,6 @@ const getStatusColor = (status: string) => {
     setShowInterviewModal(false);
 
     try {
-      // Combine date and time into scheduledAt using the snapshot
       let scheduledAt: string | undefined;
       if (interviewSnapshot.date && interviewSnapshot.time) {
         scheduledAt = `${interviewSnapshot.date}T${interviewSnapshot.time}:00`;
@@ -2310,7 +2211,6 @@ const getStatusColor = (status: string) => {
         scheduledAt = `${interviewSnapshot.date}T00:00:00`;
       }
 
-      // Build payload matching backend scheduleInterviewSchema (from snapshot)
       const interviewData: any = {
         scheduledAt,
         description: interviewSnapshot.description || undefined,
@@ -2318,16 +2218,13 @@ const getStatusColor = (status: string) => {
         location: interviewSnapshot.location || undefined,
         videoLink: interviewSnapshot.link || undefined,
         notes: interviewSnapshot.comment || undefined,
-        // Include the applicant's company id if resolved so backend can associate notifications/settings
         companyId: companyObj?._id,
-        // Include notifications preferences (use captured values so UI resets don't clear them)
         notifications: {
           channels: {
             email: notifChannels.email,
             sms: notifChannels.sms,
             whatsapp: notifChannels.whatsapp,
           },
-          // Prefer explicit captured customEmail if present.
           emailOption: notifEmailOption,
           customEmail: notifCustomEmail,
           phoneOption: notifPhoneOption,
@@ -2335,7 +2232,6 @@ const getStatusColor = (status: string) => {
         },
       };
 
-      // First: Optimistically update applicant status to "interview" if not already
       if (applicant && applicant.status !== 'interview') {
         updateStatusMutation.mutate({
           id: id!,
@@ -2346,31 +2242,24 @@ const getStatusColor = (status: string) => {
         });
       }
 
-      // Use a temp id so we can optimistically update interview status as well
       const tempInterviewId = `temp-${Date.now()}`;
       interviewData._id = tempInterviewId;
 
-      // Second: create the interview on server and wait for result
       const updatedApplicant = await scheduleInterviewMutation.mutateAsync({ id: id!, data: interviewData });
 
-      // Attempt to find the created interview id returned from server
       let createdInterviewId: string | undefined;
       try {
         const interviews = (updatedApplicant as any)?.interviews || [];
         createdInterviewId = interviews.find((iv: any) => {
           if (!iv) return false;
-          // match by scheduledAt, type and notes as best-effort
           return (
             (iv.scheduledAt === interviewData.scheduledAt) &&
             (iv.type === interviewData.type) &&
             ((iv.notes || '') === (interviewData.notes || ''))
           );
         })?._id;
-      } catch (e) {
-        // ignore
-      }
+      } catch (e) {}
 
-      // Third: set the interview status to 'scheduled' on the created interview (wait for server) if we found it
       if (createdInterviewId) {
         await updateInterviewMutation.mutateAsync({
           applicantId: id!,
@@ -2379,23 +2268,17 @@ const getStatusColor = (status: string) => {
         });
       }
 
-      // Notifications: if email channel selected, send email and save message
       if (notificationChannels.email) {
         try {
           const toEmail = applicant.email;
-          // Fallback logic exactly matching the UI in InterviewScheduleModal
           const mailDefault = companyObj?.settings?.mailSettings?.defaultMail || companyObj?.mailSettings?.defaultMail || companyObj?.contactEmail || companyObj?.email || '';
-          // We use notifCustomEmail for the fromEmail (sender) as the UI state might have been cleared.
           let fromEmail = notifCustomEmail || mailDefault;
           if (!fromEmail || fromEmail.trim() === '') {
             console.warn('ApplicantData: Email sender is empty, using fallback support@yourdomain.com for safety', { mailDefault, notifCustomEmail, companyObj });
           }
           const subject = interviewEmailSubject || `Interview Invitation`;
-
-              const sanitizedBody = sanitizeMessageTemplate(messageTemplate || '');
-
-
-            const emailHtml = `
+          const sanitizedBody = sanitizeMessageTemplate(messageTemplate || '');
+          const emailHtml = `
 <!DOCTYPE html>
 <html>
 <head>
@@ -2439,7 +2322,6 @@ const getStatusColor = (status: string) => {
             resolveJobPositionId(applicant?.jobPositionId) ||
             resolveJobPositionId(applicant?.jobPosition);
 
-          // Send email via mutation; include company id per backend schema
           await sendEmailMutation.mutateAsync({
             company: companyObj?._id,
             jobPosition: jobPositionId,
@@ -2449,7 +2331,6 @@ const getStatusColor = (status: string) => {
             subject,
             html: emailHtml,
           });
-          // Also save the sent message to applicant message history
           try {
             await sendMessageMutation.mutateAsync({
               id: id!,
@@ -2473,7 +2354,6 @@ const getStatusColor = (status: string) => {
         }
       }
 
-      // Show success (scheduled and notifications handled)
       await Swal.fire({
         title: 'Success!',
         text: 'Interview scheduled successfully.',
@@ -2499,10 +2379,6 @@ const getStatusColor = (status: string) => {
     }
   };
 
-  
-    
-
-  // Form handler: add an internal comment to the applicant
   const handleCommentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!id || !applicant) return;
@@ -2513,14 +2389,9 @@ const getStatusColor = (status: string) => {
         comment: commentForm.text,
         isInternal: true,
       };
-
-      // Close modal and reset form immediately
       setCommentForm({ text: '' });
       setShowCommentModal(false);
-
-      // API call (optimistic)
       addCommentMutation.mutate({ id: id!, data: commentData });
-
       await Swal.fire({
         title: 'Success!',
         text: 'Comment added successfully.',
@@ -2541,7 +2412,6 @@ const getStatusColor = (status: string) => {
     }
   };
 
-  // Form handler: change applicant status
   const handleStatusChange = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!id || !applicant || !statusForm.status) return;
@@ -2553,9 +2423,7 @@ const getStatusColor = (status: string) => {
             .map((r: any) => String(r ?? '').trim())
             .filter(Boolean)
         : [];
-
       const mergedRejectedReasons = Array.from(new Set(selectedReasons));
-
       const statusData: UpdateStatusRequest = {
         status: statusForm.status as UpdateStatusRequest['status'],
         notes: statusForm.notes || undefined,
@@ -2563,14 +2431,9 @@ const getStatusColor = (status: string) => {
           ? { reasons: mergedRejectedReasons }
           : {}),
       } as UpdateStatusRequest;
-
-      // Close modal and reset form immediately
       setStatusForm({ status: '', notes: '', reasons: [] });
       setShowStatusModal(false);
-
-      // Update status via React Query mutation (optimistic)
       updateStatusMutation.mutate({ id: id!, data: statusData });
-
       await Swal.fire({
         title: 'Success!',
         text: 'Status updated successfully.',
@@ -2591,10 +2454,6 @@ const getStatusColor = (status: string) => {
     }
   };
 
- 
-
-
-  // Render loading state while applicant data is being fetched
   if (loading) {
     return (
       <div className="space-y-6">
@@ -2608,7 +2467,6 @@ const getStatusColor = (status: string) => {
     );
   }
 
-  // Render an error state when applicant cannot be loaded
   if (error || !applicant) {
     return (
       <>
@@ -2631,7 +2489,6 @@ const getStatusColor = (status: string) => {
     );
   }
 
-  // Small utility to format dates for display in the UI
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString('en-US', {
       year: 'numeric',
@@ -2644,7 +2501,7 @@ const getStatusColor = (status: string) => {
 
   const customFieldsForInterview = getAvailableCustomFieldsForInterview();
   const editableCustomFieldsForInterview =
-    isInterviewEditMode && interviewEditableCustomFields.length > 0
+    (isInterviewEditMode || isEditOnlyMode) && interviewEditableCustomFields.length > 0
       ? interviewEditableCustomFields
       : customFieldsForInterview;
 
@@ -2666,22 +2523,35 @@ const getStatusColor = (status: string) => {
             ← Back to Applicants
           </button>
           <div className="flex flex-wrap gap-2 sm:gap-3 sm:ml-auto">
-         <button
-  onClick={() => {
-    // Optionally pre-select the current status or default
-    setStatusForm(prev => ({ 
-      ...prev, 
-      status: applicant?.status || hookDefaultStatus || '' 
-    }));
-    setShowStatusModal(true);
-  }}
-  className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-green-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-green-700"
->
-  {applicant.status ? applicant.status.charAt(0).toUpperCase() + applicant.status.slice(1) : 'Status'}
-</button>
+            <button
+              onClick={() => {
+                setStatusForm(prev => ({ 
+                  ...prev, 
+                  status: applicant?.status || hookDefaultStatus || '' 
+                }));
+                setShowStatusModal(true);
+              }}
+              className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-green-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-green-700"
+            >
+              {applicant.status ? applicant.status.charAt(0).toUpperCase() + applicant.status.slice(1) : 'Status'}
+            </button>
+            
+            {/* Edit Button - for editing personal info and custom responses only */}
+            <button
+              onClick={openEditOnlyMode}
+              disabled={isInterviewEditMode || isEditOnlyMode}
+              className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-brand-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              <svg className="h-3 w-3 sm:h-4 sm:w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+              Edit
+            </button>
+
+            {/* Interview Button - for editing interview questions AND personal info */}
             <button
               onClick={openInterviewEditMode}
-              disabled={isInterviewEditMode}
+              disabled={isInterviewEditMode || isEditOnlyMode}
               className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-amber-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <svg className="h-3 w-3 sm:h-4 sm:w-4" fill="currentColor" viewBox="0 0 24 24">
@@ -2689,17 +2559,19 @@ const getStatusColor = (status: string) => {
               </svg>
               Interview
             </button>
-            {isInterviewEditMode && (
+
+            {/* Save/Cancel buttons - show for either edit mode */}
+            {(isInterviewEditMode || isEditOnlyMode) && (
               <>
                 <button
-                  onClick={handleInterviewEditSave}
+                  onClick={isInterviewEditMode ? handleInterviewEditSave : handleEditSave}
                   disabled={isSavingInterviewEdit}
                   className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-emerald-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {isSavingInterviewEdit ? 'Saving...' : 'Save'}
                 </button>
                 <button
-                  onClick={handleInterviewEditCancel}
+                  onClick={isInterviewEditMode ? handleInterviewEditCancel : handleEditCancel}
                   disabled={isSavingInterviewEdit}
                   className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-slate-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
@@ -2707,10 +2579,10 @@ const getStatusColor = (status: string) => {
                 </button>
               </>
             )}
+
             <button
               onClick={() => {
-                setFormResetKey(prev => prev + 1); // Reset DatePickers
-                // Prefill location with company address when opening the modal
+                setFormResetKey(prev => prev + 1);
                 fillCompanyAddress();
                 setShowInterviewModal(true);
               }}
@@ -2739,31 +2611,6 @@ const getStatusColor = (status: string) => {
               <PlusIcon className="h-3 w-3 sm:h-4 sm:w-4" />
               <span className="hidden sm:inline">Send</span> Message
             </button>
-            {/* <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={async () => {
-                  try {
-                    const promises: Promise<any>[] = [];
-                    if (isApplicantFetched && refetchApplicant) promises.push(refetchApplicant());
-                    if (isJobPositionsFetched && refetchJobPositions) promises.push(refetchJobPositions());
-                    if (isJobPositionDetailFetched && refetchJobPositionDetail) promises.push(refetchJobPositionDetail());
-                    if (isJobPosCompanyFetched && refetchJobPosCompany) promises.push(refetchJobPosCompany());
-                    if (isCompaniesWithApplicantsFetched && refetchCompaniesWithApplicants) promises.push(refetchCompaniesWithApplicants());
-                    if (promises.length === 0) return;
-                    await Promise.all(promises);
-                    setLastRefetch(new Date());
-                  } catch (e) {
-                    // ignore
-                  }
-                }}
-                disabled={isApplicantFetching || isJobPositionsFetching || isJobPositionDetailFetching || isJobPosCompanyFetching || isCompaniesWithApplicantsFetching}
-                className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-3 py-1 text-sm font-semibold text-white shadow-sm hover:bg-brand-600 disabled:opacity-50"
-              >
-                {(isApplicantFetching || isJobPositionsFetching || isJobPositionDetailFetching || isJobPosCompanyFetching || isCompaniesWithApplicantsFetching) ? 'Updating Data' : 'Update Data'}
-              </button>
-              <div className="ml-2 text-sm text-gray-500">{elapsed ? `Last Update: ${elapsed}` : 'Not updated yet'}</div>
-            </div> */}
             <button
               onClick={() => setShowCommentModal(true)}
               className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-gray-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-gray-700"
@@ -2795,210 +2642,205 @@ const getStatusColor = (status: string) => {
           </div>
         </details>
 
-        {/* Personal Information Card
-          Renders profile header, photo, name, contact details, job/company/department, address, status, submission date and resume actions */}
+        {/* Personal Information Card */}
         <div className="relative overflow-hidden rounded-2xl bg-white dark:bg-gray-900 shadow-xl">
-  {/* Decorative background */}
-  <div className="absolute inset-0 bg-gradient-to-br from-brand-500/5 via-purple-500/5 to-blue-500/5 dark:from-brand-500/10 dark:via-purple-500/10 dark:to-blue-500/10"></div>
-  <div className="absolute -top-24 -right-24 w-96 h-96 bg-brand-500/10 dark:bg-brand-500/5 rounded-full blur-3xl"></div>
-  <div className="absolute -bottom-24 -left-24 w-96 h-96 bg-purple-500/10 dark:bg-purple-500/5 rounded-full blur-3xl"></div>
-  
-  <div className="relative p-8">
-    <div className="mb-8 flex flex-col sm:flex-row items-start sm:items-center gap-6 justify-between">
-      <div className="flex items-start gap-4">
-        <div className="flex-shrink-0 p-3 bg-gradient-to-br from-brand-500 to-brand-600 dark:from-brand-600 dark:to-brand-700 rounded-2xl shadow-lg">
-          <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-          </svg>
-        </div>
-        <div className="flex-1">
-          <h3 className="text-2xl font-extrabold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">Personal Information</h3>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Applicant profile and contact details</p>
-        </div>
-      </div>
-      
-        
-
-      {/* Profile Photo in header */}
-      <div className="flex-shrink-0">
-        {applicant.profilePhoto ? (
-          <button
-            type="button"
-            onClick={() => setShowPhotoModal(true)}
-            className="relative block rounded-xl overflow-hidden shadow-lg hover:shadow-xl transition-shadow focus:outline-none focus:ring-2 focus:ring-brand-500"
-            aria-label="View profile photo"
-          >
-            <img
-              src={applicant.profilePhoto}
-              alt={applicant.fullName}
-              className="h-24 w-24 sm:h-28 sm:w-28 object-cover"
-            />
-          </button>
-        ) : (
-          <div className="flex items-center justify-center h-24 w-24 sm:h-28 sm:w-28 rounded-xl bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900 shadow-lg text-2xl font-bold text-gray-800 dark:text-white">
-            {applicant.fullName ? applicant.fullName.split(' ').map((n: string) => n.charAt(0)).slice(0,2).join('').toUpperCase() : 'NA'}
-          </div>
-        )}
-
-      </div>
-    </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        {/* Full Name: applicant full name, supports RTL for Arabic */}
-        <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-brand-500 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
-          <div className="flex items-baseline gap-4">
-            <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-brand-100 dark:bg-brand-900/30 rounded-lg group-hover:scale-110 transition-transform">
-              <svg className="w-6 h-6 text-brand-600 dark:text-brand-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-              </svg>
-            </div>
-            <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Full Name</Label>
-            {isInterviewEditMode ? (
-              <input
-                type="text"
-                value={interviewEditForm.fullName}
-                onChange={(e) =>
-                  setInterviewEditForm((prev) => ({ ...prev, fullName: e.target.value }))
-                }
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-brand-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-                placeholder="Full name"
-              />
-            ) : (
-              <div dir={isArabic(applicant.fullName) ? 'rtl' : undefined} className={`text-base font-bold text-gray-900 dark:text-white ${isArabic(applicant.fullName) ? 'text-right' : ''}`}>
-                {applicant.fullName}
+          <div className="absolute inset-0 bg-gradient-to-br from-brand-500/5 via-purple-500/5 to-blue-500/5 dark:from-brand-500/10 dark:via-purple-500/10 dark:to-blue-500/10"></div>
+          <div className="absolute -top-24 -right-24 w-96 h-96 bg-brand-500/10 dark:bg-brand-500/5 rounded-full blur-3xl"></div>
+          <div className="absolute -bottom-24 -left-24 w-96 h-96 bg-purple-500/10 dark:bg-purple-500/5 rounded-full blur-3xl"></div>
+          
+          <div className="relative p-8">
+            <div className="mb-8 flex flex-col sm:flex-row items-start sm:items-center gap-6 justify-between">
+              <div className="flex items-start gap-4">
+                <div className="flex-shrink-0 p-3 bg-gradient-to-br from-brand-500 to-brand-600 dark:from-brand-600 dark:to-brand-700 rounded-2xl shadow-lg">
+                  <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-2xl font-extrabold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">Personal Information</h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Applicant profile and contact details</p>
+                </div>
               </div>
-            )}
-          </div>
-        </div>
 
-        {/* Email: clickable mailto link when available */}
-        <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-blue-500 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
-          <div className="flex items-baseline gap-4">
-            <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-blue-100 dark:bg-blue-900/30 rounded-lg group-hover:scale-110 transition-transform">
-              <svg className="w-6 h-6 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-              </svg>
-            </div>
-            <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Email</Label>
-            {isInterviewEditMode ? (
-              <input
-                type="email"
-                value={interviewEditForm.email}
-                onChange={(e) =>
-                  setInterviewEditForm((prev) => ({ ...prev, email: e.target.value }))
-                }
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-                placeholder="Email"
-              />
-            ) : applicant.email ? (
-              <a
-                href={`mailto:${applicant.email}?subject=${encodeURIComponent('Regarding your application')}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label={`Send email to ${applicant.email}`}
-                className="text-sm text-gray-900 dark:text-white break-words"
-              >
-                {applicant.email}
-              </a>
-            ) : (
-              <p className="text-sm text-gray-900 dark:text-white">-</p>
-            )}
-          </div>
-        </div>
-
-        {/* Phone: clickable WhatsApp link when available */}
-        <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-green-500 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
-          <div className="flex items-baseline gap-4">
-            <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-green-100 dark:bg-green-900/30 rounded-lg group-hover:scale-110 transition-transform">
-              <svg className="w-6 h-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-              </svg>
-            </div>
-            <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Phone</Label>
-            {isInterviewEditMode ? (
-              <input
-                type="tel"
-                value={interviewEditForm.phone}
-                onChange={(e) =>
-                  setInterviewEditForm((prev) => ({ ...prev, phone: e.target.value }))
-                }
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-green-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-                placeholder="Phone"
-              />
-            ) : applicant.phone ? (
-              <a
-                href={`https://wa.me/${(applicant.phone || '').toString().replace(/\D/g, '')}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label={`Open WhatsApp chat with ${applicant.phone}`}
-                className="text-sm text-gray-900 dark:text-white"
-              >
-                {applicant.phone}
-              </a>
-            ) : (
-              <p className="text-sm text-gray-900 dark:text-white">-</p>
-            )}
-          </div>
-        </div>
-
-          {/* Birth Date: applicant birth date */}
-          <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-teal-400 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
-            <div className="flex items-baseline gap-4">
-              <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-teal-100 dark:bg-teal-900/30 rounded-lg group-hover:scale-110 transition-transform">
-                <svg className="w-6 h-6 text-teal-600 dark:text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
+              {/* Profile Photo in header */}
+              <div className="flex-shrink-0">
+                {applicant.profilePhoto ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowPhotoModal(true)}
+                    className="relative block rounded-xl overflow-hidden shadow-lg hover:shadow-xl transition-shadow focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    aria-label="View profile photo"
+                  >
+                    <img
+                      src={applicant.profilePhoto}
+                      alt={applicant.fullName}
+                      className="h-24 w-24 sm:h-28 sm:w-28 object-cover"
+                    />
+                  </button>
+                ) : (
+                  <div className="flex items-center justify-center h-24 w-24 sm:h-28 sm:w-28 rounded-xl bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900 shadow-lg text-2xl font-bold text-gray-800 dark:text-white">
+                    {applicant.fullName ? applicant.fullName.split(' ').map((n: string) => n.charAt(0)).slice(0,2).join('').toUpperCase() : 'NA'}
+                  </div>
+                )}
               </div>
-              <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Birth Date</Label>
-              {isInterviewEditMode ? (
-                <input
-                  type="date"
-                  value={interviewEditForm.birthDate}
-                  onChange={(e) =>
-                    setInterviewEditForm((prev) => ({ ...prev, birthDate: e.target.value }))
-                  }
-                  className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-teal-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-                />
-              ) : (
-                <p className="text-sm text-gray-900 dark:text-white">{(() => {
-                  const bd = getBirthDateValue();
-                  return bd ? new Date(bd).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '-';
-                })()}</p>
-              )}
             </div>
-          </div>
 
-          {/* Gender: applicant gender */}
-          <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-pink-400 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
-            <div className="flex items-baseline gap-4">
-              <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-pink-100 dark:bg-pink-900/30 rounded-lg group-hover:scale-110 transition-transform">
-                <svg className="w-6 h-6 text-pink-600 dark:text-pink-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 11c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2" />
-                </svg>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+              {/* Full Name */}
+              <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-brand-500 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
+                <div className="flex items-baseline gap-4">
+                  <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-brand-100 dark:bg-brand-900/30 rounded-lg group-hover:scale-110 transition-transform">
+                    <svg className="w-6 h-6 text-brand-600 dark:text-brand-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                  </div>
+                  <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Full Name</Label>
+                  {(isInterviewEditMode || isEditOnlyMode) ? (
+                    <input
+                      type="text"
+                      value={interviewEditForm.fullName}
+                      onChange={(e) =>
+                        setInterviewEditForm((prev) => ({ ...prev, fullName: e.target.value }))
+                      }
+                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-brand-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                      placeholder="Full name"
+                    />
+                  ) : (
+                    <div dir={isArabic(applicant.fullName) ? 'rtl' : undefined} className={`text-base font-bold text-gray-900 dark:text-white ${isArabic(applicant.fullName) ? 'text-right' : ''}`}>
+                      {applicant.fullName}
+                    </div>
+                  )}
+                </div>
               </div>
-              <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Gender</Label>
-              {isInterviewEditMode ? (
-                <select
-                  value={interviewEditForm.gender}
-                  onChange={(e) =>
-                    setInterviewEditForm((prev) => ({ ...prev, gender: e.target.value }))
-                  }
-                  className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-pink-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-                >
-                  <option value="">Select</option>
-                  <option value="Male">Male</option>
-                  <option value="Female">Female</option>
-                </select>
-              ) : (
-                <p className="text-sm text-gray-900 dark:text-white">{(() => {
-                  const g = getGenderValue();
-                  return g ? normalizeGenderLocal(g) : '-';
-                })()}</p>
-              )}
-            </div>
-          </div>
 
-              {/* Expected Salary: applicant expected salary or custom response */}
+              {/* Email */}
+              <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-blue-500 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
+                <div className="flex items-baseline gap-4">
+                  <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-blue-100 dark:bg-blue-900/30 rounded-lg group-hover:scale-110 transition-transform">
+                    <svg className="w-6 h-6 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Email</Label>
+                  {(isInterviewEditMode || isEditOnlyMode) ? (
+                    <input
+                      type="email"
+                      value={interviewEditForm.email}
+                      onChange={(e) =>
+                        setInterviewEditForm((prev) => ({ ...prev, email: e.target.value }))
+                      }
+                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                      placeholder="Email"
+                    />
+                  ) : applicant.email ? (
+                    <a
+                      href={`mailto:${applicant.email}?subject=${encodeURIComponent('Regarding your application')}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label={`Send email to ${applicant.email}`}
+                      className="text-sm text-gray-900 dark:text-white break-words"
+                    >
+                      {applicant.email}
+                    </a>
+                  ) : (
+                    <p className="text-sm text-gray-900 dark:text-white">-</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Phone */}
+              <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-green-500 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
+                <div className="flex items-baseline gap-4">
+                  <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-green-100 dark:bg-green-900/30 rounded-lg group-hover:scale-110 transition-transform">
+                    <svg className="w-6 h-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                    </svg>
+                  </div>
+                  <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Phone</Label>
+                  {(isInterviewEditMode || isEditOnlyMode) ? (
+                    <input
+                      type="tel"
+                      value={interviewEditForm.phone}
+                      onChange={(e) =>
+                        setInterviewEditForm((prev) => ({ ...prev, phone: e.target.value }))
+                      }
+                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-green-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                      placeholder="Phone"
+                    />
+                  ) : applicant.phone ? (
+                    <a
+                      href={`https://wa.me/${(applicant.phone || '').toString().replace(/\D/g, '')}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label={`Open WhatsApp chat with ${applicant.phone}`}
+                      className="text-sm text-gray-900 dark:text-white"
+                    >
+                      {applicant.phone}
+                    </a>
+                  ) : (
+                    <p className="text-sm text-gray-900 dark:text-white">-</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Birth Date */}
+              <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-teal-400 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
+                <div className="flex items-baseline gap-4">
+                  <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-teal-100 dark:bg-teal-900/30 rounded-lg group-hover:scale-110 transition-transform">
+                    <svg className="w-6 h-6 text-teal-600 dark:text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Birth Date</Label>
+                  {(isInterviewEditMode || isEditOnlyMode) ? (
+                    <input
+                      type="date"
+                      value={interviewEditForm.birthDate}
+                      onChange={(e) =>
+                        setInterviewEditForm((prev) => ({ ...prev, birthDate: e.target.value }))
+                      }
+                      className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-teal-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                    />
+                  ) : (
+                    <p className="text-sm text-gray-900 dark:text-white">{(() => {
+                      const bd = getBirthDateValue();
+                      return bd ? new Date(bd).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '-';
+                    })()}</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Gender */}
+              <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-pink-400 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
+                <div className="flex items-baseline gap-4">
+                  <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-pink-100 dark:bg-pink-900/30 rounded-lg group-hover:scale-110 transition-transform">
+                    <svg className="w-6 h-6 text-pink-600 dark:text-pink-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 11c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2" />
+                    </svg>
+                  </div>
+                  <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Gender</Label>
+                  {(isInterviewEditMode || isEditOnlyMode) ? (
+                    <select
+                      value={interviewEditForm.gender}
+                      onChange={(e) =>
+                        setInterviewEditForm((prev) => ({ ...prev, gender: e.target.value }))
+                      }
+                      className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-pink-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                    >
+                      <option value="">Select</option>
+                      <option value="Male">Male</option>
+                      <option value="Female">Female</option>
+                    </select>
+                  ) : (
+                    <p className="text-sm text-gray-900 dark:text-white">{(() => {
+                      const g = getGenderValue();
+                      return g ? normalizeGenderLocal(g) : '-';
+                    })()}</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Expected Salary */}
               <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-gray-500 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
                 <div className="flex items-baseline gap-4">
                   <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-gray-100 dark:bg-gray-900/30 rounded-lg group-hover:scale-110 transition-transform">
@@ -3007,7 +2849,7 @@ const getStatusColor = (status: string) => {
                     </svg>
                   </div>
                   <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Expected Salary</Label>
-                  {isInterviewEditMode ? (
+                  {(isInterviewEditMode || isEditOnlyMode) ? (
                     <input
                       type="number"
                       min="0"
@@ -3029,377 +2871,369 @@ const getStatusColor = (status: string) => {
                 </div>
               </div>
 
-          {/* Job Position: resolved title from job position or lookup */}
-        <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-purple-500 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
-          <div className="flex items-baseline gap-4">
-            <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-purple-100 dark:bg-purple-900/30 rounded-lg group-hover:scale-110 transition-transform">
-              <svg className="w-6 h-6 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-              </svg>
-            </div>
-            <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Job Position</Label>
-            <p dir={isArabic(jobTitle.en) ? 'rtl' : undefined} className={`text-sm font-semibold text-gray-900 dark:text-white break-words ${isArabic(jobTitle.en) ? 'text-right' : ''}`}>{jobTitle.en}</p>
-          </div>
-        </div>
-
-        {/* Company: resolved company name from job position, applicant or lookup */}
-        <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-orange-500 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
-          <div className="flex items-baseline gap-4">
-            <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-orange-100 dark:bg-orange-900/30 rounded-lg group-hover:scale-110 transition-transform">
-              <svg className="w-6 h-6 text-orange-600 dark:text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-              </svg>
-            </div>
-            <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Company</Label>
-            <p dir={isArabic(companyName) ? 'rtl' : undefined} className={`text-sm text-gray-900 dark:text-white break-words ${isArabic(companyName) ? 'text-right' : ''}`}>{companyName}</p>
-          </div>
-        </div>
-
-        {/* Department: resolved department name if available */}
-        <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-pink-500 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
-          <div className="flex items-baseline gap-4">
-            <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-pink-100 dark:bg-pink-900/30 rounded-lg group-hover:scale-110 transition-transform">
-              <svg className="w-6 h-6 text-pink-600 dark:text-pink-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-              </svg>
-            </div>
-            <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Department</Label>
-            <p dir={isArabic(departmentName) ? 'rtl' : undefined} className={`text-sm text-gray-900 dark:text-white break-words ${isArabic(departmentName) ? 'text-right' : ''}`}>{departmentName}</p>
-          </div>
-        </div>
-
-        {/* Address: applicant-provided address */}
-        <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-teal-500 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-teal-100 dark:bg-teal-900/30 rounded-lg group-hover:scale-110 transition-transform">
-                <svg className="w-6 h-6 text-teal-600 dark:text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-              </div>
-              <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Address</Label>
-            </div>
-            {isInterviewEditMode ? (
-              <input
-                type="text"
-                value={interviewEditForm.address}
-                onChange={(e) =>
-                  setInterviewEditForm((prev) => ({ ...prev, address: e.target.value }))
-                }
-                className="w-full max-w-md rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-teal-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-                placeholder="Address"
-              />
-            ) : (
-              <p dir={isArabic(applicant.address) ? 'rtl' : undefined} className={`text-sm text-gray-900 dark:text-white break-words ${isArabic(applicant.address) ? 'text-right' : ''}`}>{applicant.address}</p>
-            )}
-          </div>
-        </div>
-
-        {/* Status: shows current applicant status badge */}
-        <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-yellow-500 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
-  <div className="flex items-baseline gap-4">
-    <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-yellow-100 dark:bg-yellow-900/30 rounded-lg group-hover:scale-110 transition-transform">
-      <svg className="w-6 h-6 text-yellow-600 dark:text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-      </svg>
-    </div>
-    <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Status</Label>
-    <span 
-      className="inline-block rounded-full px-4 py-2 text-xs font-bold"
-      style={getStatusColor(String(applicant.status || ''))}
-    >
-      {String(applicant.status || '').charAt(0).toUpperCase() + String(applicant.status || '').slice(1)}
-    </span>
-  </div>
-</div>
-
-        {/* Submitted: timestamp when application was submitted */}
-        <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-indigo-500 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
-          <div className="flex items-baseline gap-4">
-            <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-indigo-100 dark:bg-indigo-900/30 rounded-lg group-hover:scale-110 transition-transform">
-              <svg className="w-6 h-6 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-            </div>
-            <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Submitted</Label>
-            <p className="text-sm text-gray-900 dark:text-white">{formatDate(applicant.submittedAt)}</p>
-          </div>
-        </div>
-
-        {/* Resume: download CV and related actions */}
-        {applicant.cvFilePath && (
-          <div className="group relative pl-5 pr-5 py-5 bg-gradient-to-br from-brand-500 to-brand-600 dark:from-brand-600 dark:to-brand-700 backdrop-blur-sm rounded-xl border-l-4 border-brand-700 hover:shadow-2xl transition-all duration-200">
-            <div className="flex items-baseline gap-4">
-              <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-white/20 rounded-lg group-hover:scale-110 transition-transform">
-                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-              </div>
-              <Label className="text-xs text-white/80 font-bold uppercase">Resume</Label>
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={downloadCv}
-                  className="inline-flex items-center gap-2 text-sm font-bold text-white hover:text-white/90 transition-colors"
-                >
-                  Download CV
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                  </svg>
-                </button>
-
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  </div>
-</div>
-
-            {/* Job Specs With Details (from jobPositionDetail) */}
-{(() => {
-  const specs: any[] = (() => {
-    if (jobPositionDetail) {
-      if (Array.isArray((jobPositionDetail as any).jobSpecsWithDetails) && (jobPositionDetail as any).jobSpecsWithDetails.length) {
-        return (jobPositionDetail as any).jobSpecsWithDetails;
-      }
-      if (Array.isArray((jobPositionDetail as any).jobSpecs) && (jobPositionDetail as any).jobSpecs.length) {
-        return (jobPositionDetail as any).jobSpecs;
-      }
-    }
-    const getSpecsFromPopulatedJobPos = (src: any) => {
-      if (!src) return [];
-      const jp = typeof src.jobPositionId === 'object' ? src.jobPositionId : src.jobPosition;
-      if (!jp) return [];
-      if (Array.isArray(jp.jobSpecsWithDetails) && jp.jobSpecsWithDetails.length) return jp.jobSpecsWithDetails;
-      if (Array.isArray(jp.jobSpecs) && jp.jobSpecs.length) return jp.jobSpecs;
-      return [];
-    };
-    const popFromFetched = getSpecsFromPopulatedJobPos(fetchedApplicant as any);
-    if (popFromFetched.length) return popFromFetched;
-    const popFromState = getSpecsFromPopulatedJobPos(stateApplicant as any);
-    if (popFromState.length) return popFromState;
-    try {
-      const _appSrc = (fetchedApplicant ?? stateApplicant) as any;
-      let resolvedId: string | undefined;
-      if (_appSrc) {
-        if (typeof _appSrc.jobPositionId === 'string') resolvedId = _appSrc.jobPositionId;
-        else if (typeof _appSrc.jobPositionId === 'object' && _appSrc.jobPositionId?._id) resolvedId = _appSrc.jobPositionId._id;
-      }
-      if (resolvedId && Array.isArray(jobPositions)) {
-        const found = jobPositions.find((j: any) => String(j._id) === String(resolvedId));
-        if (found) {
-          if (Array.isArray((found as any).jobSpecsWithDetails) && (found as any).jobSpecsWithDetails.length) return (found as any).jobSpecsWithDetails;
-          if (Array.isArray((found as any).jobSpecs) && (found as any).jobSpecs.length) return (found as any).jobSpecs;
-        }
-      }
-    } catch (e) {}
-    return [];
-  })();
-
-  // Build answer lookup from applicant's spec responses
-  // Try ID match first, fall back to positional match (spec arrays are ordered)
-  const appSrc = (fetchedApplicant ?? stateApplicant ?? applicant) as any;
-
-  const appSpecs: any[] = (() => {
-    if (Array.isArray(appSrc?.jobSpecsWithDetails) && appSrc.jobSpecsWithDetails.length) return appSrc.jobSpecsWithDetails;
-    if (Array.isArray(appSrc?.jobSpecs) && appSrc.jobSpecs.length) return appSrc.jobSpecs;
-    if (typeof appSrc?.jobPositionId === 'object') {
-      const jp = appSrc.jobPositionId;
-      if (Array.isArray(jp?.jobSpecsWithDetails) && jp.jobSpecsWithDetails.length) return jp.jobSpecsWithDetails;
-      if (Array.isArray(jp?.jobSpecs) && jp.jobSpecs.length) return jp.jobSpecs;
-    }
-    return [];
-  })();
-
-  // Build ID-based answer map from the applicant's own specs/responses
-  const applicantAnswerMap: Record<string, boolean> = {};
-  for (const s of appSpecs) {
-    if (!s) continue;
-    const ids = [s._id, s.id, s.jobSpecId].filter(Boolean).map((x: any) =>
-      typeof x === 'object' ? (x._id ?? x.id ?? String(x)) : String(x)
-    );
-    for (const id of ids) {
-      applicantAnswerMap[id] = typeof s.answer === 'boolean' ? s.answer : Boolean(s.answer);
-    }
-  }
-
-  // Helper: get answer for a spec entry — ID match first, positional fallback
-  const getAnswer = (specEntry: any, idx: number): boolean => {
-    if (!specEntry) return false;
-    const specId = String(specEntry._id ?? specEntry.id ?? '');
-    if (specId && applicantAnswerMap[specId] !== undefined) {
-      return applicantAnswerMap[specId];
-    }
-    if (appSpecs[idx] !== undefined) {
-      const a = appSpecs[idx].answer;
-      return typeof a === 'boolean' ? a : Boolean(a);
-    }
-    return false;
-  };
-
-  const getSpecResponseId = (specEntry: any): string => {
-    const direct = normalizeSpecId(specEntry?.jobSpecId ?? specEntry?._id ?? specEntry?.id);
-    if (direct) return direct;
-    if (specEntry?.jobSpecId && typeof specEntry.jobSpecId === 'object') {
-      return normalizeSpecId(specEntry.jobSpecId);
-    }
-    return '';
-  };
-
-  const interviewResponseMap = new Map<string, boolean>();
-  if (isInterviewEditMode) {
-    (interviewEditForm.jobSpecsResponses || []).forEach((r) => {
-      if (!r?.jobSpecId) return;
-      interviewResponseMap.set(String(r.jobSpecId), Boolean(r.answer));
-    });
-  }
-
-  const getEffectiveAnswer = (specEntry: any, idx: number): boolean => {
-    if (isInterviewEditMode) {
-      const specId = getSpecResponseId(specEntry);
-      if (specId && interviewResponseMap.has(specId)) {
-        return Boolean(interviewResponseMap.get(specId));
-      }
-    }
-    return getAnswer(specEntry, idx);
-  };
-
-  if (!specs || specs.length === 0) return null;
-
-  return (
-    <div className="mt-8 mb-8 relative overflow-hidden rounded-2xl bg-white shadow-xl">
-      <div className="absolute inset-0 bg-linear-to-br from-indigo-500/5 via-purple-500/5 to-blue-500/5" />
-      <div className="absolute -top-24 -right-24 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl" />
-      <div className="relative p-8">
-        <div className="mb-6 flex items-start gap-4">
-          <div className="shrink-0 p-3 bg-linear-to-br from-indigo-500 to-indigo-600 rounded-2xl shadow-lg">
-            <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </div>
-          <div className="flex-1">
-            <h3 className="text-2xl font-extrabold bg-linear-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
-              Job Specifications
-            </h3>
-            <p className="text-sm text-gray-500 mt-1">Required skills and qualifications assessment</p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          {specs.map((s: any, idx: number) => {
-            const specText: string = (() => {
-  // 1. Try applicant's own spec (from jobSpecsWithDetails) - already populated
-  const appSpec = appSpecs[idx];
-  if (appSpec?.spec) {
-    if (typeof appSpec.spec === 'string') return appSpec.spec;
-    if (typeof appSpec.spec === 'object') {
-      return appSpec.spec.en ?? appSpec.spec.ar ?? appSpec.spec.value ?? '';
-    }
-  }
-  // 2. Try the spec entry from jobPositionDetail (fallback)
-  if (typeof s.spec === 'string') return s.spec;
-  if (s.spec && typeof s.spec === 'object') {
-    return s.spec.en ?? s.spec.ar ?? s.spec.value ?? '';
-  }
-  return '';
-})();
-
-            const weight: number = typeof s.weight === 'number' ? s.weight : Number(s.weight ?? 0);
-            const specResponseId = getSpecResponseId(s);
-            const answered: boolean = getEffectiveAnswer(s, idx);
-
-            return (
-              <div
-                key={s.jobSpecId || s._id || idx}
-                className="group relative pl-5 pr-5 py-5 bg-white/60 backdrop-blur-sm rounded-xl border-l-4 border-indigo-500 hover:bg-white transition-all duration-200 hover:shadow-lg flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
-              >
-                <div className="flex-1 min-w-0">
-                  <p className={`text-base font-bold text-gray-900 ${isArabic(specText) ? 'text-right' : 'text-left'}`}>
-                    {specText || '(no spec)'}
-                  </p>
-                  {s.description && (
-                    <p className={`mt-1 text-sm text-gray-500 ${isArabic(s.description) ? 'text-right' : 'text-left'}`}>
-                      {String(s.description)}
-                    </p>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-3 shrink-0">
-                  <div className="inline-flex items-center px-3 py-1 rounded-full bg-indigo-50 text-xs font-bold text-indigo-700 border border-indigo-100">
-                    <svg className="w-3.5 h-3.5 mr-1.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
-                      <circle cx="12" cy="12" r="9" />
-                      <line x1="12" y1="8" x2="12" y2="16" />
-                      <line x1="8" y1="12" x2="16" y2="12" />
+              {/* Job Position */}
+              <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-purple-500 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
+                <div className="flex items-baseline gap-4">
+                  <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-purple-100 dark:bg-purple-900/30 rounded-lg group-hover:scale-110 transition-transform">
+                    <svg className="w-6 h-6 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                     </svg>
-                    Weight: {weight}
                   </div>
+                  <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Job Position</Label>
+                  <p dir={isArabic(jobTitle.en) ? 'rtl' : undefined} className={`text-sm font-semibold text-gray-900 dark:text-white break-words ${isArabic(jobTitle.en) ? 'text-right' : ''}`}>{jobTitle.en}</p>
+                </div>
+              </div>
 
-                  {isInterviewEditMode ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (!specResponseId) return;
-                        updateInterviewJobSpecAnswer(specResponseId, !answered);
-                      }}
-                      disabled={!specResponseId}
-                      className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold border transition-colors ${
-                        answered
-                          ? 'bg-green-50 text-green-700 border-green-100'
-                          : 'bg-gray-50 text-gray-500 border-gray-200'
-                      } ${specResponseId ? 'hover:opacity-90' : 'opacity-50 cursor-not-allowed'}`}
-                    >
-                      {answered ? (
-                        <>
-                          <svg className="w-3.5 h-3.5 mr-1.5 text-green-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                          </svg>
-                          <span>Met</span>
-                        </>
-                      ) : (
-                        <>
-                          <svg className="w-3.5 h-3.5 mr-1.5 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                          <span>Not met</span>
-                        </>
-                      )}
-                    </button>
-                  ) : (
-                    <div className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold border transition-colors ${
-                      answered
-                        ? 'bg-green-50 text-green-700 border-green-100'
-                        : 'bg-gray-50 text-gray-500 border-gray-200'
-                    }`}>
-                      {answered ? (
-                        <>
-                          <svg className="w-3.5 h-3.5 mr-1.5 text-green-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                          </svg>
-                          <span>Met</span>
-                        </>
-                      ) : (
-                        <>
-                          <svg className="w-3.5 h-3.5 mr-1.5 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                          <span>Not met</span>
-                        </>
-                      )}
+              {/* Company */}
+              <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-orange-500 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
+                <div className="flex items-baseline gap-4">
+                  <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-orange-100 dark:bg-orange-900/30 rounded-lg group-hover:scale-110 transition-transform">
+                    <svg className="w-6 h-6 text-orange-600 dark:text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                    </svg>
+                  </div>
+                  <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Company</Label>
+                  <p dir={isArabic(companyName) ? 'rtl' : undefined} className={`text-sm text-gray-900 dark:text-white break-words ${isArabic(companyName) ? 'text-right' : ''}`}>{companyName}</p>
+                </div>
+              </div>
+
+              {/* Department */}
+              <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-pink-500 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
+                <div className="flex items-baseline gap-4">
+                  <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-pink-100 dark:bg-pink-900/30 rounded-lg group-hover:scale-110 transition-transform">
+                    <svg className="w-6 h-6 text-pink-600 dark:text-pink-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                    </svg>
+                  </div>
+                  <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Department</Label>
+                  <p dir={isArabic(departmentName) ? 'rtl' : undefined} className={`text-sm text-gray-900 dark:text-white break-words ${isArabic(departmentName) ? 'text-right' : ''}`}>{departmentName}</p>
+                </div>
+              </div>
+
+              {/* Address */}
+              <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-teal-500 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-teal-100 dark:bg-teal-900/30 rounded-lg group-hover:scale-110 transition-transform">
+                      <svg className="w-6 h-6 text-teal-600 dark:text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
                     </div>
+                    <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Address</Label>
+                  </div>
+                  {(isInterviewEditMode || isEditOnlyMode) ? (
+                    <input
+                      type="text"
+                      value={interviewEditForm.address}
+                      onChange={(e) =>
+                        setInterviewEditForm((prev) => ({ ...prev, address: e.target.value }))
+                      }
+                      className="w-full max-w-md rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-teal-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                      placeholder="Address"
+                    />
+                  ) : (
+                    <p dir={isArabic(applicant.address) ? 'rtl' : undefined} className={`text-sm text-gray-900 dark:text-white break-words ${isArabic(applicant.address) ? 'text-right' : ''}`}>{applicant.address}</p>
                   )}
                 </div>
               </div>
-            );
-          })}
+
+              {/* Status */}
+              <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-yellow-500 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
+                <div className="flex items-baseline gap-4">
+                  <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-yellow-100 dark:bg-yellow-900/30 rounded-lg group-hover:scale-110 transition-transform">
+                    <svg className="w-6 h-6 text-yellow-600 dark:text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Status</Label>
+                  <span 
+                    className="inline-block rounded-full px-4 py-2 text-xs font-bold"
+                    style={getStatusColor(String(applicant.status || ''))}
+                  >
+                    {String(applicant.status || '').charAt(0).toUpperCase() + String(applicant.status || '').slice(1)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Submitted */}
+              <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-indigo-500 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
+                <div className="flex items-baseline gap-4">
+                  <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-indigo-100 dark:bg-indigo-900/30 rounded-lg group-hover:scale-110 transition-transform">
+                    <svg className="w-6 h-6 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Submitted</Label>
+                  <p className="text-sm text-gray-900 dark:text-white">{formatDate(applicant.submittedAt)}</p>
+                </div>
+              </div>
+
+              {/* Resume */}
+              {applicant.cvFilePath && (
+                <div className="group relative pl-5 pr-5 py-5 bg-gradient-to-br from-brand-500 to-brand-600 dark:from-brand-600 dark:to-brand-700 backdrop-blur-sm rounded-xl border-l-4 border-brand-700 hover:shadow-2xl transition-all duration-200">
+                  <div className="flex items-baseline gap-4">
+                    <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-white/20 rounded-lg group-hover:scale-110 transition-transform">
+                      <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                    </div>
+                    <Label className="text-xs text-white/80 font-bold uppercase">Resume</Label>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={downloadCv}
+                        className="inline-flex items-center gap-2 text-sm font-bold text-white hover:text-white/90 transition-colors"
+                      >
+                        Download CV
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
-  );
-})()}
-        {isInterviewEditMode ? (
+
+        {/* Job Specs With Details */}
+        {(() => {
+          const specs: any[] = (() => {
+            if (jobPositionDetail) {
+              if (Array.isArray((jobPositionDetail as any).jobSpecsWithDetails) && (jobPositionDetail as any).jobSpecsWithDetails.length) {
+                return (jobPositionDetail as any).jobSpecsWithDetails;
+              }
+              if (Array.isArray((jobPositionDetail as any).jobSpecs) && (jobPositionDetail as any).jobSpecs.length) {
+                return (jobPositionDetail as any).jobSpecs;
+              }
+            }
+            const getSpecsFromPopulatedJobPos = (src: any) => {
+              if (!src) return [];
+              const jp = typeof src.jobPositionId === 'object' ? src.jobPositionId : src.jobPosition;
+              if (!jp) return [];
+              if (Array.isArray(jp.jobSpecsWithDetails) && jp.jobSpecsWithDetails.length) return jp.jobSpecsWithDetails;
+              if (Array.isArray(jp.jobSpecs) && jp.jobSpecs.length) return jp.jobSpecs;
+              return [];
+            };
+            const popFromFetched = getSpecsFromPopulatedJobPos(fetchedApplicant as any);
+            if (popFromFetched.length) return popFromFetched;
+            const popFromState = getSpecsFromPopulatedJobPos(stateApplicant as any);
+            if (popFromState.length) return popFromState;
+            try {
+              const _appSrc = (fetchedApplicant ?? stateApplicant) as any;
+              let resolvedId: string | undefined;
+              if (_appSrc) {
+                if (typeof _appSrc.jobPositionId === 'string') resolvedId = _appSrc.jobPositionId;
+                else if (typeof _appSrc.jobPositionId === 'object' && _appSrc.jobPositionId?._id) resolvedId = _appSrc.jobPositionId._id;
+              }
+              if (resolvedId && Array.isArray(jobPositions)) {
+                const found = jobPositions.find((j: any) => String(j._id) === String(resolvedId));
+                if (found) {
+                  if (Array.isArray((found as any).jobSpecsWithDetails) && (found as any).jobSpecsWithDetails.length) return (found as any).jobSpecsWithDetails;
+                  if (Array.isArray((found as any).jobSpecs) && (found as any).jobSpecs.length) return (found as any).jobSpecs;
+                }
+              }
+            } catch (e) {}
+            return [];
+          })();
+
+          const appSrc = (fetchedApplicant ?? stateApplicant ?? applicant) as any;
+          const appSpecs: any[] = (() => {
+            if (Array.isArray(appSrc?.jobSpecsWithDetails) && appSrc.jobSpecsWithDetails.length) return appSrc.jobSpecsWithDetails;
+            if (Array.isArray(appSrc?.jobSpecs) && appSrc.jobSpecs.length) return appSrc.jobSpecs;
+            if (typeof appSrc?.jobPositionId === 'object') {
+              const jp = appSrc.jobPositionId;
+              if (Array.isArray(jp?.jobSpecsWithDetails) && jp.jobSpecsWithDetails.length) return jp.jobSpecsWithDetails;
+              if (Array.isArray(jp?.jobSpecs) && jp.jobSpecs.length) return jp.jobSpecs;
+            }
+            return [];
+          })();
+
+          const applicantAnswerMap: Record<string, boolean> = {};
+          for (const s of appSpecs) {
+            if (!s) continue;
+            const ids = [s._id, s.id, s.jobSpecId].filter(Boolean).map((x: any) =>
+              typeof x === 'object' ? (x._id ?? x.id ?? String(x)) : String(x)
+            );
+            for (const id of ids) {
+              applicantAnswerMap[id] = typeof s.answer === 'boolean' ? s.answer : Boolean(s.answer);
+            }
+          }
+
+          const getAnswer = (specEntry: any, idx: number): boolean => {
+            if (!specEntry) return false;
+            const specId = String(specEntry._id ?? specEntry.id ?? '');
+            if (specId && applicantAnswerMap[specId] !== undefined) {
+              return applicantAnswerMap[specId];
+            }
+            if (appSpecs[idx] !== undefined) {
+              const a = appSpecs[idx].answer;
+              return typeof a === 'boolean' ? a : Boolean(a);
+            }
+            return false;
+          };
+
+          const getSpecResponseId = (specEntry: any): string => {
+            const direct = normalizeSpecId(specEntry?.jobSpecId ?? specEntry?._id ?? specEntry?.id);
+            if (direct) return direct;
+            if (specEntry?.jobSpecId && typeof specEntry.jobSpecId === 'object') {
+              return normalizeSpecId(specEntry.jobSpecId);
+            }
+            return '';
+          };
+
+          const interviewResponseMap = new Map<string, boolean>();
+          if (isInterviewEditMode) {
+            (interviewEditForm.jobSpecsResponses || []).forEach((r) => {
+              if (!r?.jobSpecId) return;
+              interviewResponseMap.set(String(r.jobSpecId), Boolean(r.answer));
+            });
+          }
+
+          const getEffectiveAnswer = (specEntry: any, idx: number): boolean => {
+            if (isInterviewEditMode) {
+              const specId = getSpecResponseId(specEntry);
+              if (specId && interviewResponseMap.has(specId)) {
+                return Boolean(interviewResponseMap.get(specId));
+              }
+            }
+            return getAnswer(specEntry, idx);
+          };
+
+          if (!specs || specs.length === 0) return null;
+
+          return (
+            <div className="mt-8 mb-8 relative overflow-hidden rounded-2xl bg-white shadow-xl">
+              <div className="absolute inset-0 bg-linear-to-br from-indigo-500/5 via-purple-500/5 to-blue-500/5" />
+              <div className="absolute -top-24 -right-24 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl" />
+              <div className="relative p-8">
+                <div className="mb-6 flex items-start gap-4">
+                  <div className="shrink-0 p-3 bg-linear-to-br from-indigo-500 to-indigo-600 rounded-2xl shadow-lg">
+                    <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-2xl font-extrabold bg-linear-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
+                      Job Specifications
+                    </h3>
+                    <p className="text-sm text-gray-500 mt-1">Required skills and qualifications assessment</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  {specs.map((s: any, idx: number) => {
+                    const specText: string = (() => {
+                      const appSpec = appSpecs[idx];
+                      if (appSpec?.spec) {
+                        if (typeof appSpec.spec === 'string') return appSpec.spec;
+                        if (typeof appSpec.spec === 'object') {
+                          return appSpec.spec.en ?? appSpec.spec.ar ?? appSpec.spec.value ?? '';
+                        }
+                      }
+                      if (typeof s.spec === 'string') return s.spec;
+                      if (s.spec && typeof s.spec === 'object') {
+                        return s.spec.en ?? s.spec.ar ?? s.spec.value ?? '';
+                      }
+                      return '';
+                    })();
+                    const weight: number = typeof s.weight === 'number' ? s.weight : Number(s.weight ?? 0);
+                    const specResponseId = getSpecResponseId(s);
+                    const answered: boolean = getEffectiveAnswer(s, idx);
+
+                    return (
+                      <div
+                        key={s.jobSpecId || s._id || idx}
+                        className="group relative pl-5 pr-5 py-5 bg-white/60 backdrop-blur-sm rounded-xl border-l-4 border-indigo-500 hover:bg-white transition-all duration-200 hover:shadow-lg flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-base font-bold text-gray-900 ${isArabic(specText) ? 'text-right' : 'text-left'}`}>
+                            {specText || '(no spec)'}
+                          </p>
+                          {s.description && (
+                            <p className={`mt-1 text-sm text-gray-500 ${isArabic(s.description) ? 'text-right' : 'text-left'}`}>
+                              {String(s.description)}
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-3 shrink-0">
+                          <div className="inline-flex items-center px-3 py-1 rounded-full bg-indigo-50 text-xs font-bold text-indigo-700 border border-indigo-100">
+                            <svg className="w-3.5 h-3.5 mr-1.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                              <circle cx="12" cy="12" r="9" />
+                              <line x1="12" y1="8" x2="12" y2="16" />
+                              <line x1="8" y1="12" x2="16" y2="12" />
+                            </svg>
+                            Weight: {weight}
+                          </div>
+
+                          {isInterviewEditMode ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!specResponseId) return;
+                                updateInterviewJobSpecAnswer(specResponseId, !answered);
+                              }}
+                              disabled={!specResponseId}
+                              className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold border transition-colors ${
+                                answered
+                                  ? 'bg-green-50 text-green-700 border-green-100'
+                                  : 'bg-gray-50 text-gray-500 border-gray-200'
+                              } ${specResponseId ? 'hover:opacity-90' : 'opacity-50 cursor-not-allowed'}`}
+                            >
+                              {answered ? (
+                                <>
+                                  <svg className="w-3.5 h-3.5 mr-1.5 text-green-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                  </svg>
+                                  <span>Met</span>
+                                </>
+                              ) : (
+                                <>
+                                  <svg className="w-3.5 h-3.5 mr-1.5 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                  </svg>
+                                  <span>Not met</span>
+                                </>
+                              )}
+                            </button>
+                          ) : (
+                            <div className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold border transition-colors ${
+                              answered
+                                ? 'bg-green-50 text-green-700 border-green-100'
+                                : 'bg-gray-50 text-gray-500 border-gray-200'
+                            }`}>
+                              {answered ? (
+                                <>
+                                  <svg className="w-3.5 h-3.5 mr-1.5 text-green-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                  </svg>
+                                  <span>Met</span>
+                                </>
+                              ) : (
+                                <>
+                                  <svg className="w-3.5 h-3.5 mr-1.5 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                  </svg>
+                                  <span>Not met</span>
+                                </>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Custom Responses Section */}
+        {(isInterviewEditMode || isEditOnlyMode) ? (
           <div className="rounded-2xl overflow-hidden bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-900 dark:to-gray-800 border-2 border-blue-200 dark:border-blue-900/50 shadow-lg">
             <div className="bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-700 dark:to-indigo-700 px-8 py-6">
               <h3 className="text-2xl font-extrabold text-white">Custom Responses (Editable)</h3>
@@ -3889,7 +3723,8 @@ const getStatusColor = (status: string) => {
           <CustomResponses applicant={applicant} customFields={customFieldsForInterview} />
         )}
 
-        {!isInterviewEditMode && (
+        {/* Questions Section - only show when NOT in edit-only mode */}
+        {!isEditOnlyMode && !isInterviewEditMode && (
           <Questions
             status={applicant?.status}
             interviews={applicantInterviews}
@@ -3897,7 +3732,8 @@ const getStatusColor = (status: string) => {
           />
         )}
 
-        {isInterviewEditMode && (
+        {/* Interview Questions Edit Section - only show in full interview edit mode */}
+        {isInterviewEditMode && !isEditOnlyMode && (
           <div className="rounded-2xl overflow-hidden bg-gradient-to-br from-violet-50 to-fuchsia-50 dark:from-gray-900 dark:to-gray-800 border-2 border-violet-200 dark:border-violet-900/50 shadow-lg">
             <div className="bg-gradient-to-r from-violet-600 to-fuchsia-600 dark:from-violet-700 dark:to-fuchsia-700 px-8 py-6">
               <h3 className="text-2xl font-extrabold text-white">Interview Questions</h3>
@@ -3907,11 +3743,11 @@ const getStatusColor = (status: string) => {
             </div>
 
             <div className="p-8 space-y-6">
+              {/* Interview Target Section */}
               <div className="rounded-xl border border-violet-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
                 <Label className="mb-3 block text-xs text-violet-700 dark:text-violet-300 font-bold uppercase">
                   Interview Target
                 </Label>
-
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                   <label className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 dark:border-gray-700 dark:text-gray-300">
                     <input
@@ -3922,7 +3758,6 @@ const getStatusColor = (status: string) => {
                     />
                     <span>Use Existing Interview</span>
                   </label>
-
                   <label className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 dark:border-gray-700 dark:text-gray-300">
                     <input
                       type="radio"
@@ -3933,7 +3768,6 @@ const getStatusColor = (status: string) => {
                     <span>Create New Interview</span>
                   </label>
                 </div>
-
                 {interviewTargetMode === 'existing' ? (
                   <div className="mt-3 space-y-1">
                     <Label className="text-[11px] font-semibold uppercase text-gray-500 dark:text-gray-400">
@@ -3953,14 +3787,12 @@ const getStatusColor = (status: string) => {
                         {applicantInterviews.map((iv: any, index: number) => {
                           const interviewId = String(iv?._id || '');
                           if (!interviewId) return null;
-
                           const statusText = String(iv?.status || 'scheduled')
                             .replace(/_/g, ' ')
                             .replace(/\b\w/g, (char) => char.toUpperCase());
                           const typeText = iv?.type ? ` | ${String(iv.type)}` : '';
                           const whenRaw = iv?.startedAt || iv?.scheduledAt || iv?.issuedAt;
                           const whenText = whenRaw ? formatDate(whenRaw) : 'No date';
-
                           return (
                             <option key={interviewId} value={interviewId}>
                               {`Interview ${index + 1} | ${statusText}${typeText} | ${whenText}`}
@@ -3977,13 +3809,13 @@ const getStatusColor = (status: string) => {
                 )}
               </div>
 
+              {/* Question Groups Section */}
               <div className="rounded-xl border border-violet-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <Label className="text-xs text-violet-700 dark:text-violet-300 font-bold uppercase">
                     Question Groups (Company Settings)
                   </Label>
                 </div>
-
                 {companyInterviewGroups.length === 0 ? (
                   <p className="text-sm text-gray-500 dark:text-gray-400">
                     No question groups found in company interview settings.
@@ -4019,6 +3851,7 @@ const getStatusColor = (status: string) => {
                 )}
               </div>
 
+              {/* Questions List */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <Label className="text-xs text-violet-700 dark:text-violet-300 font-bold uppercase">
@@ -4043,7 +3876,6 @@ const getStatusColor = (status: string) => {
                     )}
                   </div>
                 </div>
-
                 {interviewQuestionDrafts.length === 0 ? (
                   <div className="rounded-lg border border-dashed border-gray-300 px-3 py-3 text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
                     No questions yet. Select one or more groups above.
@@ -4075,7 +3907,6 @@ const getStatusColor = (status: string) => {
                             Include in total
                           </label>
                         </div>
-
                         <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
                           <div className="md:col-span-5">
                             <Label className="mb-1 block text-[11px] font-semibold uppercase text-gray-500 dark:text-gray-400">
@@ -4085,7 +3916,6 @@ const getStatusColor = (status: string) => {
                               {item.question || '-'}
                             </div>
                           </div>
-
                           <div className="md:col-span-2">
                             <Label className="mb-1 block text-[11px] font-semibold uppercase text-gray-500 dark:text-gray-400">
                               Score
@@ -4094,7 +3924,6 @@ const getStatusColor = (status: string) => {
                               {Number.isFinite(Number(item.score)) ? Number(item.score) : 0}
                             </div>
                           </div>
-
                           <div className="md:col-span-3">
                             <Label className="mb-1 block text-[11px] font-semibold uppercase text-gray-500 dark:text-gray-400">
                               Answer ({String(item.answerType || 'text')})
@@ -4114,7 +3943,6 @@ const getStatusColor = (status: string) => {
                                   />
                                 );
                               }
-
                               if (atype === 'checkbox') {
                                 return (
                                   <select
@@ -4130,7 +3958,6 @@ const getStatusColor = (status: string) => {
                                   </select>
                                 );
                               }
-
                               if (atype === 'radio' || atype === 'dropdown') {
                                 const options = Array.isArray(item.choices) ? item.choices : [];
                                 return (
@@ -4150,14 +3977,12 @@ const getStatusColor = (status: string) => {
                                   </select>
                                 );
                               }
-
                               if (atype === 'tags') {
                                 const key = `ivq_${item.localId}`;
                                 const currentArr = String(item.notes || '')
                                   .split(',')
                                   .map((v) => String(v || '').trim())
                                   .filter(Boolean);
-
                                 return (
                                   <>
                                     <div className="mb-2">
@@ -4203,7 +4028,6 @@ const getStatusColor = (status: string) => {
                                         placeholder="tag1, tag2, tag3"
                                       />
                                     </div>
-
                                     <div className="flex flex-wrap gap-2">
                                       {currentArr.length > 0
                                         ? currentArr.map((tagVal) => {
@@ -4236,7 +4060,6 @@ const getStatusColor = (status: string) => {
                                   </>
                                 );
                               }
-
                               return (
                                 <input
                                   type="text"
@@ -4250,7 +4073,6 @@ const getStatusColor = (status: string) => {
                               );
                             })()}
                           </div>
-
                           <div className="md:col-span-2">
                             <Label className="mb-1 block text-[11px] font-semibold uppercase text-gray-500 dark:text-gray-400">
                               Achieved
@@ -4269,141 +4091,141 @@ const getStatusColor = (status: string) => {
           </div>
         )}
 
-        
-        
-
-      {/* Photo Preview Modal */}
-      <Modal
-        isOpen={showPhotoModal}
-        onClose={() => setShowPhotoModal(false)}
-        className="max-w-3xl p-4"
-        isFullscreen={false}
-      >
-        <div className="flex items-center justify-center">
-          <img
-            src={applicant?.profilePhoto}
-            alt={applicant?.fullName}
-            className="max-h-[75vh] w-full object-contain rounded-lg"
-          />
-        </div>
-      </Modal>
-      
-            {/* Interview Schedule Modal (moved to separate component) */}
-            <InterviewScheduleModal
-              isOpen={showInterviewModal}
-              onClose={() => {
-                setShowInterviewModal(false);
-                setInterviewError('');
-                setInterviewForm({ date: '', time: '', description: '', comment: '', location: '', link: '', type: 'phone' });
-                setFormResetKey(prev => prev + 1);
-              }}
-              formResetKey={formResetKey}
-              interviewForm={interviewForm}
-              setInterviewForm={setInterviewForm}
-              interviewError={interviewError}
-              setInterviewError={setInterviewError}
-              handleInterviewSubmit={handleInterviewSubmit}
-              fillCompanyAddress={fillCompanyAddress}
-              notificationChannels={notificationChannels}
-              setNotificationChannels={setNotificationChannels}
-              emailOption={emailOption}
-              setEmailOption={setEmailOption}
-              customEmail={customEmail}
-              setCustomEmail={setCustomEmail}
-              phoneOption={phoneOption}
-              setPhoneOption={setPhoneOption}
-              customPhone={customPhone}
-              setCustomPhone={setCustomPhone}
-              messageTemplate={messageTemplate}
-              setMessageTemplate={setMessageTemplate}
-              interviewEmailSubject={interviewEmailSubject}
-              setInterviewEmailSubject={setInterviewEmailSubject}
-              isSubmittingInterview={isSubmittingInterview}
-              setIsSubmittingInterview={setIsSubmittingInterview}
-              setShowPreviewModal={setShowPreviewModal}
-              setPreviewHtml={setPreviewHtml}
-              buildInterviewEmailHtml={buildInterviewEmailHtml}
-              getJobTitle={getJobTitle}
-              applicant={applicant}
-              companyData={companyObj}
+        {/* Photo Preview Modal */}
+        <Modal
+          isOpen={showPhotoModal}
+          onClose={() => setShowPhotoModal(false)}
+          className="max-w-3xl p-4"
+          isFullscreen={false}
+        >
+          <div className="flex items-center justify-center">
+            <img
+              src={applicant?.profilePhoto}
+              alt={applicant?.fullName}
+              className="max-h-[75vh] w-full object-contain rounded-lg"
             />
-
-      <InterviewSettingsModal
-        isOpen={showInterviewSettingsModal}
-        onClose={() => {
-          setShowInterviewSettingsModal(false);
-          setSelectedInterview(null);
-        }}
-        applicant={applicant}
-        selectedInterview={selectedInterview}
-        setSelectedInterview={setSelectedInterview}
-        setShowInterviewSettingsModal={setShowInterviewSettingsModal}
-        updateInterviewMutation={updateInterviewMutation}
-      />
-      {/* Preview Email Modal */}
-      <Modal
-        isOpen={showPreviewModal}
-        onClose={() => {
-          setShowPreviewModal(false);
-          setPreviewHtml('');
-        }}
-        className="max-w-2xl p-6"
-      >
-        <div className="space-y-4">
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Email Preview</h2>
-          <div className="border rounded p-4 bg-white dark:bg-gray-800" style={{ maxHeight: '70vh', overflow: 'auto' }}>
-            <div dangerouslySetInnerHTML={{ __html: previewHtml }} />
           </div>
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={() => setShowPreviewModal(false)}
-              className="rounded-lg border border-stroke px-4 py-2 hover:bg-gray-100 dark:border-strokedark dark:hover:bg-gray-800"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      </Modal>
-      <MessageModal
-        isOpen={showMessageModal}
-        onClose={() => setShowMessageModal(false)}
-        applicant={applicant}
-        id={applicant._id}
-        company={fetchedCompany || jobPosCompany || (applicant && (applicant.company || applicant.companyObj))}
-      />
-      <CommentModal
-        isOpen={showCommentModal}
-        onClose={() => {
-          setShowCommentModal(false);
-          setCommentError('');
-        }}
-        commentForm={commentForm}
-        setCommentForm={setCommentForm}
-        commentError={commentError}
-        setCommentError={setCommentError}
-        handleCommentSubmit={handleCommentSubmit}
-        isSubmittingComment={isSubmittingComment}
-      />
+        </Modal>
+        
+        {/* Interview Schedule Modal */}
+        <InterviewScheduleModal
+          isOpen={showInterviewModal}
+          onClose={() => {
+            setShowInterviewModal(false);
+            setInterviewError('');
+            setInterviewForm({ date: '', time: '', description: '', comment: '', location: '', link: '', type: 'phone' });
+            setFormResetKey(prev => prev + 1);
+          }}
+          formResetKey={formResetKey}
+          interviewForm={interviewForm}
+          setInterviewForm={setInterviewForm}
+          interviewError={interviewError}
+          setInterviewError={setInterviewError}
+          handleInterviewSubmit={handleInterviewSubmit}
+          fillCompanyAddress={fillCompanyAddress}
+          notificationChannels={notificationChannels}
+          setNotificationChannels={setNotificationChannels}
+          emailOption={emailOption}
+          setEmailOption={setEmailOption}
+          customEmail={customEmail}
+          setCustomEmail={setCustomEmail}
+          phoneOption={phoneOption}
+          setPhoneOption={setPhoneOption}
+          customPhone={customPhone}
+          setCustomPhone={setCustomPhone}
+          messageTemplate={messageTemplate}
+          setMessageTemplate={setMessageTemplate}
+          interviewEmailSubject={interviewEmailSubject}
+          setInterviewEmailSubject={setInterviewEmailSubject}
+          isSubmittingInterview={isSubmittingInterview}
+          setIsSubmittingInterview={setIsSubmittingInterview}
+          setShowPreviewModal={setShowPreviewModal}
+          setPreviewHtml={setPreviewHtml}
+          buildInterviewEmailHtml={buildInterviewEmailHtml}
+          getJobTitle={getJobTitle}
+          applicant={applicant}
+          companyData={companyObj}
+        />
 
-      <StatusChangeModal
-  isOpen={showStatusModal}
-  onClose={() => {
-    setShowStatusModal(false);
-    setStatusError('');
-    setStatusForm({ status: '', notes: '', reasons: [] });
-  }}
-  statusForm={statusForm}
-  setStatusForm={setStatusForm}
-  statusError={statusError}
-  setStatusError={setStatusError}
-  handleStatusChange={handleStatusChange}
-  isSubmittingStatus={isSubmittingStatus}
-  companyId={resolvedCompanyId}
-/>
+        <InterviewSettingsModal
+          isOpen={showInterviewSettingsModal}
+          onClose={() => {
+            setShowInterviewSettingsModal(false);
+            setSelectedInterview(null);
+          }}
+          applicant={applicant}
+          selectedInterview={selectedInterview}
+          setSelectedInterview={setSelectedInterview}
+          setShowInterviewSettingsModal={setShowInterviewSettingsModal}
+          updateInterviewMutation={updateInterviewMutation}
+        />
+
+        {/* Preview Email Modal */}
+        <Modal
+          isOpen={showPreviewModal}
+          onClose={() => {
+            setShowPreviewModal(false);
+            setPreviewHtml('');
+          }}
+          className="max-w-2xl p-6"
+        >
+          <div className="space-y-4">
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Email Preview</h2>
+            <div className="border rounded p-4 bg-white dark:bg-gray-800" style={{ maxHeight: '70vh', overflow: 'auto' }}>
+              <div dangerouslySetInnerHTML={{ __html: previewHtml }} />
+            </div>
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowPreviewModal(false)}
+                className="rounded-lg border border-stroke px-4 py-2 hover:bg-gray-100 dark:border-strokedark dark:hover:bg-gray-800"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </Modal>
+
+        <MessageModal
+          isOpen={showMessageModal}
+          onClose={() => setShowMessageModal(false)}
+          applicant={applicant}
+          id={applicant._id}
+          company={fetchedCompany || jobPosCompany || (applicant && (applicant.company || applicant.companyObj))}
+        />
+
+        <CommentModal
+          isOpen={showCommentModal}
+          onClose={() => {
+            setShowCommentModal(false);
+            setCommentError('');
+          }}
+          commentForm={commentForm}
+          setCommentForm={setCommentForm}
+          commentError={commentError}
+          setCommentError={setCommentError}
+          handleCommentSubmit={handleCommentSubmit}
+          isSubmittingComment={isSubmittingComment}
+        />
+
+        <StatusChangeModal
+          isOpen={showStatusModal}
+          onClose={() => {
+            setShowStatusModal(false);
+            setStatusError('');
+            setStatusForm({ status: '', notes: '', reasons: [] });
+          }}
+          statusForm={statusForm}
+          setStatusForm={setStatusForm}
+          statusError={statusError}
+          setStatusError={setStatusError}
+          handleStatusChange={handleStatusChange}
+          isSubmittingStatus={isSubmittingStatus}
+          companyId={resolvedCompanyId}
+        />
+      </div>
     </>
   );
 };
 
 export default ApplicantData;
-

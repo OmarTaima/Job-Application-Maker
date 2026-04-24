@@ -73,8 +73,15 @@ const getCompanySettingsIdFromPayload = (company: any): string | undefined => {
   return undefined;
 };
 
+// Check if status is locked (only color can be changed)
+const isLockedStatus = (statusKey: string): boolean => {
+  const lockedKeys = ['interview', 'rejected', 'trashed'];
+  return lockedKeys.includes(statusKey?.toLowerCase());
+};
+
+// For backward compatibility
 const isStaticStatus = (statusKey: string): boolean => {
-  const staticKeys = ['pending', 'approved', 'interview', 'interviewed', 'rejected', 'trashed'];
+  const staticKeys = ['interview', 'rejected', 'trashed'];
   return staticKeys.includes(statusKey?.toLowerCase());
 };
 
@@ -120,13 +127,13 @@ export default function StatusLabelsSettings({ companyId, hideCompanySelector, e
     if (Array.isArray(fromSettings) && fromSettings.length > 0) {
       return fromSettings.map((s: any) => {
         const statusKey = s.statusKey || s.name?.toLowerCase();
-        const isStatic = !!DEFAULT_STATUS_DESCRIPTIONS[statusKey];
+        const isLocked = isLockedStatus(statusKey);
         
         return {
           name: String(s?.name ?? "").trim() || "",
           color: String(s?.color ?? "#94a3b8"),
           textColor: String(s?.textColor ?? s?.text_color ?? getContrastColor(s?.color ?? "#94a3b8")),
-          description: isStatic ? DEFAULT_STATUS_DESCRIPTIONS[statusKey] : String(s?.description ?? ""),
+          description: isLocked ? DEFAULT_STATUS_DESCRIPTIONS[statusKey] : String(s?.description ?? ""),
           isDefault: !!s?.isDefault,
           statusKey: statusKey,
           _id: s?._id,
@@ -138,13 +145,13 @@ export default function StatusLabelsSettings({ companyId, hideCompanySelector, e
     if (Array.isArray(companyLevel) && companyLevel.length > 0) {
       return companyLevel.map((s: any) => {
         const statusKey = s.statusKey || s.name?.toLowerCase();
-        const isStatic = !!DEFAULT_STATUS_DESCRIPTIONS[statusKey];
+        const isLocked = isLockedStatus(statusKey);
         
         return {
           name: String(s?.name ?? "").trim() || "",
           color: String(s?.color ?? "#94a3b8"),
           textColor: String(s?.textColor ?? s?.text_color ?? getContrastColor(s?.color ?? "#94a3b8")),
-          description: isStatic ? DEFAULT_STATUS_DESCRIPTIONS[statusKey] : String(s?.description ?? ""),
+          description: isLocked ? DEFAULT_STATUS_DESCRIPTIONS[statusKey] : String(s?.description ?? ""),
           isDefault: !!s?.isDefault,
           statusKey: statusKey,
         };
@@ -328,6 +335,12 @@ export default function StatusLabelsSettings({ companyId, hideCompanySelector, e
     setIsSaving(false);
   }
 };
+
+  // Helper to check if a status is locked (only color editable)
+  const isLocked = (status: LeadStatus) => {
+    return isLockedStatus(status.statusKey || status.name);
+  };
+
   return (
     <div className={embedded ? "space-y-6" : "min-h-screen bg-slate-50 p-4 text-slate-900 dark:bg-slate-950 dark:text-slate-100 sm:p-8"}>
       {!embedded && (
@@ -417,12 +430,21 @@ export default function StatusLabelsSettings({ companyId, hideCompanySelector, e
                 </div>
                 <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">Live preview of how statuses will appear in lists and applicant cards.</p>
               </div>
+              
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 shadow-sm dark:border-amber-800/30 dark:bg-amber-950/20">
+                <h3 className="mb-2 text-sm font-semibold text-amber-800 dark:text-amber-400">Note:</h3>
+                <p className="text-xs text-amber-700 dark:text-amber-500">
+                  The <strong>Interview</strong>, <strong>Rejected</strong>, and <strong>Trashed</strong> statuses are system-protected. 
+                  Only their colors can be customized. Other properties cannot be modified.
+                </p>
+              </div>
             </div>
 
             <div className="xl:col-span-8">
               <div className="space-y-4">
                 {statuses.map((status, index) => {
                   const id = statusIds[index] ?? index;
+                  const locked = isLocked(status);
                   const isStatic = checkIsStatic(status.statusKey || status.name);
                   const staticDescription = isStatic ? getDescription(status.statusKey || status.name) : null;
 
@@ -433,14 +455,14 @@ export default function StatusLabelsSettings({ companyId, hideCompanySelector, e
                       onDrop={(e) => handleDropOnRow(e as any, index)}
                       className={`group flex cursor-default flex-col gap-3 rounded-xl border p-4 transition md:flex-row md:items-center md:justify-between ${
                         status.isDefault ? "border-brand-300 bg-brand-50/60 dark:border-brand-500/40 dark:bg-brand-500/10" : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900"
-                      }`}
+                      } ${locked ? 'border-l-4 border-l-amber-500' : ''}`}
                     >
                       <div className="flex min-w-0 flex-1 items-center gap-3">
                         <div
-                          draggable
-                          onDragStart={(e) => handleDragStart(e, index)}
-                          className="flex h-9 w-9 cursor-grab items-center justify-center rounded-lg text-slate-500 hover:text-slate-700"
-                          aria-label="Drag to reorder"
+                          draggable={!locked}
+                          onDragStart={(e) => !locked && handleDragStart(e, index)}
+                          className={`flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 ${!locked ? 'cursor-grab hover:text-slate-700' : 'cursor-not-allowed opacity-50'}`}
+                          aria-label={locked ? "Cannot reorder system status" : "Drag to reorder"}
                         >
                           ≡
                         </div>
@@ -450,13 +472,16 @@ export default function StatusLabelsSettings({ companyId, hideCompanySelector, e
                             value={status.name}
                             onChange={(e) => handleNameChange(index, e.target.value)}
                             placeholder="Status label"
-                            className="w-full rounded-xl border border-transparent bg-transparent py-2 text-sm font-semibold outline-none focus:border-brand-300 focus:ring-0"
+                            disabled={locked}
+                            className={`w-full rounded-xl border border-transparent bg-transparent py-2 text-sm font-semibold outline-none focus:border-brand-300 focus:ring-0 ${
+                              locked ? 'cursor-not-allowed opacity-70' : ''
+                            }`}
                           />
                           
-                          {/* Description - Static statuses show read-only text, custom statuses have editable input */}
-                          {isStatic ? (
+                          {/* Description - Locked statuses show read-only text */}
+                          {locked ? (
                             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                              {staticDescription}
+                              {staticDescription || DEFAULT_STATUS_DESCRIPTIONS[status.statusKey?.toLowerCase() || '']}
                             </p>
                           ) : (
                             <input
@@ -470,6 +495,7 @@ export default function StatusLabelsSettings({ companyId, hideCompanySelector, e
                       </div>
 
                       <div className="mt-3 flex items-center gap-3 md:mt-0">
+                        {/* Color picker - always editable */}
                         <div className="relative">
                           <input
                             id={`color-${id}`}
@@ -477,27 +503,35 @@ export default function StatusLabelsSettings({ companyId, hideCompanySelector, e
                             value={status.color}
                             onChange={(e) => handleColorChange(index, e.target.value)}
                             className="h-8 w-8 cursor-pointer rounded-full border border-slate-200 shadow-sm"
+                            title={locked ? "Color can be customized" : "Color picker"}
                           />
                         </div>
 
+                        {/* Default radio - disabled for locked statuses */}
                         <label className="inline-flex items-center gap-2 text-sm">
                           <input
                             type="radio"
                             name="default-status"
                             checked={!!status.isDefault}
-                            onChange={() => setDefault(index)}
-                            className="h-4 w-4"
+                            onChange={() => !locked && setDefault(index)}
+                            disabled={locked}
+                            className={`h-4 w-4 ${locked ? 'cursor-not-allowed' : ''}`}
                           />
-                          <span className="text-slate-600 dark:text-slate-400">Default</span>
+                          <span className={`text-slate-600 dark:text-slate-400 ${locked ? 'opacity-50' : ''}`}>
+                            Default
+                          </span>
                         </label>
 
-                        <button
-                          onClick={(e) => { e.stopPropagation(); removeStatus(index); }}
-                          disabled={statuses.length === 1 || !canEdit}
-                          className="inline-flex items-center justify-center rounded-lg border border-red-200 bg-red-50 p-2 text-red-500 transition hover:bg-red-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          <Trash2 className="size-4" />
-                        </button>
+                        {/* Delete button - hidden for locked statuses */}
+                        {!locked && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); removeStatus(index); }}
+                            disabled={statuses.length === 1 || !canEdit}
+                            className="inline-flex items-center justify-center rounded-lg border border-red-200 bg-red-50 p-2 text-red-500 transition hover:bg-red-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <Trash2 className="size-4" />
+                          </button>
+                        )}
                       </div>
                     </div>
                   );

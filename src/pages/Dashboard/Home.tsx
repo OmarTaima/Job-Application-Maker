@@ -3,10 +3,11 @@ import PageMeta from "../../components/common/PageMeta";
 import DatePicker from "../../components/form/date-picker";
 import { useAuth } from "../../context/AuthContext";
 import { getApplicantStatuses } from "../../hooks/queries/useApplicantStatuses";
-import type { Applicant } from "../../store/slices/applicantsSlice";
+import { useCompanies } from "../../hooks/queries/useCompanies";
+import { useStatusSettings } from "../../utils/useStatusSettings";
 import {
-  PaperPlaneIcon,
-  EyeIcon,
+
+
   TimeIcon,
   ChatIcon,
   CheckCircleIcon,
@@ -16,45 +17,91 @@ import {
   UserIcon,
 } from "../../icons";
 
-const STATUSES: { key: Applicant['status']; label: string }[] = [
-  { key: "pending", label: "Pending" },
-  { key: "interview", label: "Interview" },
-  { key: "interviewed", label: "Interviewed" },
-  { key: "approved", label: "Approved" },
-  { key: "rejected", label: "Rejected" },
-];
 
-function getApplicantDate(a: any) {
-  return (a && (a.submittedAt || a.createdAt)) || "";
+
+// Map status names to icons (fallback icons for common statuses)
+const getStatusIcon = (statusName: string): any => {
+  const lowerStatus = statusName.toLowerCase();
+  const iconMap: Record<string, any> = {
+    pending: TimeIcon,
+    interview: ChatIcon,
+    interviewed: CheckCircleIcon,
+    approved: CheckCircleIcon,
+    rejected: CloseLineIcon,
+    accepted: CheckLineIcon,
+    trashed: TrashBinIcon,
+    deleted: TrashBinIcon,
+  };
+  
+  return iconMap[lowerStatus] || UserIcon;
+};
+
+// Helper to get the appropriate company ID based on user role and selected company
+function getCompanyIdFromUser(user: any, selectedCompanyId?: string): string | string[] | undefined {
+  const roleName = user?.roleId?.name?.toLowerCase();
+  
+  // Super admin can select a company or see all
+  if (roleName === "super admin") {
+    if (selectedCompanyId) return selectedCompanyId;
+    return undefined; // undefined means fetch all
+  }
+  
+  // Regular user - get their assigned companies
+  const userCompanyIds = user?.companies?.map((c: any) =>
+    typeof c.companyId === "string" ? c.companyId : c.companyId._id
+  ) || [];
+  
+  return userCompanyIds.length > 0 ? userCompanyIds : undefined;
 }
 
 export default function Home() {
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string | undefined>(undefined);
   const [range, setRange] = useState<Date[] | null>(null);
-  const [, setOpenStatus] = useState<string | null>(null);
   const { user } = useAuth();
-
-  // Determine companyId based on user role; super admin fetches all
-  const companyId = useMemo(() => {
+  
+  const isSuperAdmin = useMemo(() => {
     const roleName = user?.roleId?.name?.toLowerCase();
-    if (!user || roleName === "super admin") {
-      return undefined; // Fetch all
+    return roleName === "super admin";
+  }, [user?.roleId?.name]);
+
+  // Get companies for super admin selector
+  const { data: companies = [] } = useCompanies(isSuperAdmin ? undefined : (user?.companies?.map((c: any) => c.companyId?._id || c.companyId) as any));
+
+  // Determine companyId for the query
+  const companyId = useMemo(() => {
+    return getCompanyIdFromUser(user, selectedCompanyId);
+  }, [user, selectedCompanyId]);
+
+  // Get the selected company object for status settings
+  const selectedCompany = useMemo(() => {
+    if (selectedCompanyId && companies.length > 0) {
+      return companies.find((c: any) => c._id === selectedCompanyId);
     }
-    
-    const usercompanyId =
-      user.companies?.map((c) =>
-        typeof c.companyId === "string" ? c.companyId : c.companyId._id
-      ) || [];
-    
-    return usercompanyId.length > 0 ? usercompanyId : undefined;
-  }, [user]);
+    // If user is not super admin, get their first company
+    if (!isSuperAdmin && companies.length > 0) {
+      return companies[0];
+    }
+    return null;
+  }, [selectedCompanyId, companies, isSuperAdmin]);
 
-  // Use React Query hook - server may return either minimal applicant objects (id, status, dates)
-  // or a counts object { pending, interview, ... , total } from the lightweight endpoint.
-  const { data: applicantsData = [], isLoading: loading, refetch, isFetching } = getApplicantStatuses(companyId as any, undefined);
+  // Get status settings (colors, display names) for the selected company
+  const { statusOptions, getColor } = useStatusSettings(selectedCompany);
 
-  // normalize: if server returned counts object, treat accordingly
-  const countsFromServer = applicantsData && !Array.isArray(applicantsData) ? applicantsData : null;
-  const applicants = Array.isArray(applicantsData) ? applicantsData : [];
+  // Use React Query hook
+const { data: applicantsData = [], isLoading: loading, refetch, isFetching } =
+  getApplicantStatuses(
+    companyId as any,
+    range && range.length === 2
+      ? `${range[0].toISOString()},${range[1].toISOString()}`
+      : undefined
+  );
+  // Extract counts from the response
+  const countsData = useMemo(() => {
+    if (applicantsData && typeof applicantsData === 'object' && !Array.isArray(applicantsData)) {
+      return applicantsData;
+    }
+    return null;
+  }, [applicantsData]);
 
   const [lastRefetch, setLastRefetch] = useState<Date | null>(null);
   const [elapsed, setElapsed] = useState<string | null>(null);
@@ -64,8 +111,7 @@ export default function Home() {
     if (!loading && lastRefetch === null) {
       setLastRefetch(new Date());
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading]);
+  }, [loading, lastRefetch]);
 
   // Tick elapsed timer when lastRefetch is set
   useEffect(() => {
@@ -87,95 +133,53 @@ export default function Home() {
     };
 
     const update = () => setElapsed(formatRelative(lastRefetch));
-
     update();
-    // update every 30 seconds (relative times don't need per-second precision)
     const id = setInterval(update, 30 * 1000);
     return () => clearInterval(id);
   }, [lastRefetch]);
 
-  const filtered = useMemo(() => {
-    if (!range || range.length === 0) return applicants;
-    if (range.length === 1) {
-      const d = range[0];
-      return applicants.filter((a) => {
-        const ad = new Date(getApplicantDate(a));
-        return (
-          ad.getFullYear() === d.getFullYear() &&
-          ad.getMonth() === d.getMonth() &&
-          ad.getDate() === d.getDate()
-        );
-      });
-    }
+  // Build dynamic status cards from the API response with company colors
+const statusCards = useMemo(() => {
+  if (!countsData) return [];
 
-    const [start, end] = range;
-    const s = start ? new Date(start) : null;
-    const e = end ? new Date(end) : null;
-    if (!s || !e) return applicants;
-    // normalize start to start of day, end to end of day
-    s.setHours(0, 0, 0, 0);
-    e.setHours(23, 59, 59, 999);
-    return applicants.filter((a) => {
-      const ad = new Date(getApplicantDate(a));
-      return ad >= s && ad <= e;
-    });
-  }, [applicants, range]);
+  const excludeFromCards = ['total', 'trashed', 'deleted'];
 
-  const counts = useMemo(() => {
-    // If server provided aggregated counts, use them (ensure keys exist)
-    if (countsFromServer) {
-      const c: Record<string, number> = {} as any;
-      STATUSES.forEach((s) => (c[s.key] = Number(countsFromServer[s.key] ?? 0)));
-      // keep trashed hidden
-      c['trashed'] = 0;
-      return c;
-    }
+  const cards = Object.entries(countsData)
+    .filter(([key]) => !excludeFromCards.includes(key.toLowerCase()))
+    .map(([statusName, count]) => {
+      const statusOption = statusOptions?.find(
+        (opt: any) =>
+          opt.label.toLowerCase() === statusName.toLowerCase() ||
+          opt.value.toLowerCase() === statusName.toLowerCase()
+      );
 
-    const c: Record<string, number> = {};
-    STATUSES.forEach((s) => (c[s.key] = 0));
-    applicants.forEach((a: any) => {
-      if (a.status && a.status !== 'trashed') {
-        c[a.status] = (c[a.status] || 0) + 1;
-      }
-    });
-    c['trashed'] = 0;
-    return c;
-  }, [applicants, filtered, countsFromServer]);
+      const bgColor =
+        statusOption?.color || getColor(statusName) || '#94a3b8';
 
-  // Exclude trashed applicants for total calculations
-  const applicantsNonTrashed = useMemo(() => applicants.filter((a) => a.status !== 'trashed'), [applicants]);
+      // ✅ FIXED: always defined here
 
-  const STATUS_ICON: Record<Applicant['status'] | 'total', any> = {
-    total: UserIcon,
-    applied: PaperPlaneIcon,
-    under_review: EyeIcon,
-    pending: TimeIcon,
-    interview: ChatIcon,
-    interviewed: CheckCircleIcon,
-    accepted: CheckLineIcon,
-    approved: CheckCircleIcon,
-    rejected: CloseLineIcon,
-    trashed: TrashBinIcon,
-  };
+      return {
+        name: statusName,
+        count: Number(count),
+        bgColor,
+        textColor: '#111827',
+        icon: getStatusIcon(statusName),
+      };
+    })
+    .sort((a, b) => b.count - a.count);
 
-  const TotalIcon = STATUS_ICON['total'];
+  return cards;
+}, [countsData, statusOptions, getColor]);
 
-  const STATUS_BG: Record<string, string> = {
-    total: 'bg-indigo-50',
-    applied: 'bg-indigo-50',
-    under_review: 'bg-slate-50',
-    pending: 'bg-yellow-50',
-    interview: 'bg-blue-50',
-    interviewed: 'bg-emerald-50',
-    accepted: 'bg-emerald-50',
-    approved: 'bg-emerald-50',
-    rejected: 'bg-red-50',
-    trashed: 'bg-gray-50',
-  };
+  // Get total excluding trashed/deleted
+  const totalApplicants = useMemo(() => {
+    if (!countsData) return 0;
+    const total = countsData.total || 0;
+    const trashed = countsData.Trashed || countsData.Deleted || countsData.trashed || countsData.deleted || 0;
+    return total - trashed;
+  }, [countsData]);
 
-  function toggleOpen(key: string | 'total') {
-    setOpenStatus((prev) => (prev === key ? null : key));
-  }
+  // Helper function to get contrasting text color based on background brightness
 
   return (
     <>
@@ -183,6 +187,27 @@ export default function Home() {
 
       <div className="space-y-6">
         <div className="grid grid-cols-12 gap-4 md:gap-6 items-end">
+          {/* Company selector for super admin */}
+          {isSuperAdmin && (
+            <div className="col-span-12 sm:col-span-6 md:col-span-4 lg:col-span-3">
+              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
+                Company
+              </label>
+              <select
+                value={selectedCompanyId || ""}
+                onChange={(e) => setSelectedCompanyId(e.target.value || undefined)}
+                className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm shadow-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 dark:border-gray-700 dark:bg-gray-800"
+              >
+                <option value="">All Companies</option>
+                {companies.map((c: any) => (
+                  <option key={c._id} value={c._id}>
+                    {typeof c.name === 'object' ? c.name.en : c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <div className="col-span-12 sm:col-span-6 md:col-span-4 lg:col-span-3">
             <DatePicker
               id="applicant-range"
@@ -192,83 +217,112 @@ export default function Home() {
               onChange={(selectedDates) => setRange(selectedDates as Date[])}
             />
           </div>
-          <div className="col-span-12 sm:col-span-6 md:col-span-8 lg:col-span-9">
-            <div className="flex items-center gap-3 ml-4">
+          
+          <div className="col-span-12 sm:col-span-12 md:col-span-12 lg:col-span-6">
+            <div className="flex flex-wrap items-center gap-3">
               <div className="text-sm text-gray-500">Showing</div>
               <div className="font-semibold text-gray-800">
-                {loading ? "Loading..." : `${countsFromServer.total - countsFromServer.trashed} applicants`}
+                {loading ? "Loading..." : `${totalApplicants} applicants`}
               </div>
-              <div className="lg:ml-130">
-                <button
-                  type="button"
-                  onClick={async () => {
-                    try {
-                      await refetch();
-                      setLastRefetch(new Date());
-                    } catch (e) {
-                      // ignore - errors handled by react-query
-                    }
-                  }}
-                  disabled={isFetching}
-                  className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-3 py-1 text-sm font-semibold text-white shadow-sm hover:bg-brand-600 disabled:opacity-50"
-                >
-                  {isFetching ? "Updating Data" : "Update Data"}
-                </button>
-              </div>
-              <div className="ml-3 text-sm text-gray-500">
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await refetch();
+                    setLastRefetch(new Date());
+                  } catch (e) {
+                    // ignore
+                  }
+                }}
+                disabled={isFetching}
+                className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-3 py-1 text-sm font-semibold text-white shadow-sm hover:bg-brand-600 disabled:opacity-50"
+              >
+                {isFetching ? "Updating Data" : "Update Data"}
+              </button>
+              <div className="text-sm text-gray-500">
                 {elapsed ? `Last Update: ${elapsed}` : "Not updated yet"}
               </div>
-              <div className="text-sm text-gray-400">(from total {applicantsNonTrashed.length})</div>
             </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        {/* Dynamic Status Cards Grid with Company Colors */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
           {/* Total card */}
           <div
-            role="button"
-            onClick={() => toggleOpen('total')}
-            className={`rounded-2xl border border-gray-200 ${STATUS_BG['total']} p-5 dark:border-gray-800 dark:bg-white/[0.03] cursor-pointer`}
+            className="rounded-2xl border border-gray-200 bg-gradient-to-br from-gray-50 to-gray-100 p-5 dark:from-gray-800 dark:to-gray-900 cursor-pointer transition hover:shadow-md"
           >
             <div className="flex items-center justify-between">
-              <div className="text-sm text-gray-500">Total Applicants</div>
+              <div className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Applicants</div>
               <div className="text-gray-400">
-                {TotalIcon && <TotalIcon className="size-5" />}
+                <UserIcon className="size-5" />
               </div>
             </div>
-            <div className="mt-2 text-2xl font-bold text-gray-800">{loading ? (
-              <span className="inline-block h-6 w-14 rounded bg-gray-200 animate-pulse" />
-            ) : countsFromServer.total - countsFromServer.trashed}</div>
-              
-           
+            <div className="mt-2 text-2xl font-bold text-gray-800 dark:text-gray-200">
+              {loading ? (
+                <span className="inline-block h-6 w-14 rounded bg-gray-200 animate-pulse" />
+              ) : totalApplicants}
+            </div>
           </div>
 
-          {STATUSES.map((s) => {
-            const Icon = STATUS_ICON[s.key];
-            const key = s.key;
-            const bgClass = STATUS_BG[key] || 'bg-gray-50';
-
-            return (
-              <div key={key}>
+          {/* Dynamic status cards from API with company colors */}
+          {loading ? (
+            // Loading skeletons
+            Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="rounded-2xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800">
+                <div className="flex items-center justify-between">
+                  <div className="h-4 w-16 rounded bg-gray-200 animate-pulse" />
+                  <div className="h-5 w-5 rounded bg-gray-200 animate-pulse" />
+                </div>
+                <div className="mt-2 h-8 w-12 rounded bg-gray-200 animate-pulse" />
+              </div>
+            ))
+          ) : (
+            statusCards.map((card) => {
+              const Icon = card.icon;
+              // Use the status color as background with opacity
+              const bgStyle = {
+                backgroundColor: card.bgColor + '15', // Add opacity (15% opacity)
+                borderLeftColor: card.bgColor,
+                borderLeftWidth: '4px',
+              };
+              
+              return (
                 <div
-                  role="button"
-                  className={`rounded-2xl border border-gray-200 ${bgClass} p-5 dark:border-gray-800 dark:bg-white/[0.03] cursor-pointer`}
+                  key={card.name}
+                  className="rounded-2xl border border-gray-200 p-5 dark:border-gray-800 cursor-pointer transition-all hover:shadow-md hover:scale-[1.02]"
+                  style={bgStyle}
                 >
                   <div className="flex items-center justify-between">
-                    <div className="text-sm text-gray-500">{s.label}</div>
-                    <div className="text-gray-400">{Icon && <Icon className="size-5" />}</div>
+                    <div 
+                      className="text-sm font-semibold"
+                      style={{ color: card.textColor }}
+                    >
+                      {card.name}
+                    </div>
+                    <div style={{ color: card.bgColor }}>
+                      {Icon && <Icon className="size-5" />}
+                    </div>
                   </div>
 
-                  <div className="mt-2 text-2xl font-bold text-gray-800">{loading ? (
-                    <span className="inline-block h-6 w-8 rounded bg-gray-200 animate-pulse" />
-                  ) : counts[key]}</div>
+                  <div 
+                    className="mt-2 text-2xl font-bold"
+                    style={{ color: card.textColor }}
+                  >
+                    {card.count}
+                  </div>
                 </div>
-
-               
-              </div>
-            );
-          })}
+              );
+            })
+          )}
         </div>
+
+        {/* Show message when no data */}
+        {!loading && statusCards.length === 0 && countsData && (
+          <div className="text-center py-12">
+            <p className="text-gray-500">No status data available</p>
+          </div>
+        )}
       </div>
     </>
   );
