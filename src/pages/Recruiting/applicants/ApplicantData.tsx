@@ -2138,7 +2138,6 @@ const ApplicantData = () => {
   // Apply substitutions to subject (case-insensitive)
   let processedSubject = subject;
   Object.entries(allReplacements).forEach(([token, value]) => {
-    // Create case-insensitive regex
     const regex = new RegExp(token.replace(/[{}]/g, '\\$&'), 'gi');
     processedSubject = processedSubject.replace(regex, value);
   });
@@ -2150,13 +2149,62 @@ const ApplicantData = () => {
     processedBody = processedBody.replace(regex, value);
   });
   
-  const sanitizedBody = sanitizeMessageTemplate(processedBody);
+  // Convert URLs in the body to clickable links
+  const convertUrlsToLinks = (text: string): string => {
+    // Don't process HTML content
+    if (text.indexOf('<') !== -1) {
+      // For HTML content, convert URLs within text nodes
+      // This regex matches URLs that are not already inside an <a> tag
+      const urlRegex = /(https?:\/\/[^\s<]+|www\.[^\s<]+)(?![^<]*<\/a>)/gi;
+      return text.replace(urlRegex, (url) => {
+        let href = url;
+        if (!href.startsWith('http://') && !href.startsWith('https://')) {
+          href = 'https://' + href;
+        }
+        return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" style="color: #3b82f6; text-decoration: underline; transition: color 0.2s;">${escapeHtml(url)}</a>`;
+      });
+    }
+    
+    // For plain text, convert all URLs
+    const urlRegex = /(https?:\/\/[^\s]+|www\.[^\s]+)/gi;
+    return text.replace(urlRegex, (url) => {
+      let href = url;
+      if (!href.startsWith('http://') && !href.startsWith('https://')) {
+        href = 'https://' + href;
+      }
+      return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" style="color: #3b82f6; text-decoration: underline;">${escapeHtml(url)}</a>`;
+    });
+  };
+  
+  // Also convert specific location patterns
+  const formatLocationLinks = (text: string): string => {
+    // Look for Location: followed by a URL pattern
+    const locationPattern = /(Location:\s*)(https?:\/\/[^\s<]+|www\.[^\s<]+)/gi;
+    let result = text;
+    
+    // Replace location patterns with styled links
+    result = result.replace(locationPattern, (match, locationLabel, url) => {
+      let href = url;
+      if (!href.startsWith('http://') && !href.startsWith('https://')) {
+        href = 'https://' + href;
+      }
+      return `${locationLabel}<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" style="color: #3b82f6; text-decoration: underline;">${escapeHtml(url)}</a>`;
+    });
+    
+    return result;
+  };
+  
+  // Apply URL conversion
+  let processedBodyWithLinks = formatLocationLinks(processedBody);
+  processedBodyWithLinks = convertUrlsToLinks(processedBodyWithLinks);
+  
+  const sanitizedBody = sanitizeMessageTemplate(processedBodyWithLinks);
   let bodyHtml = '';
   if (sanitizedBody.indexOf('<') !== -1) {
     bodyHtml = inlineStyleHtml(sanitizedBody);
   } else {
     const parts = sanitizedBody.split(/\r?\n/).map(p => p.trim()).filter(p => p.length > 0);
-    bodyHtml = parts.map(p => `<p style="margin:0 0 12px;color:#444;">${escapeHtml(p)}</p>`).join('');
+    bodyHtml = parts.map(p => `<p style="margin:0 0 12px;color:#444;">${p}</p>`).join('');
   }
   
   return `<!DOCTYPE html>
@@ -2172,6 +2220,8 @@ const ApplicantData = () => {
     .header h1 { color:#111827; margin:0; font-size:20px; font-weight:700; }
     .content { padding:28px 30px; color:#222; }
     .footer { padding:18px 30px; color:#999; font-size:12px; text-align:center; }
+    a { color: #3b82f6 !important; text-decoration: underline !important; }
+    a:hover { color: #2563eb !important; text-decoration: underline !important; }
   </style>
 </head>
 <body>

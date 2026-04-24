@@ -2810,6 +2810,7 @@ useEffect(() => {
       .replace(/'/g, '&#39;');
 
 // In the Applicants component, update the buildInterviewEmailHtml function (around line 1370)
+// In the Applicants component, update the buildInterviewEmailHtml function (around line 1370)
 const buildInterviewEmailHtml = (subject: string, rawBody: string, replacements?: Record<string, string>) => {
   // Create a case-insensitive replacement function
   const applyReplacements = (text: string): string => {
@@ -2826,13 +2827,62 @@ const buildInterviewEmailHtml = (subject: string, rawBody: string, replacements?
     return result;
   };
   
+  // Function to convert URLs to clickable links
+  const convertUrlsToLinks = (text: string): string => {
+    // Don't process if already HTML
+    if (text.indexOf('<') !== -1) {
+      // For HTML content, convert URLs within text nodes
+      // This regex matches URLs that are not already inside an <a> tag
+      const urlRegex = /(https?:\/\/[^\s<]+|www\.[^\s<]+)(?![^<]*<\/a>)/gi;
+      return text.replace(urlRegex, (url) => {
+        let href = url;
+        if (!href.startsWith('http://') && !href.startsWith('https://')) {
+          href = 'https://' + href;
+        }
+        return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" style="color: #3b82f6; text-decoration: underline;">${escapeHtml(url)}</a>`;
+      });
+    }
+    
+    // For plain text, convert all URLs
+    const urlRegex = /(https?:\/\/[^\s]+|www\.[^\s]+)/gi;
+    return text.replace(urlRegex, (url) => {
+      let href = url;
+      if (!href.startsWith('http://') && !href.startsWith('https://')) {
+        href = 'https://' + href;
+      }
+      return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" style="color: #3b82f6; text-decoration: underline;">${escapeHtml(url)}</a>`;
+    });
+  };
+  
+  // Also convert specific location patterns
+  const formatLocationLinks = (text: string): string => {
+    // Look for Location: followed by a URL pattern
+    const locationPattern = /(Location:\s*)(https?:\/\/[^\s<]+|www\.[^\s<]+)/gi;
+    let result = text;
+    
+    // Replace location patterns with styled links
+    result = result.replace(locationPattern, (match, locationLabel, url) => {
+      let href = url;
+      if (!href.startsWith('http://') && !href.startsWith('https://')) {
+        href = 'https://' + href;
+      }
+      return `${locationLabel}<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" style="color: #3b82f6; text-decoration: underline;">${escapeHtml(url)}</a>`;
+    });
+    
+    return result;
+  };
+  
   // Apply substitutions to subject
   let processedSubject = applyReplacements(subject);
   
   // Apply substitutions to body
   let processedBody = applyReplacements(rawBody);
   
-  const body = String(processedBody || '').trim();
+  // Apply URL conversion to make links clickable
+  let processedBodyWithLinks = formatLocationLinks(processedBody);
+  processedBodyWithLinks = convertUrlsToLinks(processedBodyWithLinks);
+  
+  const body = String(processedBodyWithLinks || '').trim();
   const hasHtmlTags = /<[^>]+>/.test(body);
   const normalizedBody = hasHtmlTags
     ? inlineStyleHtml(body)
@@ -2842,7 +2892,7 @@ const buildInterviewEmailHtml = (subject: string, rawBody: string, replacements?
         .filter(Boolean)
         .map(
           (line) =>
-            `<p style="margin:0 0 12px;color:#444;">${escapeHtml(line)}</p>`
+            `<p style="margin:0 0 12px;color:#444;">${line}</p>`
         )
         .join('');
 
@@ -2852,16 +2902,22 @@ const buildInterviewEmailHtml = (subject: string, rawBody: string, replacements?
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${escapeHtml(processedSubject)}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; background-color: #f5f5f5; margin:0; padding:0; }
+    .container { max-width:600px; margin:24px auto; background:#fff; border-radius:8px; overflow:hidden; }
+    .header { padding:24px 30px; background:#fff; border-bottom:1px solid #e5e7eb; text-align:center; }
+    .header h1 { color:#111827; margin:0; font-size:20px; font-weight:700; }
+    .content { padding:28px 30px; color:#222; }
+    .footer { padding:18px 30px; color:#999; font-size:12px; text-align:center; }
+    a { color: #3b82f6 !important; text-decoration: underline !important; }
+    a:hover { color: #2563eb !important; text-decoration: underline !important; }
+  </style>
 </head>
-<body style="font-family: Arial, sans-serif; padding: 20px; margin: 0; background-color: #f5f5f5;">
-  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden;">
-    <div style="background-color: #ffffff; border-bottom: 1px solid #e5e7eb; padding: 24px 30px; text-align: center;">
-      <h1 style="color: #111827; margin: 0; font-size: 22px; font-weight: 700;">${escapeHtml(processedSubject)}</h1>
-    </div>
-    <div style="padding: 30px;">
-      <div style="font-size: 16px; line-height: 1.6; color: #444;">
-        ${normalizedBody}
-      </div>
+<body>
+  <div class="container">
+    <div class="header"><h1>${escapeHtml(processedSubject)}</h1></div>
+      <div class="content">
+      <div style="margin-top:12px;margin-bottom:18px;">${normalizedBody}</div>
     </div>
   </div>
 </body>
