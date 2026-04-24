@@ -15,6 +15,7 @@ type LeadStatus = {
   isDefault?: boolean;
   description: string;
   statusKey?: string;
+  _id?: string;
 };
 
 // Default descriptions for static status names (fallback only)
@@ -128,6 +129,7 @@ export default function StatusLabelsSettings({ companyId, hideCompanySelector, e
           description: isStatic ? DEFAULT_STATUS_DESCRIPTIONS[statusKey] : String(s?.description ?? ""),
           isDefault: !!s?.isDefault,
           statusKey: statusKey,
+          _id: s?._id,
         };
       });
     }
@@ -258,23 +260,16 @@ export default function StatusLabelsSettings({ companyId, hideCompanySelector, e
   });
 
   // Prepare payload WITH _id for existing statuses, WITHOUT for new ones
-  const payload = statuses.map((s) => {
-    // Try to find matching original status by name or statusKey
-    let originalStatus = originalStatusMap.get(s.name?.toLowerCase());
-    if (!originalStatus && s.statusKey) {
-      originalStatus = originalStatusMap.get(s.statusKey.toLowerCase());
-    }
-    
-    return {
-      // Include _id if this is an existing status (has an original)
-      ...(originalStatus && (originalStatus as any)._id ? { _id: (originalStatus as any)._id } : {}),
-      name: String(s.name ?? "").trim(),
-      color: s.color,
-      textColor: s.textColor,
-      description: isStaticStatus(s.statusKey || s.name) ? "" : String(s.description ?? "").trim(),
-      isDefault: !!s.isDefault,
-    };
-  });
+  const payload = statuses.map((s) => ({
+  ...(s._id ? { _id: s._id } : {}), // ✅ much cleaner
+  name: String(s.name ?? "").trim(),
+  color: s.color,
+  textColor: s.textColor,
+  description: isStaticStatus(s.statusKey || s.name)
+    ? ""
+    : String(s.description ?? "").trim(),
+  isDefault: !!s.isDefault,
+}));
 
   setIsSaving(true);
   

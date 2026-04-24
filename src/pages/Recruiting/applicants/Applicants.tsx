@@ -986,18 +986,7 @@ const [companyStatusCache, setCompanyStatusCache] = useState<Map<string, any>>(n
 
 
 
-  const statusFilterOptions = useMemo<ColumnFilterOption[]>(() => {
-  // Get unique statuses from applicants
-  const uniqueStatuses = Array.from(new Set(applicants.map((a: any) => a?.status).filter(Boolean)));
-  // Sort to keep default order first then custom
-  const defaultOrder = ['pending', 'approved', 'interview', 'interviewed', 'rejected', 'trashed'];
-  const sorted = [...defaultOrder, ...uniqueStatuses.filter(s => !defaultOrder.includes(s))];
-  return sorted.map((status) => ({
-    id: status,
-    title: status.charAt(0).toUpperCase() + status.slice(1),
-  }));
-}, [applicants]);
-
+  
   const jobOptions = useMemo(() => {
     const getIdValue = (v: any) =>
       typeof v === 'string' ? v : (v?._id ?? v?.id);
@@ -1201,41 +1190,136 @@ useEffect(() => {
       .filter((x) => x.id && x.title);
   }, [allCompanies]);
 
+  
+
+  // Get selected company from column filters
+const selectedCompanyFilter = useMemo(() => {
+  const companyFilter = columnFilters.find((f: any) => f.id === 'companyId');
+  if (!companyFilter?.value) return null;
+  
+  const companyIds = Array.isArray(companyFilter.value) 
+    ? companyFilter.value 
+    : [companyFilter.value];
+  
+  return companyIds;
+}, [columnFilters]);
+const selectedCompanyForStatus = useMemo(() => {
+  if (selectedCompanyFilter && selectedCompanyFilter.length === 1) {
+    return allCompaniesRaw.find((c: any) => c._id === selectedCompanyFilter[0]);
+  }
+  return null;
+}, [selectedCompanyFilter, allCompaniesRaw]);
+
+// Get status settings for the selected company (if any)
+const selectedCompanyStatusSettings = useStatusSettings(selectedCompanyForStatus);
+
   // Determine dataset to pass to MRT: by default exclude trashed applicants unless
   // the user explicitly filters for status === 'trashed'. This makes "All Statuses"
   // hide trashed rows while still allowing an explicit trashed view.
 const displayedApplicants = useMemo(() => {
-  // If caller requested a fixed status view, honor it and short-circuit
+  // Start with applicants
+  let filtered = applicants || [];
+  
+  // Apply company filter if present
+  if (selectedCompanyFilter && selectedCompanyFilter.length > 0) {
+    filtered = filtered.filter((applicant: Applicant) => {
+      // Get applicant's company ID
+      let applicantCompanyId = null;
+      const rawCompany = (applicant as any)?.companyId;
+      
+      if (rawCompany) {
+        applicantCompanyId = typeof rawCompany === 'string' 
+          ? rawCompany 
+          : (rawCompany as any)?._id || (rawCompany as any)?.id;
+      } else {
+        // Try to get from job position
+        const jobId = typeof (applicant as any)?.jobPositionId === 'string' 
+          ? (applicant as any).jobPositionId 
+          : (applicant as any)?.jobPositionId?._id || (applicant as any)?.jobPositionId?.id;
+        const job = jobPositionMap[jobId];
+        const jobCompany = (job as any)?.companyId || (job as any)?.company;
+        applicantCompanyId = typeof jobCompany === 'string' ? jobCompany : (jobCompany as any)?._id;
+      }
+      
+      return applicantCompanyId && selectedCompanyFilter.includes(applicantCompanyId);
+    });
+  }
+  
+  // Apply status filter (if caller requested a fixed status view)
   if (onlyStatus !== undefined && onlyStatus !== null) {
     const allowed = Array.isArray(onlyStatus) ? onlyStatus : [onlyStatus];
-    return (applicants || []).filter((a: Applicant) => allowed.includes(a.status));
+    filtered = filtered.filter((a: Applicant) => allowed.includes(a.status));
+    return filtered;
   }
+  
+  // Apply status column filter
   const statusFilter = columnFilters.find((f) => f.id === 'status');
   const statusVal = statusFilter?.value;
 
   // Super admin: allow viewing trashed when explicitly filtered
   if (isSuperAdmin) {
-    if (statusVal === 'trashed') return applicants;
+    if (statusVal === 'trashed') return filtered;
     if (Array.isArray(statusVal) && statusVal.length > 0) {
-      return (applicants || []).filter((a: Applicant) =>
-        statusVal.includes(a.status)
-      );
+      return filtered.filter((a: Applicant) => statusVal.includes(a.status));
     }
-    return (applicants || []).filter((a: Applicant) => a.status !== 'trashed');
+    return filtered.filter((a: Applicant) => a.status !== 'trashed');
   }
 
   // Non-super-admin: never show trashed applicants regardless of filters
   if (Array.isArray(statusVal) && statusVal.length > 0) {
     const allowed = statusVal.filter((s: any) => s !== 'trashed');
-    if (allowed.length === 0)
-      return (applicants || []).filter((a: Applicant) => a.status !== 'trashed');
-    return (applicants || []).filter(
+    if (allowed.length === 0) {
+      return filtered.filter((a: Applicant) => a.status !== 'trashed');
+    }
+    return filtered.filter(
       (a: Applicant) => allowed.includes(a.status) && a.status !== 'trashed'
     );
   }
 
-  return (applicants || []).filter((a: Applicant) => a.status !== 'trashed');
-}, [applicants, columnFilters, isSuperAdmin, onlyStatus]);
+  return filtered.filter((a: Applicant) => a.status !== 'trashed');
+}, [applicants, columnFilters, isSuperAdmin, onlyStatus, selectedCompanyFilter, jobPositionMap]);
+
+const statusFilterOptions = useMemo<ColumnFilterOption[]>(() => {
+  // Start with all applicants
+  let filteredApplicantsForStatus = applicants || [];
+  
+  // Apply company filter if present - ONLY show statuses from selected company
+  if (selectedCompanyFilter && selectedCompanyFilter.length > 0) {
+    filteredApplicantsForStatus = filteredApplicantsForStatus.filter((applicant: Applicant) => {
+      // Get applicant's company ID
+      let applicantCompanyId = null;
+      const rawCompany = (applicant as any)?.companyId;
+      
+      if (rawCompany) {
+        applicantCompanyId = typeof rawCompany === 'string' 
+          ? rawCompany 
+          : (rawCompany as any)?._id || (rawCompany as any)?.id;
+      } else {
+        // Try to get from job position
+        const jobId = typeof (applicant as any)?.jobPositionId === 'string' 
+          ? (applicant as any).jobPositionId 
+          : (applicant as any)?.jobPositionId?._id || (applicant as any)?.jobPositionId?.id;
+        const job = jobPositionMap[jobId];
+        const jobCompany = (job as any)?.companyId || (job as any)?.company;
+        applicantCompanyId = typeof jobCompany === 'string' ? jobCompany : (jobCompany as any)?._id;
+      }
+      
+      return applicantCompanyId && selectedCompanyFilter.includes(applicantCompanyId);
+    });
+  }
+  
+  // Get unique statuses from the filtered applicants
+  const uniqueStatuses = Array.from(new Set(filteredApplicantsForStatus.map((a: any) => a?.status).filter(Boolean)));
+  
+  // Sort to keep default order first then custom
+  const defaultOrder = ['pending', 'approved', 'interview', 'interviewed', 'rejected', 'trashed'];
+  const sorted = [...defaultOrder, ...uniqueStatuses.filter(s => !defaultOrder.includes(s))];
+  
+  return sorted.map((status) => ({
+    id: status,
+    title: status.charAt(0).toUpperCase() + status.slice(1),
+  }));
+}, [applicants, selectedCompanyFilter, jobPositionMap]);
 
   const deferredDisplayedApplicants = useDeferredValue(displayedApplicants);
 
@@ -1451,7 +1535,13 @@ const displayedApplicants = useMemo(() => {
   };
 
 const statusSettingsCompany = useMemo(() => {
-  // For Super Admin, we need to get the company from the applicants' data
+  // First, check if there's a company filter applied in MRT
+  if (selectedCompanyFilter && selectedCompanyFilter.length === 1) {
+    // Use the single selected company for status colors
+    return allCompaniesRaw.find((c: any) => c._id === selectedCompanyFilter[0]);
+  }
+  
+  // For Super Admin with no company filter, we need to get the company from the applicants' data
   if (isSuperAdmin) {
     // Get unique companies from the currently displayed applicants
     const uniqueCompanyIds = new Set<string>();
@@ -1461,14 +1551,14 @@ const statusSettingsCompany = useMemo(() => {
       let companyId: string | null = null;
       
       // Try to get company from applicant
-      const rawCompany = applicant?.companyId || (applicant as any)?.company || (applicant as any)?.companyObj;
+      const rawCompany = (applicant as any)?.companyId || (applicant as any)?.company || (applicant as any)?.companyObj;
       if (rawCompany) {
         companyId = typeof rawCompany === 'string' ? rawCompany : (rawCompany as any)?._id || (rawCompany as any)?.id;
       } else {
         // Try to get from job position
-        const jobId = typeof applicant?.jobPositionId === 'string' 
-          ? applicant.jobPositionId 
-          : (applicant?.jobPositionId as any)?._id || (applicant?.jobPositionId as any)?.id;
+        const jobId = typeof (applicant as any)?.jobPositionId === 'string' 
+          ? (applicant as any).jobPositionId 
+          : (applicant as any)?.jobPositionId?._id || (applicant as any)?.jobPositionId?.id;
         if (jobId && jobPositionMap[jobId]) {
           const job = jobPositionMap[jobId];
           const jobCompany = (job as any)?.companyId || (job as any)?.company;
@@ -1479,7 +1569,7 @@ const statusSettingsCompany = useMemo(() => {
       if (companyId) uniqueCompanyIds.add(companyId);
     }
     
-    // If all applicants belong to one company, use that company
+    // If all displayed applicants belong to one company, use that company
     if (uniqueCompanyIds.size === 1) {
       const singleCompanyId = Array.from(uniqueCompanyIds)[0];
       return allCompaniesRaw.find((c: any) => c._id === singleCompanyId);
@@ -1497,7 +1587,7 @@ const statusSettingsCompany = useMemo(() => {
     return allCompaniesRaw.find((c: any) => c._id === selectedApplicantCompanyId);
   }
   return allCompaniesRaw[0];
-}, [companyId, selectedApplicantCompanyId, allCompaniesRaw, isSuperAdmin, displayedApplicants, jobPositionMap]);
+}, [companyId, selectedApplicantCompanyId, allCompaniesRaw, isSuperAdmin, displayedApplicants, jobPositionMap, selectedCompanyFilter]);
 
 
 
@@ -1533,26 +1623,38 @@ const getStatusColorForCompany = useCallback((status: string, companyId: string)
   return { bg: '#F3F4F6', color: '#1F2937' };
 }, [allCompaniesRaw, companyStatusCache]);
 
-// Update the getStatusColor to use per-company colors
-const getStatusColor = useCallback((status: string, applicantCompanyId?: string) => {
+const getStatusColor = useCallback((status: string) => {
   if (!status) {
     return { bg: '#F3F4F6', color: '#1F2937' };
   }
   
-  // If we have a company ID for this applicant, use company-specific colors
-  if (applicantCompanyId && isSuperAdmin) {
-    return getStatusColorForCompany(status, applicantCompanyId);
+  // Debug log
+  console.log('getStatusColor called with status:', status);
+  console.log('selectedCompanyFilter:', selectedCompanyFilter);
+  console.log('selectedCompanyForStatus:', selectedCompanyForStatus);
+  console.log('selectedCompanyStatusSettings exists?', !!selectedCompanyStatusSettings);
+  
+  // Priority 1: If there's a single company selected in MRT filter, use THAT company's colors
+  if (selectedCompanyFilter && selectedCompanyFilter.length === 1) {
+    const bgColor = selectedCompanyStatusSettings.getColor(status);
+    const textColor = selectedCompanyStatusSettings.getTextColor(status);
+    console.log('Using selected company colors:', { bgColor, textColor });
+    return { 
+      bg: bgColor || '#F3F4F6', 
+      color: textColor || '#1F2937' 
+    };
   }
   
-  // Fall back to the main statusSettingsCompany
+  // Priority 2: Fall back to the main statusSettingsCompany
   const bgColor = getColor(status);
   const textColor = getTextColor(status);
+  console.log('Using fallback colors:', { bgColor, textColor });
   
   return { 
     bg: bgColor || '#F3F4F6', 
     color: textColor || '#1F2937' 
   };
-}, [getColor, getTextColor, getStatusColorForCompany, isSuperAdmin]);
+}, [getColor, getTextColor, selectedCompanyFilter, selectedCompanyStatusSettings, selectedCompanyForStatus]);
 
 // In Applicants component, add a useEffect to refetch company settings when the modal closes
 // or when the page becomes visible again
@@ -1573,6 +1675,10 @@ useEffect(() => {
   
   refetch();
 }, [statusSettingsCompany?._id, queryClient]);
+
+
+
+
   const filteredApplicants = useMemo(() => {
     const effectiveCustomFilters = Array.isArray(customFilters)
       ? customFilters.filter(
@@ -3385,54 +3491,54 @@ const handleBulkStatusChange = useCallback(
           );
         },
       },
-      {
-        accessorKey: 'profilePhoto',
-        header: 'Photo',
-        size: columnSizeConfig.profilePhoto,
-        enableSorting: false,
-        enableColumnFilter: false,
-        Cell: ({ row }: { row: { original: Applicant } }) => {
-          if (isTableLoading) return renderCellSkeleton('circular', 40, 40);
-          const href = getApplicantHref(row);
-          return (
-            <a
-              href={href}
-              className="block h-full w-full"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (row.original.profilePhoto) {
-                  setPreviewPhoto(row.original.profilePhoto);
-                }
-              }}
-              onAuxClick={handleApplicantLinkAuxClick}
-            >
-              <div className="h-10 w-10 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700 transition hover:ring-2 hover:ring-brand-500 cursor-pointer">
-                        {row.original.profilePhoto ? (
-                          <ImageThumbnail
-                            src={row.original.profilePhoto}
-                            alt={row.original.fullName}
-                          />
-                        ) : (
-                          <div className="flex h-full w-full items-center justify-center text-sm font-semibold text-gray-500 dark:text-gray-400">
-                            {(() => {
-                              const fullName =
-                                (row?.original as any)?.fullName ||
-                                (row?.original as any)?.name ||
-                                (row?.original as any)?.firstName ||
-                                '';
-                              const initial = fullName
-                                ? String(fullName).charAt(0).toUpperCase()
-                                : '-';
-                              return initial;
-                            })()}
-                          </div>
-                        )}
-              </div>
-            </a>
-          );
-        },
-      },
+     {
+  accessorKey: 'profilePhoto',
+  header: 'Photo',
+  size: columnSizeConfig.profilePhoto,
+  enableSorting: false,
+  enableColumnFilter: false,
+  Cell: ({ row }: { row: { original: Applicant } }) => {
+    if (isTableLoading) return renderCellSkeleton('circular', 40, 40);
+    const href = getApplicantHref(row);
+    return (
+      <a
+        href={href}
+        className="block h-full w-full"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (row.original.profilePhoto) {
+            setPreviewPhoto(row.original.profilePhoto);
+          }
+        }}
+        onAuxClick={handleApplicantLinkAuxClick}
+      >
+        <div className="h-10 w-10 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700 transition hover:ring-2 hover:ring-brand-500 cursor-pointer">
+          {row.original.profilePhoto ? (
+            <ImageThumbnail
+              src={row.original.profilePhoto}
+              alt={row.original.fullName}
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center text-sm font-semibold text-gray-500 dark:text-gray-400">
+              {(() => {
+                const fullName =
+                  (row?.original as any)?.fullName ||
+                  (row?.original as any)?.name ||
+                  (row?.original as any)?.firstName ||
+                  '';
+                const initial = fullName
+                  ? String(fullName).charAt(0).toUpperCase()
+                  : '-';
+                return initial;
+              })()}
+            </div>
+          )}
+        </div>
+      </a>
+    );
+  },
+},
 
       {
         accessorKey: 'fullName',
@@ -3810,7 +3916,7 @@ const handleBulkStatusChange = useCallback(
           );
         },
       },
-   {
+  {
   accessorKey: 'status',
   header: 'Status',
   enableSorting: true,
@@ -3839,64 +3945,37 @@ const handleBulkStatusChange = useCallback(
   size: columnSizeConfig.status,
   enableColumnFilter: onlyStatus === undefined,
   Cell: ({ row }: { row: { original: Applicant } }) => {
-    if (isTableLoading) return renderCellSkeleton('text', '80px');
-    
-    // Get the applicant's company ID with proper null checking
-    let applicantCompanyId: string | null = null;
-    const original = row.original as any;
-    
-    if (original) {
-      const rawCompany = original.companyId;
-      if (rawCompany) {
-        applicantCompanyId = typeof rawCompany === 'string' ? rawCompany : (rawCompany as any)?._id || (rawCompany as any)?.id;
-      } else {
-        // Safely get job ID
-        const jobId = typeof original.jobPositionId === 'string' 
-          ? original.jobPositionId 
-          : (original.jobPositionId as any)?._id || (original.jobPositionId as any)?.id;
-        
-        // Safely get job from map - check if it exists first
-        const job = jobId && jobPositionMap ? jobPositionMap[jobId] : null;
-        if (job) {
-          const jobCompany = (job as any)?.companyId || (job as any)?.company;
-          applicantCompanyId = typeof jobCompany === 'string' ? jobCompany : (jobCompany as any)?._id;
-        }
-      }
-    }
-    
-    // Get colors based on the applicant's company
-    const colors = isSuperAdmin && applicantCompanyId
-      ? getStatusColorForCompany(original?.status || '', applicantCompanyId)
-      : getStatusColor(original?.status || '');
-      
-    const href = getApplicantHref(row);
-    const statusStr = String(original?.status || '');
-    const statusLabel = statusStr
-      ? statusStr.charAt(0).toUpperCase() + statusStr.slice(1)
-      : '-';
+  if (isTableLoading) return renderCellSkeleton('text', '80px');
+  
+  const colors = getStatusColor(row.original.status);
+  const href = getApplicantHref(row);
+  const statusStr = String((row?.original as any)?.status || '');
+  const statusLabel = statusStr
+    ? statusStr.charAt(0).toUpperCase() + statusStr.slice(1)
+    : '-';
 
-    const statusDescription = getDescription(statusStr);
+  const statusDescription = getDescription(statusStr);
 
-    return (
-      <a
-        href={href}
-        className="block h-full w-full"
-        onClick={(e) => handleApplicantLinkClick(e, row)}
-        onAuxClick={handleApplicantLinkAuxClick}
-        title={statusDescription || undefined}
+  return (
+    <a
+      href={href}
+      className="block h-full w-full"
+      onClick={(e) => handleApplicantLinkClick(e, row)}
+      onAuxClick={handleApplicantLinkAuxClick}
+      title={statusDescription || undefined}
+    >
+      <span
+        style={{
+          backgroundColor: colors.bg,
+          color: colors.color,
+        }}
+        className="inline-block rounded-full px-3 py-1 text-xs font-semibold"
       >
-        <span
-          style={{
-            backgroundColor: colors.bg,
-            color: colors.color,
-          }}
-          className="inline-block rounded-full px-3 py-1 text-xs font-semibold"
-        >
-          {statusLabel}
-        </span>
-      </a>
-    );
-  },
+        {statusLabel}
+      </span>
+    </a>
+  );
+},
 },
         // Rejection reasons column - shown only when this view is fixed to 'rejected'
         ...( (onlyStatus !== undefined && (Array.isArray(onlyStatus) ? onlyStatus.includes('rejected') : String(onlyStatus) === 'rejected'))
@@ -4106,6 +4185,7 @@ const handleBulkStatusChange = useCallback(
       parseComparableNumber,
       getExpectedSalaryDisplay,
       getApplicantSScore,
+      selectedCompanyFilter,
     ]
   );
 
