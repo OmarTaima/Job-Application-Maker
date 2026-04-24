@@ -6,7 +6,7 @@ import {
   useRef,
   useDeferredValue,
 } from 'react';
-import { ChatIcon } from '../../../icons';
+import { ChatIcon,  CopyIcon } from '../../../icons';
 import { useStatusSettings } from '../../../utils/useStatusSettings';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -3397,6 +3397,103 @@ const handleBulkStatusChange = useCallback(
     return <Skeleton variant={variant as any} width={width || '60%'} height={height} />;
   };
 
+    const rejectionReasonsOptions = useMemo(() => {
+  const reasonsSet = new Set<string>();
+  
+  // Extract rejection reasons from applicants
+  filteredApplicants.forEach((applicant: any) => {
+    const extractReasons = (obj: any) => {
+      try {
+        // Check status history
+        const history = obj?.statusHistory;
+        if (Array.isArray(history)) {
+          const rejected = history.filter((h: any) => 
+            String(h?.status || '').toLowerCase() === 'rejected'
+          );
+          if (rejected.length) {
+            rejected.sort((x: any, y: any) => {
+              const tx = x?.changedAt ? new Date(x.changedAt).getTime() : 0;
+              const ty = y?.changedAt ? new Date(y.changedAt).getTime() : 0;
+              return ty - tx;
+            });
+            const latest = rejected[0] || {};
+            const reasons = latest.reasons ?? latest.rejectionReasons ?? latest.reasonsSelected ?? [];
+            if (Array.isArray(reasons)) {
+              reasons.forEach((r: any) => {
+                const reasonStr = String(r ?? '').trim();
+                if (reasonStr) reasonsSet.add(reasonStr);
+              });
+            } else if (typeof reasons === 'string' && reasons) {
+              reasonsSet.add(reasons);
+            }
+          }
+        }
+        
+        // Check top-level reasons
+        const topReasons = obj?.reasons ?? obj?.rejectionReasons ?? obj?.rejectReasons ?? obj?.reasonsSelected;
+        if (Array.isArray(topReasons)) {
+          topReasons.forEach((r: any) => {
+            const reasonStr = String(r ?? '').trim();
+            if (reasonStr) reasonsSet.add(reasonStr);
+          });
+        } else if (typeof topReasons === 'string' && topReasons) {
+          reasonsSet.add(topReasons);
+        }
+      } catch (e) {
+        // ignore
+      }
+    };
+    
+    extractReasons(applicant);
+  });
+  
+  // Convert to array and sort alphabetically
+  return Array.from(reasonsSet)
+    .sort()
+    .map(reason => ({ id: reason, title: reason }));
+}, [filteredApplicants]);
+
+// Helper function to extract rejection reasons from an applicant
+const extractRejectionReasons = useCallback((applicant: any): string[] => {
+  try {
+    // Check status history
+    const history = applicant?.statusHistory;
+    if (Array.isArray(history)) {
+      const rejected = history.filter((h: any) => 
+        String(h?.status || '').toLowerCase() === 'rejected'
+      );
+      if (rejected.length) {
+        rejected.sort((x: any, y: any) => {
+          const tx = x?.changedAt ? new Date(x.changedAt).getTime() : 0;
+          const ty = y?.changedAt ? new Date(y.changedAt).getTime() : 0;
+          return ty - tx;
+        });
+        const latest = rejected[0] || {};
+        const reasons = latest.reasons ?? latest.rejectionReasons ?? latest.reasonsSelected ?? [];
+        if (Array.isArray(reasons)) {
+          return reasons.map((r: any) => String(r ?? '').trim()).filter(Boolean);
+        }
+        if (typeof reasons === 'string' && reasons) {
+          return [reasons];
+        }
+      }
+    }
+    
+    // Check top-level reasons
+    const topReasons = applicant?.reasons ?? applicant?.rejectionReasons ?? applicant?.rejectReasons ?? applicant?.reasonsSelected;
+    if (Array.isArray(topReasons)) {
+      return topReasons.map((r: any) => String(r ?? '').trim()).filter(Boolean);
+    }
+    if (typeof topReasons === 'string' && topReasons) {
+      return [topReasons];
+    }
+    
+    return [];
+  } catch (e) {
+    return [];
+  }
+}, []);
+
   const columns = useMemo<MRT_ColumnDef<Applicant>[]>(
     () => [
       {
@@ -3920,6 +4017,8 @@ const handleBulkStatusChange = useCallback(
 
   const statusDescription = getDescription(statusStr);
 
+
+
   return (
     <a
       href={href}
@@ -3944,62 +4043,69 @@ const handleBulkStatusChange = useCallback(
         // Rejection reasons column - shown only when this view is fixed to 'rejected'
         ...( (onlyStatus !== undefined && (Array.isArray(onlyStatus) ? onlyStatus.includes('rejected') : String(onlyStatus) === 'rejected'))
           ? [
-              {
-                id: 'rejectionReasons',
-                header: 'Rejection Reasons',
-                enableSorting: true,
-                enableColumnFilter: false,
-                size: 260,
-                Cell: ({ row }: { row: { original: any } }) => {
-                  if (isTableLoading) return renderCellSkeleton('text');
-                  const a = row.original || {};
-
-                  const extractFromHistory = (hist: any[] | undefined) => {
-                    try {
-                      if (!Array.isArray(hist) || hist.length === 0) return [];
-                      const rejected = hist.filter((h: any) => String(h?.status || '').toLowerCase() === 'rejected');
-                      if (!rejected.length) return [];
-                      // pick latest by changedAt
-                      rejected.sort((x: any, y: any) => {
-                        const tx = x?.changedAt ? new Date(x.changedAt).getTime() : 0;
-                        const ty = y?.changedAt ? new Date(y.changedAt).getTime() : 0;
-                        return ty - tx;
-                      });
-                      const latest = rejected[0] || {};
-                      const r = latest.reasons ?? latest.rejectionReasons ?? latest.reasonsSelected ?? [];
-                      if (Array.isArray(r)) return r.map((v: any) => String(v ?? '').trim()).filter(Boolean);
-                      if (typeof r === 'string' && r) return [r];
-                      return [];
-                    } catch (e) {
-                      return [];
-                    }
-                  };
-
-                  const extractFromTop = (obj: any) => {
-                    try {
-                      const candidates = obj?.reasons ?? obj?.rejectionReasons ?? obj?.rejectReasons ?? obj?.reasonsSelected ?? [];
-                      if (Array.isArray(candidates) && candidates.length) return candidates.map((v: any) => String(v ?? '').trim()).filter(Boolean);
-                      if (typeof candidates === 'string' && candidates) return [candidates];
-                      return [];
-                    } catch (e) {
-                      return [];
-                    }
-                  };
-
-                  const fromHistory = extractFromHistory(a?.statusHistory);
-                  const fromTop = extractFromTop(a);
-                  const reasons = fromHistory.length ? fromHistory : fromTop;
-
-                  if (!reasons || reasons.length === 0) return <span className="text-sm text-gray-500">-</span>;
-                  return (
-                    <div className="flex flex-wrap gap-1">
-                      {reasons.map((r: string, i: number) => (
-                        <span key={i} className="inline-block rounded-full bg-brand-50 px-2 py-0.5 text-xs text-brand-700">{r}</span>
-                      ))}
-                    </div>
-                  );
-                },
-              },
+             {
+  id: 'rejectionReasons',
+  header: 'Rejection Reasons',
+  enableSorting: true,
+  enableColumnFilter: true,
+  size: 260,
+  accessorFn: (row: any) => extractRejectionReasons(row),
+  sortingFn: (rowA: any, rowB: any, columnId: string) => {
+    const reasonsA = rowA.getValue(columnId) as string[];
+    const reasonsB = rowB.getValue(columnId) as string[];
+    const a = reasonsA.length;
+    const b = reasonsB.length;
+    if (a === b) return 0;
+    return a > b ? 1 : -1;
+  },
+  filterFn: (row: any, columnId: string, filterValue: any) => {
+    if (!filterValue) return true;
+    const selectedReasons = Array.isArray(filterValue) ? filterValue : [filterValue];
+    if (selectedReasons.length === 0) return true;
+    
+    const applicantReasons = row.getValue(columnId) as string[];
+    
+    // Check if any of the applicant's reasons match any selected filter
+    return selectedReasons.some(selectedReason => 
+      applicantReasons.some(applicantReason => 
+        applicantReason.toLowerCase().includes(selectedReason.toLowerCase()) ||
+        selectedReason.toLowerCase().includes(applicantReason.toLowerCase())
+      )
+    );
+  },
+  Header: ({ column }: { column: any }) => (
+    <ColumnMultiSelectHeader
+      column={column}
+      label="Rejection Reasons"
+      options={rejectionReasonsOptions}
+      isLaptopViewport={isLaptopViewport}
+      menuWidth={260}
+      menuMaxHeight={320}
+    />
+  ),
+  Cell: ({ row }: { row: { original: any } }) => {
+    if (isTableLoading) return renderCellSkeleton('text');
+    const a = row.original || {};
+    const reasons = extractRejectionReasons(a);
+    
+    if (!reasons || reasons.length === 0) {
+      return <span className="text-sm text-gray-500">-</span>;
+    }
+    
+    return (
+      <div className="flex flex-wrap gap-1">
+        {reasons.map((r: string, i: number) => (
+          <span 
+            key={i} 
+            className="inline-block rounded-full bg-brand-50 px-2 py-0.5 text-xs text-brand-700"
+          >
+            {r}
+          </span>
+        ))}
+      </div>
+    );
+  },
+},
             ]
           : []),
       {
@@ -4556,49 +4662,151 @@ const handleBulkStatusChange = useCallback(
    
     onRowSelectionChange: setRowSelection,
     getRowId: (row) => row._id,
-    renderTopToolbarCustomActions: () => {
-      return (
-        <div
-          style={{ backgroundColor: isDarkMode ? '#1C2434' : '#FFFFFF' }}
-          className="flex items-center p-2 w-full"
+ renderTopToolbarCustomActions: () => {
+  return (
+    <div
+      style={{ backgroundColor: isDarkMode ? '#1C2434' : '#FFFFFF' }}
+      className="flex items-center p-2 w-full justify-between"
+    >
+      <div className="flex items-center gap-2">
+        {/* Duplicates Filter Toggle Button */}
+        <button
+          type="button"
+          onClick={() => {
+            // Toggle duplicates only filter
+            const currentFilter = customFilters.find(
+              (f: any) => f?.fieldId === '__duplicates_only'
+            );
+            
+            if (currentFilter) {
+              // Remove the filter if it exists
+              setCustomFilters((prev) =>
+                prev.filter((f: any) => f?.fieldId !== '__duplicates_only')
+              );
+            } else {
+              // Add the filter
+              setCustomFilters((prev) => [
+                ...prev,
+                {
+                  fieldId: '__duplicates_only',
+                  value: true,
+                  type: 'boolean',
+                  label: 'Show Duplicates Only',
+                },
+              ]);
+            }
+          }}
+          className={`inline-flex items-center gap-2 rounded-lg px-3 py-1 text-sm font-semibold transition-all duration-200 ${
+            duplicatesOnlyEnabled
+              ? 'bg-amber-500 text-white shadow-md ring-2 ring-amber-300 dark:ring-amber-700'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600'
+          }`}
+          title={duplicatesOnlyEnabled ? 'Show all applicants' : 'Show only duplicate applicants'}
         >
-          <div className="flex-1" />
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
-                try {
-                  (e.currentTarget as HTMLButtonElement).blur();
-                } catch {}
-                // remove any existing customFilters that target excluded fields
-                try {
-                  setCustomFilters((prev) =>
-                    prev.filter((cf: any) => {
-                      const rawCandidates = [
-                        `${cf.labelEn || ''} ${cf.labelAr || ''}`,
-                        cf.labelEn || '',
-                        cf.labelAr || '',
-                        cf.fieldId || '',
-                      ];
-                      for (const rc of rawCandidates) {
-                        if (isExcludedLabel(rc)) return false;
+          <svg
+            className="h-4 w-4"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2"
+              d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2"
+            />
+          </svg>
+          {duplicatesOnlyEnabled ? (
+            <span className="flex items-center gap-1">
+              <span>Duplicates Only</span>
+              <span className="ml-1 rounded-full bg-white/20 px-1.5 py-0.5 text-xs">
+                Active
+              </span>
+            </span>
+          ) : (
+            'Show Duplicates'
+          )}
+        </button>
+
+        {/* Show count of duplicates when filter is active */}
+        {duplicatesOnlyEnabled && (
+          <span className="text-xs text-amber-600 dark:text-amber-400">
+            {(() => {
+              // Count unique duplicate groups
+              const duplicateLookup = buildApplicantDuplicateLookup(
+                filteredApplicants as any[],
+                currentUserId,
+                {
+                  getCompanyId: (applicant: any) => {
+                    const rawCompany =
+                      applicant?.companyId || applicant?.company || applicant?.companyObj;
+                    if (rawCompany) {
+                      if (typeof rawCompany === 'string' || typeof rawCompany === 'number') {
+                        return String(rawCompany);
                       }
-                      return true;
-                    })
-                  );
-                } catch (e) {
-                  // ignore
+                      return String(rawCompany?._id || rawCompany?.id || '');
+                    }
+                    const rawJob = applicant?.jobPositionId;
+                    const jobId =
+                      typeof rawJob === 'string'
+                        ? rawJob
+                        : (rawJob?._id ?? rawJob?.id ?? '');
+                    const job = jobPositionMap[jobId];
+                    const jobCompany = job?.companyId || job?.company || job?.companyObj;
+                    if (!jobCompany) return undefined;
+                    if (typeof jobCompany === 'string' || typeof jobCompany === 'number') {
+                      return String(jobCompany);
+                    }
+                    return String(jobCompany?._id || jobCompany?.id || '');
+                  },
                 }
-                setCustomFilterOpen(true);
-              }}
-              className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-3 py-1 text-sm font-semibold text-white shadow-sm hover:bg-brand-600"
-            >
-              Filter Settings
-            </button>
-          </div>
-        </div>
-      );
-    },
+              );
+              const duplicateCount = Array.from(duplicateLookup.values()).filter(
+                (d) => d.isDuplicate === true
+              ).length;
+              return `${duplicateCount} duplicate applicant(s) found`;
+            })()}
+          </span>
+        )}
+      </div>
+      <div className="flex-1" />
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+            try {
+              (e.currentTarget as HTMLButtonElement).blur();
+            } catch {}
+            // remove any existing customFilters that target excluded fields
+            try {
+              setCustomFilters((prev) =>
+                prev.filter((cf: any) => {
+                  const rawCandidates = [
+                    `${cf.labelEn || ''} ${cf.labelAr || ''}`,
+                    cf.labelEn || '',
+                    cf.labelAr || '',
+                    cf.fieldId || '',
+                  ];
+                  for (const rc of rawCandidates) {
+                    if (isExcludedLabel(rc)) return false;
+                  }
+                  return true;
+                })
+              );
+            } catch (e) {
+              // ignore
+            }
+            setCustomFilterOpen(true);
+          }}
+          className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-3 py-1 text-sm font-semibold text-white shadow-sm hover:bg-brand-600"
+        >
+          Filter Settings
+        </button>
+      </div>
+    </div>
+  );
+},
     muiTableBodyRowProps: ({ row }) => ({
       onClick: (e: any) => {
         try {
