@@ -173,11 +173,7 @@ const buildEmailHtml = (subject: string, body: string, recipient?: any) => {
     );
   };
 
-  const getRecipientId = (item: any): string | undefined => {
-    if (!item) return undefined;
-    if (typeof item === 'string') return undefined;
-    return item.applicant || item._id || item.id;
-  };
+
 
   const { data: jobPositions = [] } = useJobPositions(companyId ? [companyId] : undefined as any);
   const jobTitleById = useMemo(() => {
