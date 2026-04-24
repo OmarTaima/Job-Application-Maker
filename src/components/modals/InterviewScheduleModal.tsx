@@ -378,21 +378,26 @@ export default function InterviewScheduleModal(props: Props) {
 
   // Stable handlers for DatePicker to avoid re-initialization which closes the picker
   const handleDateChange = useCallback((selectedDates: Date[]) => {
-    if (selectedDates.length > 0) {
-      const date = selectedDates[0];
-      const formattedDate = date.toISOString().split('T')[0];
-      setInterviewForm((prev: any) => ({ ...prev, date: formattedDate }));
-    }
-  }, [setInterviewForm]);
+  if (selectedDates.length > 0) {
+    const date = selectedDates[0];
+    // Format date in local timezone
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const formattedDate = `${year}-${month}-${day}`;
+    setInterviewForm((prev: any) => ({ ...prev, date: formattedDate }));
+  }
+}, [setInterviewForm]);
 
   const handleTimeChange = useCallback((selectedDates: Date[]) => {
-    if (selectedDates.length > 0) {
-      const date = selectedDates[0];
-      const hours = date.getHours().toString().padStart(2, '0');
-      const minutes = date.getMinutes().toString().padStart(2, '0');
-      setInterviewForm((prev: any) => ({ ...prev, time: `${hours}:${minutes}` }));
-    }
-  }, [setInterviewForm]);
+  if (selectedDates.length > 0) {
+    const timeDate = selectedDates[0];
+    // Get time in local timezone
+    const hours = String(timeDate.getHours()).padStart(2, '0');
+    const minutes = String(timeDate.getMinutes()).padStart(2, '0');
+    setInterviewForm((prev: any) => ({ ...prev, time: `${hours}:${minutes}` }));
+  }
+}, [setInterviewForm]);
 
   const company = companyData || (applicant && (applicant.company || applicant.companyObj)) || null;
   // If company not present directly on applicant, try nested jobPosition/companyId paths

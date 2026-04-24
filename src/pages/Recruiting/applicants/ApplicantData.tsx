@@ -2341,7 +2341,7 @@ const handlePhoneMenuClose = () => {
     return 'An unexpected error occurred';
   };
 
-  const handleInterviewSubmit = async (e: React.FormEvent) => {
+ const handleInterviewSubmit = async (e: React.FormEvent) => {
   e.preventDefault();
   if (!id || !applicant) return;
 
@@ -2384,7 +2384,14 @@ const handlePhoneMenuClose = () => {
   try {
     let scheduledAt: string | undefined;
     if (interviewSnapshot.date && interviewSnapshot.time) {
-      scheduledAt = `${interviewSnapshot.date}T${interviewSnapshot.time}:00`;
+      // Create date in local timezone to avoid UTC conversion issues
+      const [year, month, day] = interviewSnapshot.date.split('-').map(Number);
+      const [hours, minutes] = interviewSnapshot.time.split(':').map(Number);
+      
+      // Format to ISO string while preserving local time
+      const pad = (n: number) => String(n).padStart(2, '0');
+      scheduledAt = `${year}-${pad(month)}-${pad(day)}T${pad(hours)}:${pad(minutes)}:00`;
+      
     } else if (interviewSnapshot.date) {
       scheduledAt = `${interviewSnapshot.date}T00:00:00`;
     }
@@ -3019,7 +3026,6 @@ const handleDeleteApplicant = async () => {
                 </div>
               </div>
 
-              {/* Phone */}
              {/* Phone */}
 <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-green-500 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
   <div className="flex items-baseline gap-4">
