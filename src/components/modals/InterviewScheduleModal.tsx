@@ -235,7 +235,6 @@ export default function InterviewScheduleModal(props: Props) {
     return raw;
   };
 
-  // Template generation: build a default message depending on chosen notification channel(s)
  const generateMessageTemplate = (channels: typeof notificationChannels = notificationChannels) => {
   if (!applicant) return '';
 
@@ -255,13 +254,18 @@ export default function InterviewScheduleModal(props: Props) {
     }
   })();
   const interviewDate = interviewForm.date
-    ? new Date(interviewForm.date).toLocaleDateString('en-US', {
+  ? (() => {
+      const [year, month, day] = interviewForm.date.split('-');
+      const date = new Date(Date.UTC(parseInt(year), parseInt(month) - 1, parseInt(day)));
+      return date.toLocaleDateString('en-US', {
         weekday: 'long',
         year: 'numeric',
         month: 'long',
         day: 'numeric',
-      })
-    : '[Interview Date]';
+        timeZone: 'UTC'
+      });
+    })()
+  : '[Interview Date]';
   const interviewTime = bulkMode
     ? '{{interviewTime}}'
     : formatTime12Hour(interviewForm.time || '[Interview Time]');

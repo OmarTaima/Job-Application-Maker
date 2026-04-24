@@ -2408,13 +2408,25 @@ useEffect(() => {
 
 
 
-  const formatDate = useCallback((dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
+const formatDate = useCallback((dateString: string) => {
+  if (!dateString) return '-';
+  // Parse as local date to avoid UTC offset shifting the date
+  const date = new Date(dateString);
+  // If it's a date-only string (no time component), parse manually to avoid UTC interpretation
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+    const [year, month, day] = dateString.split('-').map(Number);
+    return new Date(year, month - 1, day).toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
     });
-  }, []);
+  }
+  return date.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+}, []);
 
   const parseComparableNumber = useCallback((value: any): number | null => {
     if (value === null || value === undefined || value === '') return null;
