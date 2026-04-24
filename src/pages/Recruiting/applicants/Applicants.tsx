@@ -1209,7 +1209,6 @@ const selectedCompanyForStatus = useMemo(() => {
 }, [selectedCompanyFilter, allCompaniesRaw]);
 
 // Get status settings for the selected company (if any)
-const selectedCompanyStatusSettings = useStatusSettings(selectedCompanyForStatus);
 
   // Determine dataset to pass to MRT: by default exclude trashed applicants unless
   // the user explicitly filters for status === 'trashed'. This makes "All Statuses"
@@ -1277,47 +1276,6 @@ const displayedApplicants = useMemo(() => {
   return filtered.filter((a: Applicant) => a.status !== 'trashed');
 }, [applicants, columnFilters, isSuperAdmin, onlyStatus, selectedCompanyFilter, jobPositionMap]);
 
-const statusFilterOptions = useMemo<ColumnFilterOption[]>(() => {
-  // Start with all applicants
-  let filteredApplicantsForStatus = applicants || [];
-  
-  // Apply company filter if present - ONLY show statuses from selected company
-  if (selectedCompanyFilter && selectedCompanyFilter.length > 0) {
-    filteredApplicantsForStatus = filteredApplicantsForStatus.filter((applicant: Applicant) => {
-      // Get applicant's company ID
-      let applicantCompanyId = null;
-      const rawCompany = (applicant as any)?.companyId;
-      
-      if (rawCompany) {
-        applicantCompanyId = typeof rawCompany === 'string' 
-          ? rawCompany 
-          : (rawCompany as any)?._id || (rawCompany as any)?.id;
-      } else {
-        // Try to get from job position
-        const jobId = typeof (applicant as any)?.jobPositionId === 'string' 
-          ? (applicant as any).jobPositionId 
-          : (applicant as any)?.jobPositionId?._id || (applicant as any)?.jobPositionId?.id;
-        const job = jobPositionMap[jobId];
-        const jobCompany = (job as any)?.companyId || (job as any)?.company;
-        applicantCompanyId = typeof jobCompany === 'string' ? jobCompany : (jobCompany as any)?._id;
-      }
-      
-      return applicantCompanyId && selectedCompanyFilter.includes(applicantCompanyId);
-    });
-  }
-  
-  // Get unique statuses from the filtered applicants
-  const uniqueStatuses = Array.from(new Set(filteredApplicantsForStatus.map((a: any) => a?.status).filter(Boolean)));
-  
-  // Sort to keep default order first then custom
-  const defaultOrder = ['pending', 'approved', 'interview', 'interviewed', 'rejected', 'trashed'];
-  const sorted = [...defaultOrder, ...uniqueStatuses.filter(s => !defaultOrder.includes(s))];
-  
-  return sorted.map((status) => ({
-    id: status,
-    title: status.charAt(0).toUpperCase() + status.slice(1),
-  }));
-}, [applicants, selectedCompanyFilter, jobPositionMap]);
 
   const deferredDisplayedApplicants = useDeferredValue(displayedApplicants);
 
@@ -1589,8 +1547,45 @@ const statusSettingsCompany = useMemo(() => {
 
 
 
-const { getColor, getTextColor, getDescription } = useStatusSettings(statusSettingsCompany);    
+const { getColor, getTextColor, getDescription, statusOptions: statusOptionsFromSettings } = useStatusSettings(statusSettingsCompany);
+const selectedCompanyStatusSettings = useStatusSettings(selectedCompanyForStatus);
 
+
+
+const { statusOptions: selectedCompanyStatusOptions } = selectedCompanyStatusSettings;
+
+
+
+const statusFilterOptions = useMemo<ColumnFilterOption[]>(() => {
+  // Get status options from company settings
+  let statusOptionsList: Array<{ value: string; label: string }> = [];
+  
+  // Priority 1: If a single company is selected in the filter, use that company's statuses
+  if (selectedCompanyFilter && selectedCompanyFilter.length === 1 && selectedCompanyStatusOptions) {
+    statusOptionsList = selectedCompanyStatusOptions;
+  } 
+  // Priority 2: Use the main statusSettingsCompany's statuses
+  else if (statusOptionsFromSettings && statusOptionsFromSettings.length > 0) {
+    statusOptionsList = statusOptionsFromSettings;
+  }
+  
+  // Convert to ColumnFilterOption format
+  if (statusOptionsList.length > 0) {
+    return statusOptionsList.map((status: any) => ({
+      id: status.value,
+      title: status.label.charAt(0).toUpperCase() + status.label.slice(1),
+    }));
+  }
+  
+  // Fallback: get from applicants (original behavior)
+  const uniqueStatuses = Array.from(new Set(applicants.map((a: any) => a?.status).filter(Boolean)));
+  const defaultOrder = ['pending', 'approved', 'interview', 'interviewed', 'rejected', 'trashed'];
+  const sorted = [...defaultOrder, ...uniqueStatuses.filter(s => !defaultOrder.includes(s))];
+  return sorted.map((status) => ({
+    id: status,
+    title: status.charAt(0).toUpperCase() + status.slice(1),
+  }));
+}, [applicants, selectedCompanyFilter, selectedCompanyStatusOptions, statusOptionsFromSettings]);
 
 const getStatusColor = useCallback((status: string) => {
   if (!status) {
