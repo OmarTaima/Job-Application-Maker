@@ -71,6 +71,20 @@ export function useApplicant(id: string, options?: { initialData?: any; enabled?
   });
 }
 
+export const useBatchUpdateApplicantStatus = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async (updates: Array<{ applicantId: string; status: string; notes?: string; reasons?: string[] }>) => {
+      return await applicantsService.batchUpdateStatus(updates);
+    },
+    onSuccess: () => {
+      // Invalidate relevant queries to refresh the data
+      queryClient.invalidateQueries({ queryKey: ['applicants'] });
+    },
+  });
+};
+
 // Create applicant
 export function useCreateApplicant() {
   const queryClient = useQueryClient();

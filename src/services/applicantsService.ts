@@ -691,6 +691,22 @@ class ApplicantsService {
     }
   }
 
+ async batchUpdateStatus(
+  updates: Array<{ applicantId: string; status: string; notes?: string; reasons?: string[] }>
+): Promise<any> {
+  try {
+    // Send the array directly, not wrapped in an object
+    const response = await axios.put('/applicants/batch-status', updates);
+    return response.data;
+  } catch (error: any) {
+    throw new ApiError(
+      getErrorMessage(error),
+      error.response?.status,
+      error.response?.data?.details
+    );
+  }
+}
+
   /**
    * Add comment to an applicant
    */
