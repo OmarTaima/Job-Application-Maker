@@ -13,6 +13,7 @@ import { sortApplicantsByDuplicatePriority } from '../../../utils/applicantDupli
 import { useQuery } from '@tanstack/react-query';
 import axiosInstance from '../../../config/axios';
 import * as XLSX from 'xlsx';
+import { useLocation, useParams } from 'react-router-dom';
 
 
 type ApiMailResponse = {
@@ -380,12 +381,26 @@ const Applicants = ({ layoutKey, defaultLayout, onlyStatus, companyIdOverride }:
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const location = useLocation();
+  const params = useParams();
+
   const { layout, saveLayout} = useTableLayout(
     layoutKey || 'applicants_table',
     defaultLayout || APPLICANTS_DEFAULT_LAYOUT
   );
 
+const effectiveOnlyStatus = useMemo(() => {
+    if (onlyStatus) return onlyStatus;
+    if (params.status) return params.status;
+    return undefined;
+  }, [onlyStatus, params.status]);
 
+  const effectiveCompanyIdOverride = useMemo(() => {
+    if (companyIdOverride) return companyIdOverride;
+    if (params.companyId) return params.companyId;
+    return undefined;
+  }, [companyIdOverride, params.companyId]);
+  
   
   const isSuperAdmin = useMemo(() => {
     const roleName = user?.roleId?.name;
@@ -423,7 +438,38 @@ const Applicants = ({ layoutKey, defaultLayout, onlyStatus, companyIdOverride }:
     }
   }, [persistedTableState, onlyStatus]);
 
- 
+ const urlParams = useMemo(() => {
+  const params = new URLSearchParams(location.search);
+  return {
+    status: params.get('status'),
+    company: params.get('company'),
+    startDate: params.get('startDate'),
+    endDate: params.get('endDate'),
+  };
+}, [location.search]);
+
+// Apply URL filters to columnFilters when component mounts or URL changes
+useEffect(() => {
+  if (urlParams.status) {
+    // Set status filter in columnFilters
+    setColumnFilters((prev) => {
+      // Remove existing status filter if any
+      const withoutStatus = prev.filter((f: any) => f.id !== 'status');
+      // Add the new status filter
+      return [...withoutStatus, { id: 'status', value: urlParams.status }];
+    });
+  }
+  
+  if (urlParams.company) {
+    // Set company filter if the company column is shown
+    setColumnFilters((prev) => {
+      // Remove existing company filter if any
+      const withoutCompany = prev.filter((f: any) => f.id !== 'companyId');
+      // Add the new company filter
+      return [...withoutCompany, { id: 'companyId', value: urlParams.company }];
+    });
+  }
+}, [urlParams.status, urlParams.company]);
 
   const currentUserId = useMemo(
     () => String((user as any)?._id || (user as any)?.id || ''),
@@ -1343,9 +1389,9 @@ const displayedApplicants = useMemo(() => {
     });
   }
   
-  // Apply status filter (if caller requested a fixed status view)
-  if (onlyStatus !== undefined && onlyStatus !== null) {
-    const allowed = Array.isArray(onlyStatus) ? onlyStatus : [onlyStatus];
+  // Apply status filter (from props or URL params)
+  if (effectiveOnlyStatus !== undefined && effectiveOnlyStatus !== null) {
+    const allowed = Array.isArray(effectiveOnlyStatus) ? effectiveOnlyStatus : [effectiveOnlyStatus];
     filtered = filtered.filter((a: Applicant) => allowed.includes(a.status));
     return filtered;
   }
@@ -1375,7 +1421,7 @@ const displayedApplicants = useMemo(() => {
   }
 
   return filtered.filter((a: Applicant) => a.status !== 'trashed');
-}, [applicants, columnFilters, isSuperAdmin, onlyStatus, selectedCompanyFilter, jobPositionMap]);
+}, [applicants, columnFilters, isSuperAdmin, effectiveOnlyStatus, selectedCompanyFilter, jobPositionMap]);
 
 
   const deferredDisplayedApplicants = useDeferredValue(displayedApplicants);

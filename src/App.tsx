@@ -1,5 +1,7 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router";
+import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from "react-router";
 import { Suspense, lazy } from "react";
+// Import Applicants directly (not lazy) to preserve type information
+// Alternatively, keep it lazy but we'll handle differently
 const SignIn = lazy(() => import("./pages/AuthPages/SignIn"));
 const SignUp = lazy(() => import("./pages/AuthPages/SignUp"));
 const NotFound = lazy(() => import("./pages/OtherPage/NotFound"));
@@ -38,7 +40,8 @@ const RecommendedFields = lazy(() => import("./pages/Recruiting/systemSettings/R
 const SavedFields = lazy(() => import("./pages/Recruiting/savedFields/SavedFields"));
 const SavedFieldsPreview = lazy(() => import("./pages/Recruiting/savedFields/SavedFieldsPreview"));
 const CreateSavedField = lazy(() => import("./pages/Recruiting/savedFields/CreateSavedField"));
-const Applicants = lazy(() => import("./pages/Recruiting/applicants/Applicants"));
+// Import the NAMED export, not the default export
+import { Applicants } from "./pages/Recruiting/applicants/Applicants";
 const ApplicantData = lazy(() => import("./pages/Recruiting/applicants/ApplicantData"));
 const ApplicantsMobilePage = lazy(() => import("./pages/Recruiting/applicants/ApplicantsMobilePage"));
 const MailPreview = lazy(() => import("./pages/Recruiting/applicants/MailPreview"));
@@ -46,6 +49,17 @@ const RejectedApplicants = lazy(() => import("./pages/Recruiting/applicants/Reje
 const InterviewApplicant = lazy(() => import("./pages/Recruiting/applicants/Candidate"));
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import PermissionProtectedRoute from "./components/auth/PermissionProtectedRoute";
+
+// Wrapper components to pass props to Applicants
+const ApplicantsWithStatus = () => {
+  const { status } = useParams<{ status: string }>();
+  return <Applicants onlyStatus={status} />;
+};
+
+const ApplicantsWithCompanyAndStatus = () => {
+  const { companyId, status } = useParams<{ companyId: string; status: string }>();
+  return <Applicants companyIdOverride={companyId} onlyStatus={status} />;
+};
 
 export default function App() {
   return (
@@ -70,6 +84,12 @@ export default function App() {
               <Route path="create-job" element={<CreateJob />} />
               <Route path="job/:jobId" element={<PreviewJob />} />
               <Route path="company/:companyId" element={<PreviewCompany />} />
+              
+              {/* Applicants routes with status filtering */}
+              <Route path="applicants" element={<Applicants />} />
+              <Route path="applicants/status/:status" element={<ApplicantsWithStatus />} />
+              <Route path="applicants/company/:companyId/status/:status" element={<ApplicantsWithCompanyAndStatus />} />
+              
               <Route path="recruiting/company-settings" element={<CompanySettingsPage />} />
               <Route
                 element={
@@ -89,7 +109,6 @@ export default function App() {
                 path="company/:companyId/create-job"
                 element={<CreateJob />}
               />
-              <Route path="applicants" element={<Applicants />} />
               <Route path="applicants/mobile" element={<ApplicantsMobilePage />} />
               <Route path="applicants/rejected" element={<RejectedApplicants />} />
               <Route path="applicant/interview" element={<InterviewApplicant />} />

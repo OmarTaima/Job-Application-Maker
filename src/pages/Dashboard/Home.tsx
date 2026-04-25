@@ -1,4 +1,5 @@
 import { useMemo, useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import PageMeta from "../../components/common/PageMeta";
 import DatePicker from "../../components/form/date-picker";
 import { useAuth } from "../../context/AuthContext";
@@ -6,7 +7,6 @@ import { getApplicantStatuses } from "../../hooks/queries/useApplicantStatuses";
 import { useCompanies } from "../../hooks/queries/useCompanies";
 import { useStatusSettings } from "../../utils/useStatusSettings";
 import {
-
 
   TimeIcon,
   ChatIcon,
@@ -55,6 +55,7 @@ function getCompanyIdFromUser(user: any, selectedCompanyId?: string): string | s
 }
 
 export default function Home() {
+  const navigate = useNavigate();
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | undefined>(undefined);
   const [range, setRange] = useState<Date[] | null>(null);
   const { user } = useAuth();
@@ -138,6 +139,43 @@ const { data: applicantsData = [], isLoading: loading, refetch, isFetching } =
     return () => clearInterval(id);
   }, [lastRefetch]);
 
+  // Handle card click to navigate to applicants page with status filter
+ // Handle card click to navigate to applicants page with status filter
+const handleStatusCardClick = (statusName: string) => {
+  // For non-super admin or when a specific company is selected
+  if (selectedCompanyId) {
+    // Use the company-specific route with onlyStatus prop approach
+    navigate(`/applicants/company/${selectedCompanyId}/status/${statusName.toLowerCase()}`);
+  } else {
+    // Use query parameters for super admin (all companies)
+    const searchParams = new URLSearchParams();
+    searchParams.append('status', statusName.toLowerCase());
+    
+    if (range && range.length === 2) {
+      searchParams.append('startDate', range[0].toISOString());
+      searchParams.append('endDate', range[1].toISOString());
+    }
+    
+    navigate(`/applicants?${searchParams.toString()}`);
+  }
+};
+
+const handleTotalCardClick = () => {
+  if (selectedCompanyId) {
+    navigate(`/applicants/company/${selectedCompanyId}`);
+  } else {
+    const searchParams = new URLSearchParams();
+    if (range && range.length === 2) {
+      searchParams.append('startDate', range[0].toISOString());
+      searchParams.append('endDate', range[1].toISOString());
+    }
+    navigate(`/applicants?${searchParams.toString()}`);
+  }
+};
+
+  // Handle total card click (show all applicants except trashed)
+ 
+
   // Build dynamic status cards from the API response with company colors
 const statusCards = useMemo(() => {
   if (!countsData) return [];
@@ -155,8 +193,6 @@ const statusCards = useMemo(() => {
 
       const bgColor =
         statusOption?.color || getColor(statusName) || '#94a3b8';
-
-      // ✅ FIXED: always defined here
 
       return {
         name: statusName,
@@ -178,8 +214,6 @@ const statusCards = useMemo(() => {
     const trashed = countsData.Trashed || countsData.Deleted || countsData.trashed || countsData.deleted || 0;
     return total - trashed;
   }, [countsData]);
-
-  // Helper function to get contrasting text color based on background brightness
 
   return (
     <>
@@ -250,7 +284,8 @@ const statusCards = useMemo(() => {
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
           {/* Total card */}
           <div
-            className="rounded-2xl border border-gray-200 bg-gradient-to-br from-gray-50 to-gray-100 p-5 dark:from-gray-800 dark:to-gray-900 cursor-pointer transition hover:shadow-md"
+            onClick={handleTotalCardClick}
+            className="rounded-2xl border border-gray-200 bg-gradient-to-br from-gray-50 to-gray-100 p-5 dark:from-gray-800 dark:to-gray-900 cursor-pointer transition hover:shadow-md hover:scale-[1.02]"
           >
             <div className="flex items-center justify-between">
               <div className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Applicants</div>
@@ -290,6 +325,7 @@ const statusCards = useMemo(() => {
               return (
                 <div
                   key={card.name}
+                  onClick={() => handleStatusCardClick(card.name)}
                   className="rounded-2xl border border-gray-200 p-5 dark:border-gray-800 cursor-pointer transition-all hover:shadow-md hover:scale-[1.02]"
                   style={bgStyle}
                 >
