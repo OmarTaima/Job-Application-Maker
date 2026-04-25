@@ -395,12 +395,7 @@ const effectiveOnlyStatus = useMemo(() => {
     return undefined;
   }, [onlyStatus, params.status]);
 
-  const effectiveCompanyIdOverride = useMemo(() => {
-    if (companyIdOverride) return companyIdOverride;
-    if (params.companyId) return params.companyId;
-    return undefined;
-  }, [companyIdOverride, params.companyId]);
-  
+
   
   const isSuperAdmin = useMemo(() => {
     const roleName = user?.roleId?.name;
