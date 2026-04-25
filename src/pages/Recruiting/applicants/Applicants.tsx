@@ -423,14 +423,7 @@ const Applicants = ({ layoutKey, defaultLayout, onlyStatus, companyIdOverride }:
     }
   }, [persistedTableState, onlyStatus]);
 
-  const openApplicantDetailsInNewTab = useCallback((row: any) => {
-    try {
-      const url = `${window.location.origin}/applicant-details/${row.id}`;
-      window.open(url, '_blank', 'noopener,noreferrer');
-    } catch (e) {
-      // ignore
-    }
-  }, []);
+ 
 
   const currentUserId = useMemo(
     () => String((user as any)?._id || (user as any)?.id || ''),
@@ -4730,19 +4723,6 @@ Header: ({ column }: { column: any }) => {
       }
     }, [columnFilters, showCompanyColumn]);
 // Add a helper function to check if a click target is within a filter element
-const isFilterElement = (target: HTMLElement): boolean => {
-  return (
-    target.closest('.MuiMenu-paper') !== null || // Material-UI menu
-    target.closest('[role="menu"]') !== null || // Role menu
-    target.closest('.MuiPopover-root') !== null || // Popover
-    target.closest('.MuiModal-root') !== null || // Modal
-    target.closest('button[aria-haspopup="menu"]') !== null || // Dropdown buttons
-    target.closest('.MuiTableSortLabel-root') !== null || // Sort buttons
-    target.closest('.MuiCheckbox-root') !== null || // Checkboxes
-    target.closest('input') !== null || // Input fields
-    target.closest('select') !== null // Select dropdowns
-  );
-};
 
   const table = useMaterialReactTable({
     columns,
@@ -5124,7 +5104,7 @@ const isFilterElement = (target: HTMLElement): boolean => {
 
 
 
-  muiTableBodyRowProps: ({ row }) => ({
+ muiTableBodyRowProps: () => ({
   sx: {
     cursor: 'default',
     backgroundColor: isDarkMode ? '#24303F' : '#FFFFFF',
