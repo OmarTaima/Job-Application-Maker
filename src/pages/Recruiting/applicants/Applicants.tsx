@@ -3817,19 +3817,16 @@ const extractRejectionReasons = useCallback((applicant: any): string[] => {
 
   const columns = useMemo<MRT_ColumnDef<Applicant>[]>(
     () => [
-     {
+   {
   accessorKey: 'applicantNo',
   header: isLaptopViewport ? 'ID' : 'ApplicantNo',
   size: columnSizeConfig.applicantNo,
   enableColumnFilter: false,
-  enableSorting: !duplicatesOnlyEnabled, // Disable sorting when duplicates filter is active
+  enableSorting: !duplicatesOnlyEnabled,
   sortingFn: (rowA, rowB, columnId) => {
     if (duplicatesOnlyEnabled) {
-      // When showing duplicates, maintain the grouped order from sortApplicantsByDuplicatePriority
-      // Return 0 to preserve the original order
       return 0;
     }
-    // Normal sorting logic for when duplicates filter is not active
     const a = rowA.getValue(columnId);
     const b = rowB.getValue(columnId);
     const numA = Number(a);
@@ -3842,7 +3839,6 @@ const extractRejectionReasons = useCallback((applicant: any): string[] => {
   Cell: ({ row, table }) => {
     if (isTableLoading) return renderCellSkeleton('text', '40%');
     const orig: any = row.original as any;
-    const href = getApplicantHref(row);
     const possible =
       orig?.applicantNo ||
       orig?.applicantNumber ||
@@ -3850,42 +3846,25 @@ const extractRejectionReasons = useCallback((applicant: any): string[] => {
       orig?.applicationId;
     if (possible)
       return (
-        <a
-          href={href}
-          className="block h-full w-full text-inherit underline-offset-2 hover:underline"
-          onClick={(e) => handleApplicantLinkClick(e, row)}
-          onAuxClick={handleApplicantLinkAuxClick}
-        >
+        <span className="flex h-full w-full items-center text-inherit">
           {String(possible)}
-        </a>
+        </span>
       );
-    // fallback to visible index + 1 for human-friendly numbering
     const idx =
       row.index ??
       table.getRowModel().rows.findIndex((r) => r.id === row.id);
     if (typeof idx === 'number' && idx >= 0)
       return (
-        <a
-          href={href}
-          className="block h-full w-full text-inherit underline-offset-2 hover:underline"
-          onClick={(e) => handleApplicantLinkClick(e, row)}
-          onAuxClick={handleApplicantLinkAuxClick}
-        >
+        <span className="flex h-full w-full items-center text-inherit">
           {String(idx + 1)}
-        </a>
+        </span>
       );
-    // last resort: shortened id
     const id = orig?._id || orig?.id || '';
     if (!id) return '-';
     return (
-      <a
-        href={href}
-        className="block h-full w-full text-inherit underline-offset-2 hover:underline"
-        onClick={(e) => handleApplicantLinkClick(e, row)}
-        onAuxClick={handleApplicantLinkAuxClick}
-      >
+      <span className="flex h-full w-full items-center text-inherit">
         {String(id).slice(0, 8)}
-      </a>
+      </span>
     );
   },
 },
@@ -4769,50 +4748,41 @@ const isFilterElement = (target: HTMLElement): boolean => {
     columns,
   enableSorting: !duplicatesOnlyEnabled, // Disable sorting when showing duplicates
     data: tableData as any,
-    displayColumnDefOptions: {
-      'mrt-row-select': {
-        size: selectColumnWidth,
-        muiTableHeadCellProps: {
-          align: 'center',
-          sx: {
-            padding: 0,
-            width: `${selectColumnWidth}px`,
-            minWidth: `${selectColumnWidth}px`,
-            maxWidth: `${selectColumnWidth}px`,
-          },
-        },
-        muiTableBodyCellProps: {
-          align: 'center',
-          sx: {
-            padding: 0,
-            width: `${selectColumnWidth}px`,
-            minWidth: `${selectColumnWidth}px`,
-            maxWidth: `${selectColumnWidth}px`,
-          },
-        },
-        Cell: ({ row, table }: any) => {
-          const href = getApplicantHref(row);
-          return (
-            <div className="relative flex items-center justify-center p-2">
-              <a
-                href={href}
-                className="absolute inset-0 z-0 block"
-                onClick={(e) => handleApplicantLinkClick(e, row)}
-                onAuxClick={handleApplicantLinkAuxClick}
-                aria-label={`Open ${row.original?.fullName || 'applicant'} details`}
-              />
-              <div
-                className="relative z-10"
-                onClick={(e) => e.stopPropagation()}
-                onAuxClick={(e) => e.stopPropagation()}
-              >
-                <MRT_SelectCheckbox row={row} table={table} />
-              </div>
-            </div>
-          );
-        },
+   displayColumnDefOptions: {
+  'mrt-row-select': {
+    size: selectColumnWidth,
+    muiTableHeadCellProps: {
+      align: 'center',
+      sx: {
+        padding: 0,
+        width: `${selectColumnWidth}px`,
+        minWidth: `${selectColumnWidth}px`,
+        maxWidth: `${selectColumnWidth}px`,
       },
     },
+    muiTableBodyCellProps: {
+      align: 'center',
+      sx: {
+        padding: 0,
+        width: `${selectColumnWidth}px`,
+        minWidth: `${selectColumnWidth}px`,
+        maxWidth: `${selectColumnWidth}px`,
+      },
+    },
+    Cell: ({ row, table }: any) => {
+      return (
+        <div className="flex items-center justify-center p-2">
+          <div
+            onClick={(e) => e.stopPropagation()}
+            onAuxClick={(e) => e.stopPropagation()}
+          >
+            <MRT_SelectCheckbox row={row} table={table} />
+          </div>
+        </div>
+      );
+    },
+  },
+},
     enableRowSelection: !isTableLoading,
     enablePagination: true,
     enableBatchRowSelection: false,
@@ -5154,54 +5124,9 @@ const isFilterElement = (target: HTMLElement): boolean => {
 
 
 
-    muiTableBodyRowProps: ({ row }) => ({
-  onClick: (e: any) => {
-    // Prevent navigation if clicking on interactive elements
-    if (isFilterElement(e.target)) {
-      e.stopPropagation();
-      return;
-    }
-
-    try {
-      const state = table.getState();
-      sessionStorage.setItem(
-        'applicants_table_state',
-        JSON.stringify({
-          pagination: state.pagination,
-          sorting: state.sorting,
-          columnFilters: state.columnFilters,
-        })
-      );
-    } catch (e) {
-      // ignore
-    }
-
-    // Support Ctrl/Cmd click on row to open details in new tab.
-    if (e?.ctrlKey || e?.metaKey) {
-      openApplicantDetailsInNewTab(row);
-      return;
-    }
-
-    navigate(`/applicant-details/${row.id}`, {
-      state: { applicant: row.original },
-    });
-  },
-  onAuxClick: (e: any) => {
-    // Prevent navigation on middle-click for filter elements
-    if (isFilterElement(e.target)) {
-      e.stopPropagation();
-      return;
-    }
-
-    // Middle-click on row opens in new tab.
-    if (e?.button === 1) {
-      e.preventDefault();
-      e.stopPropagation();
-      openApplicantDetailsInNewTab(row);
-    }
-  },
+  muiTableBodyRowProps: ({ row }) => ({
   sx: {
-    cursor: 'pointer',
+    cursor: 'default',
     backgroundColor: isDarkMode ? '#24303F' : '#FFFFFF',
     '&:hover': {
       backgroundColor: isDarkMode ? '#344054' : '#F9FAFB',
