@@ -479,18 +479,6 @@ useEffect(() => {
     return `/applicant-details/${navId}`;
   }, []);
 
-  const handleApplicantLinkClick = useCallback(
-    (e: React.MouseEvent<HTMLAnchorElement>, row: any) => {
-      if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) {
-        e.stopPropagation();
-        return;
-      }
-      e.preventDefault();
-      e.stopPropagation();
-      navigate(getApplicantHref(row), { state: { applicant: row.original } });
-    },
-    [getApplicantHref, navigate]
-  );
 
   const handleApplicantLinkAuxClick = useCallback(
     (e: React.MouseEvent<HTMLAnchorElement>) => {
@@ -569,14 +557,14 @@ useEffect(() => {
   const [isSubmittingBulkStatus, setIsSubmittingBulkStatus] = useState(false);
   // MRT will manage pagination internally (page size set in initialState)
   const [rowSelection, setRowSelection] = useState<MRT_RowSelectionState>({});
-  const [columnFilters, setColumnFilters] = useState<MRT_ColumnFiltersState>(
-    initialColumnFilters ?? []
-  );
-  // MRT sorting state (control sorting externally so we can offer only asc/desc for Submitted)
-  const [sorting, setSorting] = useState<Array<any>>(
-    [{ id: 'submittedAt', desc: true }]
-  );
-  // Pagination state persisted
+const [columnFilters, setColumnFilters] = useState<MRT_ColumnFiltersState>(
+  initialColumnFilters ?? []
+);
+// MRT sorting state (control sorting externally so we can offer only asc/desc for Submitted)
+const [sorting, setSorting] = useState<Array<any>>(
+  [{ id: 'submittedAt', desc: true }]
+);
+// Pagination state persisted
 const [pagination, setPagination] = useState(
   () => ({
     pageIndex: 0,
@@ -1362,7 +1350,6 @@ const displayedApplicants = useMemo(() => {
   // Apply company filter if present
   if (selectedCompanyFilter && selectedCompanyFilter.length > 0) {
     filtered = filtered.filter((applicant: Applicant) => {
-      // Get applicant's company ID
       let applicantCompanyId = null;
       const rawCompany = (applicant as any)?.companyId;
       
@@ -1371,7 +1358,6 @@ const displayedApplicants = useMemo(() => {
           ? rawCompany 
           : (rawCompany as any)?._id || (rawCompany as any)?.id;
       } else {
-        // Try to get from job position
         const jobId = typeof (applicant as any)?.jobPositionId === 'string' 
           ? (applicant as any).jobPositionId 
           : (applicant as any)?.jobPositionId?._id || (applicant as any)?.jobPositionId?.id;
@@ -1381,6 +1367,25 @@ const displayedApplicants = useMemo(() => {
       }
       
       return applicantCompanyId && selectedCompanyFilter.includes(applicantCompanyId);
+    });
+  }
+  
+  // Apply job position filter
+  const jobFilter = columnFilters.find((f: any) => f.id === 'jobPositionId');
+  const jobFilterValue = jobFilter?.value;
+  
+  if (jobFilterValue && (Array.isArray(jobFilterValue) ? jobFilterValue.length > 0 : true)) {
+    const selectedJobIds = Array.isArray(jobFilterValue) ? jobFilterValue : [jobFilterValue];
+    filtered = filtered.filter((applicant: Applicant) => {
+      const jobPositionId = (applicant as any)?.jobPositionId;
+      // Extract the job ID from the applicant
+      let applicantJobId = '';
+      if (typeof jobPositionId === 'string') {
+        applicantJobId = jobPositionId;
+      } else if (jobPositionId && typeof jobPositionId === 'object') {
+        applicantJobId = jobPositionId._id || jobPositionId.id || '';
+      }
+      return selectedJobIds.includes(applicantJobId);
     });
   }
   
@@ -1417,7 +1422,6 @@ const displayedApplicants = useMemo(() => {
 
   return filtered.filter((a: Applicant) => a.status !== 'trashed');
 }, [applicants, columnFilters, isSuperAdmin, effectiveOnlyStatus, selectedCompanyFilter, jobPositionMap]);
-
 
   const deferredDisplayedApplicants = useDeferredValue(displayedApplicants);
 
@@ -2341,6 +2345,57 @@ useEffect(() => {
   fieldToJobIds,
 ]);
 
+const handleApplicantLinkClick = useCallback(
+  (e: React.MouseEvent<HTMLAnchorElement>, row: any) => {
+    if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) {
+      e.stopPropagation();
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Get current table state (filters, sorting, pagination)
+    const tableState = {
+      columnFilters: columnFilters,
+      sorting: sorting,
+      pagination: pagination,
+      statusFilter: columnFilters.find((f: any) => f.id === 'status')?.value,
+      companyFilter: columnFilters.find((f: any) => f.id === 'companyId')?.value,
+    };
+    
+    // Safely extract the array from filteredApplicants
+    let applicantsArray: any[] = [];
+    if (Array.isArray(filteredApplicants)) {
+      applicantsArray = filteredApplicants;
+    } else if (filteredApplicants && typeof filteredApplicants === 'object') {
+      // Check for common patterns
+      if ('data' in filteredApplicants && Array.isArray((filteredApplicants as any).data)) {
+        applicantsArray = (filteredApplicants as any).data;
+      } else if ('applicants' in filteredApplicants && Array.isArray((filteredApplicants as any).applicants)) {
+        applicantsArray = (filteredApplicants as any).applicants;
+      } else if ('items' in filteredApplicants && Array.isArray((filteredApplicants as any).items)) {
+        applicantsArray = (filteredApplicants as any).items;
+      } else {
+        // Try to convert object values to array
+        const values = Object.values(filteredApplicants);
+        if (values.length > 0 && Array.isArray(values[0])) {
+          applicantsArray = values[0];
+        }
+      }
+    }
+    
+    console.log('Passing filtered applicants count:', applicantsArray.length);
+    
+    navigate(getApplicantHref(row), { 
+      state: { 
+        applicant: row.original,
+        ...tableState,
+        applicantsList: applicantsArray
+      } 
+    });
+  },
+  [getApplicantHref, navigate, columnFilters, sorting, pagination, filteredApplicants]
+);
   // Build gender filter options from the applicants dataset but apply only
   // the trashed-visibility rule (so options persist after refresh even when
   // columnFilters are restored from sessionStorage). Order Male/Female first.
@@ -3951,41 +4006,76 @@ const extractRejectionReasons = useCallback((applicant: any): string[] => {
   },
 },
 
-      {
-        accessorKey: 'fullName',
-        header: 'Name',
-        size: columnSizeConfig.fullName,
-        enableColumnFilter: true,
-        enableSorting: true,
-        Cell: ({ row }: { row: { original: Applicant } }) => {
-          if (isTableLoading) return renderCellSkeleton('text');
-          const orig: any = row.original;
-          const href = getApplicantHref(row);
-          const seenBy = orig?.seenBy ?? [];
-          const isSeen =
-            Array.isArray(seenBy) &&
-            seenBy.some((s: any) => {
-              if (!s) return false;
-              if (typeof s === 'string') return s === currentUserId;
-              return s._id === currentUserId || s.id === currentUserId;
-            });
+     {
+  accessorKey: 'fullName',
+  header: 'Name',
+  size: columnSizeConfig.fullName,
+  enableColumnFilter: true,
+  enableSorting: true,
+  Cell: ({ row }: { row: { original: Applicant } }) => {
+    if (isTableLoading) return renderCellSkeleton('text');
+    const orig: any = row.original;
+    const href = getApplicantHref(row);
+    const seenBy = orig?.seenBy ?? [];
+    const isSeen =
+      Array.isArray(seenBy) &&
+      seenBy.some((s: any) => {
+        if (!s) return false;
+        if (typeof s === 'string') return s === currentUserId;
+        return s._id === currentUserId || s.id === currentUserId;
+      });
 
-          return (
-            <a
-              href={href}
-              className={
-                isSeen
-                  ? 'block h-full w-full text-gray-400'
-                  : 'block h-full w-full text-gray-900'
-              }
-              onClick={(e) => handleApplicantLinkClick(e, row)}
-              onAuxClick={handleApplicantLinkAuxClick}
-            >
-              {orig?.fullName || '-'}
-            </a>
-          );
-        },
-      },
+  
+
+    return (
+      <a
+        href={href}
+        className={
+          isSeen
+            ? 'block h-full w-full text-gray-400'
+            : 'block h-full w-full text-gray-900'
+        }
+       onClick={(e) => {
+  if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) {
+    e.stopPropagation();
+    return;
+  }
+  e.preventDefault();
+  e.stopPropagation();
+  
+  // Safely extract the array from filteredApplicants
+  let applicantsArray: any[] = [];
+  if (Array.isArray(filteredApplicants)) {
+    applicantsArray = filteredApplicants;
+  } else if (filteredApplicants && typeof filteredApplicants === 'object') {
+    if ('data' in filteredApplicants && Array.isArray((filteredApplicants as any).data)) {
+      applicantsArray = (filteredApplicants as any).data;
+    } else if ('applicants' in filteredApplicants && Array.isArray((filteredApplicants as any).applicants)) {
+      applicantsArray = (filteredApplicants as any).applicants;
+    } else if ('items' in filteredApplicants && Array.isArray((filteredApplicants as any).items)) {
+      applicantsArray = (filteredApplicants as any).items;
+    }
+  }
+  
+  navigate(getApplicantHref(row), { 
+    state: { 
+      applicant: row.original,
+      columnFilters: columnFilters,
+      sorting: sorting,
+      pagination: pagination,
+      statusFilter: columnFilters.find((f: any) => f.id === 'status')?.value,
+      companyFilter: columnFilters.find((f: any) => f.id === 'companyId')?.value,
+      applicantsList: applicantsArray
+    } 
+  });
+}}
+        onAuxClick={handleApplicantLinkAuxClick}
+      >
+        {orig?.fullName || '-'}
+      </a>
+    );
+  },
+},
       {
         accessorKey: 'email',
         header: 'Email',

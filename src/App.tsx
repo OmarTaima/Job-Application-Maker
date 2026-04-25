@@ -1,7 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from "react-router";
 import { Suspense, lazy } from "react";
-// Import Applicants directly (not lazy) to preserve type information
-// Alternatively, keep it lazy but we'll handle differently
+
 const SignIn = lazy(() => import("./pages/AuthPages/SignIn"));
 const SignUp = lazy(() => import("./pages/AuthPages/SignUp"));
 const NotFound = lazy(() => import("./pages/OtherPage/NotFound"));

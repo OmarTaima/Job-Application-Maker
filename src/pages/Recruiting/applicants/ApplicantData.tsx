@@ -25,6 +25,7 @@ import {
   useSendMessage,
   useMarkApplicantSeen,
   applicantsKeys,
+  useApplicants,
 } from '../../../hooks/queries';
 import { useAuth } from '../../../context/AuthContext';
 import { useQueryClient } from '@tanstack/react-query';
@@ -52,6 +53,94 @@ const ApplicantData = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const location = useLocation();
+  const queryClient = useQueryClient();
+
+  // Get company ID from user context for fetching applicants
+  const { user } = useAuth();
+  const companyId = useMemo(() => {
+    if (!user) return undefined;
+    const roleName = user?.roleId?.name?.toLowerCase();
+    const isSuperAdmin = roleName === 'super admin';
+    const usercompanyId = user?.companies?.map((c) =>
+      typeof c.companyId === 'string' ? c.companyId : c.companyId._id
+    );
+    if (isSuperAdmin) return undefined;
+    return usercompanyId?.length ? usercompanyId : undefined;
+  }, [user]);
+
+  // Fetch all applicants for navigation
+  const { data: allApplicantsData = [] } = useApplicants(companyId as any);
+  
+  // Get all applicants from props or cache
+ // Get all applicants from props or cache
+// Get all applicants from props or cache
+const allApplicants = useMemo(() => {
+  // First try from location state (if coming from table with filters)
+  if (location.state?.applicantsList && Array.isArray(location.state.applicantsList)) {
+    return location.state.applicantsList;
+  }
+
+  console.log('Received applicants list length:', location.state?.applicantsList?.length);
+console.log('First few received applicants:', location.state?.applicantsList?.slice(0, 3).map((a: any) => ({
+  id: a._id,
+  name: a.fullName,
+  jobId: a.jobPositionId
+})));
+  
+  // Then try from query cache
+  const cachedData = queryClient.getQueryData(applicantsKeys.lists());
+  if (cachedData && Array.isArray(cachedData)) {
+    return cachedData;
+  }
+  if (cachedData && typeof cachedData === 'object' && 'data' in cachedData && Array.isArray((cachedData as any).data)) {
+    return (cachedData as any).data;
+  }
+  
+  // Fall back to fetched data - handle both array and object with data property
+  if (Array.isArray(allApplicantsData)) {
+    return allApplicantsData;
+  }
+  if (allApplicantsData && typeof allApplicantsData === 'object' && 'data' in allApplicantsData && Array.isArray((allApplicantsData as any).data)) {
+    return (allApplicantsData as any).data;
+  }
+  
+  return [];
+}, [location.state, queryClient, allApplicantsData]);
+
+  // Find current applicant index
+  const currentApplicantIndex = useMemo(() => {
+    if (!id || allApplicants.length === 0) return -1;
+    
+    return allApplicants.findIndex(
+      (a: any) => String(a?._id || a?.id || '') === String(id)
+    );
+  }, [id, allApplicants]);
+
+  // Navigate to previous applicant
+  const goToPreviousApplicant = useCallback(() => {
+    if (currentApplicantIndex > 0) {
+      const prevApplicant = allApplicants[currentApplicantIndex - 1];
+      const prevId = String(prevApplicant?._id || prevApplicant?.id || '');
+      if (prevId) {
+        navigate(`/applicant-details/${prevId}`, { 
+          state: { ...location.state, applicant: prevApplicant }
+        });
+      }
+    }
+  }, [currentApplicantIndex, allApplicants, navigate, location.state]);
+
+  // Navigate to next applicant
+  const goToNextApplicant = useCallback(() => {
+    if (currentApplicantIndex < allApplicants.length - 1 && currentApplicantIndex !== -1) {
+      const nextApplicant = allApplicants[currentApplicantIndex + 1];
+      const nextId = String(nextApplicant?._id || nextApplicant?.id || '');
+      if (nextId) {
+        navigate(`/applicant-details/${nextId}`, { 
+          state: { ...location.state, applicant: nextApplicant }
+        });
+      }
+    }
+  }, [currentApplicantIndex, allApplicants, navigate, location.state]);
 
   useEffect(() => {
     // Check if this tab was opened in background
@@ -234,8 +323,6 @@ const ApplicantData = () => {
   const sendEmailMutation = useSendEmail();
   const sendMessageMutation = useSendMessage();
   const markSeenMutation = useMarkApplicantSeen();
-  const { user } = useAuth();
-  const queryClient = useQueryClient();
   const hasMarkedSeenRef = useRef(false);
 
   useEffect(() => {
@@ -268,7 +355,7 @@ const ApplicantData = () => {
     })();
 
     return () => { cancelled = true; };
-  }, [id, queryClient, isReload, setReloadFetchDone]);
+  }, [id, queryClient, isReload]);
 
   useEffect(() => {
     if (!applicant?._id || !user?._id || hasMarkedSeenRef.current) return;
@@ -589,8 +676,9 @@ const ApplicantData = () => {
   const jobTitle = useMemo(() => getJobTitle(), [applicant?._id, jobPositionDetail, jobPositions, jobPosCompany]);
   const companyName = useMemo(() => getCompanyName(), [applicant?._id, jobPositionDetail, companies, jobPosCompany, fetchedCompany]);
   const departmentName = useMemo(() => getDepartmentName(), [applicant?._id, jobPositionDetail, companies, jobPosCompany]);
-const [phoneMenuAnchor, setPhoneMenuAnchor] = useState<null | HTMLElement>(null);
-const [selectedPhoneNumber, setSelectedPhoneNumber] = useState<string>('');
+
+  const [phoneMenuAnchor, setPhoneMenuAnchor] = useState<null | HTMLElement>(null);
+  const [selectedPhoneNumber, setSelectedPhoneNumber] = useState<string>('');
   const [lastRefetch, setLastRefetch] = useState<Date | null>(null);
   const [showInterviewModal, setShowInterviewModal] = useState(false);
   const [showMessageModal, setShowMessageModal] = useState(false);
@@ -991,78 +1079,64 @@ const [selectedPhoneNumber, setSelectedPhoneNumber] = useState<string>('');
   };
 
   const formatWhatsAppNumber = (phone: string): string => {
-  // Remove all non-digit characters
-  let cleaned = phone.replace(/\D/g, '');
-  
-  // If number doesn't start with 2, add it
-  if (!cleaned.startsWith('2')) {
-    cleaned = '2' + cleaned;
-  }
-  
-  // If number starts with 200, keep as is
-  if (cleaned.startsWith('200')) {
+    let cleaned = phone.replace(/\D/g, '');
+    if (!cleaned.startsWith('2')) {
+      cleaned = '2' + cleaned;
+    }
+    if (cleaned.startsWith('200')) {
+      return cleaned;
+    }
+    if (cleaned.startsWith('20') && !cleaned.startsWith('200')) {
+      cleaned = '20' + cleaned.substring(2);
+    }
     return cleaned;
-  }
-  
-  // If number starts with 20, add another 0 if needed
-  if (cleaned.startsWith('20') && !cleaned.startsWith('200')) {
-    cleaned = '20' + cleaned.substring(2);
-  }
-  
-  return cleaned;
-};
+  };
 
-// Copy phone number to clipboard
-const copyPhoneNumber = async (phone: string) => {
-  try {
-    await navigator.clipboard.writeText(phone);
-    Swal.fire({
-      title: 'Copied!',
-      text: 'Phone number copied to clipboard.',
-      icon: 'success',
-      timer: 1500,
-      showConfirmButton: false,
-      position: 'center',
-    });
-  } catch (err) {
-    console.error('Failed to copy:', err);
-    Swal.fire({
-      title: 'Error',
-      text: 'Failed to copy phone number.',
-      icon: 'error',
-      timer: 1500,
-      showConfirmButton: false,
-    });
-  }
-};
+  const copyPhoneNumber = async (phone: string) => {
+    try {
+      await navigator.clipboard.writeText(phone);
+      Swal.fire({
+        title: 'Copied!',
+        text: 'Phone number copied to clipboard.',
+        icon: 'success',
+        timer: 1500,
+        showConfirmButton: false,
+        position: 'center',
+      });
+    } catch (err) {
+      console.error('Failed to copy:', err);
+      Swal.fire({
+        title: 'Error',
+        text: 'Failed to copy phone number.',
+        icon: 'error',
+        timer: 1500,
+        showConfirmButton: false,
+      });
+    }
+  };
 
-// Make a phone call (opens native dialer)
-const makePhoneCall = (phone: string) => {
-  // Remove any non-digit characters except '+'
-  const cleaned = phone.replace(/[^\d+]/g, '');
-  window.location.href = `tel:${cleaned}`;
-};
+  const makePhoneCall = (phone: string) => {
+    const cleaned = phone.replace(/[^\d+]/g, '');
+    window.location.href = `tel:${cleaned}`;
+  };
 
-// Open WhatsApp with formatted number
-const openWhatsApp = (phone: string) => {
-  const formattedNumber = formatWhatsAppNumber(phone);
-  const url = `https://wa.me/${formattedNumber}`;
-  window.open(url, '_blank', 'noopener,noreferrer');
-};
+  const openWhatsApp = (phone: string) => {
+    const formattedNumber = formatWhatsAppNumber(phone);
+    const url = `https://wa.me/${formattedNumber}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
 
-// Handle phone number click
-const handlePhoneClick = (event: React.MouseEvent<HTMLAnchorElement>, phone: string) => {
-  event.preventDefault();
-  event.stopPropagation();
-  setSelectedPhoneNumber(phone);
-  setPhoneMenuAnchor(event.currentTarget);
-};
+  const handlePhoneClick = (event: React.MouseEvent<HTMLAnchorElement>, phone: string) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setSelectedPhoneNumber(phone);
+    setPhoneMenuAnchor(event.currentTarget);
+  };
 
-// Close phone menu
-const handlePhoneMenuClose = () => {
-  setPhoneMenuAnchor(null);
-  setSelectedPhoneNumber('');
-};
+  const handlePhoneMenuClose = () => {
+    setPhoneMenuAnchor(null);
+    setSelectedPhoneNumber('');
+  };
 
   const buildInferredCustomFieldsFromResponses = (
     responses: Record<string, any>
@@ -2174,110 +2248,94 @@ const handlePhoneMenuClose = () => {
     return out;
   };
 
- const buildInterviewEmailHtml = (opts: { 
-  subject: string; 
-  jobTitle: string; 
-  interview: any; 
-  rawMessage: string; 
-  applicantName?: string;
-  replacements?: Record<string, string>;
-}) => {
-  const { subject, rawMessage, applicantName, jobTitle, replacements: externalReplacements } = opts;
-  
-  // Build replacements object
-  const replacements: Record<string, string> = externalReplacements || {};
-  
-  // Add default replacements if not provided
-  if (!replacements['{{candidateName}}'] && applicantName) {
-    replacements['{{candidateName}}'] = applicantName;
-  }
-  if (!replacements['{{jobTitle}}'] && jobTitle) {
-    replacements['{{jobTitle}}'] = jobTitle;
-  }
-  
-  // Also add case-insensitive versions
-  const allReplacements: Record<string, string> = {};
-  
-  // Add original and case-insensitive versions
-  Object.entries(replacements).forEach(([token, value]) => {
-    allReplacements[token] = value;
-    // Add lowercase version
-    allReplacements[token.toLowerCase()] = value;
-    // Add version with first letter capitalized
-    const lowerToken = token.toLowerCase();
-    const capitalToken = lowerToken.charAt(0).toUpperCase() + lowerToken.slice(1);
-    allReplacements[capitalToken] = value;
-    // Add version without spaces
-    allReplacements[lowerToken.replace(/\s/g, '')] = value;
-  });
-  
-  // Apply substitutions to subject (case-insensitive)
-  let processedSubject = subject;
-  Object.entries(allReplacements).forEach(([token, value]) => {
-    const regex = new RegExp(token.replace(/[{}]/g, '\\$&'), 'gi');
-    processedSubject = processedSubject.replace(regex, value);
-  });
-  
-  // Apply substitutions to body (case-insensitive)
-  let processedBody = rawMessage || '';
-  Object.entries(allReplacements).forEach(([token, value]) => {
-    const regex = new RegExp(token.replace(/[{}]/g, '\\$&'), 'gi');
-    processedBody = processedBody.replace(regex, value);
-  });
-  
-  // Convert URLs in the body to clickable links
-  const convertUrlsToLinks = (text: string): string => {
-    // Don't process HTML content
-    if (text.indexOf('<') !== -1) {
-      // For HTML content, convert URLs within text nodes
-      // This regex matches URLs that are not already inside an <a> tag
-      const urlRegex = /(https?:\/\/[^\s<]+|www\.[^\s<]+)(?![^<]*<\/a>)/gi;
+  const buildInterviewEmailHtml = (opts: { 
+    subject: string; 
+    jobTitle: string; 
+    interview: any; 
+    rawMessage: string; 
+    applicantName?: string;
+    replacements?: Record<string, string>;
+  }) => {
+    const { subject, rawMessage, applicantName, jobTitle, replacements: externalReplacements } = opts;
+    
+    const replacements: Record<string, string> = externalReplacements || {};
+    
+    if (!replacements['{{candidateName}}'] && applicantName) {
+      replacements['{{candidateName}}'] = applicantName;
+    }
+    if (!replacements['{{jobTitle}}'] && jobTitle) {
+      replacements['{{jobTitle}}'] = jobTitle;
+    }
+    
+    const allReplacements: Record<string, string> = {};
+    
+    Object.entries(replacements).forEach(([token, value]) => {
+      allReplacements[token] = value;
+      allReplacements[token.toLowerCase()] = value;
+      const lowerToken = token.toLowerCase();
+      const capitalToken = lowerToken.charAt(0).toUpperCase() + lowerToken.slice(1);
+      allReplacements[capitalToken] = value;
+      allReplacements[lowerToken.replace(/\s/g, '')] = value;
+    });
+    
+    let processedSubject = subject;
+    Object.entries(allReplacements).forEach(([token, value]) => {
+      const regex = new RegExp(token.replace(/[{}]/g, '\\$&'), 'gi');
+      processedSubject = processedSubject.replace(regex, value);
+    });
+    
+    let processedBody = rawMessage || '';
+    Object.entries(allReplacements).forEach(([token, value]) => {
+      const regex = new RegExp(token.replace(/[{}]/g, '\\$&'), 'gi');
+      processedBody = processedBody.replace(regex, value);
+    });
+    
+    const convertUrlsToLinks = (text: string): string => {
+      if (text.indexOf('<') !== -1) {
+        const urlRegex = /(https?:\/\/[^\s<]+|www\.[^\s<]+)(?![^<]*<\/a>)/gi;
+        return text.replace(urlRegex, (url) => {
+          let href = url;
+          if (!href.startsWith('http://') && !href.startsWith('https://')) {
+            href = 'https://' + href;
+          }
+          return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" style="color: #3b82f6; text-decoration: underline; transition: color 0.2s;">${escapeHtml(url)}</a>`;
+        });
+      }
+      
+      const urlRegex = /(https?:\/\/[^\s]+|www\.[^\s]+)/gi;
       return text.replace(urlRegex, (url) => {
         let href = url;
         if (!href.startsWith('http://') && !href.startsWith('https://')) {
           href = 'https://' + href;
         }
-        return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" style="color: #3b82f6; text-decoration: underline; transition: color 0.2s;">${escapeHtml(url)}</a>`;
+        return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" style="color: #3b82f6; text-decoration: underline;">${escapeHtml(url)}</a>`;
       });
+    };
+    
+    const formatLocationLinks = (text: string): string => {
+      const locationPattern = /(Location:\s*)(https?:\/\/[^\s<]+|www\.[^\s<]+)/gi;
+      return text.replace(locationPattern, (_, locationLabel, url) => {
+        let href = url;
+        if (!href.startsWith('http://') && !href.startsWith('https://')) {
+          href = 'https://' + href;
+        }
+        return `${locationLabel}<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" style="color: #3b82f6; text-decoration: underline;">${escapeHtml(url)}</a>`;
+      });
+    };
+    
+    let processedBodyWithLinks = formatLocationLinks(processedBody);
+    processedBodyWithLinks = convertUrlsToLinks(processedBodyWithLinks);
+    
+    const sanitizedBody = sanitizeMessageTemplate(processedBodyWithLinks);
+    let bodyHtml = '';
+    if (sanitizedBody.indexOf('<') !== -1) {
+      bodyHtml = inlineStyleHtml(sanitizedBody);
+    } else {
+      const parts = sanitizedBody.split(/\r?\n/).map(p => p.trim()).filter(p => p.length > 0);
+      bodyHtml = parts.map(p => `<p style="margin:0 0 12px;color:#444;">${p}</p>`).join('');
     }
     
-    // For plain text, convert all URLs
-    const urlRegex = /(https?:\/\/[^\s]+|www\.[^\s]+)/gi;
-    return text.replace(urlRegex, (url) => {
-      let href = url;
-      if (!href.startsWith('http://') && !href.startsWith('https://')) {
-        href = 'https://' + href;
-      }
-      return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" style="color: #3b82f6; text-decoration: underline;">${escapeHtml(url)}</a>`;
-    });
-  };
-  
-  // Also convert specific location patterns
- const formatLocationLinks = (text: string): string => {
-  const locationPattern = /(Location:\s*)(https?:\/\/[^\s<]+|www\.[^\s<]+)/gi;
-  return text.replace(locationPattern, (_, locationLabel, url) => {
-    let href = url;
-    if (!href.startsWith('http://') && !href.startsWith('https://')) {
-      href = 'https://' + href;
-    }
-    return `${locationLabel}<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" style="color: #3b82f6; text-decoration: underline;">${escapeHtml(url)}</a>`;
-  });
-};
-  
-  // Apply URL conversion
-  let processedBodyWithLinks = formatLocationLinks(processedBody);
-  processedBodyWithLinks = convertUrlsToLinks(processedBodyWithLinks);
-  
-  const sanitizedBody = sanitizeMessageTemplate(processedBodyWithLinks);
-  let bodyHtml = '';
-  if (sanitizedBody.indexOf('<') !== -1) {
-    bodyHtml = inlineStyleHtml(sanitizedBody);
-  } else {
-    const parts = sanitizedBody.split(/\r?\n/).map(p => p.trim()).filter(p => p.length > 0);
-    bodyHtml = parts.map(p => `<p style="margin:0 0 12px;color:#444;">${p}</p>`).join('');
-  }
-  
-  return `<!DOCTYPE html>
+    return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
@@ -2303,7 +2361,7 @@ const handlePhoneMenuClose = () => {
   </div>
 </body>
 </html>`;
-};
+  };
 
   const getErrorMessage = (err: any): string => {
     if (
@@ -2334,154 +2392,141 @@ const handlePhoneMenuClose = () => {
     return 'An unexpected error occurred';
   };
 
- const handleInterviewSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  if (!id || !applicant) return;
+  const handleInterviewSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!id || !applicant) return;
 
-  if (emailOption === 'custom' && !customEmail.trim()) {
-    setInterviewError('Please provide a custom email address');
-    return;
-  }
-  if (
-    (notificationChannels.sms || notificationChannels.whatsapp) &&
-    phoneOption === 'custom' &&
-    !customPhone.trim()
-  ) {
-    setInterviewError('Please provide a custom phone number');
-    return;
-  }
-
-  setIsSubmittingInterview(true);
-  const interviewSnapshot = { ...interviewForm };
-  const notifEmailOption = emailOption || (customEmail ? 'custom' : undefined);
-  const notifCustomEmail = customEmail || undefined;
-  const notifPhoneOption = phoneOption || undefined;
-  const notifCustomPhone = phoneOption === 'custom' ? customPhone || undefined : undefined;
-  const notifChannels = { ...notificationChannels };
-  setInterviewForm({
-    date: '',
-    time: '',
-    description: '',
-    comment: '',
-    location: '',
-    link: '',
-    type: 'phone',
-  });
-  setNotificationChannels({ email: true, sms: false, whatsapp: false });
-  setEmailOption('company');
-  setCustomEmail('');
-  setPhoneOption('company');
-  setCustomPhone('');
-  setShowInterviewModal(false);
-
-  try {
-    let scheduledAt: string | undefined;
-    if (interviewSnapshot.date && interviewSnapshot.time) {
-      // Create date in local timezone to avoid UTC conversion issues
-      const [year, month, day] = interviewSnapshot.date.split('-').map(Number);
-      const [hours, minutes] = interviewSnapshot.time.split(':').map(Number);
-      
-      // Format to ISO string while preserving local time
-      const pad = (n: number) => String(n).padStart(2, '0');
-      scheduledAt = `${year}-${pad(month)}-${pad(day)}T${pad(hours)}:${pad(minutes)}:00`;
-      
-    } else if (interviewSnapshot.date) {
-      scheduledAt = `${interviewSnapshot.date}T00:00:00`;
+    if (emailOption === 'custom' && !customEmail.trim()) {
+      setInterviewError('Please provide a custom email address');
+      return;
+    }
+    if (
+      (notificationChannels.sms || notificationChannels.whatsapp) &&
+      phoneOption === 'custom' &&
+      !customPhone.trim()
+    ) {
+      setInterviewError('Please provide a custom phone number');
+      return;
     }
 
-    const interviewData: any = {
-      scheduledAt,
-      description: interviewSnapshot.description || undefined,
-      type: interviewSnapshot.type || undefined,
-      location: interviewSnapshot.location || undefined,
-      videoLink: interviewSnapshot.link || undefined,
-      notes: interviewSnapshot.comment || undefined,
-      companyId: companyObj?._id,
-      notifications: {
-        channels: {
-          email: notifChannels.email,
-          sms: notifChannels.sms,
-          whatsapp: notifChannels.whatsapp,
-        },
-        emailOption: notifEmailOption,
-        customEmail: notifCustomEmail,
-        phoneOption: notifPhoneOption,
-        customPhone: notifCustomPhone,
-      },
-    };
+    setIsSubmittingInterview(true);
+    const interviewSnapshot = { ...interviewForm };
+    const notifEmailOption = emailOption || (customEmail ? 'custom' : undefined);
+    const notifCustomEmail = customEmail || undefined;
+    const notifPhoneOption = phoneOption || undefined;
+    const notifCustomPhone = phoneOption === 'custom' ? customPhone || undefined : undefined;
+    const notifChannels = { ...notificationChannels };
+    setInterviewForm({
+      date: '',
+      time: '',
+      description: '',
+      comment: '',
+      location: '',
+      link: '',
+      type: 'phone',
+    });
+    setNotificationChannels({ email: true, sms: false, whatsapp: false });
+    setEmailOption('company');
+    setCustomEmail('');
+    setPhoneOption('company');
+    setCustomPhone('');
+    setShowInterviewModal(false);
 
-    if (applicant && applicant.status !== 'interview') {
-      updateStatusMutation.mutate({
-        id: id!,
-        data: {
-          status: 'interview',
-          notes: `Status automatically updated to interview upon scheduling an interview on ${new Date().toLocaleDateString()}`,
-        } as UpdateStatusRequest,
-      });
-    }
-
-    const tempInterviewId = `temp-${Date.now()}`;
-    interviewData._id = tempInterviewId;
-
-    const updatedApplicant = await scheduleInterviewMutation.mutateAsync({ id: id!, data: interviewData });
-
-    let createdInterviewId: string | undefined;
     try {
-      const interviews = (updatedApplicant as any)?.interviews || [];
-      createdInterviewId = interviews.find((iv: any) => {
-        if (!iv) return false;
-        return (
-          (iv.scheduledAt === interviewData.scheduledAt) &&
-          (iv.type === interviewData.type) &&
-          ((iv.notes || '') === (interviewData.notes || ''))
-        );
-      })?._id;
-    } catch (e) {}
+      let scheduledAt: string | undefined;
+      if (interviewSnapshot.date && interviewSnapshot.time) {
+        const [year, month, day] = interviewSnapshot.date.split('-').map(Number);
+        const [hours, minutes] = interviewSnapshot.time.split(':').map(Number);
+        const pad = (n: number) => String(n).padStart(2, '0');
+        scheduledAt = `${year}-${pad(month)}-${pad(day)}T${pad(hours)}:${pad(minutes)}:00`;
+      } else if (interviewSnapshot.date) {
+        scheduledAt = `${interviewSnapshot.date}T00:00:00`;
+      }
 
-    if (createdInterviewId) {
-      await updateInterviewMutation.mutateAsync({
-        applicantId: id!,
-        interviewId: createdInterviewId,
-        data: { status: 'scheduled' },
-      });
-    }
+      const interviewData: any = {
+        scheduledAt,
+        description: interviewSnapshot.description || undefined,
+        type: interviewSnapshot.type || undefined,
+        location: interviewSnapshot.location || undefined,
+        videoLink: interviewSnapshot.link || undefined,
+        notes: interviewSnapshot.comment || undefined,
+        companyId: companyObj?._id,
+        notifications: {
+          channels: {
+            email: notifChannels.email,
+            sms: notifChannels.sms,
+            whatsapp: notifChannels.whatsapp,
+          },
+          emailOption: notifEmailOption,
+          customEmail: notifCustomEmail,
+          phoneOption: notifPhoneOption,
+          customPhone: notifCustomPhone,
+        },
+      };
 
-    if (notificationChannels.email) {
+      if (applicant && applicant.status !== 'interview') {
+        updateStatusMutation.mutate({
+          id: id!,
+          data: {
+            status: 'interview',
+            notes: `Status automatically updated to interview upon scheduling an interview on ${new Date().toLocaleDateString()}`,
+          } as UpdateStatusRequest,
+        });
+      }
+
+      const tempInterviewId = `temp-${Date.now()}`;
+      interviewData._id = tempInterviewId;
+
+      const updatedApplicant = await scheduleInterviewMutation.mutateAsync({ id: id!, data: interviewData });
+
+      let createdInterviewId: string | undefined;
       try {
-        const toEmail = applicant.email;
-        const mailDefault = companyObj?.settings?.mailSettings?.defaultMail || companyObj?.mailSettings?.defaultMail || companyObj?.contactEmail || companyObj?.email || '';
-        let fromEmail = notifCustomEmail || mailDefault;
-        if (!fromEmail || fromEmail.trim() === '') {
-          console.warn('ApplicantData: Email sender is empty, using fallback support@yourdomain.com for safety', { mailDefault, notifCustomEmail, companyObj });
-        }
-        
-        // Get job title
-        const jobTitleObj = getJobTitle();
-        const jobTitleText = jobTitleObj.en || '';
-        
-        // Get applicant name
-        const applicantName = applicant.fullName || 'Candidate';
-        
-        // Build replacements for variable substitution
-        const replacements: Record<string, string> = {
-          '{{candidateName}}': applicantName,
-          '{{jobTitle}}': jobTitleText,
-        };
-        
-        // Apply substitutions to subject
-        let processedSubject = interviewEmailSubject || 'Interview Invitation';
-        Object.entries(replacements).forEach(([token, value]) => {
-          processedSubject = processedSubject.split(token).join(value);
+        const interviews = (updatedApplicant as any)?.interviews || [];
+        createdInterviewId = interviews.find((iv: any) => {
+          if (!iv) return false;
+          return (
+            (iv.scheduledAt === interviewData.scheduledAt) &&
+            (iv.type === interviewData.type) &&
+            ((iv.notes || '') === (interviewData.notes || ''))
+          );
+        })?._id;
+      } catch (e) {}
+
+      if (createdInterviewId) {
+        await updateInterviewMutation.mutateAsync({
+          applicantId: id!,
+          interviewId: createdInterviewId,
+          data: { status: 'scheduled' },
         });
-        
-        // Apply substitutions to message template
-        let processedMessage = messageTemplate || '';
-        Object.entries(replacements).forEach(([token, value]) => {
-          processedMessage = processedMessage.split(token).join(value);
-        });
-        
-        const sanitizedBody = sanitizeMessageTemplate(processedMessage);
-        const emailHtml = `
+      }
+
+      if (notificationChannels.email) {
+        try {
+          const toEmail = applicant.email;
+          const mailDefault = companyObj?.settings?.mailSettings?.defaultMail || companyObj?.mailSettings?.defaultMail || companyObj?.contactEmail || companyObj?.email || '';
+          let fromEmail = notifCustomEmail || mailDefault;
+          
+          const jobTitleObj = getJobTitle();
+          const jobTitleText = jobTitleObj.en || '';
+          const applicantName = applicant.fullName || 'Candidate';
+          
+          const replacements: Record<string, string> = {
+            '{{candidateName}}': applicantName,
+            '{{jobTitle}}': jobTitleText,
+          };
+          
+          let processedSubject = interviewEmailSubject || 'Interview Invitation';
+          Object.entries(replacements).forEach(([token, value]) => {
+            processedSubject = processedSubject.split(token).join(value);
+          });
+          
+          let processedMessage = messageTemplate || '';
+          Object.entries(replacements).forEach(([token, value]) => {
+            processedMessage = processedMessage.split(token).join(value);
+          });
+          
+          const sanitizedBody = sanitizeMessageTemplate(processedMessage);
+          const emailHtml = `
 <!DOCTYPE html>
 <html>
 <head>
@@ -2504,84 +2549,82 @@ const handlePhoneMenuClose = () => {
 </html>
 `;
 
-        const resolveJobPositionId = (value: any): string | undefined => {
-          if (!value) return undefined;
-          if (Array.isArray(value)) {
-            for (const item of value) {
-              const id = resolveJobPositionId(item);
-              if (id) return id;
+          const resolveJobPositionId = (value: any): string | undefined => {
+            if (!value) return undefined;
+            if (Array.isArray(value)) {
+              for (const item of value) {
+                const id = resolveJobPositionId(item);
+                if (id) return id;
+              }
+              return undefined;
+            }
+            if (typeof value === 'string') return value;
+            if (typeof value === 'object') {
+              if (typeof value._id === 'string') return value._id;
+              if (typeof value.id === 'string') return value.id;
             }
             return undefined;
-          }
-          if (typeof value === 'string') return value;
-          if (typeof value === 'object') {
-            if (typeof value._id === 'string') return value._id;
-            if (typeof value.id === 'string') return value.id;
-          }
-          return undefined;
-        };
+          };
 
-        const jobPositionId =
-          resolveJobPositionId(applicant?.jobPositionId) ||
-          resolveJobPositionId(applicant?.jobPosition);
+          const jobPositionId = resolveJobPositionId(applicant?.jobPositionId) || resolveJobPositionId(applicant?.jobPosition);
 
-        await sendEmailMutation.mutateAsync({
-          company: companyObj?._id,
-          jobPosition: jobPositionId,
-          applicant: applicant?._id,
-          to: toEmail,
-          from: fromEmail,
-          subject: processedSubject,
-          html: emailHtml,
-        });
-        
-        try {
-          await sendMessageMutation.mutateAsync({
-            id: id!,
-            data: {
-              type: 'email',
-              content: sanitizedBody,
-            },
+          await sendEmailMutation.mutateAsync({
+            company: companyObj?._id,
+            jobPosition: jobPositionId,
+            applicant: applicant?._id,
+            to: toEmail,
+            from: fromEmail,
+            subject: processedSubject,
+            html: emailHtml,
           });
-        } catch (e) {
-          console.warn('ApplicantData: failed to save interview message to history', e);
+          
+          try {
+            await sendMessageMutation.mutateAsync({
+              id: id!,
+              data: {
+                type: 'email',
+                content: sanitizedBody,
+              },
+            });
+          } catch (e) {
+            console.warn('ApplicantData: failed to save interview message to history', e);
+          }
+        } catch (err: any) {
+          const errMsg = getErrorMessage(err);
+          console.error('Error sending interview notification:', err);
+          setInterviewError(errMsg);
+          await Swal.fire({
+            title: 'Notification Error',
+            text: String(errMsg),
+            icon: 'error',
+          });
         }
-      } catch (err: any) {
-        const errMsg = getErrorMessage(err);
-        console.error('Error sending interview notification:', err);
-        setInterviewError(errMsg);
-        await Swal.fire({
-          title: 'Notification Error',
-          text: String(errMsg),
-          icon: 'error',
-        });
       }
-    }
 
-    await Swal.fire({
-      title: 'Success!',
-      text: 'Interview scheduled successfully.',
-      icon: 'success',
-      position: 'center',
-      timer: 2000,
-      showConfirmButton: false,
-      customClass: {
-        container: '!mt-16',
-      },
-    });
-  } catch (err: any) {
-    const errorMsg = getErrorMessage(err);
-    setInterviewError(errorMsg);
-    console.error('Error scheduling interview:', err);
-    await Swal.fire({
-      title: 'Error',
-      text: String(errorMsg),
-      icon: 'error',
-    });
-  } finally {
-    setIsSubmittingInterview(false);
-  }
-};
+      await Swal.fire({
+        title: 'Success!',
+        text: 'Interview scheduled successfully.',
+        icon: 'success',
+        position: 'center',
+        timer: 2000,
+        showConfirmButton: false,
+        customClass: {
+          container: '!mt-16',
+        },
+      });
+    } catch (err: any) {
+      const errorMsg = getErrorMessage(err);
+      setInterviewError(errorMsg);
+      console.error('Error scheduling interview:', err);
+      await Swal.fire({
+        title: 'Error',
+        text: String(errorMsg),
+        icon: 'error',
+      });
+    } finally {
+      setIsSubmittingInterview(false);
+    }
+  };
 
   const handleCommentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2658,6 +2701,73 @@ const handlePhoneMenuClose = () => {
     }
   };
 
+  const handleDeleteApplicant = async () => {
+    if (!id || !applicant) return;
+
+    const result = await Swal.fire({
+      title: 'Are you sure?',
+      text: `Move "${applicant.fullName}" to trash? You can restore it from the trash section later.`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#d33',
+      cancelButtonColor: '#3085d6',
+      confirmButtonText: 'Yes, move to trash',
+      cancelButtonText: 'Cancel'
+    });
+
+    if (!result.isConfirmed) return;
+
+    setIsSubmittingStatus(true);
+    try {
+      const statusData: UpdateStatusRequest = {
+        status: 'trashed' as UpdateStatusRequest['status'],
+        notes: `Applicant moved to trash on ${new Date().toLocaleString()}`,
+      };
+
+      await updateStatusMutation.mutateAsync({ id: id!, data: statusData });
+
+      await Swal.fire({
+        title: 'Moved to Trash!',
+        text: 'Applicant has been moved to trash successfully.',
+        icon: 'success',
+        position: 'center',
+        timer: 2000,
+        showConfirmButton: false,
+        customClass: {
+          container: '!mt-16',
+        },
+      });
+
+      navigate('/applicants');
+    } catch (err: any) {
+      const errorMsg = getErrorMessage(err);
+      console.error('Error moving applicant to trash:', err);
+      await Swal.fire({
+        title: 'Error',
+        text: errorMsg,
+        icon: 'error',
+      });
+    } finally {
+      setIsSubmittingStatus(false);
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  const customFieldsForInterview = getAvailableCustomFieldsForInterview();
+  const editableCustomFieldsForInterview =
+    (isInterviewEditMode || isEditOnlyMode) && interviewEditableCustomFields.length > 0
+      ? interviewEditableCustomFields
+      : customFieldsForInterview;
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -2692,74 +2802,6 @@ const handlePhoneMenuClose = () => {
       </>
     );
   }
-const handleDeleteApplicant = async () => {
-  if (!id || !applicant) return;
-
-  // Show confirmation dialog
-  const result = await Swal.fire({
-    title: 'Are you sure?',
-    text: `Move "${applicant.fullName}" to trash? You can restore it from the trash section later.`,
-    icon: 'warning',
-    showCancelButton: true,
-    confirmButtonColor: '#d33',
-    cancelButtonColor: '#3085d6',
-    confirmButtonText: 'Yes, move to trash',
-    cancelButtonText: 'Cancel'
-  });
-
-  if (!result.isConfirmed) return;
-
-  setIsSubmittingStatus(true);
-  try {
-    const statusData: UpdateStatusRequest = {
-      status: 'trashed' as UpdateStatusRequest['status'],
-      notes: `Applicant moved to trash on ${new Date().toLocaleString()}`,
-    };
-
-    // Update status via React Query mutation
-    await updateStatusMutation.mutateAsync({ id: id!, data: statusData });
-
-    await Swal.fire({
-      title: 'Moved to Trash!',
-      text: 'Applicant has been moved to trash successfully.',
-      icon: 'success',
-      position: 'center',
-      timer: 2000,
-      showConfirmButton: false,
-      customClass: {
-        container: '!mt-16',
-      },
-    });
-
-    // Navigate back to previous page
-    navigate('/applicants');
-  } catch (err: any) {
-    const errorMsg = getErrorMessage(err);
-    console.error('Error moving applicant to trash:', err);
-    await Swal.fire({
-      title: 'Error',
-      text: errorMsg,
-      icon: 'error',
-    });
-  } finally {
-    setIsSubmittingStatus(false);
-  }
-};
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
-
-  const customFieldsForInterview = getAvailableCustomFieldsForInterview();
-  const editableCustomFieldsForInterview =
-    (isInterviewEditMode || isEditOnlyMode) && interviewEditableCustomFields.length > 0
-      ? interviewEditableCustomFields
-      : customFieldsForInterview;
 
   return (
     <>
@@ -2770,126 +2812,164 @@ const handleDeleteApplicant = async () => {
       <PageBreadcrumb pageTitle={applicant.fullName} />
 
       <div className="grid gap-6">
-        {/* Top actions: back button, status/change actions, schedule/send/add comment buttons */}
+        {/* Top actions: back button and status/change actions */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <button
-            onClick={() => navigate('/applicants')}
-            className="text-sm font-medium text-primary hover:text-primary/80 self-start"
-          >
-            ← Back to Applicants
-          </button>
-         <div className="flex flex-wrap gap-2 sm:gap-3 sm:ml-auto">
-  <button
-    onClick={() => {
-      setStatusForm(prev => ({ 
-        ...prev, 
-        status: applicant?.status || hookDefaultStatus || '' 
-      }));
-      setShowStatusModal(true);
-    }}
-    className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-green-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-green-700"
-  >
-    {applicant.status ? applicant.status.charAt(0).toUpperCase() + applicant.status.slice(1) : 'Status'}
-  </button>
-  
-  {/* Edit Button */}
-  <button
-    onClick={openEditOnlyMode}
-    disabled={isInterviewEditMode || isEditOnlyMode}
-    className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-brand-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60 disabled:cursor-not-allowed"
-  >
-    <svg className="h-3 w-3 sm:h-4 sm:w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-    </svg>
-    Edit
-  </button>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => navigate('/applicants')}
+              className="text-sm font-medium text-primary hover:text-primary/80"
+            >
+              ← Back to Applicants
+            </button>
+            
+            {/* Previous/Next Pagination */}
+            {allApplicants.length > 0 && (
+              <div className="flex items-center gap-2 border-l border-gray-300 dark:border-gray-700 pl-4">
+                <button
+                  onClick={goToPreviousApplicant}
+                  disabled={currentApplicantIndex <= 0}
+                  className={`inline-flex items-center justify-center rounded-lg px-2 py-1 text-sm font-medium transition-colors ${
+                    currentApplicantIndex > 0
+                      ? 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
+                      : 'bg-gray-50 text-gray-400 cursor-not-allowed dark:bg-gray-900 dark:text-gray-600'
+                  }`}
+                  title="Previous Applicant"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+                
+                <span className="text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">
+                  {currentApplicantIndex >= 0 ? `${currentApplicantIndex + 1} / ${allApplicants.length}` : '-'}
+                </span>
+                
+                <button
+                  onClick={goToNextApplicant}
+                  disabled={currentApplicantIndex >= allApplicants.length - 1 || currentApplicantIndex === -1}
+                  className={`inline-flex items-center justify-center rounded-lg px-2 py-1 text-sm font-medium transition-colors ${
+                    currentApplicantIndex < allApplicants.length - 1 && currentApplicantIndex !== -1
+                      ? 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
+                      : 'bg-gray-50 text-gray-400 cursor-not-allowed dark:bg-gray-900 dark:text-gray-600'
+                  }`}
+                  title="Next Applicant"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+              </div>
+            )}
+          </div>
+          
+          <div className="flex flex-wrap gap-2 sm:gap-3">
+            <button
+              onClick={() => {
+                setStatusForm(prev => ({ 
+                  ...prev, 
+                  status: applicant?.status || hookDefaultStatus || '' 
+                }));
+                setShowStatusModal(true);
+              }}
+              className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-green-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-green-700"
+            >
+              {applicant.status ? applicant.status.charAt(0).toUpperCase() + applicant.status.slice(1) : 'Status'}
+            </button>
+            
+            <button
+              onClick={openEditOnlyMode}
+              disabled={isInterviewEditMode || isEditOnlyMode}
+              className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-brand-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              <svg className="h-3 w-3 sm:h-4 sm:w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+              Edit
+            </button>
 
-  {/* Interview Button */}
-  <button
-    onClick={openInterviewEditMode}
-    disabled={isInterviewEditMode || isEditOnlyMode}
-    className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-amber-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-60 disabled:cursor-not-allowed"
-  >
-    <svg className="h-3 w-3 sm:h-4 sm:w-4" fill="currentColor" viewBox="0 0 24 24">
-      <path d="M8 5v14l11-7z" />
-    </svg>
-    Interview
-  </button>
+            <button
+              onClick={openInterviewEditMode}
+              disabled={isInterviewEditMode || isEditOnlyMode}
+              className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-amber-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              <svg className="h-3 w-3 sm:h-4 sm:w-4" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+              Interview
+            </button>
 
-  {/* Save/Cancel buttons */}
-  {(isInterviewEditMode || isEditOnlyMode) && (
-    <>
-      <button
-        onClick={isInterviewEditMode ? handleInterviewEditSave : handleEditSave}
-        disabled={isSavingInterviewEdit}
-        className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-emerald-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed"
-      >
-        {isSavingInterviewEdit ? 'Saving...' : 'Save'}
-      </button>
-      <button
-        onClick={isInterviewEditMode ? handleInterviewEditCancel : handleEditCancel}
-        disabled={isSavingInterviewEdit}
-        className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-slate-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-60 disabled:cursor-not-allowed"
-      >
-        Cancel
-      </button>
-    </>
-  )}
+            {(isInterviewEditMode || isEditOnlyMode) && (
+              <>
+                <button
+                  onClick={isInterviewEditMode ? handleInterviewEditSave : handleEditSave}
+                  disabled={isSavingInterviewEdit}
+                  className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-emerald-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {isSavingInterviewEdit ? 'Saving...' : 'Save'}
+                </button>
+                <button
+                  onClick={isInterviewEditMode ? handleInterviewEditCancel : handleEditCancel}
+                  disabled={isSavingInterviewEdit}
+                  className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-slate-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  Cancel
+                </button>
+              </>
+            )}
 
-  <button
-    onClick={() => {
-      setFormResetKey(prev => prev + 1);
-      fillCompanyAddress();
-      setShowInterviewModal(true);
-    }}
-    className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-blue-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-blue-700"
-  >
-    <PlusIcon className="h-3 w-3 sm:h-4 sm:w-4" />
-    <span className="hidden sm:inline">Schedule</span> Interview
-  </button>
-  
-  <button
-    onClick={() => {
-      setSelectedInterview(applicant.interviews?.[0] || null);
-      setShowInterviewSettingsModal(true);
-    }}
-    className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-indigo-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-indigo-700"
-  >
-    <svg className="h-3 w-3 sm:h-4 sm:w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-    </svg>
-    Interview Settings
-  </button>
-  
-  <button
-    onClick={() => setShowMessageModal(true)}
-    className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-purple-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-purple-700"
-  >
-    <PlusIcon className="h-3 w-3 sm:h-4 sm:w-4" />
-    <span className="hidden sm:inline">Send</span> Message
-  </button>
-  
-  <button
-    onClick={() => setShowCommentModal(true)}
-    className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-gray-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-gray-700"
-  >
-    <PlusIcon className="h-3 w-3 sm:h-4 sm:w-4" />
-    <span className="hidden sm:inline">Add</span> Comment
-  </button>
+            <button
+              onClick={() => {
+                setFormResetKey(prev => prev + 1);
+                fillCompanyAddress();
+                setShowInterviewModal(true);
+              }}
+              className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-blue-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-blue-700"
+            >
+              <PlusIcon className="h-3 w-3 sm:h-4 sm:w-4" />
+              <span className="hidden sm:inline">Schedule</span> Interview
+            </button>
+            
+            <button
+              onClick={() => {
+                setSelectedInterview(applicant.interviews?.[0] || null);
+                setShowInterviewSettingsModal(true);
+              }}
+              className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-indigo-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-indigo-700"
+            >
+              <svg className="h-3 w-3 sm:h-4 sm:w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              Interview Settings
+            </button>
+            
+            <button
+              onClick={() => setShowMessageModal(true)}
+              className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-purple-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-purple-700"
+            >
+              <PlusIcon className="h-3 w-3 sm:h-4 sm:w-4" />
+              <span className="hidden sm:inline">Send</span> Message
+            </button>
+            
+            <button
+              onClick={() => setShowCommentModal(true)}
+              className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-gray-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-gray-700"
+            >
+              <PlusIcon className="h-3 w-3 sm:h-4 sm:w-4" />
+              <span className="hidden sm:inline">Add</span> Comment
+            </button>
 
-  {/* Delete Button */}
-  <button
-    onClick={handleDeleteApplicant}
-    disabled={isSubmittingStatus}
-    className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-red-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed"
-  >
-    <svg className="h-3 w-3 sm:h-4 sm:w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-    </svg>
-    Delete
-  </button>
-</div>
+            <button
+              onClick={handleDeleteApplicant}
+              disabled={isSubmittingStatus}
+              className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-red-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              <svg className="h-3 w-3 sm:h-4 sm:w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+              Delete
+            </button>
+          </div>
         </div>
 
         {/* Status History moved to top and collapsed by default */}
@@ -2913,7 +2993,7 @@ const handleDeleteApplicant = async () => {
           </div>
         </details>
 
-        {/* Personal Information Card */}
+        {/* Personal Information Card with Pagination in Header */}
         <div className="relative overflow-hidden rounded-2xl bg-white dark:bg-gray-900 shadow-xl">
           <div className="absolute inset-0 bg-gradient-to-br from-brand-500/5 via-purple-500/5 to-blue-500/5 dark:from-brand-500/10 dark:via-purple-500/10 dark:to-blue-500/10"></div>
           <div className="absolute -top-24 -right-24 w-96 h-96 bg-brand-500/10 dark:bg-brand-500/5 rounded-full blur-3xl"></div>
@@ -2933,7 +3013,7 @@ const handleDeleteApplicant = async () => {
                 </div>
               </div>
 
-              {/* Profile Photo in header */}
+              {/* Profile Photo */}
               <div className="flex-shrink-0">
                 {applicant.profilePhoto ? (
                   <button
@@ -3019,98 +3099,97 @@ const handleDeleteApplicant = async () => {
                 </div>
               </div>
 
-             {/* Phone */}
-<div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-green-500 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
-  <div className="flex items-baseline gap-4">
-    <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-green-100 dark:bg-green-900/30 rounded-lg group-hover:scale-110 transition-transform">
-      <svg className="w-6 h-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-      </svg>
-    </div>
-    <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Phone</Label>
-    {(isInterviewEditMode || isEditOnlyMode) ? (
-      <input
-        type="tel"
-        value={interviewEditForm.phone}
-        onChange={(e) =>
-          setInterviewEditForm((prev) => ({ ...prev, phone: e.target.value }))
-        }
-        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-green-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-        placeholder="Phone"
-      />
-    ) : applicant.phone ? (
-      <>
-        <a
-          href="#"
-          onClick={(e) => handlePhoneClick(e, applicant.phone)}
-          className="text-sm text-gray-900 dark:text-white cursor-pointer hover:text-green-600 dark:hover:text-green-400 transition-colors"
-          aria-label={`Phone options for ${applicant.phone}`}
-        >
-          {applicant.phone}
-        </a>
-        
-        {/* Phone Options Menu */}
-        <Menu
-          anchorEl={phoneMenuAnchor}
-          open={Boolean(phoneMenuAnchor)}
-          onClose={handlePhoneMenuClose}
-          onClick={(e) => e.stopPropagation()}
-          PaperProps={{
-            style: {
-              width: '200px',
-              marginTop: '8px',
-            },
-            className: 'rounded-lg shadow-lg',
-          }}
-        >
-          <MenuItem 
-            onClick={(e) => {
-              e.stopPropagation();
-              copyPhoneNumber(selectedPhoneNumber);
-              handlePhoneMenuClose();
-            }}
-            className="flex items-center gap-3 py-2"
-          >
-            <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
-            </svg>
-            <span>Copy Number</span>
-          </MenuItem>
-          
-          <MenuItem 
-            onClick={(e) => {
-              e.stopPropagation();
-              openWhatsApp(selectedPhoneNumber);
-              handlePhoneMenuClose();
-            }}
-            className="flex items-center gap-3 py-2"
-          >
-            <svg className="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.582 2.128 2.164-.573c.918.496 1.956.759 3.166.759 3.181 0 5.768-2.586 5.769-5.766.001-3.181-2.587-5.767-5.768-5.768zm3.392 8.244c-.144.405-.837.826-1.15.89-.312.064-.586.096-.946-.086-.36-.181-1.347-.655-1.693-1.164-.346-.509-.361-.764-.252-1.069.108-.305.264-.477.504-.765.24-.288.288-.432.432-.72.144-.288.072-.504-.036-.702-.108-.198-.612-1.274-.828-1.746-.216-.468-.432-.486-.612-.486s-.324-.018-.504-.018c-.252 0-.576.072-.864.36-.288.288-1.098 1.07-1.098 2.619 0 1.548 1.098 2.762 1.266 2.97.168.207 1.85 2.973 4.046 3.831.576.225.936.36 1.26.45.504.162.954.126 1.314.072.36-.054 1.026-.414 1.17-.81.144-.396.252-.81.144-.882-.108-.072-.504-.252-1.098-.702-.414-.306-.918-.666-1.134-.882-.216-.216-.36-.576-.108-.9.252-.324 1.008-1.26 1.134-1.512.126-.252.126-.432-.036-.666-.18-.234-.54-.468-.9-.648-.324-.162-.594-.288-.792-.234-.18.054-.324.234-.432.378-.108.144-.864 1.098-1.134 1.26s-.468.216-.72.036c-.288-.18-1.152-.558-1.368-.756-.216-.198-.36-.738-.144-1.08.216-.342.36-.486.54-.666.18-.18.24-.324.36-.522.12-.198.072-.414-.036-.648-.108-.234-.468-1.188-.612-1.584-.126-.36-.252-.36-.594-.36h-.648z"/>
-            </svg>
-            <span>WhatsApp</span>
-          </MenuItem>
-          
-          <MenuItem 
-            onClick={(e) => {
-              e.stopPropagation();
-              makePhoneCall(selectedPhoneNumber);
-              handlePhoneMenuClose();
-            }}
-            className="flex items-center gap-3 py-2"
-          >
-            <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-            </svg>
-            <span>Call</span>
-          </MenuItem>
-        </Menu>
-      </>
-    ) : (
-      <p className="text-sm text-gray-900 dark:text-white">-</p>
-    )}
-  </div>
-</div>
+              {/* Phone */}
+              <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-green-500 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
+                <div className="flex items-baseline gap-4">
+                  <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-green-100 dark:bg-green-900/30 rounded-lg group-hover:scale-110 transition-transform">
+                    <svg className="w-6 h-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                    </svg>
+                  </div>
+                  <Label className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Phone</Label>
+                  {(isInterviewEditMode || isEditOnlyMode) ? (
+                    <input
+                      type="tel"
+                      value={interviewEditForm.phone}
+                      onChange={(e) =>
+                        setInterviewEditForm((prev) => ({ ...prev, phone: e.target.value }))
+                      }
+                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-green-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                      placeholder="Phone"
+                    />
+                  ) : applicant.phone ? (
+                    <>
+                      <a
+                        href="#"
+                        onClick={(e) => handlePhoneClick(e, applicant.phone)}
+                        className="text-sm text-gray-900 dark:text-white cursor-pointer hover:text-green-600 dark:hover:text-green-400 transition-colors"
+                        aria-label={`Phone options for ${applicant.phone}`}
+                      >
+                        {applicant.phone}
+                      </a>
+                      
+                      <Menu
+                        anchorEl={phoneMenuAnchor}
+                        open={Boolean(phoneMenuAnchor)}
+                        onClose={handlePhoneMenuClose}
+                        onClick={(e) => e.stopPropagation()}
+                        PaperProps={{
+                          style: {
+                            width: '200px',
+                            marginTop: '8px',
+                          },
+                          className: 'rounded-lg shadow-lg',
+                        }}
+                      >
+                        <MenuItem 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            copyPhoneNumber(selectedPhoneNumber);
+                            handlePhoneMenuClose();
+                          }}
+                          className="flex items-center gap-3 py-2"
+                        >
+                          <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                          </svg>
+                          <span>Copy Number</span>
+                        </MenuItem>
+                        
+                        <MenuItem 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openWhatsApp(selectedPhoneNumber);
+                            handlePhoneMenuClose();
+                          }}
+                          className="flex items-center gap-3 py-2"
+                        >
+                          <svg className="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.582 2.128 2.164-.573c.918.496 1.956.759 3.166.759 3.181 0 5.768-2.586 5.769-5.766.001-3.181-2.587-5.767-5.768-5.768zm3.392 8.244c-.144.405-.837.826-1.15.89-.312.064-.586.096-.946-.086-.36-.181-1.347-.655-1.693-1.164-.346-.509-.361-.764-.252-1.069.108-.305.264-.477.504-.765.24-.288.288-.432.432-.72.144-.288.072-.504-.036-.702-.108-.198-.612-1.274-.828-1.746-.216-.468-.432-.486-.612-.486s-.324-.018-.504-.018c-.252 0-.576.072-.864.36-.288.288-1.098 1.07-1.098 2.619 0 1.548 1.098 2.762 1.266 2.97.168.207 1.85 2.973 4.046 3.831.576.225.936.36 1.26.45.504.162.954.126 1.314.072.36-.054 1.026-.414 1.17-.81.144-.396.252-.81.144-.882-.108-.072-.504-.252-1.098-.702-.414-.306-.918-.666-1.134-.882-.216-.216-.36-.576-.108-.9.252-.324 1.008-1.26 1.134-1.512.126-.252.126-.432-.036-.666-.18-.234-.54-.468-.9-.648-.324-.162-.594-.288-.792-.234-.18.054-.324.234-.432.378-.108.144-.864 1.098-1.134 1.26s-.468.216-.72.036c-.288-.18-1.152-.558-1.368-.756-.216-.198-.36-.738-.144-1.08.216-.342.36-.486.54-.666.18-.18.24-.324.36-.522.12-.198.072-.414-.036-.648-.108-.234-.468-1.188-.612-1.584-.126-.36-.252-.36-.594-.36h-.648z"/>
+                          </svg>
+                          <span>WhatsApp</span>
+                        </MenuItem>
+                        
+                        <MenuItem 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            makePhoneCall(selectedPhoneNumber);
+                            handlePhoneMenuClose();
+                          }}
+                          className="flex items-center gap-3 py-2"
+                        >
+                          <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                          </svg>
+                          <span>Call</span>
+                        </MenuItem>
+                      </Menu>
+                    </>
+                  ) : (
+                    <p className="text-sm text-gray-900 dark:text-white">-</p>
+                  )}
+                </div>
+              </div>
 
               {/* Birth Date */}
               <div className="group relative pl-5 pr-5 py-5 bg-white/60 dark:bg-gray-800/40 backdrop-blur-sm rounded-xl border-l-4 border-teal-400 hover:bg-white dark:hover:bg-gray-800/60 transition-all duration-200 hover:shadow-lg">
