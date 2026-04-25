@@ -3197,14 +3197,14 @@ const buildBulkInterviewPreview = () => {
     // Don't block preview if date/time missing, but show placeholder
   }
 
-  // Create date in local timezone to avoid UTC conversion issues
+  // Create date in local timezone without UTC conversion
   let baseDate: Date;
   let scheduledDateValid = false;
   
   if (bulkInterviewForm.date && bulkInterviewForm.time) {
     const [year, month, day] = bulkInterviewForm.date.split('-').map(Number);
     const [hours, minutes] = bulkInterviewForm.time.split(':').map(Number);
-    // Create date using local time (not UTC)
+    // Create date using local time constructor (not UTC)
     baseDate = new Date(year, month - 1, day, hours, minutes);
     scheduledDateValid = !isNaN(baseDate.getTime());
   } else {
@@ -3226,27 +3226,28 @@ const buildBulkInterviewPreview = () => {
     String(bulkMessageTemplate || '').trim() || getDefaultBulkInterviewTemplate();
 
   const items = selectedApplicantsForInterview.map((candidate: { applicantId: string; applicantName: string; applicantNo: number | null; email: string; companyId: string; jobPositionId?: string; status: string }, index: number) => {
-    // Calculate scheduled time without affecting the original baseDate
+    // Calculate scheduled time using local time arithmetic
     const scheduled = new Date(baseDate.getTime() + index * interval * 60000);
     
-    // Format date in local timezone without timezone conversion
-    const interviewDate = scheduled.toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
-    });
+    // FIXED: Format date manually to avoid timezone issues
+    const interviewDate = (() => {
+      const year = scheduled.getFullYear();
+      const month = scheduled.getMonth();
+      const day = scheduled.getDate();
+      const months = ['January', 'February', 'March', 'April', 'May', 'June', 
+                      'July', 'August', 'September', 'October', 'November', 'December'];
+      const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      return `${days[day]}, ${months[month]} ${day}, ${year}`;
+    })();
     
-    // Format time in local timezone (12-hour format with AM/PM)
+    // Format time in 12-hour format
     const interviewTime = scheduled.toLocaleTimeString('en-US', {
       hour: 'numeric',
       minute: '2-digit',
-      hour12: true,
-      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+      hour12: true
     });
     
-    // Format ISO string without timezone offset (preserve local time)
+    // Build ISO-like string without timezone offset (preserve local time)
     const year = scheduled.getFullYear();
     const month = String(scheduled.getMonth() + 1).padStart(2, '0');
     const day = String(scheduled.getDate()).padStart(2, '0');
@@ -3264,9 +3265,9 @@ const buildBulkInterviewPreview = () => {
 
     const replacements: Record<string, string> = {
       '{{candidateName}}': candidate.applicantName || 'Candidate',
-      '{{candidatename}}': candidate.applicantName || 'Candidate', // Add lowercase version
+      '{{candidatename}}': candidate.applicantName || 'Candidate',
       '{{jobTitle}}': jobTitle || '[Position]',
-      '{{jobtitle}}': jobTitle || '[Position]', // Add lowercase version
+      '{{jobtitle}}': jobTitle || '[Position]',
       '{{applicantNo}}':
         typeof candidate.applicantNo === 'number'
           ? String(candidate.applicantNo)
@@ -3282,7 +3283,7 @@ const buildBulkInterviewPreview = () => {
       '{{interviewComment}}': String(bulkInterviewForm.comment || ''),
     };
 
-    // Apply substitutions to subject using regex for case-insensitive replacement
+    // Apply substitutions to subject
     let processedSubject = sourceSubject;
     Object.entries(replacements).forEach(([token, value]) => {
       const regex = new RegExp(token.replace(/[{}]/g, '\\$&'), 'gi');
