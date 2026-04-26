@@ -37,6 +37,7 @@ export interface CreateUserRequest {
   permissions?: Array<{ permission: string; access?: string[] }>;
 }
 
+
 export interface UpdateUserRequest {
   name?: string;
   fullName?: string;

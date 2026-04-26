@@ -464,8 +464,6 @@ const CustomFilterModal: React.FC<Props> = ({
     // Log lowest value and its applicant id for debugging
     if (validEntries.length) {
       try {
-        const minEntry = validEntries[0];
-        console.log('SalaryRangeControl lowest observed expected salary:', minEntry.n, 'applicantId:', minEntry.id);
       } catch (e) { /* ignore */ }
     }
     if (observedMax <= observedMin) observedMax = observedMin + Math.max(100, Math.abs(observedMin || 1000));

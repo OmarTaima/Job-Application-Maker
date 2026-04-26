@@ -1,21 +1,21 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { useNavigate } from "react-router";
-import { useApplicants } from "../../../hooks/queries/useApplicants";
-import { useCompanies } from "../../../hooks/queries/useCompanies";
-import { useJobPositions } from "../../../hooks/queries/useJobPositions";
-import { useAuth } from "../../../context/AuthContext";
-import LoadingSpinner from "../../../components/common/LoadingSpinner";
+import { useApplicants } from "../../../../hooks/queries/useApplicants";
+import { useCompanies } from "../../../../hooks/queries/useCompanies";
+import { useJobPositions } from "../../../../hooks/queries/useJobPositions";
+import { useAuth } from "../../../../context/AuthContext";
+import LoadingSpinner from "../../../../components/common/LoadingSpinner";
 import { useQueryClient } from '@tanstack/react-query';
-import { applicantsKeys } from '../../../hooks/queries/useApplicants';
-import { toPlainString } from "../../../utils/strings";
+import { applicantsKeys } from '../../../../hooks/queries/useApplicants';
+import { toPlainString } from "../../../../utils/strings";
 import {
   buildApplicantDuplicateLookup,
   sortApplicantsByDuplicatePriority,
-} from '../../../utils/applicantDuplicateSort';
-import CustomFilterModal from "../../../components/modals/CustomFilterModal";
-import Swal from '../../../utils/swal';
-import BulkMessageModal from '../../../components/modals/BulkMessageModal';
-import { useDeleteApplicant, useUpdateApplicantStatus } from '../../../hooks/queries/useApplicants';
+} from '../../../../utils/applicantDuplicateSort';
+import CustomFilterModal from "../../../../components/modals/CustomFilterModal";
+import Swal from '../../../../utils/swal';
+import BulkMessageModal from '../../../../components/modals/BulkMessageModal';
+import { useDeleteApplicant, useUpdateApplicantStatus } from '../../../../hooks/queries/useApplicants';
 
 // Icons (using emoji as fallback, but in production use proper icon library)
 import { 

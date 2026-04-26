@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import 'quill/dist/quill.snow.css';
 import { Modal } from '../ui/modal';
 import { companiesService } from '../../services/companiesService';
@@ -8,6 +8,7 @@ import Input from '../form/input/InputField';
 import TextArea from '../form/input/TextArea';
 import Select from '../form/Select';
 import { toPlainString } from '../../utils/strings';
+import { EmailTemplate } from '../../services/emailTemplatesService';
 
 // Simple HTML escape utility
 function escapeHtml(str: string) {
@@ -38,7 +39,6 @@ function QuillEditor({ value, onChange }: { value: string; onChange: (v: string)
       const QuillModule = await import('quill');
       const Quill = (QuillModule as any).default ?? QuillModule;
       if (!mounted || !containerRef.current) return;
-      // If Quill already initialized, just update content and return
       if (quillRef.current) {
         try {
           if (quillRef.current.root && quillRef.current.root.innerHTML !== value) {
@@ -48,7 +48,6 @@ function QuillEditor({ value, onChange }: { value: string; onChange: (v: string)
         return;
       }
 
-      // Ensure container is empty before initializing Quill to avoid duplicate toolbars
       try { containerRef.current.innerHTML = ''; } catch (e) { /* ignore */ }
       quillRef.current = new Quill(containerRef.current, {
         theme: 'snow',
@@ -65,10 +64,8 @@ function QuillEditor({ value, onChange }: { value: string; onChange: (v: string)
         try { quillRef.current.off && quillRef.current.off('text-change'); } catch (e) { /* ignore */ }
         quillRef.current = null;
       }
-      // Clear container DOM so re-mount doesn't keep previous toolbar/editor nodes
       try { if (containerRef.current) containerRef.current.innerHTML = ''; } catch (e) { /* ignore */ }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -83,46 +80,52 @@ function QuillEditor({ value, onChange }: { value: string; onChange: (v: string)
 type Props = any;
 
 export default function InterviewScheduleModal(props: Props) {
-  const {
-    isOpen,
-    onClose,
-    formResetKey,
-    interviewForm,
-    setInterviewForm,
-    interviewError,
-    setInterviewError,
-    handleInterviewSubmit,
-    fillCompanyAddress,
-    notificationChannels,
-    setNotificationChannels,
-    emailOption,
-    setEmailOption,
-    customEmail,
-    setCustomEmail,
-    phoneOption,
-    setPhoneOption,
-    customPhone,
-    setCustomPhone,
-    messageTemplate,
-    setMessageTemplate,
-    interviewEmailSubject,
-    setInterviewEmailSubject,
-    isSubmittingInterview,
-    // setIsSubmittingInterview, // removed unused prop
-    setShowPreviewModal,
-    setPreviewHtml,
-    buildInterviewEmailHtml,
-    getJobTitle,
-    applicant,
-    companyData,
-    bulkMode = false,
-    bulkCount = 0,
-    intervalMinutes = 10,
-    setIntervalMinutes,
-    onPreview,
-  } = props;
+ const {
+  isOpen,
+  onClose,
+  formResetKey,
+  interviewForm,
+  setInterviewForm,
+  interviewError,
+  setInterviewError,
+  handleInterviewSubmit,
+  fillCompanyAddress,
+  notificationChannels,
+  setNotificationChannels,
+  emailOption,
+  setEmailOption,
+  customEmail,
+  setCustomEmail,
+  phoneOption,
+  setPhoneOption,
+  customPhone,
+  setCustomPhone,
+  messageTemplate,
+  setMessageTemplate,
+  interviewEmailSubject,
+  setInterviewEmailSubject,
+  isSubmittingInterview,
+  setShowPreviewModal,
+  setPreviewHtml,
+  getJobTitle,
+  applicant,
+  companyData,
+  bulkMode = false,
+  bulkCount = 0,
+  intervalMinutes = 10,
+  setIntervalMinutes,
+  recipients = [],
+  jobTitleById = {},
+} = props;
 
-  // Helper: detect URL-like location strings
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
+
+  const emailTemplates: EmailTemplate[] = useMemo(() => {
+    const company = companyData || (applicant && (applicant.company || applicant.companyObj));
+    const templates = company?.settings?.mailSettings?.emailTemplates || [];
+    return templates;
+  }, [companyData, applicant]);
+
   const isUrl = (s?: string): boolean => {
     if (!s) return false;
     const t = String(s).trim();
@@ -235,176 +238,530 @@ export default function InterviewScheduleModal(props: Props) {
     return raw;
   };
 
- const generateMessageTemplate = (channels: typeof notificationChannels = notificationChannels) => {
-  if (!applicant) return '';
-
-  const applicantName = bulkMode
-    ? '{{candidateName}}'
-    : (applicant.fullName || '').trim() || 'Candidate';
-  const positionTitle = (() => {
-    try {
-      const title = getJobTitle?.();
-      if (!title) return '{{jobTitle}}'; // Return placeholder if no title
-      if (typeof title === 'string') return title.trim() || '{{jobTitle}}';
-      const en = typeof (title as any).en === 'string' ? (title as any).en.trim() : '';
-      const ar = typeof (title as any).ar === 'string' ? (title as any).ar.trim() : '';
-      return (en || ar) || '{{jobTitle}}';
-    } catch {
-      return '{{jobTitle}}';
+  const handleTemplateSelect = (templateId: string) => {
+    if (!templateId) {
+      setSelectedTemplateId('');
+      return;
     }
-  })();
-  const interviewDate = interviewForm.date
-  ? (() => {
-      const [year, month, day] = interviewForm.date.split('-');
-      const date = new Date(Date.UTC(parseInt(year), parseInt(month) - 1, parseInt(day)));
-      return date.toLocaleDateString('en-US', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-        timeZone: 'UTC'
-      });
-    })()
-  : '[Interview Date]';
-  const interviewTime = bulkMode
-    ? '{{interviewTime}}'
-    : formatTime12Hour(interviewForm.time || '[Interview Time]');
-  const interviewType = interviewForm.type || 'phone';
-  const typeLabel = interviewType.charAt(0).toUpperCase() + interviewType.slice(1);
-  const location = (interviewForm.location || '').trim() || '[Location]';
-  const link = (interviewForm.link || '').trim();
-  const interviewDescription = (interviewForm.description || '').trim();
-  const interviewComment = (interviewForm.comment || '').trim();
-
-  const makeLocationHtml = (loc: string) => {
-    const esc = escapeHtml;
-    if (isUrl(loc)) {
-      let href = loc;
-      if (href.startsWith('//')) href = 'https:' + href;
-      else if (!href.toLowerCase().startsWith('http://') && !href.toLowerCase().startsWith('https://') && href.toLowerCase().startsWith('www.')) href = 'https://' + href;
-      const hrefEsc = esc(href);
-      const textEsc = esc(loc);
-      return `<a href="${hrefEsc}" target="_blank" rel="noopener noreferrer">${textEsc}</a>`;
-    }
-    return esc(loc);
-  };
-
-  const resolveAddressAndUrl = () => {
-    const raw = (interviewForm.location || '').trim();
-    const normalizedRaw = raw && isUrl(raw) ? normalizeUrl(raw) : raw;
-    const entries = getCompanyAddressEntries();
-
-    if (normalizedRaw) {
-      const matched = entries.find((entry) => areSameUrls(entry.url, normalizedRaw));
-      if (matched) {
-        return { addressValue: matched.label, locationUrl: matched.url };
+    
+    const selectedTemplate = emailTemplates.find((t: EmailTemplate) => t._id === templateId);
+    if (selectedTemplate) {
+      let decodedHtml = selectedTemplate.html;
+      try {
+        decodedHtml = decodedHtml.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+      } catch (e) {
+        decodedHtml = selectedTemplate.html;
       }
+      
+      if (notificationChannels.email && selectedTemplate.subject) {
+        setInterviewEmailSubject(selectedTemplate.subject);
+      }
+      
+      setMessageTemplate(decodedHtml);
+      setSelectedTemplateId(templateId);
     }
-
-    if (normalizedRaw && isUrl(normalizedRaw)) {
-      return { addressValue: '[Address]', locationUrl: normalizedRaw };
-    }
-
-    if (normalizedRaw) {
-      return { addressValue: normalizedRaw, locationUrl: '' };
-    }
-
-    return { addressValue: '[Address]', locationUrl: '' };
-  };
-  
-  const makeLinkHtml = (lnk: string) => {
-    const esc = escapeHtml;
-    if (!lnk) return '';
-    if (isUrl(lnk)) {
-      let href = lnk;
-      if (href.startsWith('//')) href = 'https:' + href;
-      else if (!href.toLowerCase().startsWith('http://') && !href.toLowerCase().startsWith('https://') && href.toLowerCase().startsWith('www.')) href = 'https://' + href;
-      const hrefEsc = esc(href);
-      const textEsc = esc(lnk);
-      return `<a href="${hrefEsc}" target="_blank" rel="noopener noreferrer">${textEsc}</a>`;
-    }
-    return esc(lnk);
   };
 
-  // Only one channel can be active at a time
-  if (channels.email) {
-    // Return HTML so Quill renders multiline content correctly
-    const esc = escapeHtml;
-    const { addressValue, locationUrl } = resolveAddressAndUrl();
-    const locationHtml = locationUrl ? makeLocationHtml(locationUrl) : '';
-    const detailLines = [
-      `Date: ${esc(interviewDate)}`,
-      `Time: ${esc(interviewTime)}`,
-      `Type: ${esc(typeLabel)}`,
-      `Address: ${esc(addressValue)}`,
-    ];
-    if (locationHtml) detailLines.push(`Location: ${locationHtml}`);
-    if (link) detailLines.push(`Video Link: ${makeLinkHtml(link)}`);
-    if (interviewDescription) detailLines.push(`Description: ${esc(interviewDescription)}`);
-    if (interviewComment) detailLines.push(`Comment: ${esc(interviewComment)}`);
-    const detailsBlock = detailLines.map((line) => `<p>${line}</p>`).join('');
+  const generateMessageTemplate = (channels: typeof notificationChannels = notificationChannels) => {
+    if (!applicant) return '';
 
-    return (
-      `<p>Dear ${esc(applicantName)},</p>` +
-      `<p>We are pleased to invite you for an interview for the position of ${esc(positionTitle)}.</p>` +
-      `<p><strong>Interview Details:</strong></p>${detailsBlock}` +
-      `<p>Please confirm your availability at your earliest convenience.</p>` +
-      `<p>Best regards,<br/>HR Team</p>`
-    );
-  } else if (channels.whatsapp) {
-    const detailLines = [
-      `📅 Date: ${interviewDate}`,
-      `⏰ Time: ${interviewTime}`,
-      `🧭 Type: ${typeLabel}`,
-      `📍 Location: ${location}`,
-    ];
-    if (link) detailLines.push(`🎥 Video Link: ${link}`);
-    if (interviewDescription) detailLines.push(`📝 Description: ${interviewDescription}`);
-    if (interviewComment) detailLines.push(`💬 Comment: ${interviewComment}`);
+    const applicantName = bulkMode
+      ? '{{candidateName}}'
+      : (applicant.fullName || '').trim() || 'Candidate';
+    const positionTitle = (() => {
+      try {
+        const title = getJobTitle?.();
+        if (!title) return '{{jobTitle}}';
+        if (typeof title === 'string') return title.trim() || '{{jobTitle}}';
+        const en = typeof (title as any).en === 'string' ? (title as any).en.trim() : '';
+        const ar = typeof (title as any).ar === 'string' ? (title as any).ar.trim() : '';
+        return (en || ar) || '{{jobTitle}}';
+      } catch {
+        return '{{jobTitle}}';
+      }
+    })();
+    const interviewDate = interviewForm.date
+      ? (() => {
+          const [year, month, day] = interviewForm.date.split('-');
+          const date = new Date(Date.UTC(parseInt(year), parseInt(month) - 1, parseInt(day)));
+          return date.toLocaleDateString('en-US', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            timeZone: 'UTC'
+          });
+        })()
+      : '{{InterviewDate}}';
+    const interviewTime = bulkMode
+      ? '{{interviewTime}}'
+      : formatTime12Hour(interviewForm.time || '[Interview Time]');
+    const interviewType = interviewForm.type || 'phone';
+    const typeLabel = interviewType.charAt(0).toUpperCase() + interviewType.slice(1);
+    const location = (interviewForm.location || '').trim() || '[Location]';
+    const link = (interviewForm.link || '').trim();
+    const interviewDescription = (interviewForm.description || '').trim();
+    const interviewComment = (interviewForm.comment || '').trim();
 
-    return `Hi ${applicantName}! 👋\n\nGreat news! We'd like to invite you for an interview for the position of ${positionTitle}.\n\nInterview details:\n${detailLines.join('\n')}\n\nPlease confirm if you're available. Looking forward to meeting you!`;
-  } else if (channels.sms) {
-    const detailParts = [`Date: ${interviewDate}`, `Time: ${interviewTime}`, `Type: ${typeLabel}`, `Location: ${location}`];
-    if (link) detailParts.push(`Video Link: ${link}`);
-    if (interviewDescription) detailParts.push(`Description: ${interviewDescription}`);
+    const makeLocationHtml = (loc: string) => {
+      const esc = escapeHtml;
+      if (isUrl(loc)) {
+        let href = loc;
+        if (href.startsWith('//')) href = 'https:' + href;
+        else if (!href.toLowerCase().startsWith('http://') && !href.toLowerCase().startsWith('https://') && href.toLowerCase().startsWith('www.')) href = 'https://' + href;
+        const hrefEsc = esc(href);
+        const textEsc = esc(loc);
+        return `<a href="${hrefEsc}" target="_blank" rel="noopener noreferrer">${textEsc}</a>`;
+      }
+      return esc(loc);
+    };
 
-    return `Hi ${applicantName}, you're invited for an interview for ${positionTitle}. Interview details: ${detailParts.join(' | ')}.${
-      interviewComment ? ` Comment: ${interviewComment}.` : ''
-    } Please confirm. - HR Team`;
-  }
+    const resolveAddressAndUrl = () => {
+      const raw = (interviewForm.location || '').trim();
+      const normalizedRaw = raw && isUrl(raw) ? normalizeUrl(raw) : raw;
+      const entries = getCompanyAddressEntries();
 
-  return '';
-};
+      if (normalizedRaw) {
+        const matched = entries.find((entry) => areSameUrls(entry.url, normalizedRaw));
+        if (matched) {
+          return { addressValue: matched.label, locationUrl: matched.url };
+        }
+      }
+
+      if (normalizedRaw && isUrl(normalizedRaw)) {
+        return { addressValue: '[Address]', locationUrl: normalizedRaw };
+      }
+
+      if (normalizedRaw) {
+        return { addressValue: normalizedRaw, locationUrl: '' };
+      }
+
+      return { addressValue: '[Address]', locationUrl: '' };
+    };
+    
+    const makeLinkHtml = (lnk: string) => {
+      const esc = escapeHtml;
+      if (!lnk) return '';
+      if (isUrl(lnk)) {
+        let href = lnk;
+        if (href.startsWith('//')) href = 'https:' + href;
+        else if (!href.toLowerCase().startsWith('http://') && !href.toLowerCase().startsWith('https://') && href.toLowerCase().startsWith('www.')) href = 'https://' + href;
+        const hrefEsc = esc(href);
+        const textEsc = esc(lnk);
+        return `<a href="${hrefEsc}" target="_blank" rel="noopener noreferrer">${textEsc}</a>`;
+      }
+      return esc(lnk);
+    };
+
+    if (channels.email) {
+      const esc = escapeHtml;
+      const { addressValue, locationUrl } = resolveAddressAndUrl();
+      const locationHtml = locationUrl ? makeLocationHtml(locationUrl) : '';
+      const detailLines = [
+        `Date: ${esc(interviewDate)}`,
+        `Time: ${esc(interviewTime)}`,
+        `Type: ${esc(typeLabel)}`,
+        `Address: ${esc(addressValue)}`,
+      ];
+      if (locationHtml) detailLines.push(`Location: ${locationHtml}`);
+      if (link) detailLines.push(`Video Link: ${makeLinkHtml(link)}`);
+      if (interviewDescription) detailLines.push(`Description: ${esc(interviewDescription)}`);
+      if (interviewComment) detailLines.push(`Comment: ${esc(interviewComment)}`);
+      const detailsBlock = detailLines.map((line) => `<p>${line}</p>`).join('');
+
+      return (
+        `<p>Dear ${esc(applicantName)},</p>` +
+        `<p>We are pleased to invite you for an interview for the position of ${esc(positionTitle)}.</p>` +
+        `<p><strong>Interview Details:</strong></p>${detailsBlock}` +
+        `<p>Please confirm your availability at your earliest convenience.</p>` +
+        `<p>Best regards,<br/>HR Team</p>`
+      );
+    } else if (channels.whatsapp) {
+      const detailLines = [
+        `📅 Date: ${interviewDate}`,
+        `⏰ Time: ${interviewTime}`,
+        `🧭 Type: ${typeLabel}`,
+        `📍 Location: ${location}`,
+      ];
+      if (link) detailLines.push(`🎥 Video Link: ${link}`);
+      if (interviewDescription) detailLines.push(`📝 Description: ${interviewDescription}`);
+      if (interviewComment) detailLines.push(`💬 Comment: ${interviewComment}`);
+
+      return `Hi ${applicantName}! 👋\n\nGreat news! We'd like to invite you for an interview for the position of ${positionTitle}.\n\nInterview details:\n${detailLines.join('\n')}\n\nPlease confirm if you're available. Looking forward to meeting you!`;
+    } else if (channels.sms) {
+      const detailParts = [`Date: ${interviewDate}`, `Time: ${interviewTime}`, `Type: ${typeLabel}`, `Location: ${location}`];
+      if (link) detailParts.push(`Video Link: ${link}`);
+      if (interviewDescription) detailParts.push(`Description: ${interviewDescription}`);
+
+      return `Hi ${applicantName}, you're invited for an interview for ${positionTitle}. Interview details: ${detailParts.join(' | ')}.${
+        interviewComment ? ` Comment: ${interviewComment}.` : ''
+      } Please confirm. - HR Team`;
+    }
+
+    return '';
+  };
 
   const handleRegenerateTemplate = () => {
     setMessageTemplate(generateMessageTemplate());
   };
 
+  // Helper to get address label from location URL
+  const getAddressLabelFromLocation = (locationUrl: string): string => {
+    if (!locationUrl) return '';
+    const entries = getCompanyAddressEntries();
+    const matched = entries.find((entry) => areSameUrls(entry.url, locationUrl));
+    return matched?.label || '';
+  };
+
+ const handlePreview = () => {
+  console.log('Bulk Mode:', bulkMode);
+  console.log('Recipients:', recipients);
+  console.log('Recipients length:', recipients?.length);
+  
+  const baseInterviewDate = interviewForm.date 
+    ? (() => {
+        const [year, month, day] = interviewForm.date.split('-');
+        const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+        return date.toLocaleDateString('en-US', {
+          weekday: 'long',
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+        });
+      })()
+    : 'No Date Set';
+  
+  // Get location URL and address label
+  const locationUrl = interviewForm.location || '';
+  const addressLabel = getAddressLabelFromLocation(locationUrl);
+  
+  // Helper function to create clickable location HTML
+  const createClickableLocation = (url: string, text?: string) => {
+    if (!url) return '[No Location]';
+    const displayText = text || url;
+    const normalizedUrl = url.startsWith('http') ? url : `https://${url}`;
+    return `<a href="${normalizedUrl}" target="_blank" rel="noopener noreferrer" style="color: #3b82f6; text-decoration: underline;">${escapeHtml(displayText)}</a>`;
+  };
+  
+  if (bulkMode && recipients && recipients.length > 0) {
+    const previewSections = recipients.map((recipient: any, index: any) => {
+      console.log(`Processing recipient ${index}:`, recipient);
+      
+      const applicantName = (() => {
+        const name = recipient.fullName || 
+                     recipient.applicantName || 
+                     recipient.name || 
+                     recipient.candidateName ||
+                     (recipient.applicant?.fullName) ||
+                     (recipient.applicant?.name) ||
+                     recipient.email?.split('@')[0] || 
+                     `Candidate ${index + 1}`;
+        return name.trim();
+      })();
+      
+      const jobTitle = (() => {
+        try {
+          const isMap = jobTitleById && typeof jobTitleById.get === 'function';
+          
+          if (recipient.jobTitle) return recipient.jobTitle;
+          if (recipient.position) return recipient.position;
+          
+          if (typeof recipient.jobPositionId === 'string') {
+            if (isMap) {
+              const mapped = jobTitleById.get(recipient.jobPositionId);
+              if (mapped) return mapped;
+            } else if (jobTitleById && recipient.jobPositionId) {
+              const mapped = (jobTitleById as any)[recipient.jobPositionId];
+              if (mapped) {
+                const title = mapped.title || mapped.name;
+                if (typeof title === 'string') return title;
+                if (title?.en) return title.en;
+                if (title?.ar) return title.ar;
+              }
+            }
+          }
+          
+          if (recipient.jobPositionId && typeof recipient.jobPositionId === 'object') {
+            const title = recipient.jobPositionId.title || recipient.jobPositionId.name;
+            if (typeof title === 'string') return title;
+            if (title?.en) return title.en;
+            if (title?.ar) return title.ar;
+          }
+          
+          if (recipient.jobPosition) {
+            if (typeof recipient.jobPosition === 'string') {
+              if (isMap) {
+                const mapped = jobTitleById.get(recipient.jobPosition);
+                if (mapped) return mapped;
+              } else if (jobTitleById && recipient.jobPosition) {
+                const mapped = (jobTitleById as any)[recipient.jobPosition];
+                if (mapped) {
+                  const title = mapped.title || mapped.name;
+                  if (typeof title === 'string') return title;
+                  if (title?.en) return title.en;
+                  if (title?.ar) return title.ar;
+                }
+              }
+            }
+            if (typeof recipient.jobPosition === 'object') {
+              const title = recipient.jobPosition.title || recipient.jobPosition.name;
+              if (typeof title === 'string') return title;
+              if (title?.en) return title.en;
+              if (title?.ar) return title.ar;
+            }
+          }
+          
+          return '[Position]';
+        } catch (error) {
+          console.error('Error getting job title:', error);
+          return '[Position]';
+        }
+      })();
+
+      const createClickableLocation = (url: string, text?: string) => {
+  if (!url) return '[No Location]';
+  const displayText = text || url;
+  const normalizedUrl = url.startsWith('http') ? url : `https://${url}`;
+  return `<a href="${normalizedUrl}" target="_blank" rel="noopener noreferrer" style="color: #3b82f6; text-decoration: underline;">${escapeHtml(displayText)}</a>`;
+};
+      
+      let interviewTimeDisplay = interviewForm.time || 'No Time Set';
+      if (bulkMode && intervalMinutes && index > 0 && interviewForm.time) {
+        const [hours, minutes] = interviewForm.time.split(':').map(Number);
+        const totalMinutes = (hours * 60) + minutes + (index * intervalMinutes);
+        const newHours = Math.floor(totalMinutes / 60) % 24;
+        const newMinutes = totalMinutes % 60;
+        interviewTimeDisplay = `${String(newHours).padStart(2, '0')}:${String(newMinutes).padStart(2, '0')}`;
+      }
+      
+      const formattedTime = interviewTimeDisplay !== 'No Time Set' ? formatTime12Hour(interviewTimeDisplay) : 'No Time Set';
+      
+      const interviewType = interviewForm.type || 'phone';
+      const typeLabel = interviewType === 'in-person' ? 'In-person' : 
+                        interviewType.charAt(0).toUpperCase() + interviewType.slice(1);
+      
+      let processedSubject = interviewEmailSubject || 'Interview Invitation';
+      let processedBody = messageTemplate || '';
+      
+      // Create clickable location HTML
+      const clickableLocation = createClickableLocation(locationUrl, locationUrl);
+      
+      // Replace all variables including {{location}} and {{address}}
+      processedSubject = processedSubject
+        .replace(/\{\{\s*candidateName\s*\}\}/gi, applicantName)
+        .replace(/\{\{\s*(?:position|jobTitle)\s*\}\}/gi, jobTitle)
+        .replace(/\{\{\s*InterviewDate\s*\}\}/gi, baseInterviewDate)
+        .replace(/\{\{\s*interviewTime\s*\}\}/gi, formattedTime)
+        .replace(/\{\{\s*interviewType\s*\}\}/gi, typeLabel)
+        .replace(/\{\{\s*location\s*\}\}/gi, clickableLocation)
+        .replace(/\{\{\s*address\s*\}\}/gi, addressLabel || '[Address]');
+      
+      // For body, replace location with clickable HTML
+      let bodyWithReplacements = processedBody;
+      bodyWithReplacements = bodyWithReplacements
+        .replace(/\{\{\s*candidateName\s*\}\}/gi, escapeHtml(applicantName))
+        .replace(/\{\{\s*(?:position|jobTitle)\s*\}\}/gi, escapeHtml(jobTitle))
+        .replace(/\{\{\s*InterviewDate\s*\}\}/gi, escapeHtml(baseInterviewDate))
+        .replace(/\{\{\s*interviewTime\s*\}\}/gi, escapeHtml(formattedTime))
+        .replace(/\{\{\s*interviewType\s*\}\}/gi, escapeHtml(typeLabel))
+        .replace(/\{\{\s*location\s*\}\}/gi, clickableLocation) // This becomes HTML, not escaped
+        .replace(/\{\{\s*address\s*\}\}/gi, escapeHtml(addressLabel || '[Address]'));
+      
+      const location = interviewForm.location || '';
+      let locationDisplay = location;
+      if (location && (location.startsWith('http') || location.startsWith('www'))) {
+        locationDisplay = `<a href="${location}" target="_blank" rel="noopener noreferrer" style="color: #3b82f6; text-decoration: underline;">${escapeHtml(location)}</a>`;
+      } else if (location) {
+        locationDisplay = escapeHtml(location);
+      } else {
+        locationDisplay = 'No location specified';
+      }
+
+  
+      return `
+        <div style="margin-bottom: 40px; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; page-break-inside: avoid;">
+          <div style="background-color: #f3f4f6; padding: 12px 20px; border-bottom: 1px solid #e5e7eb;">
+            <h3 style="margin: 0; font-size: 14px; color: #374151;">
+              📧 ${escapeHtml(applicantName)}${jobTitle !== '[Position]' ? ` - ${escapeHtml(jobTitle)}` : ''}
+            </h3>
+            <div style="margin-top: 5px; font-size: 12px; color: #6b7280;">
+              Time: ${escapeHtml(formattedTime)} | Date: ${escapeHtml(baseInterviewDate)}
+            </div>
+          </div>
+          <div style="background-color: #ffffff; padding: 20px;">
+            <div style="margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #e5e7eb;">
+              <strong style="font-size: 14px;">Subject:</strong> 
+              <span style="font-size: 14px;">${escapeHtml(processedSubject)}</span>
+            </div>
+            <div style="line-height: 1.6;">
+              ${bodyWithReplacements || '<p>No content provided</p>'}
+            </div>
+            ${addressLabel ? `
+            <div style="margin-top: 20px; padding-top: 10px; border-top: 1px solid #e5e7eb; font-size: 12px; color: #6b7280;">
+            </div>
+            ` : ''}
+            ${locationUrl ? `
+            <div style="margin-top: 5px; font-size: 12px; color: #6b7280;">
+            </div>
+            ` : ''}
+          </div>
+        </div>
+      `;
+    }).join('');
+    
+    const previewHtmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Bulk Email Preview - ${recipients.length} Recipients</title>
+        <style>
+          body { font-family: Arial, sans-serif; padding: 20px; margin: 0; background-color: #f5f5f5; }
+          .container { max-width: 700px; margin: 0 auto; }
+          .header { background-color: #ffffff; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+          .header h1 { color: #111827; margin: 0 0 10px 0; font-size: 24px; }
+          .header p { color: #6b7280; margin: 0; font-size: 14px; }
+          .preview-count { background-color: #dbeafe; border-radius: 6px; padding: 8px 12px; margin-top: 10px; font-size: 13px; color: #1e40af; }
+          a { color: #3b82f6; text-decoration: underline; }
+          a:hover { color: #2563eb; }
+          @media print {
+            body { background-color: white; padding: 0; }
+            .header { box-shadow: none; border: 1px solid #e5e7eb; }
+            .preview-count { background-color: #f3f4f6; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>📧 Bulk Email Preview</h1>
+            <p>Sending to ${recipients.length} recipient(s) on ${baseInterviewDate}</p>
+            <div class="preview-count">
+              ⏰ Time interval: ${intervalMinutes} minute(s) between each interview
+            </div>
+          </div>
+          ${previewSections}
+        </div>
+      </body>
+      </html>
+    `;
+    
+    setPreviewHtml(previewHtmlContent);
+    setShowPreviewModal(true);
+  } else {
+    // Single mode
+    console.log('Single mode - applicant:', applicant);
+    
+    const jobTitle = (() => {
+      try {
+        const title = getJobTitle?.();
+        if (!title) return '';
+        if (typeof title === 'string') return title.trim();
+        const en = typeof (title as any).en === 'string' ? (title as any).en.trim() : '';
+        const ar = typeof (title as any).ar === 'string' ? (title as any).ar.trim() : '';
+        return en || ar || '';
+      } catch {
+        return '';
+      }
+    })();
+    
+    const applicantName = (applicant?.fullName || applicant?.applicantName || applicant?.name || '').trim() || 'Candidate';
+    const interviewDate = baseInterviewDate;
+    const interviewTime = interviewForm.time 
+      ? formatTime12Hour(interviewForm.time)
+      : 'No Time Set';
+    
+    const interviewType = interviewForm.type || 'phone';
+    const typeLabel = interviewType === 'in-person' ? 'In-person' : 
+                      interviewType.charAt(0).toUpperCase() + interviewType.slice(1);
+    
+    let processedSubject = interviewEmailSubject || 'Interview Invitation';
+    let processedBody = messageTemplate || '';
+    
+    // Create clickable location HTML
+    const clickableLocation = createClickableLocation(locationUrl, locationUrl);
+    
+    // Replace subject (subject should have escaped HTML, not clickable links)
+    processedSubject = processedSubject
+      .replace(/\{\{\s*candidateName\s*\}\}/gi, escapeHtml(applicantName))
+      .replace(/\{\{\s*(?:position|jobTitle)\s*\}\}/gi, escapeHtml(jobTitle || '[Position]'))
+      .replace(/\{\{\s*InterviewDate\s*\}\}/gi, escapeHtml(interviewDate))
+      .replace(/\{\{\s*interviewTime\s*\}\}/gi, escapeHtml(interviewTime))
+      .replace(/\{\{\s*interviewType\s*\}\}/gi, escapeHtml(typeLabel))
+      .replace(/\{\{\s*location\s*\}\}/gi, escapeHtml(locationUrl || '[Location URL]'))
+      .replace(/\{\{\s*address\s*\}\}/gi, escapeHtml(addressLabel || '[Address]'));
+    
+    // Replace body - location becomes clickable HTML
+    let bodyWithReplacements = processedBody;
+    bodyWithReplacements = bodyWithReplacements
+      .replace(/\{\{\s*candidateName\s*\}\}/gi, escapeHtml(applicantName))
+      .replace(/\{\{\s*(?:position|jobTitle)\s*\}\}/gi, escapeHtml(jobTitle || '[Position]'))
+      .replace(/\{\{\s*InterviewDate\s*\}\}/gi, escapeHtml(interviewDate))
+      .replace(/\{\{\s*interviewTime\s*\}\}/gi, escapeHtml(interviewTime))
+      .replace(/\{\{\s*interviewType\s*\}\}/gi, escapeHtml(typeLabel))
+      .replace(/\{\{\s*location\s*\}\}/gi, clickableLocation) // This becomes HTML, not escaped
+      .replace(/\{\{\s*address\s*\}\}/gi, escapeHtml(addressLabel || '[Address]'));
+    
+    const previewHtmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Email Preview</title>
+        <style>
+          body { font-family: Arial, sans-serif; padding: 20px; margin: 0; background-color: #f5f5f5; }
+          .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+          .header { background-color: #ffffff; border-bottom: 1px solid #e5e7eb; padding: 24px 30px; text-align: center; }
+          .header h1 { color: #111827; margin: 0; font-size: 22px; font-weight: 700; }
+          .content { padding: 30px; }
+          .content p { margin: 0 0 16px 0; line-height: 1.6; }
+          a { color: #3b82f6; text-decoration: underline; }
+          a:hover { color: #2563eb; }
+          hr { margin: 30px 0; border: none; border-top: 1px solid #eee; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>${escapeHtml(processedSubject) || 'No Subject'}</h1>
+          </div>
+          <div class="content">
+            ${bodyWithReplacements || '<p>No content provided</p>'}
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+    
+    setPreviewHtml(previewHtmlContent);
+    setShowPreviewModal(true);
+  }
+};
+
   // Stable handlers for DatePicker to avoid re-initialization which closes the picker
   const handleDateChange = useCallback((selectedDates: Date[]) => {
-  if (selectedDates.length > 0) {
-    const date = selectedDates[0];
-    // Format date in local timezone
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const formattedDate = `${year}-${month}-${day}`;
-    setInterviewForm((prev: any) => ({ ...prev, date: formattedDate }));
-  }
-}, [setInterviewForm]);
+    if (selectedDates.length > 0) {
+      const date = selectedDates[0];
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const formattedDate = `${year}-${month}-${day}`;
+      setInterviewForm((prev: any) => ({ ...prev, date: formattedDate }));
+    }
+  }, [setInterviewForm]);
 
   const handleTimeChange = useCallback((selectedDates: Date[]) => {
-  if (selectedDates.length > 0) {
-    const timeDate = selectedDates[0];
-    // Get time in local timezone
-    const hours = String(timeDate.getHours()).padStart(2, '0');
-    const minutes = String(timeDate.getMinutes()).padStart(2, '0');
-    setInterviewForm((prev: any) => ({ ...prev, time: `${hours}:${minutes}` }));
-  }
-}, [setInterviewForm]);
+    if (selectedDates.length > 0) {
+      const timeDate = selectedDates[0];
+      const hours = String(timeDate.getHours()).padStart(2, '0');
+      const minutes = String(timeDate.getMinutes()).padStart(2, '0');
+      setInterviewForm((prev: any) => ({ ...prev, time: `${hours}:${minutes}` }));
+    }
+  }, [setInterviewForm]);
 
   const company = companyData || (applicant && (applicant.company || applicant.companyObj)) || null;
-  // If company not present directly on applicant, try nested jobPosition/companyId paths
   const companyCompany = company || (applicant as any)?.jobPositionId?.companyId || (applicant as any)?.jobPositionId?.company || (applicant as any)?.jobPositionId?.companyObj || null;
 
   const getCompanyIdVal = () => {
@@ -412,33 +769,24 @@ export default function InterviewScheduleModal(props: Props) {
     return c?._id || c?.id || c?.company || (c?.companyId && (typeof c.companyId === 'string' ? c.companyId : c.companyId._id)) || null;
   };
 
-  // Debug: log company shape when modal opens to help diagnose missing sender entries
-  // Remove this log once the issue is confirmed
   useEffect(() => {
     if (isOpen) {
       try {
-        // eslint-disable-next-line no-console
         console.debug('InterviewScheduleModal company:', company);
       } catch (e) { /* ignore */ }
     }
   }, [isOpen, company]);
 
-  // Log mail-related fields for easier debugging
   try {
-    // eslint-disable-next-line no-console
     console.debug('InterviewScheduleModal mailSettings.availableMails:', company?.mailSettings?.availableMails);
-    // eslint-disable-next-line no-console
     console.debug('InterviewScheduleModal company.availableMails:', (company as any)?.availableMails);
-    // eslint-disable-next-line no-console
     console.debug('InterviewScheduleModal mailSettings.other variants:', company?.mailSettings?.available_senders, (company as any)?.available_senders, (company as any)?.mail?.availableMails);
   } catch (e) { /* ignore */ }
   const senderOptions: Array<{ value: string; label: string }> = [];
 
-  // Collect potential source arrays for available senders (handle various backend shapes)
   const availableCandidates: any[] = [];
   if (companyCompany) {
     const ms = (companyCompany as any).mailSettings || (companyCompany as any).settings?.mailSettings || (companyCompany as any).settings?.mail || null;
-    // do not pre-add a "Default" labeled entry; availableMails will include defaults
     if (ms && Array.isArray(ms.availableMails)) availableCandidates.push(...ms.availableMails);
     if (ms && Array.isArray(ms.available_senders)) availableCandidates.push(...ms.available_senders);
     if (ms && Array.isArray(ms.availableSenders)) availableCandidates.push(...ms.availableSenders);
@@ -448,17 +796,13 @@ export default function InterviewScheduleModal(props: Props) {
     if (Array.isArray((companyCompany as any).mail?.availableMails)) availableCandidates.push(...(companyCompany as any).mail.availableMails);
   }
 
-  // Also explicitly check applicant.jobPositionId.companyId.settings.mailSettings (some responses nest there)
   try {
     const nested = (applicant as any)?.jobPositionId?.companyId?.settings?.mailSettings;
     if (nested) {
-      // nested.defaultMail will be included via availableMails normalization
       if (Array.isArray(nested.availableMails)) availableCandidates.push(...nested.availableMails);
     }
   } catch (e) { /* ignore */ }
 
-  // Normalize candidates into {value,label} and dedupe
-  // Start seen with any values already pushed (e.g. defaultMail) to avoid duplicate entries
   const seen = new Set<string>(senderOptions.map((s) => s.value));
   availableCandidates.forEach((m: any) => {
     let email = '';
@@ -476,20 +820,16 @@ export default function InterviewScheduleModal(props: Props) {
     senderOptions.push({ value: email, label: email });
   });
 
-  // Fallback to company email if not already present
   const fallbackEmail = (companyCompany as any)?.contactEmail || (companyCompany as any)?.email || (companyCompany as any)?.contactEmail || (companyCompany as any)?.contactEmailAddress;
   if (fallbackEmail && !senderOptions.find((s) => s.value === fallbackEmail)) {
     senderOptions.push({ value: fallbackEmail, label: fallbackEmail });
   }
 
   try {
-    // eslint-disable-next-line no-console
     console.debug('InterviewScheduleModal computed senderOptions:', senderOptions);
   } catch (e) { /* ignore */ }
-  // New-local-email state: user will type only the local part (before the @domain)
   const [newLocalEmail, setNewLocalEmail] = useState('');
 
-  // Resolve domain from already available company payload (avoid extra modal fetches).
   const getCompanyDomain = () => {
     const domainFromResponse =
       (companyCompany as any)?.settings?.mailSettings?.companyDomain ||
@@ -528,11 +868,8 @@ export default function InterviewScheduleModal(props: Props) {
   };
 
   const companyDomain = getCompanyDomain();
-
-  // For the domain display in UI
   const domainForDisplay = companyDomain;
 
-  // Intercept submit: if user entered a new local email, add it to company's availableMails first
   const onSubmit = async (e: any) => {
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
 
@@ -548,7 +885,6 @@ export default function InterviewScheduleModal(props: Props) {
       }
 
       try {
-        // fetch current settings and merge availableMails (keep unique)
         const settings = await companiesService.getCompanySettingsByCompany(cid);
         const collectExisting = (obj: any): string[] => {
           const out: string[] = [];
@@ -566,7 +902,6 @@ export default function InterviewScheduleModal(props: Props) {
         };
         const existing = collectExisting(settings);
         const merged = Array.from(new Set([...(existing || []), newEmail]));
-        // Resolve settings id similar to CompanySettings page logic
         const findSettingsId = (obj: any): string | undefined => {
           if (!obj || typeof obj !== 'object') return undefined;
           if (obj.settings && obj.settings._id) return obj.settings._id;
@@ -582,10 +917,9 @@ export default function InterviewScheduleModal(props: Props) {
 
         const companySettingsId = (companyCompany as any)?.settings?._id;
         const generatedSettingsId = companySettingsId ?? findSettingsId(settings);
-        const idToSend = generatedSettingsId ?? cid; // fall back to company id
+        const idToSend = generatedSettingsId ?? cid;
         try { console.debug('InterviewScheduleModal.updateCompanySettings', { idToSend, merged, settings }); } catch (e) { /* ignore */ }
         await companiesService.updateCompanySettings(idToSend, { mailSettings: { availableMails: merged } });
-        // set selected sender so subsequent send uses it
         try { setCustomEmail(newEmail); } catch (ignore) {}
       } catch (err: any) {
         const msg = (err && err.message) ? err.message : 'Failed to add new sender address';
@@ -594,7 +928,6 @@ export default function InterviewScheduleModal(props: Props) {
       }
     }
 
-    // finally delegate to parent submit handler
     try {
       await handleInterviewSubmit(e);
     } catch (err: any) {
@@ -614,7 +947,6 @@ export default function InterviewScheduleModal(props: Props) {
   const fallbackAddressInputValue = (() => {
     const raw = String(interviewForm.location || '').trim();
     if (!raw) return '';
-    // Do not show raw URL in the address text field after refresh.
     if (isUrl(raw)) return '';
     return raw;
   })();
@@ -631,8 +963,6 @@ export default function InterviewScheduleModal(props: Props) {
     return normalizeUrl(s);
   })();
 
-  // When company has multiple addresses, default location to the first URL
-  // so the template can always map URL -> address label (`en`).
   useEffect(() => {
     if (!isOpen || companyAddressEntries.length === 0) return;
     const current = String(interviewForm.location || '').trim();
@@ -643,8 +973,6 @@ export default function InterviewScheduleModal(props: Props) {
     setInterviewForm((prev: any) => ({ ...prev, location: firstUrl }));
   }, [isOpen, companyAddressEntries, interviewForm.location, setInterviewForm]);
 
-  // If template was generated before address options were ready,
-  // regenerate once we can resolve `Address` from the selected URL.
   useEffect(() => {
     if (!isOpen || !notificationChannels.email) return;
     if (!messageTemplate) return;
@@ -661,6 +989,16 @@ export default function InterviewScheduleModal(props: Props) {
     companyAddressEntries.length,
     setMessageTemplate,
   ]);
+
+  const templateOptions = useMemo(() => {
+    return [
+      { value: '', label: '-- Select a template --' },
+      ...emailTemplates.map((t: EmailTemplate) => ({ 
+        value: t._id || '', 
+        label: t.name 
+      }))
+    ];
+  }, [emailTemplates]);
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} className="max-w-[1100px] p-6 lg:p-10" closeOnBackdrop={false}>
@@ -685,6 +1023,22 @@ export default function InterviewScheduleModal(props: Props) {
           </div>
         )}
 
+        {/* Template Selector */}
+        {emailTemplates.length > 0 && notificationChannels.email && (
+          <div className="mt-4">
+            <Label htmlFor="template-select">Load Email Template</Label>
+            <Select
+              options={templateOptions}
+              value={selectedTemplateId}
+              onChange={(value) => handleTemplateSelect(value as string)}
+              placeholder="Select a template to load"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              Select a template to automatically fill the subject and body with HTML formatting preserved
+            </p>
+          </div>
+        )}
+
         <div className="mt-6 space-y-4">
           <div className={`grid grid-cols-1 gap-4 ${bulkMode ? 'sm:grid-cols-4' : 'sm:grid-cols-3'}`}>
             <div>
@@ -692,14 +1046,14 @@ export default function InterviewScheduleModal(props: Props) {
             </div>
             <div>
              <div onClick={(e) => e.stopPropagation()}>
-  <DatePicker 
-    id="interview-time" 
-    label="Interview Time" 
-    mode="time" 
-    placeholder="Select interview time" 
-    onChange={handleTimeChange} 
-  />
-</div>
+              <DatePicker 
+                id="interview-time" 
+                label="Interview Time" 
+                mode="time" 
+                placeholder="Select interview time" 
+                onChange={handleTimeChange} 
+              />
+            </div>
             </div>
             <div>
               <Label htmlFor="interview-type">Interview Type</Label>
@@ -789,21 +1143,20 @@ export default function InterviewScheduleModal(props: Props) {
           <div className="rounded-lg border border-gray-200 bg-gray-50/50 p-4 dark:border-gray-700 dark:bg-gray-800/30">
             <h3 className="mb-3 text-base font-medium text-gray-800 dark:text-white/90">Notification Settings</h3>
             <div className="space-y-2">
-                {/* debug removed */}
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-400">Send notification via:</label>
               <div className="flex flex-wrap gap-3">
                 <label className="group relative inline-flex items-center gap-3 cursor-pointer rounded-lg border border-gray-300 bg-white px-4 py-2.5 transition-all hover:border-brand-400 hover:bg-brand-50/50 dark:border-gray-600 dark:bg-gray-800 dark:hover:border-brand-600 dark:hover:bg-brand-900/20">
-                  <input type="radio" name="notificationChannel" checked={notificationChannels.email} onChange={() => { const nextChannels = { email: true, sms: false, whatsapp: false }; setNotificationChannels(nextChannels); setEmailOption('company'); setMessageTemplate(generateMessageTemplate(nextChannels)); }} className="peer sr-only" />
+                  <input type="radio" name="notificationChannel" checked={notificationChannels.email} onChange={() => { const nextChannels = { email: true, sms: false, whatsapp: false }; setNotificationChannels(nextChannels); setEmailOption('company'); setMessageTemplate(generateMessageTemplate(nextChannels)); setSelectedTemplateId(''); }} className="peer sr-only" />
                   <div className="h-5 w-5 rounded-full border-2 border-gray-300 bg-white transition-all peer-checked:border-brand-600 peer-checked:bg-brand-600 dark:border-gray-600 dark:bg-gray-700 dark:peer-checked:border-brand-500 dark:peer-checked:bg-brand-500 flex items-center justify-center"><div className="h-2 w-2 rounded-full bg-white scale-0 peer-checked:scale-100 transition-transform"></div></div>
                   <span className="text-sm font-medium text-gray-700 dark:text-gray-300">📧 Email</span>
                 </label>
                 <label className="group relative inline-flex items-center gap-3 cursor-pointer rounded-lg border border-gray-300 bg-white px-4 py-2.5 transition-all hover:border-brand-400 hover:bg-brand-50/50 dark:border-gray-600 dark:bg-gray-800 dark:hover:border-brand-600 dark:hover:bg-brand-900/20">
-                  <input type="radio" name="notificationChannel" checked={notificationChannels.sms} onChange={() => { const nextChannels = { email: false, sms: true, whatsapp: false }; setNotificationChannels(nextChannels); setPhoneOption('company'); setMessageTemplate(generateMessageTemplate(nextChannels)); }} className="peer sr-only" />
+                  <input type="radio" name="notificationChannel" checked={notificationChannels.sms} onChange={() => { const nextChannels = { email: false, sms: true, whatsapp: false }; setNotificationChannels(nextChannels); setPhoneOption('company'); setMessageTemplate(generateMessageTemplate(nextChannels)); setSelectedTemplateId(''); }} className="peer sr-only" />
                   <div className="h-5 w-5 rounded-full border-2 border-gray-300 bg-white transition-all peer-checked:border-brand-600 peer-checked:bg-brand-600 dark:border-gray-600 dark:bg-gray-700 dark:peer-checked:border-brand-500 dark:peer-checked:bg-brand-500 flex items-center justify-center"><div className="h-2 w-2 rounded-full bg-white scale-0 peer-checked:scale-100 transition-transform"></div></div>
                   <span className="text-sm font-medium text-gray-700 dark:text-gray-300">💬 SMS<span className="ml-2 inline-block rounded px-1.5 py-0.5 text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700">Soon</span></span>
                 </label>
                 <label className="group relative inline-flex items-center gap-3 cursor-pointer rounded-lg border border-gray-300 bg-white px-4 py-2.5 transition-all hover:border-brand-400 hover:bg-brand-50/50 dark:border-gray-600 dark:bg-gray-800 dark:hover:border-brand-600 dark:hover:bg-brand-900/20">
-                  <input type="radio" name="notificationChannel" checked={notificationChannels.whatsapp} onChange={() => { const nextChannels = { email: false, sms: false, whatsapp: true }; setNotificationChannels(nextChannels); setMessageTemplate(generateMessageTemplate(nextChannels)); }} className="peer sr-only" />
+                  <input type="radio" name="notificationChannel" checked={notificationChannels.whatsapp} onChange={() => { const nextChannels = { email: false, sms: false, whatsapp: true }; setNotificationChannels(nextChannels); setMessageTemplate(generateMessageTemplate(nextChannels)); setSelectedTemplateId(''); }} className="peer sr-only" />
                   <div className="h-5 w-5 rounded-full border-2 border-gray-300 bg-white transition-all peer-checked:border-brand-600 peer-checked:bg-brand-600 dark:border-gray-600 dark:bg-gray-700 dark:peer-checked:border-brand-500 dark:peer-checked:bg-brand-500 flex items-center justify-center"><div className="h-2 w-2 rounded-full bg-white scale-0 peer-checked:scale-100 transition-transform"></div></div>
                   <span className="text-sm font-medium text-gray-700 dark:text-gray-300">📱 WhatsApp<span className="ml-2 inline-block rounded px-1.5 py-0.5 text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700">Soon</span></span>
                 </label>
@@ -815,10 +1168,8 @@ export default function InterviewScheduleModal(props: Props) {
                     <Label htmlFor="email-option">Email Address</Label>
                     <Select options={[{ value: 'company', label: 'Company Email' },{ value: 'new', label: 'New Email' }]} value={emailOption} placeholder="Select email option" onChange={(value: any) => {
                       setEmailOption(value);
-                      // reset local new email when switching options
                       if (value !== 'new') setNewLocalEmail('');
                       if (value === 'company') {
-                        // set selected to company default
                         const mailDefault = (companyCompany as any)?.mailSettings?.defaultMail || (companyCompany as any)?.email || '';
                         setCustomEmail(mailDefault || '');
                       }
@@ -843,7 +1194,6 @@ export default function InterviewScheduleModal(props: Props) {
                           value={customEmail || ''}
                           placeholder="Select sender"
                           onChange={(value: any) => {
-                            // selecting from available senders picks a company sender
                             setCustomEmail(value);
                             setEmailOption('company');
                           }}
@@ -893,13 +1243,43 @@ export default function InterviewScheduleModal(props: Props) {
                 </Label>
                 {notificationChannels.email ? (
                   <>
-                    <div className="mt-2"><Label htmlFor="interview-subject">Email Subject</Label><Input id="interview-subject" type="text" value={interviewEmailSubject} onChange={(e: any) => setInterviewEmailSubject(e.target.value)} placeholder="Email subject" /></div>
-                    <div className="mt-3"><QuillEditor value={messageTemplate} onChange={(content: string) => setMessageTemplate(content)} /></div>
+                    <div className="mt-2">
+                      <Label htmlFor="interview-subject">Email Subject</Label>
+                      <Input id="interview-subject" type="text" value={interviewEmailSubject} onChange={(e: any) => setInterviewEmailSubject(e.target.value)} placeholder="Email subject" />
+                      <p className="mt-1 text-xs text-gray-500">
+  Available variables: {'{{candidateName}}'}, {'{{jobTitle}}'}, {'{{InterviewDate}}'}, {'{{interviewTime}}'}, {'{{interviewType}}'}, {'{{location}}'}, {'{{address}}'}
+</p>
+                    </div>
+                    <div className="mt-3">
+                      <QuillEditor value={messageTemplate} onChange={(content: string) => setMessageTemplate(content)} />
+                      <p className="mt-1 text-xs text-gray-500">
+                        Available variables: {'{{candidateName}}'}, {'{{jobTitle}}'}, {'{{InterviewDate}}'}, {'{{interviewTime}}'}, {'{{interviewType}}'}
+                      </p>
+                      <div className="mt-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded text-xs">
+  <strong>Quick Insert:</strong>{' '}
+  <button type="button" onClick={() => setMessageTemplate(messageTemplate + '{{candidateName}}')} className="text-blue-600 hover:underline mx-1">{'{{candidateName}}'}</button>
+  <button type="button" onClick={() => setMessageTemplate(messageTemplate + '{{jobTitle}}')} className="text-blue-600 hover:underline mx-1">{'{{jobTitle}}'}</button>
+  <button type="button" onClick={() => setMessageTemplate(messageTemplate + '{{InterviewDate}}')} className="text-blue-600 hover:underline mx-1">{'{{InterviewDate}}'}</button>
+  <button type="button" onClick={() => setMessageTemplate(messageTemplate + '{{interviewTime}}')} className="text-blue-600 hover:underline mx-1">{'{{interviewTime}}'}</button>
+  <button type="button" onClick={() => setMessageTemplate(messageTemplate + '{{interviewType}}')} className="text-blue-600 hover:underline mx-1">{'{{interviewType}}'}</button>
+  <button type="button" onClick={() => setMessageTemplate(messageTemplate + '{{location}}')} className="text-blue-600 hover:underline mx-1">{'{{location}}'}</button>
+  <button type="button" onClick={() => setMessageTemplate(messageTemplate + '{{address}}')} className="text-blue-600 hover:underline mx-1">{'{{address}}'}</button>
+</div>
+                    </div>
                   </>
                 ) : (
-                  <QuillEditor value={messageTemplate} onChange={(content: string) => setMessageTemplate(content)} />
+                  <>
+                    <QuillEditor value={messageTemplate} onChange={(content: string) => setMessageTemplate(content)} />
+                    <div className="mt-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded text-xs">
+                      <strong>Quick Insert:</strong>{' '}
+                      <button type="button" onClick={() => setMessageTemplate(messageTemplate + '{{candidateName}}')} className="text-blue-600 hover:underline mx-1">{'{{candidateName}}'}</button>
+                      <button type="button" onClick={() => setMessageTemplate(messageTemplate + '{{jobTitle}}')} className="text-blue-600 hover:underline mx-1">{'{{jobTitle}}'}</button>
+                      <button type="button" onClick={() => setMessageTemplate(messageTemplate + '{{InterviewDate}}')} className="text-blue-600 hover:underline mx-1">{'{{InterviewDate}}'}</button>
+                      <button type="button" onClick={() => setMessageTemplate(messageTemplate + '{{interviewTime}}')} className="text-blue-600 hover:underline mx-1">{'{{interviewTime}}'}</button>
+                      <button type="button" onClick={() => setMessageTemplate(messageTemplate + '{{interviewType}}')} className="text-blue-600 hover:underline mx-1">{'{{interviewType}}'}</button>
+                    </div>
+                  </>
                 )}
-                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Templates for: {[notificationChannels.email && 'Email', notificationChannels.whatsapp && 'WhatsApp', notificationChannels.sms && 'SMS'].filter(Boolean).join(', ')}</p>
               </div>
             )}
 
@@ -909,58 +1289,25 @@ export default function InterviewScheduleModal(props: Props) {
         <div className="flex items-center gap-3 mt-6 sm:justify-end">
           <button type="button" onClick={onClose} disabled={isSubmittingInterview} className="flex w-full justify-center rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-white/[0.03] sm:w-auto">Cancel</button>
           <button 
-  type="button" 
-  onClick={() => {
-    if (typeof onPreview === 'function') {
-      onPreview();
-      return;
-    }
-    
-    // Get job title for single interview
-    const jobTitle = (() => {
-      try {
-        const title = getJobTitle?.();
-        if (!title) return '';
-        if (typeof title === 'string') return title.trim();
-        const en = typeof (title as any).en === 'string' ? (title as any).en.trim() : '';
-        const ar = typeof (title as any).ar === 'string' ? (title as any).ar.trim() : '';
-        return en || ar || '';
-      } catch {
-        return '';
-      }
-    })();
-    
-    const applicantName = !bulkMode 
-      ? (applicant?.fullName || '').trim() || 'Candidate'
-      : '{{candidateName}}';
-    
-    const replacements: Record<string, string> = {
-      '{{candidateName}}': applicantName,
-      '{{jobTitle}}': jobTitle || '[Position]',
-    };
-    
-    // Apply subject substitutions
-    let processedSubject = interviewEmailSubject || 'Interview Invitation';
-    Object.entries(replacements).forEach(([token, value]) => {
-      processedSubject = processedSubject.split(token).join(value);
-    });
-    
-    const preview = buildInterviewEmailHtml({ 
-      subject: processedSubject, 
-      jobTitle, 
-      interview: interviewForm, 
-      rawMessage: messageTemplate, 
-      applicantName,
-      replacements 
-    });
-    setPreviewHtml(preview);
-    setShowPreviewModal(true);
-  }} 
-  className="flex w-full justify-center rounded-lg border border-stroke px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:border-strokedark dark:hover:bg-gray-800 sm:w-auto"
->
-  {bulkMode ? 'Preview All Emails' : 'Preview Email'}
-</button>
-          <button type="submit" disabled={isSubmittingInterview} className="flex w-full justify-center items-center gap-2 rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50 disabled:cursor-not-allowed sm:w-auto">{isSubmittingInterview ? (<><svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Scheduling...</span></>) : (<span>Schedule Interview</span>)}</button>
+            type="button" 
+            onClick={handlePreview}
+            className="flex w-full justify-center rounded-lg border border-stroke px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:border-strokedark dark:hover:bg-gray-800 sm:w-auto"
+          >
+            {bulkMode ? 'Preview All Emails' : 'Preview Email'}
+          </button>
+          <button type="submit" disabled={isSubmittingInterview} className="flex w-full justify-center items-center gap-2 rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50 disabled:cursor-not-allowed sm:w-auto">
+            {isSubmittingInterview ? (
+              <>
+                <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span>Scheduling...</span>
+              </>
+            ) : (
+              <span>Schedule Interview</span>
+            )}
+          </button>
         </div>
 
       </form>

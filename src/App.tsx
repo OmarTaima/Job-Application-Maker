@@ -40,12 +40,12 @@ const SavedFields = lazy(() => import("./pages/Recruiting/savedFields/SavedField
 const SavedFieldsPreview = lazy(() => import("./pages/Recruiting/savedFields/SavedFieldsPreview"));
 const CreateSavedField = lazy(() => import("./pages/Recruiting/savedFields/CreateSavedField"));
 // Import the NAMED export, not the default export
-import { Applicants } from "./pages/Recruiting/applicants/Applicants";
-const ApplicantData = lazy(() => import("./pages/Recruiting/applicants/ApplicantData"));
-const ApplicantsMobilePage = lazy(() => import("./pages/Recruiting/applicants/ApplicantsMobilePage"));
+import Applicants from "./pages/Recruiting/applicants/Table/Applicants";
+const ApplicantData = lazy(() => import("./pages/Recruiting/applicants/ApplicantPage/ApplicantData"));
+const ApplicantsMobilePage = lazy(() => import("./pages/Recruiting/applicants/Table/ApplicantsMobilePage"));
 const MailPreview = lazy(() => import("./pages/Recruiting/applicants/MailPreview"));
-const RejectedApplicants = lazy(() => import("./pages/Recruiting/applicants/Rejected"));
-const InterviewApplicant = lazy(() => import("./pages/Recruiting/applicants/Candidate"));
+const RejectedApplicants = lazy(() => import("./pages/Recruiting/applicants/Table/Rejected"));
+const InterviewApplicant = lazy(() => import("./pages/Recruiting/applicants/Table/Candidate"));
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import PermissionProtectedRoute from "./components/auth/PermissionProtectedRoute";
 

@@ -1,15 +1,15 @@
 // Core React imports
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { useStatusSettings } from '../../../utils/useStatusSettings';
+import { useStatusSettings } from '../../../../utils/useStatusSettings';
 // UI helpers and third-party utilities
-import Swal from '../../../utils/swal';
+import Swal from '../../../../utils/swal';
 import { useParams, useNavigate, useLocation } from 'react-router';
-import PageBreadcrumb from '../../../components/common/PageBreadCrumb';
-import PageMeta from '../../../components/common/PageMeta';
-import LoadingSpinner from '../../../components/common/LoadingSpinner';
-import Label from '../../../components/form/Label';
-import { Modal } from '../../../components/ui/modal';
-import { PlusIcon } from '../../../icons';
+import PageBreadcrumb from '../../../../components/common/PageBreadCrumb';
+import PageMeta from '../../../../components/common/PageMeta';
+import LoadingSpinner from '../../../../components/common/LoadingSpinner';
+import Label from '../../../../components/form/Label';
+import { Modal } from '../../../../components/ui/modal';
+import { PlusIcon } from '../../../../icons';
 import {
   useApplicant,
   useJobPositions,
@@ -26,20 +26,20 @@ import {
   useMarkApplicantSeen,
   applicantsKeys,
   useApplicants,
-} from '../../../hooks/queries';
-import { useAuth } from '../../../context/AuthContext';
+} from '../../../../hooks/queries';
+import { useAuth } from '../../../../context/AuthContext';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   applicantsService,
   type Applicant,
   type UpdateStatusRequest,
-} from '../../../services/applicantsService';
-import { toPlainString } from '../../../utils/strings';
-import MessageModal from '../../../components/modals/MessageModal';
-import InterviewScheduleModal from '../../../components/modals/InterviewScheduleModal';
-import CommentModal from '../../../components/modals/commentmodal';
-import InterviewSettingsModal from '../../../components/modals/InterviewSettingsModal';
-import StatusChangeModal from '../../../components/modals/StatusChangeModal';
+} from '../../../../services/applicantsService';
+import { toPlainString } from '../../../../utils/strings';
+import MessageModal from '../../../../components/modals/MessageModal';
+import InterviewScheduleModal from '../../../../components/modals/InterviewScheduleModal';
+import CommentModal from '../../../../components/modals/commentmodal';
+import InterviewSettingsModal from '../../../../components/modals/InterviewSettingsModal';
+import StatusChangeModal from '../../../../components/modals/StatusChangeModal';
 import StatusHistory from './StatusHistory';
 import CustomResponses from './CustomResponses';
 import Questions from './Questions';
@@ -47,6 +47,9 @@ import { MenuItem } from '@mui/material';
 import { Menu } from '@mui/material';
 // Simple Quill editor integration (dynamic import to avoid react-quill)
 import 'quill/dist/quill.snow.css';
+
+
+
 
 // Main page component
 const ApplicantData = () => {
@@ -80,12 +83,7 @@ const allApplicants = useMemo(() => {
     return location.state.applicantsList;
   }
 
-  console.log('Received applicants list length:', location.state?.applicantsList?.length);
-console.log('First few received applicants:', location.state?.applicantsList?.slice(0, 3).map((a: any) => ({
-  id: a._id,
-  name: a.fullName,
-  jobId: a.jobPositionId
-})));
+
   
   // Then try from query cache
   const cachedData = queryClient.getQueryData(applicantsKeys.lists());

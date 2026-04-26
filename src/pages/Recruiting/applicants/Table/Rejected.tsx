@@ -1,6 +1,6 @@
-import PageMeta from '../../../components/common/PageMeta';
+import PageMeta from '../../../../components/common/PageMeta';
 
-import { Applicants } from './Applicants';
+import  Applicants  from './Applicants';
 
 interface InterviewApplicantsProps {
   companyId?: string;

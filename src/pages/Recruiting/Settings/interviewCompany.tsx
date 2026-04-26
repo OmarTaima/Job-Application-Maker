@@ -10,6 +10,7 @@ import {
 	ShieldCheck,
 	CircleCheckBig,
 	Settings,
+	Mail, // Add this icon
 } from "lucide-react";
 import Swal from "../../../utils/swal";
 import PageMeta from "../../../components/common/PageMeta";
@@ -22,6 +23,7 @@ import {
 } from "../../../hooks/queries/useCompanies";
 import RejectionTab from "./Rejectiontab";
 import StatusSettings from "./StatusSettings";
+import EmailTemplates from "./MailTemplate";
 import type {
 	InterviewAnswerType,
 	InterviewGroup,
@@ -57,8 +59,6 @@ const EMPTY_QUESTION: InterviewQuestion = {
 	score: 0,
 	answerType: "text",
 };
-
-
 
 const normalizeQuestion = (question: Partial<InterviewQuestion> | undefined): InterviewQuestion => {
 	const answerType =
@@ -176,13 +176,14 @@ export default function InterviewCompanySettingsPage() {
 	const [groups, setGroups] = useState<InterviewGroup[]>([]);
 	const [isSaving, setIsSaving] = useState(false);
 	const [choiceBuffers, setChoiceBuffers] = useState<Record<string, string>>({});
-	const [activeTab, setActiveTab] = useState<"interview-groups" | "rejection-reasons" | "lead-statuses">(
+	const [activeTab, setActiveTab] = useState<"interview-groups" | "rejection-reasons" | "lead-statuses" | "email-templates">(
 		"interview-groups"
 	);
 
 	const isInterviewGroupsTab = activeTab === "interview-groups";
 	const isRejectionTab = activeTab === "rejection-reasons";
-	const isapplicantStatusTab = activeTab === "lead-statuses";
+	const isApplicantStatusTab = activeTab === "lead-statuses";
+	const isEmailTemplatesTab = activeTab === "email-templates";
 
 	const selectedCompany = useMemo(
 		() => (companies as CompanyShape[]).find((company) => company._id === selectedCompanyId),
@@ -217,10 +218,6 @@ export default function InterviewCompanySettingsPage() {
 		const normalized = normalizeGroups(derivedInterviewSettings?.groups);
 		setGroups(normalized);
 	}, [derivedInterviewSettings]);
-
-    
-
-
 
 	const totalQuestions = useMemo(
 		() => groups.reduce((acc, group) => acc + group.questions.length, 0),
@@ -291,8 +288,6 @@ export default function InterviewCompanySettingsPage() {
 			})
 		);
 	};
-
-    
 
 	const validateGroups = (): InterviewGroup[] | null => {
 		for (let groupIndex = 0; groupIndex < groups.length; groupIndex += 1) {
@@ -456,7 +451,7 @@ export default function InterviewCompanySettingsPage() {
 		<div className="min-h-screen bg-slate-50 p-4 text-slate-900 dark:bg-slate-950 dark:text-slate-100 sm:p-8">
 			<PageMeta
 				title="Interview Settings | Job Application Maker"
-				description="Manage interview groups, questions, reject reasons, and gradient settings per company"
+				description="Manage interview groups, questions, reject reasons, email templates, and gradient settings per company"
 			/>
 			<PageBreadCrumb pageTitle="Interview Configuration" />
 
@@ -475,7 +470,7 @@ export default function InterviewCompanySettingsPage() {
 									Company Interview Playbook
 								</h1>
 								<p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-									Define interview groups, scoring rules, answer types, and rejection reasons from a unified screen.
+									Define interview groups, scoring rules, answer types, email templates, and rejection reasons from a unified screen.
 								</p>
 							</div>
 						</div>
@@ -525,12 +520,25 @@ export default function InterviewCompanySettingsPage() {
 							type="button"
 							onClick={() => setActiveTab("lead-statuses")}
 							className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition ${
-								isapplicantStatusTab
+								isApplicantStatusTab
 									? "bg-brand-500 text-white"
 									: "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
 							}`}
 						>
 							<Settings className="size-4" /> Statuses
+						</button>
+
+						{/* New Email Templates Tab */}
+						<button
+							type="button"
+							onClick={() => setActiveTab("email-templates")}
+							className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition ${
+								isEmailTemplatesTab
+									? "bg-brand-500 text-white"
+									: "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+							}`}
+						>
+							<Mail className="size-4" /> Email Templates
 						</button>
 					</div>
 
@@ -573,8 +581,8 @@ export default function InterviewCompanySettingsPage() {
 				</div>
 
 				<div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
-					<div className={showSelector ? "space-y-6 xl:col-span-3" : "hidden"}>
-						{showSelector && (
+					<div className={showSelector && !isEmailTemplatesTab ? "space-y-6 xl:col-span-3" : "hidden"}>
+						{showSelector && !isEmailTemplatesTab && (
 								<div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
 									<div className="mb-4 flex items-center gap-3">
 										<div className="flex size-10 items-center justify-center rounded-lg bg-violet-500/10 text-violet-500">
@@ -605,7 +613,7 @@ export default function InterviewCompanySettingsPage() {
                         
 					</div>
 
-					<div className={showSelector ? "xl:col-span-9" : "xl:col-span-12"}>
+					<div className={showSelector && !isEmailTemplatesTab ? "xl:col-span-9" : "xl:col-span-12"}>
 						{isInterviewGroupsTab ? (
 							<div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
 							<div className="flex flex-col gap-3 border-b border-slate-200 p-6 dark:border-slate-800 sm:flex-row sm:items-start sm:justify-between">
@@ -827,9 +835,11 @@ export default function InterviewCompanySettingsPage() {
 								hideCompanySelector
 								embedded
 							/>
-						) : (
+						) : isApplicantStatusTab ? (
 							<StatusSettings companyId={selectedCompanyId} hideCompanySelector embedded />
-						)}
+						) : isEmailTemplatesTab ? (
+							<EmailTemplates companyId={selectedCompanyId} hideCompanySelector embedded />
+						) : null}
 					</div>
 				</div>
 			</div>

@@ -8,8 +8,10 @@ import { companiesService } from '../../services/companiesService';
 import Label from '../form/Label';
 import Select from '../form/Select';
 import Input from '../form/input/InputField';
+import { EmailTemplate } from '../../services/emailTemplatesService';
 
 import 'quill/dist/quill.snow.css';
+
 function QuillEditor({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const quillRef = useRef<any>(null);
@@ -76,16 +78,49 @@ const BulkMessageModal = ({
   const [senderOptions, setSenderOptions] = useState<Array<{value:string;label:string}>>([]);
   const [showPreview, setShowPreview] = useState(false);
   const [previewHtml, setPreviewHtml] = useState('');
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
 
   const sendBatch = useSendBatchEmail();
-  const sendMessageMutation = useSendMessage(); // Add this mutation to save messages to database
+  const sendMessageMutation = useSendMessage();
+
+  // Get email templates directly from the company object
+  const emailTemplates: EmailTemplate[] = useMemo(() => {
+    const templates = company?.settings?.mailSettings?.emailTemplates || [];
+    return templates;
+  }, [company]);
 
   useEffect(() => {
     if (!isOpen) {
       setForm({ subject: '', body: '', type: 'email' });
       setError('');
+      setSelectedTemplateId('');
     }
   }, [isOpen]);
+
+  // Handle template selection
+  const handleTemplateSelect = (templateId: string) => {
+    if (!templateId) {
+      setSelectedTemplateId('');
+      return;
+    }
+    
+    const selectedTemplate = emailTemplates.find((t: EmailTemplate) => t._id === templateId);
+    if (selectedTemplate) {
+      let decodedHtml = selectedTemplate.html;
+      try {
+        decodedHtml = decodedHtml.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+      } catch (e) {
+        decodedHtml = selectedTemplate.html;
+      }
+      
+      setForm(prev => ({
+        ...prev,
+        subject: selectedTemplate.subject,
+        body: decodedHtml,
+      }));
+      setSelectedTemplateId(templateId);
+    }
+  };
 
   const extractDomain = (email?: string | null) => {
     if (!email) return '';
@@ -93,40 +128,39 @@ const BulkMessageModal = ({
     return parts.length > 1 ? parts.slice(1).join('@') : '';
   };
 
- // Update the buildEmailHtml function to also process subject placeholders
-const buildEmailHtml = (subject: string, body: string, recipient?: any) => {
-  let processedSubject = subject;
-  let processedBody = body;
-  
-  if (recipient) {
-    processedSubject = applyTemplateToPlainForRecipient(subject, recipient);
-    processedBody = applyTemplateToHtmlForRecipient(body, recipient);
-  }
-  
-  return `
-  <!DOCTYPE html>
-  <html>
-  <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${escapeHtml(processedSubject)}</title>
-  </head>
-  <body style="font-family: Arial, sans-serif; padding: 20px; margin: 0; background-color: #f5f5f5;">
-    <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden;">
-      <div style="background-color: #ffffff; border-bottom: 1px solid #e5e7eb; padding: 24px 30px; text-align: center;">
-        <h1 style="color: #111827; margin: 0; font-size: 22px; font-weight: 700;">${escapeHtml(processedSubject) || 'No Subject'}</h1>
-      </div>
-      <div style="padding: 30px;">
-        <div style="font-size: 16px; line-height: 1.6; color: #444;">
-          ${processedBody || ''}
+  const buildEmailHtml = (subject: string, body: string, recipient?: any) => {
+    let processedSubject = subject;
+    let processedBody = body;
+    
+    if (recipient) {
+      processedSubject = applyTemplateToPlainForRecipient(subject, recipient);
+      processedBody = applyTemplateToHtmlForRecipient(body, recipient);
+    }
+    
+    return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>${escapeHtml(processedSubject)}</title>
+    </head>
+    <body style="font-family: Arial, sans-serif; padding: 20px; margin: 0; background-color: #f5f5f5;">
+      <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden;">
+        <div style="background-color: #ffffff; border-bottom: 1px solid #e5e7eb; padding: 24px 30px; text-align: center;">
+          <h1 style="color: #111827; margin: 0; font-size: 22px; font-weight: 700;">${escapeHtml(processedSubject) || 'No Subject'}</h1>
         </div>
-        <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;"/>
+        <div style="padding: 30px;">
+          <div style="font-size: 16px; line-height: 1.6; color: #444;">
+            ${processedBody || ''}
+          </div>
+          <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;"/>
+        </div>
       </div>
-    </div>
-  </body>
-  </html>
-  `;
-};
+    </body>
+    </html>
+    `;
+  };
 
   const escapeHtml = (str: string) =>
     String(str || '')
@@ -172,8 +206,6 @@ const buildEmailHtml = (subject: string, body: string, recipient?: any) => {
       'Candidate'
     );
   };
-
-
 
   const { data: jobPositions = [] } = useJobPositions(companyId ? [companyId] : undefined as any);
   const jobTitleById = useMemo(() => {
@@ -235,7 +267,7 @@ const buildEmailHtml = (subject: string, body: string, recipient?: any) => {
   const buildEmailSection = (subject: string, body: string) => `
     <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; border:1px solid #e5e7eb; margin-bottom: 24px;">
       <div style="background-color: #ffffff; border-bottom: 1px solid #e5e7eb; padding: 24px 30px; text-align: center;">
-        <h1 style="color: #111827; margin: 0; font-size: 22px; font-weight: 700;">${subject}</h1>
+        <h1 style="color: #111827; margin: 0; font-size: 22px; font-weight: 700;">${escapeHtml(subject)}</h1>
       </div>
       <div style="padding: 30px;">
         <div style="font-size: 16px; line-height: 1.6; color: #444;">
@@ -390,7 +422,7 @@ const buildEmailHtml = (subject: string, body: string, recipient?: any) => {
       const r = normalizedRecipients[0].raw;
       const substitutedSubject = applyTemplateToPlainForRecipient(form.subject, r);
       const substitutedBody = applyTemplateToHtmlForRecipient(form.body, r);
-      const html = buildEmailHtml(escapeHtml(substitutedSubject), substitutedBody);
+      const html = buildEmailHtml(substitutedSubject, substitutedBody);
       setPreviewHtml(html);
       setShowPreview(true);
       return;
@@ -530,23 +562,21 @@ const buildEmailHtml = (subject: string, body: string, recipient?: any) => {
         })
         .filter((item) => item.to);
 
-      // Build batch with proper substitution for each recipient
-     // In handleSubmit, when building the batch:
-const batch = normalizedRecipients.map(({ to, applicant, jobPositionId, raw }) => {
-  const subSubject = applyTemplateToPlainForRecipient(form.subject, raw);
-  const subBody = applyTemplateToHtmlForRecipient(form.body, raw);
-  
-  return {
-    to,
-    from: (typeof fromAddress === 'string' && fromAddress.includes('<')) 
-      ? fromAddress.replace(/.*<\s*([^>]+)\s*>.*/, '$1') 
-      : String(fromAddress).replace(/[<>]/g, ''),
-    subject: subSubject,
-    html: buildEmailHtml(subSubject, subBody, raw), // Pass raw for potential future use
-    applicant,
-    jobPosition: jobPositionId,
-  };
-});
+      const batch = normalizedRecipients.map(({ to, applicant, jobPositionId, raw }) => {
+        const subSubject = applyTemplateToPlainForRecipient(form.subject, raw);
+        const subBody = applyTemplateToHtmlForRecipient(form.body, raw);
+        
+        return {
+          to,
+          from: (typeof fromAddress === 'string' && fromAddress.includes('<')) 
+            ? fromAddress.replace(/.*<\s*([^>]+)\s*>.*/, '$1') 
+            : String(fromAddress).replace(/[<>]/g, ''),
+          subject: subSubject,
+          html: buildEmailHtml(subSubject, subBody, raw),
+          applicant,
+          jobPosition: jobPositionId,
+        };
+      });
 
       const companyToSend = companyId ||
         (company && (company._id || company.id)) ||
@@ -558,32 +588,25 @@ const batch = normalizedRecipients.map(({ to, applicant, jobPositionId, raw }) =
         return;
       }
 
-      // Send emails
-     // Send emails
-await sendBatch.mutateAsync({ company: String(companyToSend), batch });
+      await sendBatch.mutateAsync({ company: String(companyToSend), batch });
 
-// Save each email as a message in the database for the applicant's history
-const messagePromises = batch.map(async (email) => {
-  if (email.applicant) {
-    try {
-      // Include subject in the content since subject field is not allowed
-      const contentWithSubject = `<h2 style="color:#333; margin-bottom:10px;">Subject: ${escapeHtml(email.subject)}</h2><hr style="margin:10px 0;"/>${email.html}`;
-      
-      await sendMessageMutation.mutateAsync({
-        id: email.applicant,
-        data: {
-          type: 'email',
-          content: contentWithSubject,
-        },
+      const messagePromises = batch.map(async (email) => {
+        if (email.applicant) {
+          try {
+            const contentWithSubject = `<h2 style="color:#333; margin-bottom:10px;">Subject: ${escapeHtml(email.subject)}</h2><hr style="margin:10px 0;"/>${email.html}`;
+            
+            await sendMessageMutation.mutateAsync({
+              id: email.applicant,
+              data: {
+                type: 'email',
+                content: contentWithSubject,
+              },
+            });
+          } catch (err) {
+            console.error(`Failed to save message for applicant ${email.applicant}:`, err);
+          }
+        }
       });
-    } catch (err) {
-      console.error(`Failed to save message for applicant ${email.applicant}:`, err);
-      // Don't fail the whole operation if saving message fails
-    }
-  }
-});
-
-await Promise.allSettled(messagePromises);
 
       await Promise.allSettled(messagePromises);
 
@@ -604,6 +627,16 @@ await Promise.allSettled(messagePromises);
     }
   };
 
+  const templateOptions = useMemo(() => {
+    return [
+      { value: '', label: '-- Select a template --' },
+      ...emailTemplates.map((t: EmailTemplate) => ({ 
+        value: t._id || '', 
+        label: t.name 
+      }))
+    ];
+  }, [emailTemplates]);
+
   return (
     <>
       <Modal isOpen={isOpen} onClose={() => { onClose(); setError(''); }} className="max-w-2xl p-6" closeOnBackdrop={false}>
@@ -619,8 +652,27 @@ await Promise.allSettled(messagePromises);
             </div>
           )}
 
+          {/* Template Selector */}
+          {emailTemplates.length > 0 && (
+            <div>
+              <Label htmlFor="template-select">Load Template</Label>
+              <Select
+                options={templateOptions}
+                value={selectedTemplateId}
+                onChange={(value) => handleTemplateSelect(value as string)}
+                placeholder="Select a template to load"
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                Select a template to automatically fill the subject and body
+              </p>
+            </div>
+          )}
+
           <div>
             <Label>Subject *</Label>
+            <p className="mt-1 text-xs text-gray-500 mb-2">
+              Available variables: {'{{candidateName}}'}, {'{{position}}'} or {'{{jobTitle}}'}
+            </p>
             <Input value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} placeholder="Subject" />
           </div>
 
@@ -672,7 +724,34 @@ await Promise.allSettled(messagePromises);
 
           <div>
             <Label>Body *</Label>
+            <p className="mt-1 text-xs text-gray-500 mb-2">
+              Available variables: {'{{candidateName}}'}, {'{{position}}'} or {'{{jobTitle}}'}
+            </p>
             <QuillEditor value={form.body} onChange={(v) => setForm({ ...form, body: v })} />
+            <div className="mt-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded text-xs">
+              <strong>Quick Insert:</strong>{' '}
+              <button 
+                type="button"
+                onClick={() => setForm({ ...form, body: form.body + '{{candidateName}}' })}
+                className="text-blue-600 hover:underline mx-1"
+              >
+                {'{{candidateName}}'}
+              </button>
+              <button 
+                type="button"
+                onClick={() => setForm({ ...form, body: form.body + '{{position}}' })}
+                className="text-blue-600 hover:underline mx-1"
+              >
+                {'{{position}}'}
+              </button>
+              <button 
+                type="button"
+                onClick={() => setForm({ ...form, body: form.body + '{{jobTitle}}' })}
+                className="text-blue-600 hover:underline mx-1"
+              >
+                {'{{jobTitle}}'}
+              </button>
+            </div>
           </div>
 
           <div className="flex justify-end gap-3">

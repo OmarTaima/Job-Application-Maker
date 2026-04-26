@@ -309,18 +309,21 @@ export function useAddUserCompany() {
   });
 }
 
-// Remove company access from user
+
+
+// In your queries.ts file
 export function useRemoveUserCompany() {
+  const queryClient = useQueryClient();
+
   return useMutation({
-    mutationFn: ({
-      userId,
-      companyId,
-    }: {
-      userId: string;
-      companyId: string;
-    }) => usersService.removeCompanyAccess(userId, companyId),
-    onSettled: () => {
-      // No refetch
+    mutationFn: ({ userId, companyId }: { userId: string; companyId: string }) =>
+      usersService.removeCompanyAccess(userId, companyId),
+    onSettled: (_data, _error, variables) => {
+      // Invalidate and refetch users queries
+      queryClient.invalidateQueries({ queryKey: usersKeys.lists() });
+      if (variables?.userId) {
+        queryClient.invalidateQueries({ queryKey: usersKeys.detail(variables.userId) });
+      }
     },
   });
 }

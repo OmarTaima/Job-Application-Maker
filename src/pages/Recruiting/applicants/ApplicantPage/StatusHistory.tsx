@@ -1,7 +1,7 @@
 import { Fragment, useState } from 'react';
-import ComponentCard from '../../../components/common/ComponentCard';
-import { useAuth } from '../../../context/AuthContext';
-import { toPlainString } from '../../../utils/strings';
+import ComponentCard from '../../../../components/common/ComponentCard';
+import { useAuth } from '../../../../context/AuthContext';
+import { toPlainString } from '../../../../utils/strings';
 
 type Props = {
   applicant: any;

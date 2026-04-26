@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import Label from '../../../components/form/Label';
+import Label from '../../../../components/form/Label';
 
 type InterviewQuestion = {
 	question?: string;

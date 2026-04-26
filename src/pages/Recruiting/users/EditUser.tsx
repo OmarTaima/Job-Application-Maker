@@ -11,6 +11,9 @@ import {
   usePermissions,
   useCompanies,
   useDepartments,
+  useAddUserCompany,
+  useRemoveUserCompany,
+  useUpdateUserCompanies,
 } from "../../../hooks/queries";
 import { toPlainString } from "../../../utils/strings";
 import { 
@@ -33,20 +36,32 @@ type UserPermission = {
   access: string[];
 };
 
+type UserCompany = {
+  relationId: string;
+  companyId: string;
+  companyName: any;
+  departments: string[];
+};
+
 export default function EditUser() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
   // Data fetching
-  const { data: usersResponse, isLoading: usersLoading } = useUsers();
+  const { data: usersResponse, isLoading: usersLoading, refetch: refetchUsers } = useUsers();
   const rawUsers = Array.isArray(usersResponse) ? usersResponse : ((usersResponse as any)?.data ?? []);
   const { data: roles = [] } = useRoles();
   const { data: permissions = [] } = usePermissions();
   const { data: companies = [] } = useCompanies();
   const { data: departments = [] } = useDepartments();
 
-  // Mutation
+  // Mutations
   const updateUserMutation = useUpdateUser();
+  const addUserCompanyMutation = useAddUserCompany();
+  const updateUserCompaniesMutation = useUpdateUserCompanies();
+  
+  const removeUserCompanyMutation = useRemoveUserCompany();
+
 
   const [formData, setFormData] = useState({
     email: "",
@@ -55,11 +70,13 @@ export default function EditUser() {
     phone: "",
     roleId: "",
     isActive: true,
-    companies: [] as any[]
   });
 
+  const [userCompanies, setUserCompanies] = useState<UserCompany[]>([]);
   const [formError, setFormError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [isAddingCompany, setIsAddingCompany] = useState(false);
+  const [selectedCompanyId, setSelectedCompanyId] = useState("");
   const [permissionToAdd, setPermissionToAdd] = useState("");
   const [userPermissions, setUserPermissions] = useState<UserPermission[]>([]);
   const [permissionViewMode, setPermissionViewMode] = useState<"cards" | "matrix">("cards");
@@ -147,21 +164,19 @@ export default function EditUser() {
         phone: user.phone || "",
         roleId: typeof user.roleId === "string" ? user.roleId : user.roleId?._id || "",
         isActive: user.isActive !== false,
-        companies: user.companies?.map((c: any) => ({
-          companyId: typeof c.companyId === "string" ? c.companyId : c.companyId?._id,
-          departments:
-            c.departments
-              ?.map((d: any) => {
-                if (typeof d === "string") return d;
-                if (d?._id) return d._id;
-                if (typeof d?.departmentId === "string") return d.departmentId;
-                if (d?.departmentId?._id) return d.departmentId._id;
-                return "";
-              })
-              .filter(Boolean) || [],
-          isPrimary: c.isPrimary || false
-        })) || []
       });
+
+      // Initialize companies from user data with relationId
+      setUserCompanies(user.companies?.map((c: any) => ({
+        relationId: c._id,
+        companyId: typeof c.companyId === "string" ? c.companyId : c.companyId?._id,
+        companyName: c.companyId?.name || "",
+        departments: c.departments?.map((d: any) => {
+          if (typeof d === "string") return d;
+          if (d?._id) return d._id;
+          return "";
+        }).filter(Boolean) || [],
+      })) || []);
 
       const fromUser = normalizeUserPermissions(user);
       if (fromUser.length > 0) {
@@ -176,33 +191,100 @@ export default function EditUser() {
     }
   }, [user, initializedUserId, roles, permissions]);
 
-  const handleAddCompany = () => {
-    setFormData(prev => ({
-      ...prev,
-      companies: [...prev.companies, { companyId: "", departments: [], isPrimary: prev.companies.length === 0 }]
-    }));
+  const handleAddCompany = async () => {
+    if (!selectedCompanyId) {
+      setFormError("Please select a company");
+      return;
+    }
+
+    // Check if company already exists
+    if (userCompanies.some(c => c.companyId === selectedCompanyId)) {
+      setFormError("Company already assigned to this user");
+      return;
+    }
+
+    setIsAddingCompany(true);
+    try {
+      const result = await addUserCompanyMutation.mutateAsync({
+        userId: id!,
+        companyId: selectedCompanyId,
+        departments: [],
+      });
+      
+      // Get the newly created company access object
+      const newCompanyAccess = result as any;
+      const relationId = newCompanyAccess?.data?._id || newCompanyAccess?._id;
+      
+      const selectedCompany = companies.find((c: any) => c._id === selectedCompanyId);
+      setUserCompanies(prev => [...prev, {
+        relationId: relationId,
+        companyId: selectedCompanyId,
+        companyName: selectedCompany?.name || "",
+        departments: [],
+      }]);
+      
+      setSelectedCompanyId("");
+      await Swal.fire({
+        title: "Success",
+        text: "Company access added successfully",
+        icon: "success",
+        background: "rgba(255, 255, 255, 0.9)",
+        backdrop: "rgba(0,0,0,0.4)",
+        timer: 1500,
+        showConfirmButton: false
+      });
+    } catch (err: any) {
+      setFormError(err.message || "Failed to add company access");
+    } finally {
+      setIsAddingCompany(false);
+    }
   };
 
-  const handleRemoveCompany = (index: number) => {
-    setFormData(prev => ({
-      ...prev,
-      companies: prev.companies.filter((_, i) => i !== index)
-    }));
-  };
-
-  const updateCompany = (index: number, field: string, value: any) => {
-    setFormData(prev => {
-      const newCos = [...prev.companies];
-      newCos[index] = { ...newCos[index], [field]: value };
-      
-      // If setting a primary, unset others
-      if (field === "isPrimary" && value === true) {
-        newCos.forEach((c, i) => { if(i !== index) c.isPrimary = false; });
-      }
-      
-      return { ...prev, companies: newCos };
+const handleUpdateDepartments = async (relationId: string, departments: string[]) => {
+  try {
+    await updateUserCompaniesMutation.mutateAsync({
+      userId: id!,
+      companyId: relationId,  
+      data: { departments },
     });
-  };
+    // ... rest
+  } catch (err: any) {
+    setFormError(err.message || "Failed to update departments");
+  }
+};
+
+ const handleRemoveCompany = async (relationId: string) => {
+  const result = await Swal.fire({
+    title: "Remove Company Access",
+    text: "Are you sure you want to remove this company access?",
+    icon: "warning",
+    showCancelButton: true,
+    confirmButtonColor: "#d33",
+    cancelButtonColor: "#3085d6",
+    confirmButtonText: "Yes, remove it!"
+  });
+
+  if (result.isConfirmed) {
+    try {
+      await removeUserCompanyMutation.mutateAsync({
+        userId: id!,
+        companyId: relationId,
+      });
+      
+      setUserCompanies(prev => prev.filter(c => c.relationId !== relationId));
+      
+      await Swal.fire({
+        title: "Removed",
+        text: "Company access has been removed successfully",
+        icon: "success",
+        timer: 1500,
+        showConfirmButton: false
+      });
+    } catch (err: any) {
+      setFormError(err.message || "Failed to remove company access");
+    }
+  }
+};
 
   const handleRoleChange = (nextRoleId: string) => {
     setFormData((prev) => ({ ...prev, roleId: nextRoleId }));
@@ -310,6 +392,7 @@ export default function EditUser() {
         throw new Error("Core identification fields are required.");
       }
 
+      // Update basic user info and permissions
       await updateUserMutation.mutateAsync({
         id: id!,
         data: {
@@ -326,12 +409,15 @@ export default function EditUser() {
       });
 
       await Swal.fire({
-        title: "Company Verified",
+        title: "Success",
         text: "User profile has been updated within the system records.",
         icon: "success",
         background: "rgba(255, 255, 255, 0.9)",
         backdrop: "rgba(0,0,0,0.4)"
       });
+      
+      // Refetch users to get updated data
+      await refetchUsers();
       navigate("/users");
     } catch (err: any) {
       setFormError(err.message || "Credential validation failed.");
@@ -342,9 +428,14 @@ export default function EditUser() {
 
   if (usersLoading) return <LoadingSpinner fullPage />;
 
+  // Get available companies (not yet assigned to user)
+  const availableCompanies = companies.filter(
+    (c: any) => !userCompanies.some(uc => uc.companyId === c._id)
+  );
+
   return (
     <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0F172A] p-4 sm:p-8">
-      <PageMeta title={`Modify Company - ${formData.fullName}`} description="Update personnel credentials and organizational access" />
+      <PageMeta title={`Modify User - ${toPlainString(formData.fullName)}`} description="Update personnel credentials and organizational access" />
       
       <div className="max-w-5xl mx-auto space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
         <div className="flex items-center justify-between">
@@ -355,7 +446,7 @@ export default function EditUser() {
             <div className="size-12 bg-white/60 dark:bg-white/5 backdrop-blur-xl border border-white/20 rounded-2xl flex items-center justify-center shadow-sm group-hover:-translate-x-1 group-hover:bg-brand-500 group-hover:text-white transition-all">
               <ChevronLeft className="size-5" />
             </div>
-            <span className="font-black text-xs uppercase tracking-widest text-gray-400 group-hover:text-brand-500 transition-colors">Discard Changes</span>
+            <span className="font-black text-xs uppercase tracking-widest text-gray-400 group-hover:text-brand-500 transition-colors">Back to Users</span>
           </button>
         </div>
 
@@ -366,7 +457,7 @@ export default function EditUser() {
 
            <div className="relative z-10 flex flex-col md:flex-row items-center gap-8 mb-12">
              <div className="size-28 rounded-[2rem] bg-gradient-to-br from-brand-500/10 to-purple-500/10 border-2 border-brand-500/20 flex items-center justify-center text-4xl font-black text-brand-500 shadow-xl">
-               {formData.fullName?.charAt(0) || <Hash className="size-8" />}
+               {toPlainString(formData.fullName)?.charAt(0) || <Hash className="size-8" />}
              </div>
              <div className="text-center md:text-left space-y-2">
                <h1 className="text-4xl font-black tracking-tight dark:text-white">Modify Credential</h1>
@@ -391,7 +482,7 @@ export default function EditUser() {
                   <div className="space-y-6">
                     <div className="group space-y-2">
                       <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1 flex items-center gap-2">
-                         Full Company Name
+                         Full Name
                       </label>
                       <input 
                         type="text" 
@@ -404,7 +495,7 @@ export default function EditUser() {
 
                     <div className="group space-y-2">
                       <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1 flex items-center gap-2">
-                         Digital Mailbox
+                         Email
                       </label>
                       <input 
                         type="email" 
@@ -417,7 +508,7 @@ export default function EditUser() {
 
                     <div className="group space-y-2">
                       <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1 flex items-center gap-2">
-                          Communication Line
+                          Phone
                       </label>
                       <input 
                         type="text" 
@@ -468,6 +559,7 @@ export default function EditUser() {
                 </div>
               </div>
 
+              {/* Permissions Section */}
               <div className="space-y-6 p-10 bg-purple-500/5 dark:bg-purple-500/10 rounded-[4rem] border border-purple-500/15">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <h3 className="text-xl font-black tracking-tight flex items-center gap-3">
@@ -645,127 +737,113 @@ export default function EditUser() {
                 )}
               </div>
 
+              {/* Company Selection Section */}
               <div className="space-y-8 p-10 bg-brand-500/5 dark:bg-brand-500/10 rounded-[4rem] border border-brand-500/10">
                 <div className="flex items-center justify-between">
                   <h3 className="text-xl font-black flex items-center gap-3 tracking-tight">
                     <Building2 className="size-6 text-brand-500" />
-                    Company Selection Section
+                    Company Access Management
                   </h3>
-                  <button 
-                    type="button" 
+                </div>
+
+                {/* Add Company Section */}
+                <div className="flex gap-4 items-end">
+                  <div className="flex-1 space-y-2">
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                      Add Company Access
+                    </label>
+                    <select
+                      value={selectedCompanyId}
+                      onChange={(e) => setSelectedCompanyId(e.target.value)}
+                      className="w-full px-4 py-3 bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/5 rounded-xl font-bold dark:text-white"
+                    >
+                      <option value="">Select Company</option>
+                      {availableCompanies.map((c: any) => (
+                        <option key={c._id} value={c._id}>{toPlainString(c.name)}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <button
+                    type="button"
                     onClick={handleAddCompany}
-                    className="flex items-center gap-2 px-6 py-3 bg-brand-500 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-lg shadow-brand-500/20"
+                    disabled={isAddingCompany || !selectedCompanyId}
+                    className="px-6 py-3 bg-brand-500 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-lg shadow-brand-500/20 disabled:opacity-50 disabled:hover:scale-100"
                   >
-                    <Plus className="size-4" /> Add Node
+                    {isAddingCompany ? (
+                      <div className="size-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <Plus className="size-4" />
+                    )}
                   </button>
                 </div>
 
-                <div className="space-y-6">
-                  {formData.companies.map((assignment, idx) => (
-                    <div key={idx} className="relative group bg-white dark:bg-slate-900/50 p-8 rounded-[3rem] border border-slate-200 dark:border-white/5 shadow-sm transition-all hover:shadow-xl">
-                      <button 
-                        type="button" 
-                        onClick={() => handleRemoveCompany(idx)}
-                        className="absolute -top-3 -right-3 size-10 bg-red-500 text-white rounded-xl items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity flex shadow-lg hover:rotate-12"
-                      >
-                        <Trash2 className="size-5" />
-                      </button>
+                {/* Existing Companies List */}
+                <div className="space-y-4">
+                  {userCompanies.map((assignment) => {
+                    // Get departments for this specific company
+                    const companyDepartments = departments.filter((d: any) => {
+                      const deptCompanyId = typeof d.companyId === "string" ? d.companyId : d.companyId?._id;
+                      return deptCompanyId === assignment.companyId;
+                    });
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 items-end">
-                        <div className="space-y-3">
-                          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                             Linked Company
-                          </label>
-                          <select 
-                            value={assignment.companyId}
-                            onChange={(e) => {
-                              const nextCompanyId = e.target.value;
-                              // Keep department selections scoped to the selected company.
-                              updateCompany(idx, "companyId", nextCompanyId);
-                              updateCompany(idx, "departments", []);
-                            }}
-                            className="w-full px-4 py-3 bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/5 rounded-xl font-bold dark:text-white"
-                          >
-                            <option value="">Select Company</option>
-                            {companies.map((c: any) => (
-                              <option key={c._id} value={c._id}>{toPlainString(c.name)}</option>
-                            ))}
-                          </select>
-                        </div>
+                    return (
+                      <div key={assignment.relationId} className="relative group bg-white dark:bg-slate-900/50 p-6 rounded-[2rem] border border-slate-200 dark:border-white/5 shadow-sm">
+                        <button 
+                          type="button" 
+                          onClick={() => handleRemoveCompany(assignment.relationId)}
+                          className="absolute -top-3 -right-3 size-8 bg-red-500 text-white rounded-xl items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity flex shadow-lg hover:rotate-12"
+                        >
+                          <Trash2 className="size-4" />
+                        </button>
 
-                        <div className="space-y-3">
-                          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                             Department Access
-                          </label>
-                          <div className="flex flex-wrap gap-2 min-h-[46px] p-2 bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/5 rounded-xl">
-                            {(() => {
-                              const getId = (value: any) => {
-                                if (!value) return "";
-                                if (typeof value === "string") return value;
-                                return value._id || "";
-                              };
-
-                              const selectedCompanyId = String(assignment.companyId || "");
-                              const availableDepts = departments.filter((d: any) => {
-                                const deptCompanyId = String(getId(d?.companyId));
-                                return Boolean(selectedCompanyId) && deptCompanyId === selectedCompanyId;
-                              });
-
-                              if (!assignment.companyId) {
-                                return (
-                                  <div className="flex items-center justify-center w-full min-h-[30px]">
-                                    <p className="text-[9px] font-black uppercase text-slate-400 italic">Select Company First</p>
-                                  </div>
-                                );
-                              }
-
-                              if (availableDepts.length === 0) {
-                                return (
-                                  <div className="flex items-center justify-center w-full min-h-[30px]">
-                                    <p className="text-[9px] font-black uppercase text-slate-400 italic">No Departments Found</p>
-                                  </div>
-                                );
-                              }
-
-                              return availableDepts.map((d: any) => {
-                                const isSelected = assignment.departments.includes(d._id);
-                                return (
-                                  <button
-                                    key={d._id}
-                                    type="button"
-                                    onClick={() => {
-                                      const nextDepts = isSelected 
-                                        ? assignment.departments.filter((eid: string) => eid !== d._id)
-                                        : [...assignment.departments, d._id];
-                                      updateCompany(idx, "departments", nextDepts);
-                                    }}
-                                    className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase transition-all ${isSelected ? "bg-brand-500 text-white" : "bg-white dark:bg-white/5 text-gray-400"}`}
-                                  >
-                                    {toPlainString(d.name)}
-                                  </button>
-                                );
-                              });
-                            })()}
+                        <div className="space-y-4">
+                          <h4 className="text-lg font-black dark:text-white">
+                            {toPlainString(assignment.companyName)}
+                          </h4>
+                          
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                              Department Access
+                            </label>
+                            <div className="flex flex-wrap gap-2">
+                              {companyDepartments.length === 0 ? (
+                                <p className="text-xs text-slate-400 italic">No departments available for this company</p>
+                              ) : (
+                                companyDepartments.map((dept: any) => {
+                                  const isSelected = assignment.departments?.includes(dept._id);
+                                  return (
+                                    <button
+                                      key={dept._id}
+                                      type="button"
+                                      onClick={() => {
+                                        const newDepartments = isSelected
+                                          ? assignment.departments.filter((id: string) => id !== dept._id)
+                                          : [...(assignment.departments || []), dept._id];
+                                        handleUpdateDepartments(assignment.relationId, newDepartments);
+                                      }}
+                                      className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all ${
+                                        isSelected
+                                          ? "bg-brand-500 text-white"
+                                          : "bg-white dark:bg-white/5 text-gray-400 hover:bg-brand-500/20"
+                                      }`}
+                                    >
+                                      {toPlainString(dept.name)}
+                                    </button>
+                                  );
+                                })
+                              )}
+                            </div>
                           </div>
                         </div>
-
-                        <div className="flex items-center gap-4 h-[46px]">
-                           <button 
-                             type="button"
-                             onClick={() => updateCompany(idx, "isPrimary", !assignment.isPrimary)}
-                             className={`flex-1 px-4 py-3 rounded-xl border-2 font-black text-[9px] uppercase tracking-widest transition-all ${assignment.isPrimary ? "bg-purple-500/10 border-purple-500 text-purple-600" : "bg-slate-50 dark:bg-white/5 border-slate-100 dark:border-white/5 text-gray-400"}`}
-                           >
-                             {assignment.isPrimary ? "★ Primary Office" : "Set as Primary"}
-                           </button>
-                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                   
-                  {formData.companies.length === 0 && (
-                    <div className="text-center py-16 bg-white/30 dark:bg-black/10 rounded-[3rem] border-2 border-dashed border-slate-200 dark:border-white/10">
-                      <AlertCircle className="size-10 text-slate-300 mx-auto mb-4" />
-                      <p className="text-slate-400 font-bold text-sm">No organizational nodes assigned to this Company.</p>
+                  {userCompanies.length === 0 && (
+                    <div className="text-center py-12 bg-white/30 dark:bg-black/10 rounded-[2rem] border-2 border-dashed border-slate-200 dark:border-white/10">
+                      <AlertCircle className="size-10 text-slate-300 mx-auto mb-3" />
+                      <p className="text-slate-400 font-bold text-sm">No company access assigned to this user.</p>
+                      <p className="text-slate-400 text-xs mt-1">Use the dropdown above to add company access.</p>
                     </div>
                   )}
                 </div>
@@ -785,7 +863,7 @@ export default function EditUser() {
                     onClick={() => navigate("/users")}
                     className="px-8 py-4 bg-slate-100 dark:bg-white/5 text-slate-500 dark:text-gray-400 rounded-3xl font-black text-xs uppercase tracking-widest hover:bg-slate-200 transition-all"
                   >
-                    Abort
+                    Cancel
                   </button>
                   <button 
                     type="submit" 
