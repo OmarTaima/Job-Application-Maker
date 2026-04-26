@@ -575,9 +575,9 @@ export default function InterviewScheduleModal(props: Props) {
         locationDisplay = escapeHtml(location);
       } else {
         locationDisplay = 'No location specified';
+        void locationDisplay;
       }
 
-  
       return `
         <div style="margin-bottom: 40px; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; page-break-inside: avoid;">
           <div style="background-color: #f3f4f6; padding: 12px 20px; border-bottom: 1px solid #e5e7eb;">
