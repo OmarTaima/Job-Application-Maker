@@ -151,7 +151,7 @@ function PastRow({ interview }: { interview: any }) {
 
   return (
     <tr
-      onClick={() => navigate(`/applicants/${interview.applicant._id}`)}
+      onClick={() => navigate(`/applicant-details/${interview.applicant._id}`)}
       className="group cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors"
     >
       <td className="py-3 px-4 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
