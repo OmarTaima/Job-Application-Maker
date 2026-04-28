@@ -1,12 +1,14 @@
 // components/dashboard/InterviewScheduleWidget.tsx
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useMyInterviews } from '../../hooks/queries';
+import { myInterviewsKeys, useMyInterviews } from '../../hooks/queries';
 import {
   ChatIcon,
   CheckCircleIcon,
   TimeIcon,
 } from '../../icons';
+import { useQueryClient } from '@tanstack/react-query';
+import { usersService } from '../../services/usersService';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -181,6 +183,7 @@ function PastRow({ interview }: { interview: any }) {
 export default function InterviewScheduleWidget() {
   const [direction, setDirection] = useState<'future' | 'past'>('future');
   const [page, setPage] = useState(1);
+  const queryClient = useQueryClient();
 
   const { data, isLoading, isFetching } = useMyInterviews({ direction, page });
 
@@ -188,7 +191,38 @@ export default function InterviewScheduleWidget() {
   const counts = data?.counts ?? {};
   const pagination = data?.pagination;
 
+  // Prefetch next page whenever we're in past mode
+  useEffect(() => {
+    if (direction !== 'past') return;
+    if (pagination && page >= pagination.totalPages) return; // no next page exists
+
+    const nextPage = page + 1;
+    queryClient.prefetchQuery({
+      queryKey: myInterviewsKeys.list({
+        direction: 'past',
+        page: nextPage,
+        limit: 20,
+      }),
+      queryFn: () =>
+        usersService.getMyInterviews({
+          direction: 'past',
+          page: nextPage,
+          limit: 20,
+        }),
+      staleTime: 2 * 60 * 1000, // same staleTime as the hook so it won't re-fetch unnecessarily
+    });
+  }, [direction, page, pagination, queryClient]);
+
+  // When switching to past, page 1 loads normally and this prefetches page 2 immediately
+  // When on page 1 → prefetches page 2
+  // When user clicks next (now on page 2, already cached) → prefetches page 3
+  // ...and so on
+
   const isEmpty = !isLoading && interviews.length === 0;
+
+  const handleNextPage = () =>
+    setPage((p) => Math.min(pagination!.totalPages, p + 1));
+  const handlePrevPage = () => setPage((p) => Math.max(1, p - 1));
 
   return (
     <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-hidden">
@@ -301,7 +335,7 @@ export default function InterviewScheduleWidget() {
                 </p>
                 <div className="flex gap-2">
                   <button
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    onClick={() => handlePrevPage()}
                     disabled={page === 1}
                     className="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700
                       disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
@@ -309,7 +343,7 @@ export default function InterviewScheduleWidget() {
                     Previous
                   </button>
                   <button
-                    onClick={() => setPage((p) => Math.min(pagination.totalPages, p + 1))}
+                    onClick={() => handleNextPage()}
                     disabled={page === pagination.totalPages}
                     className="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700
                       disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
