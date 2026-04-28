@@ -14,3 +14,4 @@ export * from './useCompanies';
 export * from './useMailTemplate';
 export * from './useJobPositions';
 export * from './useSendEmail';
+export * from './useMyInterviews';

@@ -16,6 +16,7 @@ import {
   TrashBinIcon,
   UserIcon,
 } from "../../icons";
+import InterviewScheduleWidget from "../../components/charts/MyInterviewWidget";
 
 
 
@@ -217,7 +218,10 @@ const statusCards = useMemo(() => {
 
   return (
     <>
-      <PageMeta title="Dashboard | Applicants Overview" description="Applicants summary and filters" />
+      <PageMeta
+        title="Dashboard | Applicants Overview"
+        description="Applicants summary and filters"
+      />
 
       <div className="space-y-6">
         <div className="grid grid-cols-12 gap-4 md:gap-6 items-end">
@@ -228,8 +232,10 @@ const statusCards = useMemo(() => {
                 Company
               </label>
               <select
-                value={selectedCompanyId || ""}
-                onChange={(e) => setSelectedCompanyId(e.target.value || undefined)}
+                value={selectedCompanyId || ''}
+                onChange={(e) =>
+                  setSelectedCompanyId(e.target.value || undefined)
+                }
                 className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm shadow-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 dark:border-gray-700 dark:bg-gray-800"
               >
                 <option value="">All Companies</option>
@@ -251,12 +257,12 @@ const statusCards = useMemo(() => {
               onChange={(selectedDates) => setRange(selectedDates as Date[])}
             />
           </div>
-          
+
           <div className="col-span-12 sm:col-span-12 md:col-span-12 lg:col-span-6">
             <div className="flex flex-wrap items-center gap-3">
               <div className="text-sm text-gray-500">Showing</div>
               <div className="font-semibold text-gray-800">
-                {loading ? "Loading..." : `${totalApplicants} applicants`}
+                {loading ? 'Loading...' : `${totalApplicants} applicants`}
               </div>
               <button
                 type="button"
@@ -271,10 +277,10 @@ const statusCards = useMemo(() => {
                 disabled={isFetching}
                 className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-3 py-1 text-sm font-semibold text-white shadow-sm hover:bg-brand-600 disabled:opacity-50"
               >
-                {isFetching ? "Updating Data" : "Update Data"}
+                {isFetching ? 'Updating Data' : 'Update Data'}
               </button>
               <div className="text-sm text-gray-500">
-                {elapsed ? `Last Update: ${elapsed}` : "Not updated yet"}
+                {elapsed ? `Last Update: ${elapsed}` : 'Not updated yet'}
               </div>
             </div>
           </div>
@@ -288,7 +294,9 @@ const statusCards = useMemo(() => {
             className="rounded-2xl border border-gray-200 bg-gradient-to-br from-gray-50 to-gray-100 p-5 dark:from-gray-800 dark:to-gray-900 cursor-pointer transition hover:shadow-md hover:scale-[1.02]"
           >
             <div className="flex items-center justify-between">
-              <div className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Applicants</div>
+              <div className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                Total Applicants
+              </div>
               <div className="text-gray-400">
                 <UserIcon className="size-5" />
               </div>
@@ -296,62 +304,66 @@ const statusCards = useMemo(() => {
             <div className="mt-2 text-2xl font-bold text-gray-800 dark:text-gray-200">
               {loading ? (
                 <span className="inline-block h-6 w-14 rounded bg-gray-200 animate-pulse" />
-              ) : totalApplicants}
+              ) : (
+                totalApplicants
+              )}
             </div>
           </div>
 
           {/* Dynamic status cards from API with company colors */}
-          {loading ? (
-            // Loading skeletons
-            Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="rounded-2xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800">
-                <div className="flex items-center justify-between">
-                  <div className="h-4 w-16 rounded bg-gray-200 animate-pulse" />
-                  <div className="h-5 w-5 rounded bg-gray-200 animate-pulse" />
-                </div>
-                <div className="mt-2 h-8 w-12 rounded bg-gray-200 animate-pulse" />
-              </div>
-            ))
-          ) : (
-            statusCards.map((card) => {
-              const Icon = card.icon;
-              // Use the status color as background with opacity
-              const bgStyle = {
-                backgroundColor: card.bgColor + '15', // Add opacity (15% opacity)
-                borderLeftColor: card.bgColor,
-                borderLeftWidth: '4px',
-              };
-              
-              return (
+          {loading
+            ? // Loading skeletons
+              Array.from({ length: 5 }).map((_, i) => (
                 <div
-                  key={card.name}
-                  onClick={() => handleStatusCardClick(card.name)}
-                  className="rounded-2xl border border-gray-200 p-5 dark:border-gray-800 cursor-pointer transition-all hover:shadow-md hover:scale-[1.02]"
-                  style={bgStyle}
+                  key={i}
+                  className="rounded-2xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800"
                 >
                   <div className="flex items-center justify-between">
-                    <div 
-                      className="text-sm font-semibold"
+                    <div className="h-4 w-16 rounded bg-gray-200 animate-pulse" />
+                    <div className="h-5 w-5 rounded bg-gray-200 animate-pulse" />
+                  </div>
+                  <div className="mt-2 h-8 w-12 rounded bg-gray-200 animate-pulse" />
+                </div>
+              ))
+            : statusCards.map((card) => {
+                const Icon = card.icon;
+                // Use the status color as background with opacity
+                const bgStyle = {
+                  backgroundColor: card.bgColor + '15', // Add opacity (15% opacity)
+                  borderLeftColor: card.bgColor,
+                  borderLeftWidth: '4px',
+                };
+
+                return (
+                  <div
+                    key={card.name}
+                    onClick={() => handleStatusCardClick(card.name)}
+                    className="rounded-2xl border border-gray-200 p-5 dark:border-gray-800 cursor-pointer transition-all hover:shadow-md hover:scale-[1.02]"
+                    style={bgStyle}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div
+                        className="text-sm font-semibold"
+                        style={{ color: card.textColor }}
+                      >
+                        {card.name}
+                      </div>
+                      <div style={{ color: card.bgColor }}>
+                        {Icon && <Icon className="size-5" />}
+                      </div>
+                    </div>
+
+                    <div
+                      className="mt-2 text-2xl font-bold"
                       style={{ color: card.textColor }}
                     >
-                      {card.name}
-                    </div>
-                    <div style={{ color: card.bgColor }}>
-                      {Icon && <Icon className="size-5" />}
+                      {card.count}
                     </div>
                   </div>
-
-                  <div 
-                    className="mt-2 text-2xl font-bold"
-                    style={{ color: card.textColor }}
-                  >
-                    {card.count}
-                  </div>
-                </div>
-              );
-            })
-          )}
+                );
+              })}
         </div>
+        <InterviewScheduleWidget />
 
         {/* Show message when no data */}
         {!loading && statusCards.length === 0 && countsData && (

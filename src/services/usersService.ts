@@ -99,27 +99,49 @@ export const usersService = {
   async getAllUsers(params: any = {}): Promise<UsersResponse> {
     try {
       const normalizedCompanyIds: string[] = Array.isArray(params.companyId)
-        ? Array.from(new Set(params.companyId.map((id: any) => String(id || "").trim()).filter(Boolean))) as string[]
-        : typeof params.companyId === "string" && params.companyId.includes(",")
-          ? (Array.from(new Set(params.companyId.split(",").map((id: string) => id.trim()).filter(Boolean))) as string[])
+        ? (Array.from(
+            new Set(
+              params.companyId
+                .map((id: any) => String(id || '').trim())
+                .filter(Boolean)
+            )
+          ) as string[])
+        : typeof params.companyId === 'string' && params.companyId.includes(',')
+          ? (Array.from(
+              new Set(
+                params.companyId
+                  .split(',')
+                  .map((id: string) => id.trim())
+                  .filter(Boolean)
+              )
+            ) as string[])
           : params.companyId
             ? [String(params.companyId).trim()]
             : [];
 
       const extractUsers = (payload: any): User[] => {
         if (Array.isArray(payload)) return payload as User[];
-        if (payload && Array.isArray(payload.data)) return payload.data as User[];
-        if (payload && payload.data && Array.isArray(payload.data.data)) return payload.data.data as User[];
+        if (payload && Array.isArray(payload.data))
+          return payload.data as User[];
+        if (payload && payload.data && Array.isArray(payload.data.data))
+          return payload.data.data as User[];
         return [];
       };
 
-      const fetchOne = async (singleCompanyId?: string, overridePage?: number, overridePageCount?: string | number) => {
+      const fetchOne = async (
+        singleCompanyId?: string,
+        overridePage?: number,
+        overridePageCount?: string | number
+      ) => {
         const requestParams: any = { ...params };
-        requestParams.deleted = "false";
+        requestParams.deleted = 'false';
         requestParams.page = overridePage ?? requestParams.page ?? 1;
-        requestParams.PageCount = overridePageCount ?? requestParams.PageCount ?? 100;
+        requestParams.PageCount =
+          overridePageCount ?? requestParams.PageCount ?? 100;
         if (singleCompanyId) requestParams.companyId = singleCompanyId;
-        const response = await axios.get<UsersResponse>("/users", { params: requestParams });
+        const response = await axios.get<UsersResponse>('/users', {
+          params: requestParams,
+        });
         return response.data;
       };
 
@@ -131,7 +153,7 @@ export const usersService = {
       const requestedPage = Number(params.page || 1);
       const requestedPageCount = Number(params.PageCount || 100);
       const responses = await Promise.all(
-        normalizedCompanyIds.map((id) => fetchOne(id, 1, "all"))
+        normalizedCompanyIds.map((id) => fetchOne(id, 1, 'all'))
       );
 
       const unique = new Map<string, User>();
@@ -180,7 +202,7 @@ export const usersService = {
   // Create user
   async createUser(userData: CreateUserRequest): Promise<User> {
     try {
-      const response = await axios.post<UserResponse>("/users", userData);
+      const response = await axios.post<UserResponse>('/users', userData);
       return response.data.data;
     } catch (error: any) {
       throw new ApiError(
@@ -266,6 +288,33 @@ export const usersService = {
   async removeCompanyAccess(userId: string, companyId: string): Promise<void> {
     try {
       await axios.delete(`/users/${userId}/companies/${companyId}`);
+    } catch (error: any) {
+      throw new ApiError(
+        getErrorMessage(error),
+        error.response?.status,
+        error.response?.data?.details
+      );
+    }
+  },
+  async getMyInterviews(
+    params: {
+      direction?: 'future' | 'past';
+      status?: string;
+      page?: number;
+      limit?: number;
+    } = {}
+  ): Promise<any> {
+    try {
+      const searchParams: any = {};
+      if (params.direction) searchParams.direction = params.direction;
+      if (params.status) searchParams.status = params.status;
+      if (params.page) searchParams.page = params.page;
+      if (params.limit) searchParams.limit = params.limit;
+
+      const response = await axios.get('/users/me/interviews', {
+        params: searchParams,
+      });
+      return response.data?.data ?? response.data;
     } catch (error: any) {
       throw new ApiError(
         getErrorMessage(error),
