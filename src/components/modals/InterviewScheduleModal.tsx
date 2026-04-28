@@ -9,6 +9,8 @@ import TextArea from '../form/input/TextArea';
 import Select from '../form/Select';
 import { toPlainString } from '../../utils/strings';
 import { EmailTemplate } from '../../services/emailTemplatesService';
+import { useAuth } from '../../context/AuthContext';
+import { useUsers } from '../../hooks/queries';
 
 // Simple HTML escape utility
 function escapeHtml(str: string) {
@@ -870,6 +872,30 @@ export default function InterviewScheduleModal(props: Props) {
   const companyDomain = getCompanyDomain();
   const domainForDisplay = companyDomain;
 
+  // ConductedBy: fetch users for the company and default to current user
+  const { user } = useAuth();
+  const companyIdForUsers = getCompanyIdVal();
+  const { data: companyUsersResponse } = useUsers(
+    companyIdForUsers ? { page: 1, PageCount: 1000, companyId: [companyIdForUsers] } : { page: 1, PageCount: 1000 }
+  );
+
+  const companyUsers = useMemo(() => {
+    if (!companyUsersResponse) return [];
+    return Array.isArray(companyUsersResponse) ? companyUsersResponse : ((companyUsersResponse as any)?.data ?? []);
+  }, [companyUsersResponse]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    try {
+      const defaultConducted = user?._id || '';
+      if (defaultConducted && !(interviewForm && interviewForm.conductedBy)) {
+        setInterviewForm((prev: any) => ({ ...prev, conductedBy: defaultConducted }));
+      }
+    } catch (e) {
+      /* ignore */
+    }
+  }, [isOpen, user, setInterviewForm]);
+
   const onSubmit = async (e: any) => {
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
 
@@ -926,6 +952,12 @@ export default function InterviewScheduleModal(props: Props) {
         setInterviewError(msg);
         return;
       }
+    }
+
+    // Validate required conductedBy field
+    if (!interviewForm?.conductedBy) {
+      setInterviewError('Please select who will conduct the interview');
+      return;
     }
 
     try {
@@ -1127,6 +1159,16 @@ export default function InterviewScheduleModal(props: Props) {
                 </div>
               </div>
             )}
+            <div>
+              <Label htmlFor="interview-conducted-by">Conducted By</Label>
+              <Select
+                options={(companyUsers || []).map((u: any) => ({ value: u._id, label: toPlainString(u.fullName || u.name || u.email || u.username || u._id) }))}
+                value={interviewForm.conductedBy || ''}
+                placeholder="Select interviewer"
+                onChange={(value: any) => { setInterviewForm({ ...interviewForm, conductedBy: value }); setInterviewError(''); }}
+              />
+              <p className="mt-1 text-xs text-gray-500">Required — who will conduct the interview</p>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

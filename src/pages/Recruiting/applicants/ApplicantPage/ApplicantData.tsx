@@ -687,7 +687,16 @@ const allApplicants = useMemo(() => {
   const [selectedInterview, setSelectedInterview] = useState<any>(null);
   const [formResetKey, setFormResetKey] = useState(0);
 
-  const [interviewForm, setInterviewForm] = useState({
+  const [interviewForm, setInterviewForm] = useState<{
+    date: string;
+    time: string;
+    description: string;
+    comment: string;
+    location: string;
+    link: string;
+    type: 'phone' | 'video' | 'in-person';
+    conductedBy?: string;
+  }>({
     date: '',
     time: '',
     description: '',
@@ -1589,7 +1598,7 @@ const allApplicants = useMemo(() => {
           localId: `group_${group.id}_${idx}_${q.question}`,
           question: q.question,
           score: Number.isFinite(Number(q.score)) ? Number(q.score) : 0,
-          achievedScore: 0,
+          achievedScore: Number.isFinite(Number(q.score)) ? Number(q.score) : 0,
           notes: '',
           source: 'group',
           answerType: String(q.answerType || 'text'),
@@ -1615,14 +1624,22 @@ const allApplicants = useMemo(() => {
         localId: `iv_${String(selectedInterview._id || '')}_${idx}`,
         question: String(q?.question || '').trim(),
         score: Number.isFinite(Number(q?.score)) ? Number(q.score) : 0,
-        achievedScore: Number.isFinite(Number(q?.achievedScore)) ? Number(q.achievedScore) : 0,
+        achievedScore: Number.isFinite(Number(q?.achievedScore)) ? Number(q.achievedScore) : (Number.isFinite(Number(q?.score)) ? Number(q.score) : 0),
         notes: String(q?.notes ?? q?.answer ?? ''),
         source: 'existing',
         answerType: String(q?.answerType || 'text'),
         choices: Array.isArray(q?.choices) ? (q.choices as any[]).map((c) => String(c ?? '').trim()).filter(Boolean) : [],
         includeInTotal: !(Number.isFinite(Number(q?.score)) && Number(q?.score) === 0),
       }));
-      setInterviewQuestionDrafts(drafts);
+      setInterviewQuestionDrafts((prev) => {
+        try {
+          if (Array.isArray(prev) && Array.isArray(drafts) && prev.length === drafts.length) {
+            const same = prev.every((p, i) => JSON.stringify(p) === JSON.stringify(drafts[i]));
+            if (same) return prev;
+          }
+        } catch (e) {}
+        return drafts;
+      });
       return;
     }
 
@@ -1634,7 +1651,7 @@ const allApplicants = useMemo(() => {
     (Array.isArray(selectedInterview?.questions) ? selectedInterview.questions : []).forEach((q: any) => {
       const key = String(q?.question || '').trim().toLowerCase();
       selectedInterviewAnswerSeed.set(key, {
-        achievedScore: Number.isFinite(Number(q?.achievedScore)) ? Number(q.achievedScore) : 0,
+        achievedScore: Number.isFinite(Number(q?.achievedScore)) ? Number(q.achievedScore) : (Number.isFinite(Number(q?.score)) ? Number(q.score) : 0),
         notes: String(q?.notes || ''),
         score: Number.isFinite(Number(q?.score)) ? Number(q.score) : 0,
       });
@@ -1662,14 +1679,20 @@ const allApplicants = useMemo(() => {
         return {
           ...q,
           achievedScore: previous
-            ? Number(previous.achievedScore || 0)
-            : Number(interviewSeed?.achievedScore || 0),
+            ? Number(previous.achievedScore ?? (Number.isFinite(Number(q.score)) ? Number(q.score) : 0))
+            : Number(interviewSeed?.achievedScore ?? (Number.isFinite(Number(q.score)) ? Number(q.score) : 0)),
           notes: previous?.notes || interviewSeed?.notes || '',
           includeInTotal: previous ? Boolean(previous.includeInTotal) : includeFromSeed,
           answerType: previous?.answerType || q.answerType || 'text',
           choices: previous?.choices || (Array.isArray((q as any).choices) ? (q as any).choices.map((c: any) => String(c ?? '').trim()).filter(Boolean) : []),
         };
       });
+      try {
+        if (Array.isArray(prev) && prev.length === mergedGroupQuestions.length) {
+          const same = prev.every((p, i) => JSON.stringify(p) === JSON.stringify(mergedGroupQuestions[i]));
+          if (same) return prev;
+        }
+      } catch (e) {}
       lastResolvedInterviewIdRef.current = resolvedInterviewId || null;
       return mergedGroupQuestions;
     });
@@ -1800,7 +1823,9 @@ const allApplicants = useMemo(() => {
         if (q.localId !== localId) return q;
         if (field === 'achievedScore') {
           const parsed = Number(value);
-          return { ...q, achievedScore: Number.isFinite(parsed) ? parsed : 0 };
+          const maxScore = Number.isFinite(Number(q.score)) ? Number(q.score) : 0;
+          const clamped = Number.isFinite(parsed) ? Math.max(0, Math.min(parsed, maxScore)) : 0;
+          return { ...q, achievedScore: clamped };
         }
         return { ...q, notes: String(value ?? '') };
       })
@@ -1813,14 +1838,7 @@ const allApplicants = useMemo(() => {
     );
   };
 
-  const isQuestionAnswered = useCallback((q: InterviewQuestionDraft) => {
-    const answerText = String(q.notes || '').trim();
-    if (!answerText) return false;
-    if (String(q.answerType || '').toLowerCase() === 'number') {
-      return Number.isFinite(Number(answerText));
-    }
-    return true;
-  }, []);
+
 
   const getEffectiveQuestionScore = useCallback((q: InterviewQuestionDraft) => {
     const baseScore = Number.isFinite(Number(q.score)) ? Number(q.score) : 0;
@@ -1831,9 +1849,20 @@ const allApplicants = useMemo(() => {
     (q: InterviewQuestionDraft) => {
       const effectiveScore = getEffectiveQuestionScore(q);
       if (effectiveScore <= 0) return 0;
-      return isQuestionAnswered(q) ? effectiveScore : 0;
+
+      // If an achievedScore was provided use it (clamped), otherwise default to full question score
+      const raw = (q as any).achievedScore;
+      let achievedValue: number;
+      if (raw === undefined || raw === null) {
+        achievedValue = effectiveScore;
+      } else {
+        const parsed = Number(raw);
+        achievedValue = Number.isFinite(parsed) ? parsed : 0;
+      }
+      const clamped = Math.max(0, Math.min(achievedValue, effectiveScore));
+      return clamped;
     },
-    [getEffectiveQuestionScore, isQuestionAnswered]
+    [getEffectiveQuestionScore]
   );
 
   const interviewScoreSummary = useMemo(() => {
@@ -2422,6 +2451,7 @@ const allApplicants = useMemo(() => {
       location: '',
       link: '',
       type: 'phone',
+      conductedBy: '',
     });
     setNotificationChannels({ email: true, sms: false, whatsapp: false });
     setEmailOption('company');
@@ -2448,6 +2478,7 @@ const allApplicants = useMemo(() => {
         location: interviewSnapshot.location || undefined,
         videoLink: interviewSnapshot.link || undefined,
         notes: interviewSnapshot.comment || undefined,
+        conductedBy: interviewSnapshot.conductedBy || undefined,
         companyId: companyObj?._id,
         notifications: {
           channels: {
@@ -4131,11 +4162,13 @@ const allApplicants = useMemo(() => {
 
         {/* Questions Section - only show when NOT in edit-only mode */}
         {!isEditOnlyMode && !isInterviewEditMode && (
-          <Questions
-            status={applicant?.status}
-            interviews={applicantInterviews}
-            className="mt-4"
-          />
+          <div onClick={(e) => e.stopPropagation()}>
+            <Questions
+              status={applicant?.status}
+              interviews={applicantInterviews}
+              className="mt-4"
+            />
+          </div>
         )}
 
         {/* Interview Questions Edit Section - only show in full interview edit mode */}
@@ -4483,8 +4516,19 @@ const allApplicants = useMemo(() => {
                             <Label className="mb-1 block text-[11px] font-semibold uppercase text-gray-500 dark:text-gray-400">
                               Achieved
                             </Label>
-                            <div className="w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100">
-                              {getComputedQuestionAchievedScore(item)}
+                            <div className="w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100" onClick={(e) => e.stopPropagation()}>
+                              <input
+                                type="number"
+                                min={0}
+                                max={Number(item.score || 0)}
+                                step={1}
+                                value={Number(item.achievedScore ?? 0)}
+                                onChange={(e) => updateInterviewQuestionDraft(item.localId, 'achievedScore', e.target.value)}
+                                onClick={(e) => e.stopPropagation()}
+                                onMouseDown={(e) => e.stopPropagation()}
+                                onFocus={(e) => e.stopPropagation()}
+                                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-violet-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                              />
                             </div>
                           </div>
                         </div>

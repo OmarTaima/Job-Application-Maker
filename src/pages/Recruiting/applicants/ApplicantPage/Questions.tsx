@@ -25,12 +25,11 @@ type QuestionsProps = {
 	status?: string;
 	interviews?: InterviewLike[];
 	className?: string;
-	onQuestionsChange?: (interviewId: string, questions: InterviewQuestion[]) => void;
 };
 
 const normalizeStatus = (value?: string) => String(value || '').trim().toLowerCase();
 
-export default function Questions({ status, interviews = [], className = '', onQuestionsChange }: QuestionsProps) {
+export default function Questions({ status, interviews = [], className = '' }: QuestionsProps) {
 	if (normalizeStatus(status) !== 'interviewed') return null;
 
 	const interviewIds = useMemo(() => (Array.isArray(interviews) ? interviews.map((iv, i) => iv?._id ?? `idx_${i}`) : []), [interviews]);
@@ -61,42 +60,12 @@ export default function Questions({ status, interviews = [], className = '', onQ
 		return Array.isArray(interviews) ? interviews.find((iv) => String(iv?._id || '') === String(selectedId)) || null : null;
 	}, [selectedId, interviewIds, interviews]);
 
-// local editable copy of questions so interviewers can enter achieved scores
-const [localQuestions, setLocalQuestions] = useState<InterviewQuestion[]>([]);
+	if (!selectedInterview) return null;
 
-useEffect(() => {
-	if (!selectedInterview) {
-		setLocalQuestions([]);
-		return;
-	}
-	const src = Array.isArray(selectedInterview.questions) ? selectedInterview.questions : [];
-	const normalized = src.map((q) => ({
-		...q,
-		achievedScore: q?.achievedScore != null ? Number(q?.achievedScore) : Number(q?.score || 0),
-	}));
-	setLocalQuestions(normalized);
-}, [selectedInterview]);
-
-if (!selectedInterview) return null;
-
-const totalScore = localQuestions.reduce((sum, q) => sum + (Number(q?.score) || 0), 0);
-const achievedScore = localQuestions.reduce((sum, q) => sum + (Number(q?.achievedScore) || 0), 0);
-const percentage = totalScore > 0 ? Math.round((achievedScore / totalScore) * 100) : 0;
-
-const handleAchievedChange = (index: number, rawValue: string | number) => {
-	const val = Number(rawValue);
-	const max = Number(localQuestions[index]?.score || 0);
-	const clamped = Number.isFinite(val) ? Math.max(0, Math.min(val, max)) : 0;
-	const next = localQuestions.map((qq, i) => (i === index ? { ...qq, achievedScore: clamped } : qq));
-	setLocalQuestions(next);
-	if (typeof onQuestionsChange === 'function' && selectedInterview?._id) {
-		try {
-			onQuestionsChange(String(selectedInterview._id), next);
-		} catch (e) {
-			// swallow errors from parent callback
-		}
-	}
-};
+	const questions = Array.isArray(selectedInterview.questions) ? selectedInterview.questions : [];
+	const totalScore = questions.reduce((sum, q) => sum + (Number(q?.score) || 0), 0);
+	const achievedScore = questions.reduce((sum, q) => sum + (Number(q?.achievedScore) || 0), 0);
+	const percentage = totalScore > 0 ? Math.round((achievedScore / totalScore) * 100) : 0;
 
 	return (
 		<div
@@ -141,65 +110,53 @@ const handleAchievedChange = (index: number, rawValue: string | number) => {
 				)}
 			</div>
 
-				<div className="mt-4">
-					{localQuestions.length === 0 ? (
-						<p className="text-sm text-gray-500">No interview questions recorded.</p>
-					) : (
-						<ul className="space-y-3 mt-2">
-							{localQuestions.map((q, idx) => {
-								const answer = String(q?.answer ?? q?.notes ?? '').trim();
-								const answerType = String(q?.answerType || '').toLowerCase();
-								const choices = Array.isArray(q?.choices) ? q!.choices : [];
-								return (
-									<li key={`ivq_${idx}`} className="rounded-lg border border-gray-200 p-3 dark:border-gray-700">
-										<div className="flex items-start justify-between gap-4">
-											<div className="flex-1">
-												<p className="text-sm font-medium text-gray-800 dark:text-white">{String(q?.question || '')}</p>
-
-												{choices.length > 0 && (answerType === 'radio' || answerType === 'dropdown' || answerType === 'checkbox') ? (
-													<div className="mt-2 flex flex-wrap gap-2">
-														{choices.map((choice) => {
-															const selected = String(choice) === answer;
-															return (
-																<span key={choice} className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm ${selected ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-white/90'}`}>
-																	{choice}
-																</span>
-																);
-														})}
-													</div>
-												) : answerType === 'tags' ? (
-													<div className="mt-2 flex flex-wrap gap-2">
-														{(answer || '').split(',').map((t) => String(t || '').trim()).filter(Boolean).map((tag) => (
-															<span key={tag} className="inline-flex items-center gap-2 rounded-full bg-gray-100 px-3 py-1 text-sm text-gray-800 dark:bg-gray-800 dark:text-white/90">
-																{tag}
-																</span>
-														))}
-													</div>
-												) : (
-													<p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Answer: {answer || '-'}</p>
-												)}
+			<div className="mt-4">
+				{questions.length === 0 ? (
+					<p className="text-sm text-gray-500">No interview questions recorded.</p>
+				) : (
+					<ul className="space-y-3 mt-2">
+						{questions.map((q, idx) => {
+							const answer = String(q?.answer ?? q?.notes ?? '').trim();
+							const answerType = String(q?.answerType || '').toLowerCase();
+							const choices = Array.isArray(q?.choices) ? q!.choices : [];
+							return (
+								<li key={`ivq_${idx}`} className="rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+									<div className="flex items-start justify-between gap-4">
+										<div className="flex-1">
+											<p className="text-sm font-medium text-gray-800 dark:text-white">{String(q?.question || '')}</p>
+											{choices.length > 0 && (answerType === 'radio' || answerType === 'dropdown' || answerType === 'checkbox') ? (
+												<div className="mt-2 flex flex-wrap gap-2">
+													{choices.map((choice) => {
+														const selected = String(choice) === answer;
+														return (
+															<span key={choice} className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm ${selected ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-white/90'}`}>
+															{choice}
+														</span>
+													);
+													})}
+												</div>
+											) : answerType === 'tags' ? (
+												<div className="mt-2 flex flex-wrap gap-2">
+													{(answer || '').split(',').map((t) => String(t || '').trim()).filter(Boolean).map((tag) => (
+														<span key={tag} className="inline-flex items-center gap-2 rounded-full bg-gray-100 px-3 py-1 text-sm text-gray-800 dark:bg-gray-800 dark:text-white/90">{tag}</span>
+													))}
+												</div>
+											) : (
+												<p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Answer: {answer || '-'}</p>
+											)}
 										</div>
 										<div className="text-sm text-gray-700 dark:text-gray-200 min-w-[86px] text-right">
-											<div className="font-bold flex items-center justify-end gap-2">
-												<input
-													type="number"
-													min={0}
-													max={Number(q?.score || 0)}
-													step={1}
-													value={Number(q?.achievedScore ?? 0)}
-													onChange={(e) => handleAchievedChange(idx, e.target.value)}
-													className="w-20 text-right rounded-md border border-gray-200 bg-white px-2 py-1 text-sm text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-200"
-													/>
-												<span className="ml-1">/ {Number(q?.score || 0)}</span>
+											<div className="font-bold">
+												{Number(q?.achievedScore || 0)} / {Number(q?.score || 0)}
 											</div>
 										</div>
 									</div>
-									</li>
-								);
-							})}
-						</ul>
-					)}
-				</div>
+								</li>
+							);
+						})}
+					</ul>
+				)}
+			</div>
 		</div>
 	);
 }
