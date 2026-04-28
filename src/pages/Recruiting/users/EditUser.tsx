@@ -241,13 +241,20 @@ export default function EditUser() {
   };
 
 const handleUpdateDepartments = async (relationId: string, departments: string[]) => {
+  // Resolve the actual companyId from the relation before calling the API
+  const targetAssignment = userCompanies.find((c) => c.relationId === relationId);
+  const companyIdToSend = targetAssignment?.companyId ?? relationId;
   try {
     await updateUserCompaniesMutation.mutateAsync({
       userId: id!,
-      companyId: relationId,  
+      companyId: companyIdToSend,
       data: { departments },
     });
-    // ... rest
+
+    // Optimistically update local state to reflect department changes
+    setUserCompanies((prev) =>
+      prev.map((c) => (c.relationId === relationId ? { ...c, departments } : c))
+    );
   } catch (err: any) {
     setFormError(err.message || "Failed to update departments");
   }
@@ -266,13 +273,17 @@ const handleUpdateDepartments = async (relationId: string, departments: string[]
 
   if (result.isConfirmed) {
     try {
+      // Find the assignment so we send the actual companyId (not the relation id)
+      const targetAssignment = userCompanies.find((c) => c.relationId === relationId);
+      const companyIdToSend = targetAssignment?.companyId ?? relationId;
+
       await removeUserCompanyMutation.mutateAsync({
         userId: id!,
-        companyId: relationId,
+        companyId: companyIdToSend,
       });
-      
-      setUserCompanies(prev => prev.filter(c => c.relationId !== relationId));
-      
+
+      setUserCompanies((prev) => prev.filter((c) => c.relationId !== relationId));
+
       await Swal.fire({
         title: "Removed",
         text: "Company access has been removed successfully",

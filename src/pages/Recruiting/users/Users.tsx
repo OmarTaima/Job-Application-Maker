@@ -30,7 +30,36 @@ import Swal from '../../../utils/swal';
 
 export default function Users() {
   const navigate = useNavigate();
-  const { hasPermission } = useAuth();
+  const { hasPermission, user: authUser } = useAuth();
+
+  // (removed unused extractor) 
+
+  // Compute allowed company IDs for current auth user (mirrors useUsers logic)
+ // Compute allowed company IDs for current auth user
+// Dedicated extractor for entries shaped as { companyId: { _id: "..." } }
+
+
+const allowedCompanyIds = useMemo(() => {
+  const roleName = String(authUser?.roleId?.name || "").toLowerCase().trim();
+
+  
+  if (roleName === "admin" || roleName === "super admin") return undefined;
+
+  const fromCompanies = Array.isArray(authUser?.companies)
+    ? authUser.companies
+        .map((c: any) => {
+          const cid = c?.companyId;
+          if (!cid) return null;
+          if (typeof cid === "string") return cid;
+          return String(cid._id || cid.id || "");
+        })
+        .filter(Boolean) as string[]
+    : [];
+
+  return Array.from(new Set([...fromCompanies]));
+}, [authUser]);
+
+
 
   // Permissions check
   const canRead = hasPermission("User Management", "read");
@@ -43,8 +72,12 @@ export default function Users() {
   const [page, setPage] = useState(1);
   const pageSize = 8;
 
-  // Data fetching
-  const { data: usersResponse, isLoading: usersLoading } = useUsers({ page: 1, PageCount: 1000 });
+  // Data fetching: only include `companyId` param when allowedCompanyIds is defined
+  const usersQueryParams = allowedCompanyIds === undefined
+    ? { page: 1, PageCount: 1000 }
+    : { page: 1, PageCount: 1000,  };
+
+  const { data: usersResponse, isLoading: usersLoading } = useUsers(usersQueryParams);
   const { data: roles = [] } = useRoles();
   const deleteUserMutation = useDeleteUser();
 
@@ -55,22 +88,25 @@ export default function Users() {
       : (((usersResponse as any)?.data ?? []) as any[]);
   }, [usersResponse]);
 
-  // Filtering logic
-  const filteredUsers = useMemo(() => {
-    return rawUsers.filter((user: any) => {
-      const nameMatch = toPlainString(user.fullName || user.name || "").toLowerCase().includes(searchTerm.toLowerCase());
-      const emailMatch = (user.email || "").toLowerCase().includes(searchTerm.toLowerCase());
-      
-      const roleId = typeof user.roleId === "string" ? user.roleId : (user.roleId?._id || "");
-      const roleMatch = roleFilter === "all" || roleId === roleFilter;
-      
-      const statusMatch = statusFilter === "all" || 
-        (statusFilter === "active" && user.isActive !== false) || 
-        (statusFilter === "inactive" && user.isActive === false);
 
-      return (nameMatch || emailMatch) && roleMatch && statusMatch;
-    });
-  }, [rawUsers, searchTerm, roleFilter, statusFilter]);
+
+  // Filtering logic (includes company visibility)
+ const filteredUsers = useMemo(() => {
+  return rawUsers.filter((user: any) => {
+    const targetIds = Array.isArray(user.companies)
+      ? user.companies.map((c: any) => {
+          const cid = c?.companyId;
+          if (!cid) return null;
+          if (typeof cid === "string") return cid;
+          return String(cid._id || cid.id || "");
+        }).filter(Boolean)
+      : [];
+
+    const matched = allowedCompanyIds === undefined ? true : targetIds.some((id: string) => (allowedCompanyIds || []).includes(id));
+
+    return matched;
+  });
+}, [rawUsers, allowedCompanyIds]);
 
   // Pagination
   const totalPages = Math.ceil(filteredUsers.length / pageSize);
