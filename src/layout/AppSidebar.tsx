@@ -1,10 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useLocation } from "react-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useLocation } from 'react-router';
 
 // Assume these icons are imported from an icon library
-import { ChevronDownIcon, GridIcon, HorizontaLDots, TaskIcon } from "../icons";
-import { useSidebar } from "../context/SidebarContext";
-import { useAuth } from "../context/AuthContext";
+import { ChevronDownIcon, GridIcon, HorizontaLDots, TaskIcon } from '../icons';
+import { useSidebar } from '../context/SidebarContext';
+import { useAuth } from '../context/AuthContext';
+import {
+  useAllCompanySettings,
+} from '../hooks/queries/useCompanies';
 
 type NavItem = {
   name: string;
@@ -13,90 +16,42 @@ type NavItem = {
   subItems?: { name: string; path: string; pro?: boolean; new?: boolean }[];
 };
 
-const navItems: NavItem[] = [
-  {
-    icon: <GridIcon />,
-    name: "Home",
-    path: "/",
-  },
-   {
-    icon: <GridIcon />,
-    name: "Applicants",
-    subItems: [
-      { name: "All Applicants", path: "/applicants", pro: false },
-      { name: "Rejected", path: "/applicants/rejected", pro: false },
-      {name: "interview", path: "/applicant/interview", pro: false}
-    ],
-  },
-  {
-    icon: <TaskIcon />,
-    name: "Mail Preview",
-    path: "/applicants/mail-preview",
-  },
-  {
-    icon: <TaskIcon />,
-    name: "Company Settings",
-    subItems: [
-      { name: "Create Company", path: "/recruiting", pro: false },
-      { name: "Companies", path: "/companies", pro: false },
-      { name: "Mail Settings", path: "/recruiting/company-settings", pro: false },
-      { name: "General Settings", path: "/recruiting/interview-settings", pro: false },
-    ],
-  },
-  {
-    icon: <GridIcon />,
-    name: "Jobs Management",
-    subItems: [
-      { name: "Create Job", path: "/create-job", pro: false },
-      { name: "Jobs", path: "/jobs", pro: false },
-    ],
-  },
-  {
-    icon: <GridIcon />,
-    name: "User Settings",
-    subItems: [
-      { name: "Saved Fields", path: "/recruiting/saved-fields", pro: false },
-      { name: "Saved Questions", path: "/recruiting/saved-questions", pro: false },
-    ],
-  },
-];
-  //   icon: <CalenderIcon />,
-  //   name: "Calendar",
-  //   path: "/calendar",
-  // },
-  // {
-  //   icon: <UserCircleIcon />,
-  //   name: "User Profile",
-  //   path: "/profile",
-  // },
-  // {
-  //   name: "Forms",
-  //   icon: <ListIcon />,
-  //   subItems: [{ name: "Form Elements", path: "/form-elements", pro: false }],
-  // },
-  // {
-  //   name: "Tables",
-  //   icon: <TableIcon />,
-  //   subItems: [{ name: "Basic Tables", path: "/basic-tables", pro: false }],
-  // },
-  // {
-  //   name: "Pages",
-  //   icon: <PageIcon />,
-  //   subItems: [
-  //     { name: "Blank Page", path: "/blank", pro: false },
-  //     { name: "404 Error", path: "/error-404", pro: false },
-  //   ],
-  // },
-
+//   icon: <CalenderIcon />,
+//   name: "Calendar",
+//   path: "/calendar",
+// },
+// {
+//   icon: <UserCircleIcon />,
+//   name: "User Profile",
+//   path: "/profile",
+// },
+// {
+//   name: "Forms",
+//   icon: <ListIcon />,
+//   subItems: [{ name: "Form Elements", path: "/form-elements", pro: false }],
+// },
+// {
+//   name: "Tables",
+//   icon: <TableIcon />,
+//   subItems: [{ name: "Basic Tables", path: "/basic-tables", pro: false }],
+// },
+// {
+//   name: "Pages",
+//   icon: <PageIcon />,
+//   subItems: [
+//     { name: "Blank Page", path: "/blank", pro: false },
+//     { name: "404 Error", path: "/error-404", pro: false },
+//   ],
+// },
 
 const adminItems: NavItem[] = [
   {
     icon: <TaskIcon />,
-    name: "User Management",
+    name: 'User Management',
     subItems: [
-      { name: "Users", path: "/users", pro: false },
-      { name: "Permissions & Roles", path: "/permissions", pro: false },
-      { name: "Recommended Fields", path: "/recommended-fields", pro: false },
+      { name: 'Users', path: '/users', pro: false },
+      { name: 'Permissions & Roles', path: '/permissions', pro: false },
+      { name: 'Recommended Fields', path: '/recommended-fields', pro: false },
     ],
   },
 ];
@@ -106,15 +61,29 @@ const AppSidebar: React.FC = () => {
   const { hasPermission, user } = useAuth();
   const location = useLocation();
 
+  const userCompanyIds = useMemo(() => {
+    const fromCompanies = Array.isArray(user?.companies)
+      ? user.companies
+          .map((c: any) =>
+            typeof c?.companyId === 'string' ? c.companyId : c?.companyId?._id
+          )
+          .filter(Boolean)
+      : [];
+    const fromAssigned = Array.isArray((user as any)?.assignedcompanyId)
+      ? (user as any).assignedcompanyId.filter(Boolean)
+      : [];
+    return Array.from(new Set([...fromCompanies, ...fromAssigned].map(String)));
+  }, [user]);
+  const allCompanySettingsResults = useAllCompanySettings(userCompanyIds);
   const hasSingleAssignedCompany = useMemo(() => {
     const roleName = user?.roleId?.name?.toLowerCase?.();
-    const isAdminRole = roleName === "admin" || roleName === "super admin";
+    const isAdminRole = roleName === 'admin' || roleName === 'super admin';
     if (isAdminRole) return false;
 
     const fromCompanies = Array.isArray(user?.companies)
       ? user.companies
           .map((c: any) =>
-            typeof c?.companyId === "string" ? c.companyId : c?.companyId?._id
+            typeof c?.companyId === 'string' ? c.companyId : c?.companyId?._id
           )
           .filter(Boolean)
       : [];
@@ -131,15 +100,19 @@ const AppSidebar: React.FC = () => {
   }, [user]);
 
   // Check if user has read access to admin features
-  const hasUserManagementRead = hasPermission("User Management", "read");
-  const hasRoleManagementRead = hasPermission("Role Management", "read");
-  const hasSettingsManagementRead = hasPermission("Settings Management", "read");
-  
+  const hasUserManagementRead = hasPermission('User Management', 'read');
+  const hasRoleManagementRead = hasPermission('Role Management', 'read');
+  const hasSettingsManagementRead = hasPermission(
+    'Settings Management',
+    'read'
+  );
+
   // Show admin section if user has read access to any admin feature
-  const hasAdminPermissions = hasUserManagementRead || hasRoleManagementRead || hasSettingsManagementRead;
+  const hasAdminPermissions =
+    hasUserManagementRead || hasRoleManagementRead || hasSettingsManagementRead;
 
   const [openSubmenu, setOpenSubmenu] = useState<{
-    type: "main" | "admin";
+    type: 'main' | 'admin';
     index: number;
   } | null>(null);
   const [subMenuHeight, setSubMenuHeight] = useState<Record<string, number>>(
@@ -153,16 +126,93 @@ const AppSidebar: React.FC = () => {
     [location.pathname]
   );
 
+  const applicantPageSubItems = useMemo(() => {
+    const seen = new Set<string>();
+    return allCompanySettingsResults
+      .flatMap((result) => result.data?.settings?.applicantPages ?? [])
+      .filter((p: any) => {
+        if (seen.has(p.name)) return false; // deduplicate by name
+        seen.add(p.name);
+        return true;
+      })
+      .map((p: any) => ({
+        name: p.name,
+        path: `/applicants/page/${encodeURIComponent(p.name)}`,
+        pro: false,
+        state: { statuses: p.statuses }, // 👈 carry statuses in route state
+      }));
+  }, [allCompanySettingsResults]);
+  const navItems: NavItem[] = [
+    {
+      icon: <GridIcon />,
+      name: 'Home',
+      path: '/',
+    },
+    {
+      icon: <GridIcon />,
+      name: 'Applicants',
+      subItems: [
+        { name: 'All Applicants', path: '/applicants', pro: false },
+        { name: 'Rejected', path: '/applicants/rejected', pro: false },
+        { name: 'interview', path: '/applicant/interview', pro: false },
+        ...applicantPageSubItems, // 👈 dynamic pages injected here
+      ],
+    },
+    {
+      icon: <TaskIcon />,
+      name: 'Mail Preview',
+      path: '/applicants/mail-preview',
+    },
+    {
+      icon: <TaskIcon />,
+      name: 'Company Settings',
+      subItems: [
+        { name: 'Create Company', path: '/recruiting', pro: false },
+        { name: 'Companies', path: '/companies', pro: false },
+        {
+          name: 'Mail Settings',
+          path: '/recruiting/company-settings',
+          pro: false,
+        },
+        {
+          name: 'General Settings',
+          path: '/recruiting/interview-settings',
+          pro: false,
+        },
+      ],
+    },
+    {
+      icon: <GridIcon />,
+      name: 'Jobs Management',
+      subItems: [
+        { name: 'Create Job', path: '/create-job', pro: false },
+        { name: 'Jobs', path: '/jobs', pro: false },
+      ],
+    },
+    {
+      icon: <GridIcon />,
+      name: 'User Settings',
+      subItems: [
+        { name: 'Saved Fields', path: '/recruiting/saved-fields', pro: false },
+        {
+          name: 'Saved Questions',
+          path: '/recruiting/saved-questions',
+          pro: false,
+        },
+      ],
+    },
+  ];
+
   useEffect(() => {
     let submenuMatched = false;
-    ["main", "admin"].forEach((menuType) => {
-      const items = menuType === "main" ? navItems : adminItems;
+    ['main', 'admin'].forEach((menuType) => {
+      const items = menuType === 'main' ? navItems : adminItems;
       items.forEach((nav, index) => {
         if (nav.subItems) {
           nav.subItems.forEach((subItem) => {
             if (isActive(subItem.path)) {
               setOpenSubmenu({
-                type: menuType as "main" | "admin",
+                type: menuType as 'main' | 'admin',
                 index,
               });
               submenuMatched = true;
@@ -189,7 +239,7 @@ const AppSidebar: React.FC = () => {
     }
   }, [openSubmenu]);
 
-  const handleSubmenuToggle = (index: number, menuType: "main" | "admin") => {
+  const handleSubmenuToggle = (index: number, menuType: 'main' | 'admin') => {
     setOpenSubmenu((prevOpenSubmenu) => {
       if (
         prevOpenSubmenu &&
@@ -202,35 +252,44 @@ const AppSidebar: React.FC = () => {
     });
   };
 
-  const renderMenuItems = (items: NavItem[], menuType: "main" | "admin") => {
+  const renderMenuItems = (items: NavItem[], menuType: 'main' | 'admin') => {
     // Filter menu items based on permissions
-    const filterSubItems = (subItems: { name: string; path: string; pro?: boolean; new?: boolean }[]) => {
+    const filterSubItems = (
+      subItems: { name: string; path: string; pro?: boolean; new?: boolean }[]
+    ) => {
       return subItems.filter((subItem) => {
         // Map menu items to their required permissions
-        if (subItem.path === "/applicants") return hasPermission("Applicant Management", "read");
-        if (subItem.path === "/applicants/mail-preview") return hasPermission("Mail Management", "read");
-        if (subItem.path === "/recruiting") return hasPermission("Company Management", "create");
-        if (subItem.path === "/companies") return hasPermission("Company Management", "read");
-        if (subItem.path === "/recruiting/company-settings") return hasPermission("Mail Management", "read");
-        if (subItem.path === "/recruiting/interview-settings")
+        if (subItem.path === '/applicants')
+          return hasPermission('Applicant Management', 'read');
+        if (subItem.path === '/applicants/mail-preview')
+          return hasPermission('Mail Management', 'read');
+        if (subItem.path === '/recruiting')
+          return hasPermission('Company Management', 'create');
+        if (subItem.path === '/companies')
+          return hasPermission('Company Management', 'read');
+        if (subItem.path === '/recruiting/company-settings')
+          return hasPermission('Mail Management', 'read');
+        if (subItem.path === '/recruiting/interview-settings')
           return (
-            hasPermission("Interview Settings Management", "read") ||
-            hasPermission("Company Management", "read") ||
-            hasPermission("Settings Management", "read")
+            hasPermission('Interview Settings Management', 'read') ||
+            hasPermission('Company Management', 'read') ||
+            hasPermission('Settings Management', 'read')
           );
-        if (subItem.path === "/create-job") return hasPermission("Job Position Management", "create");
-        if (subItem.path === "/jobs") return hasPermission("Job Position Management", "read");
-        if (subItem.path === "/users") return hasPermission("User Management", "read");
-        if (subItem.path === "/permissions") return hasPermission("Role Management", "read");
-        if (subItem.path === "/recommended-fields")
+        if (subItem.path === '/create-job')
+          return hasPermission('Job Position Management', 'create');
+        if (subItem.path === '/jobs')
+          return hasPermission('Job Position Management', 'read');
+        if (subItem.path === '/users')
+          return hasPermission('User Management', 'read');
+        if (subItem.path === '/permissions')
+          return hasPermission('Role Management', 'read');
+        if (subItem.path === '/recommended-fields')
           return (
-            hasPermission("Settings Management", "create") &&
-            hasPermission("Settings Management", "write")
+            hasPermission('Settings Management', 'create') &&
+            hasPermission('Settings Management', 'write')
           );
-        if (subItem.path === "/recruiting/saved-fields")
-          return true; // Saved fields are available to authenticated users
-        if (subItem.path === "/recruiting/saved-questions")
-          return true; // Saved questions are available to authenticated users
+        if (subItem.path === '/recruiting/saved-fields') return true; // Saved fields are available to authenticated users
+        if (subItem.path === '/recruiting/saved-questions') return true; // Saved questions are available to authenticated users
         // Default: allow access (for dashboard, etc.)
         return true;
       });
@@ -238,8 +297,7 @@ const AppSidebar: React.FC = () => {
 
     // Hide the whole "Company Management" nav if the user doesn't have create permission
     const filteredItems = items.filter((nav) => {
-      if (nav.name === "Company Management") {
-        
+      if (nav.name === 'Company Management') {
       }
       return true;
     });
@@ -248,8 +306,10 @@ const AppSidebar: React.FC = () => {
       <ul className="flex flex-col gap-4">
         {filteredItems.map((nav, index) => {
           // Filter sub-items if they exist
-          const visibleSubItems = nav.subItems ? filterSubItems(nav.subItems) : undefined;
-          
+          const visibleSubItems = nav.subItems
+            ? filterSubItems(nav.subItems)
+            : undefined;
+
           // Don't render if no visible sub-items and it's a submenu
           if (nav.subItems && visibleSubItems && visibleSubItems.length === 0) {
             return null;
@@ -262,20 +322,22 @@ const AppSidebar: React.FC = () => {
                   <button
                     onClick={() => handleSubmenuToggle(index, menuType)}
                     className={`menu-item group ${
-                      openSubmenu?.type === menuType && openSubmenu?.index === index
-                        ? "menu-item-active"
-                        : "menu-item-inactive"
+                      openSubmenu?.type === menuType &&
+                      openSubmenu?.index === index
+                        ? 'menu-item-active'
+                        : 'menu-item-inactive'
                     } cursor-pointer ${
                       !isExpanded && !isHovered
-                        ? "lg:justify-center"
-                        : "lg:justify-start"
+                        ? 'lg:justify-center'
+                        : 'lg:justify-start'
                     }`}
                   >
                     <span
                       className={`menu-item-icon-size  ${
-                        openSubmenu?.type === menuType && openSubmenu?.index === index
-                          ? "menu-item-icon-active"
-                          : "menu-item-icon-inactive"
+                        openSubmenu?.type === menuType &&
+                        openSubmenu?.index === index
+                          ? 'menu-item-icon-active'
+                          : 'menu-item-icon-inactive'
                       }`}
                     >
                       {nav.icon}
@@ -288,8 +350,8 @@ const AppSidebar: React.FC = () => {
                         className={`ml-auto w-5 h-5 transition-transform duration-200 ${
                           openSubmenu?.type === menuType &&
                           openSubmenu?.index === index
-                            ? "rotate-180 text-brand-500"
-                            : ""
+                            ? 'rotate-180 text-brand-500'
+                            : ''
                         }`}
                       />
                     )}
@@ -302,9 +364,10 @@ const AppSidebar: React.FC = () => {
                       className="overflow-hidden transition-all duration-300"
                       style={{
                         height:
-                          openSubmenu?.type === menuType && openSubmenu?.index === index
+                          openSubmenu?.type === menuType &&
+                          openSubmenu?.index === index
                             ? `${subMenuHeight[`${menuType}-${index}`]}px`
-                            : "0px",
+                            : '0px',
                       }}
                     >
                       <ul className="mt-2 space-y-1 ml-9">
@@ -314,20 +377,21 @@ const AppSidebar: React.FC = () => {
                               to={subItem.path}
                               className={`menu-dropdown-item ${
                                 isActive(subItem.path)
-                                  ? "menu-dropdown-item-active"
-                                  : "menu-dropdown-item-inactive"
+                                  ? 'menu-dropdown-item-active'
+                                  : 'menu-dropdown-item-inactive'
                               }`}
                             >
-                              {hasSingleAssignedCompany && subItem.path === "/companies"
-                                ? "Company Data"
+                              {hasSingleAssignedCompany &&
+                              subItem.path === '/companies'
+                                ? 'Company Data'
                                 : subItem.name}
                               <span className="flex items-center gap-1 ml-auto">
                                 {subItem.new && (
                                   <span
                                     className={`ml-auto ${
                                       isActive(subItem.path)
-                                        ? "menu-dropdown-badge-active"
-                                        : "menu-dropdown-badge-inactive"
+                                        ? 'menu-dropdown-badge-active'
+                                        : 'menu-dropdown-badge-inactive'
                                     } menu-dropdown-badge`}
                                   >
                                     new
@@ -337,8 +401,8 @@ const AppSidebar: React.FC = () => {
                                   <span
                                     className={`ml-auto ${
                                       isActive(subItem.path)
-                                        ? "menu-dropdown-badge-active"
-                                        : "menu-dropdown-badge-inactive"
+                                        ? 'menu-dropdown-badge-active'
+                                        : 'menu-dropdown-badge-inactive'
                                     } menu-dropdown-badge`}
                                   >
                                     pro
@@ -357,14 +421,16 @@ const AppSidebar: React.FC = () => {
                   <Link
                     to={nav.path}
                     className={`menu-item group ${
-                      isActive(nav.path) ? "menu-item-active" : "menu-item-inactive"
+                      isActive(nav.path)
+                        ? 'menu-item-active'
+                        : 'menu-item-inactive'
                     }`}
                   >
                     <span
                       className={`menu-item-icon-size ${
                         isActive(nav.path)
-                          ? "menu-item-icon-active"
-                          : "menu-item-icon-inactive"
+                          ? 'menu-item-icon-active'
+                          : 'menu-item-icon-inactive'
                       }`}
                     >
                       {nav.icon}
@@ -387,19 +453,19 @@ const AppSidebar: React.FC = () => {
       className={`fixed mt-16 flex flex-col lg:mt-0 top-0 px-5 left-0 bg-white dark:bg-gray-900 dark:border-gray-800 text-gray-900 h-screen transition-all duration-300 ease-in-out z-50 border-r border-gray-200 
         ${
           isExpanded || isMobileOpen
-            ? "w-[290px]"
+            ? 'w-[290px]'
             : isHovered
-            ? "w-[290px]"
-            : "w-[90px]"
+              ? 'w-[290px]'
+              : 'w-[90px]'
         }
-        ${isMobileOpen ? "translate-x-0" : "-translate-x-full"}
+        ${isMobileOpen ? 'translate-x-0' : '-translate-x-full'}
         lg:translate-x-0`}
       onMouseEnter={() => !isExpanded && setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
       <div
         className={`py-8 ml-5 flex ${
-          !isExpanded && !isHovered ? "lg:justify-center" : "justify-start"
+          !isExpanded && !isHovered ? 'lg:justify-center' : 'justify-start'
         }`}
       >
         <Link to="/">
@@ -422,7 +488,6 @@ const AppSidebar: React.FC = () => {
             </>
           ) : (
             <img
-            
               src="/images/logo/auth-logo.png"
               alt="Logo"
               width={200}
@@ -438,8 +503,8 @@ const AppSidebar: React.FC = () => {
               <h2
                 className={`mb-4 text-xs uppercase flex leading-[20px] text-gray-400 ${
                   !isExpanded && !isHovered
-                    ? "lg:justify-center"
-                    : "justify-start"
+                    ? 'lg:justify-center'
+                    : 'justify-start'
                 }`}
               >
                 {/* Menu title commented out */}
@@ -447,15 +512,15 @@ const AppSidebar: React.FC = () => {
                   <HorizontaLDots className="size-6" />
                 )}
               </h2>
-              {renderMenuItems(navItems, "main")}
+              {renderMenuItems(navItems, 'main')}
             </div>
             {hasAdminPermissions && (
               <div className="">
                 <h2
                   className={`mb-4 text-xs uppercase flex leading-[20px] text-gray-400 ${
                     !isExpanded && !isHovered
-                      ? "lg:justify-center"
-                      : "justify-start"
+                      ? 'lg:justify-center'
+                      : 'justify-start'
                   }`}
                 >
                   {/* Admin title commented out */}
@@ -463,7 +528,7 @@ const AppSidebar: React.FC = () => {
                     <HorizontaLDots />
                   )}
                 </h2>
-                {renderMenuItems(adminItems, "admin")}
+                {renderMenuItems(adminItems, 'admin')}
               </div>
             )}
           </div>

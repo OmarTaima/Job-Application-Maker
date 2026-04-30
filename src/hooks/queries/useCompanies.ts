@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, useQueries } from '@tanstack/react-query';
 import { companiesService } from '../../services/companiesService';
 import { useAppSelector } from '../../store/hooks';
 import type {
@@ -174,6 +174,16 @@ export function useCompanySettings(
         ? options.enabled && !!companyId
         : !!companyId,
     staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useAllCompanySettings(companyIds: string[]) {
+  return useQueries({
+    queries: companyIds.map((id) => ({
+      queryKey: ['companySettings', id],
+      queryFn: () => companiesService.getCompanySettingsByCompany(id), // ✅ plain async fn
+      enabled: !!id,
+    })),
   });
 }
 

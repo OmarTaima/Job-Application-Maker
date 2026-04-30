@@ -107,6 +107,7 @@ export interface CompanySettings {
         body?: string | null;
       };
     };
+    applicantPages: any[];
     interviewSettings?: InterviewSettings;
   };
   defaultColorGradient?: string[];
@@ -114,7 +115,6 @@ export interface CompanySettings {
   // Custom per-company lead status/pipeline configuration
   statuses?: any[];
   interviewSettings?: InterviewSettings;
-  applicantPages: any[];
   // Company-like fields that may be present when the API returns a full company
   // object from the settings query.
   name?: string | { en: string; ar?: string };
