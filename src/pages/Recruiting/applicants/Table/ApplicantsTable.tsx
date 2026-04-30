@@ -1281,39 +1281,41 @@ export default function Applicants({
   };
 
   // Add this function near your other helper functions (before the columns definition)
-  const extractRejectionReasons = useCallback((applicant: Applicant): string[] => {
-    try {
-      // Check status history
-      const history = applicant?.statusHistory;
-      if (Array.isArray(history)) {
-        const rejected = history.filter(
-          (h: any) => String(h?.status || '').toLowerCase() === applicant.status
-        );
-        if (rejected.length) {
-          rejected.sort((x: any, y: any) => {
-            const tx = x?.changedAt ? new Date(x.changedAt).getTime() : 0;
-            const ty = y?.changedAt ? new Date(y.changedAt).getTime() : 0;
-            return ty - tx;
-          });
-          const latest = rejected[0] || {};
-          const reasons =
-            latest.reasons ??
-            [];
-          if (Array.isArray(reasons)) {
-            return reasons
-              .map((r: any) => String(r ?? '').trim())
-              .filter(Boolean);
-          }
-          if (typeof reasons === 'string' && reasons) {
-            return [reasons];
+  const extractRejectionReasons = useCallback(
+    (applicant: Applicant): string[] => {
+      try {
+        // Check status history
+        const history = applicant?.statusHistory;
+        if (Array.isArray(history)) {
+          const rejected = history.filter(
+            (h: any) =>
+              String(h?.status || '').toLowerCase() === applicant.status
+          );
+          if (rejected.length) {
+            rejected.sort((x: any, y: any) => {
+              const tx = x?.changedAt ? new Date(x.changedAt).getTime() : 0;
+              const ty = y?.changedAt ? new Date(y.changedAt).getTime() : 0;
+              return ty - tx;
+            });
+            const latest = rejected[0] || {};
+            const reasons = latest.reasons ?? [];
+            if (Array.isArray(reasons)) {
+              return reasons
+                .map((r: any) => String(r ?? '').trim())
+                .filter(Boolean);
+            }
+            if (typeof reasons === 'string' && reasons) {
+              return [reasons];
+            }
           }
         }
+        return [];
+      } catch (e) {
+        return [];
       }
-      return [];
-    } catch (e) {
-      return [];
-    }
-  }, []);
+    },
+    []
+  );
 
   // Add this memo for rejection reasons options (add it near your other useMemo hooks)
   const rejectionReasonsOptions = useMemo(() => {
@@ -1817,81 +1819,76 @@ export default function Applicants({
           );
         },
       },
-      // Rejection reasons column - shown only when this view is fixed to 'rejected'
-      ...(onlyStatus !== undefined
-        ? [
-            {
-              id: 'rejectionReasons',
-              header: 'Reasons',
-              enableSorting: true,
-              enableColumnFilter: true,
-              size: 260,
-              accessorFn: (row: any) => extractRejectionReasons(row),
-              sortingFn: (rowA: any, rowB: any, columnId: string) => {
-                const reasonsA = rowA.getValue(columnId) as string[];
-                const reasonsB = rowB.getValue(columnId) as string[];
-                const a = reasonsA.length;
-                const b = reasonsB.length;
-                if (a === b) return 0;
-                return a > b ? 1 : -1;
-              },
-              filterFn: (row: any, columnId: string, filterValue: any) => {
-                if (!filterValue) return true;
-                const selectedReasons = Array.isArray(filterValue)
-                  ? filterValue
-                  : [filterValue];
-                if (selectedReasons.length === 0) return true;
+      {
+        id: 'rejectionReasons',
+        header: 'Reasons',
+        enableSorting: true,
+        enableColumnFilter: true,
+        size: 260,
+        accessorFn: (row: any) => extractRejectionReasons(row),
+        sortingFn: (rowA: any, rowB: any, columnId: string) => {
+          const reasonsA = rowA.getValue(columnId) as string[];
+          const reasonsB = rowB.getValue(columnId) as string[];
+          const a = reasonsA.length;
+          const b = reasonsB.length;
+          if (a === b) return 0;
+          return a > b ? 1 : -1;
+        },
+        filterFn: (row: any, columnId: string, filterValue: any) => {
+          if (!filterValue) return true;
+          const selectedReasons = Array.isArray(filterValue)
+            ? filterValue
+            : [filterValue];
+          if (selectedReasons.length === 0) return true;
 
-                const applicantReasons = row.getValue(columnId) as string[];
+          const applicantReasons = row.getValue(columnId) as string[];
 
-                // Check if any of the applicant's reasons match any selected filter
-                return selectedReasons.some((selectedReason) =>
-                  applicantReasons.some(
-                    (applicantReason) =>
-                      applicantReason
-                        .toLowerCase()
-                        .includes(selectedReason.toLowerCase()) ||
-                      selectedReason
-                        .toLowerCase()
-                        .includes(applicantReason.toLowerCase())
-                  )
-                );
-              },
-              Header: ({ column }: { column: any }) => (
-                <ColumnMultiSelectHeader
-                  column={column}
-                  label="Reasons"
-                  options={rejectionReasonsOptions}
-                  isLaptopViewport={isLaptopViewport}
-                  menuWidth={260}
-                  menuMaxHeight={320}
-                />
-              ),
-              Cell: ({ row }: { row: { original: any } }) => {
-                if (isTableLoading) return renderCellSkeleton('text');
-                const a = row.original || {};
-                const reasons = extractRejectionReasons(a);
+          // Check if any of the applicant's reasons match any selected filter
+          return selectedReasons.some((selectedReason) =>
+            applicantReasons.some(
+              (applicantReason) =>
+                applicantReason
+                  .toLowerCase()
+                  .includes(selectedReason.toLowerCase()) ||
+                selectedReason
+                  .toLowerCase()
+                  .includes(applicantReason.toLowerCase())
+            )
+          );
+        },
+        Header: ({ column }: { column: any }) => (
+          <ColumnMultiSelectHeader
+            column={column}
+            label="Reasons"
+            options={rejectionReasonsOptions}
+            isLaptopViewport={isLaptopViewport}
+            menuWidth={260}
+            menuMaxHeight={320}
+          />
+        ),
+        Cell: ({ row }: { row: { original: any } }) => {
+          if (isTableLoading) return renderCellSkeleton('text');
+          const a = row.original || {};
+          const reasons = extractRejectionReasons(a);
 
-                if (!reasons || reasons.length === 0) {
-                  return <span className="text-sm text-gray-500">-</span>;
-                }
+          if (!reasons || reasons.length === 0) {
+            return <span className="text-sm text-gray-500">-</span>;
+          }
 
-                return (
-                  <div className="flex flex-wrap gap-1">
-                    {reasons.map((r: string, i: number) => (
-                      <span
-                        key={i}
-                        className="inline-block rounded-full bg-brand-50 px-2 py-0.5 text-xs text-brand-700"
-                      >
-                        {r}
-                      </span>
-                    ))}
-                  </div>
-                );
-              },
-            },
-          ]
-        : []),
+          return (
+            <div className="flex flex-wrap gap-1">
+              {reasons.map((r: string, i: number) => (
+                <span
+                  key={i}
+                  className="inline-block rounded-full bg-brand-50 px-2 py-0.5 text-xs text-brand-700"
+                >
+                  {r}
+                </span>
+              ))}
+            </div>
+          );
+        },
+      },
       {
         accessorKey: 'submittedAt',
         header: 'Submitted',
