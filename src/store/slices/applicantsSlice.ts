@@ -47,6 +47,7 @@ export type StatusHistory = {
   changedBy: string;
   changedAt: string;
   notes?: string;
+  reasons?: string[];
   notifications?: {
     channels: {
       email: boolean;

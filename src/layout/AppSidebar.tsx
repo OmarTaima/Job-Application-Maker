@@ -5,9 +5,7 @@ import { Link, useLocation } from 'react-router';
 import { ChevronDownIcon, GridIcon, HorizontaLDots, TaskIcon } from '../icons';
 import { useSidebar } from '../context/SidebarContext';
 import { useAuth } from '../context/AuthContext';
-import {
-  useAllCompanySettings,
-} from '../hooks/queries/useCompanies';
+import { useAllCompanySettings } from '../hooks/queries/useCompanies';
 
 type NavItem = {
   name: string;
@@ -137,11 +135,11 @@ const AppSidebar: React.FC = () => {
       })
       .map((p: any) => ({
         name: p.name,
-        path: `/applicants/page/${encodeURIComponent(p.name)}`,
+        path: `/applicants/page/${encodeURIComponent(p.name)}?statuses=${p.statuses.map(encodeURIComponent).join(',')}`,
         pro: false,
-        state: { statuses: p.statuses }, // 👈 carry statuses in route state
       }));
   }, [allCompanySettingsResults]);
+
   const navItems: NavItem[] = [
     {
       icon: <GridIcon />,
@@ -153,8 +151,8 @@ const AppSidebar: React.FC = () => {
       name: 'Applicants',
       subItems: [
         { name: 'All Applicants', path: '/applicants', pro: false },
-        { name: 'Rejected', path: '/applicants/rejected', pro: false },
-        { name: 'interview', path: '/applicant/interview', pro: false },
+        { name: 'Rejected', path: '/applicants/page/rejected?statuses=rejected', pro: false },
+        { name: 'interview', path: '/applicants/page/interview?statuses=interview,interviewed', pro: false },
         ...applicantPageSubItems, // 👈 dynamic pages injected here
       ],
     },

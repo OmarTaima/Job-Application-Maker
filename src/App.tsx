@@ -1,53 +1,83 @@
-import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from "react-router";
-import { Suspense, lazy } from "react";
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  Navigate,
+  useParams,
+} from 'react-router';
+import { Suspense, lazy } from 'react';
 
-const SignIn = lazy(() => import("./pages/AuthPages/SignIn"));
-const SignUp = lazy(() => import("./pages/AuthPages/SignUp"));
-const NotFound = lazy(() => import("./pages/OtherPage/NotFound"));
-const UserProfiles = lazy(() => import("./pages/UserProfiles"));
-const Videos = lazy(() => import("./pages/UiElements/Videos"));
-const Images = lazy(() => import("./pages/UiElements/Images"));
-const Alerts = lazy(() => import("./pages/UiElements/Alerts"));
-const Badges = lazy(() => import("./pages/UiElements/Badges"));
-const Avatars = lazy(() => import("./pages/UiElements/Avatars"));
-const Buttons = lazy(() => import("./pages/UiElements/Buttons"));
-const LineChart = lazy(() => import("./pages/Charts/LineChart"));
-const BarChart = lazy(() => import("./pages/Charts/BarChart"));
-const Calendar = lazy(() => import("./pages/Calendar"));
-const BasicTables = lazy(() => import("./pages/Tables/BasicTables"));
-const FormElements = lazy(() => import("./pages/Forms/FormElements"));
-const Blank = lazy(() => import("./pages/Blank"));
-const AppLayout = lazy(() => import("./layout/AppLayout"));
-import { ScrollToTop } from "./components/common/ScrollToTop";
-const Home = lazy(() => import("./pages/Dashboard/Home"));
-const RecruitingDashboard = lazy(() => import("./pages/Recruiting/companies/createCompany"));
-const Companies = lazy(() => import("./pages/Recruiting/companies/Companies"));
-const PreviewCompany = lazy(() => import("./pages/Recruiting/companies/PreviewCompany"));
-const CompanySettingsPage = lazy(() => import("./pages/Recruiting/companies/companysettings"));
-const InterviewCompanySettingsPage = lazy(() => import("./pages/Recruiting/Settings/interviewCompany"));
-const SavedQuestions = lazy(() => import("./pages/Recruiting/Settings/interviewPerUser"));
-const Jobs = lazy(() => import("./pages/Recruiting/jobs/Jobs"));
-const CreateJob = lazy(() => import("./pages/Recruiting/jobs/CreateJob"));
-const PreviewJob = lazy(() => import("./pages/Recruiting/jobs/PreviewJob"));
-const Users = lazy(() => import("./pages/Recruiting/users/Users"));
-const CreateUser = lazy(() => import("./pages/Recruiting/users/CreateUser"));
-const EditUser = lazy(() => import("./pages/Recruiting/users/EditUser"));
-const Permissions = lazy(() => import("./pages/Recruiting/roles/Permissions"));
-const PreviewRole = lazy(() => import("./pages/Recruiting/roles/PreviewRole"));
-const PreviewUser = lazy(() => import("./pages/Recruiting/users/PreviewUser"));
-const RecommendedFields = lazy(() => import("./pages/Recruiting/systemSettings/RecommendedFields"));
-const SavedFields = lazy(() => import("./pages/Recruiting/savedFields/SavedFields"));
-const SavedFieldsPreview = lazy(() => import("./pages/Recruiting/savedFields/SavedFieldsPreview"));
-const CreateSavedField = lazy(() => import("./pages/Recruiting/savedFields/CreateSavedField"));
+const SignIn = lazy(() => import('./pages/AuthPages/SignIn'));
+const SignUp = lazy(() => import('./pages/AuthPages/SignUp'));
+const NotFound = lazy(() => import('./pages/OtherPage/NotFound'));
+const UserProfiles = lazy(() => import('./pages/UserProfiles'));
+const Videos = lazy(() => import('./pages/UiElements/Videos'));
+const Images = lazy(() => import('./pages/UiElements/Images'));
+const Alerts = lazy(() => import('./pages/UiElements/Alerts'));
+const Badges = lazy(() => import('./pages/UiElements/Badges'));
+const Avatars = lazy(() => import('./pages/UiElements/Avatars'));
+const Buttons = lazy(() => import('./pages/UiElements/Buttons'));
+const LineChart = lazy(() => import('./pages/Charts/LineChart'));
+const BarChart = lazy(() => import('./pages/Charts/BarChart'));
+const Calendar = lazy(() => import('./pages/Calendar'));
+const BasicTables = lazy(() => import('./pages/Tables/BasicTables'));
+const FormElements = lazy(() => import('./pages/Forms/FormElements'));
+const Blank = lazy(() => import('./pages/Blank'));
+const AppLayout = lazy(() => import('./layout/AppLayout'));
+import { ScrollToTop } from './components/common/ScrollToTop';
+const Home = lazy(() => import('./pages/Dashboard/Home'));
+const RecruitingDashboard = lazy(
+  () => import('./pages/Recruiting/companies/createCompany')
+);
+const Companies = lazy(() => import('./pages/Recruiting/companies/Companies'));
+const PreviewCompany = lazy(
+  () => import('./pages/Recruiting/companies/PreviewCompany')
+);
+const CompanySettingsPage = lazy(
+  () => import('./pages/Recruiting/companies/companysettings')
+);
+const InterviewCompanySettingsPage = lazy(
+  () => import('./pages/Recruiting/Settings/interviewCompany')
+);
+const SavedQuestions = lazy(
+  () => import('./pages/Recruiting/Settings/interviewPerUser')
+);
+const Jobs = lazy(() => import('./pages/Recruiting/jobs/Jobs'));
+const CreateJob = lazy(() => import('./pages/Recruiting/jobs/CreateJob'));
+const PreviewJob = lazy(() => import('./pages/Recruiting/jobs/PreviewJob'));
+const Users = lazy(() => import('./pages/Recruiting/users/Users'));
+const CreateUser = lazy(() => import('./pages/Recruiting/users/CreateUser'));
+const EditUser = lazy(() => import('./pages/Recruiting/users/EditUser'));
+const Permissions = lazy(() => import('./pages/Recruiting/roles/Permissions'));
+const PreviewRole = lazy(() => import('./pages/Recruiting/roles/PreviewRole'));
+const PreviewUser = lazy(() => import('./pages/Recruiting/users/PreviewUser'));
+const RecommendedFields = lazy(
+  () => import('./pages/Recruiting/systemSettings/RecommendedFields')
+);
+const SavedFields = lazy(
+  () => import('./pages/Recruiting/savedFields/SavedFields')
+);
+const SavedFieldsPreview = lazy(
+  () => import('./pages/Recruiting/savedFields/SavedFieldsPreview')
+);
+const CreateSavedField = lazy(
+  () => import('./pages/Recruiting/savedFields/CreateSavedField')
+);
 // Import the NAMED export, not the default export
-import Applicants from "./pages/Recruiting/applicants/Table/Applicants";
-const ApplicantData = lazy(() => import("./pages/Recruiting/applicants/ApplicantPage/ApplicantData"));
-const ApplicantsMobilePage = lazy(() => import("./pages/Recruiting/applicants/Table/ApplicantsMobilePage"));
-const MailPreview = lazy(() => import("./pages/Recruiting/applicants/MailPreview"));
-const RejectedApplicants = lazy(() => import("./pages/Recruiting/applicants/Table/Rejected"));
-const InterviewApplicant = lazy(() => import("./pages/Recruiting/applicants/Table/Candidate"));
-import ProtectedRoute from "./components/auth/ProtectedRoute";
-import PermissionProtectedRoute from "./components/auth/PermissionProtectedRoute";
+import Applicants from './pages/Recruiting/applicants/Table/ApplicantsTable';
+const ApplicantData = lazy(
+  () => import('./pages/Recruiting/applicants/ApplicantPage/ApplicantData')
+);
+const ApplicantsMobilePage = lazy(
+  () => import('./pages/Recruiting/applicants/Table/ApplicantsMobilePage')
+);
+const MailPreview = lazy(
+  () => import('./pages/Recruiting/applicants/MailPreview')
+);
+
+import ProtectedRoute from './components/auth/ProtectedRoute';
+import PermissionProtectedRoute from './components/auth/PermissionProtectedRoute';
+import ApplicantDynamicPage from './pages/Recruiting/applicants/Table/ApplicantDynamicPage';
 
 // Wrapper components to pass props to Applicants
 const ApplicantsWithStatus = () => {
@@ -56,7 +86,10 @@ const ApplicantsWithStatus = () => {
 };
 
 const ApplicantsWithCompanyAndStatus = () => {
-  const { companyId, status } = useParams<{ companyId: string; status: string }>();
+  const { companyId, status } = useParams<{
+    companyId: string;
+    status: string;
+  }>();
   return <Applicants companyIdOverride={companyId} onlyStatus={status} />;
 };
 
@@ -67,118 +100,153 @@ export default function App() {
         <ScrollToTop />
         <Suspense fallback={<div className="min-h-screen" />}>
           <Routes>
-          {/* Public Routes */}
-          <Route path="/signin" element={<SignIn />} />
-          <Route path="/signup" element={<SignUp />} />
-          <Route path="/" element={<Navigate to="/signin" replace />} />
+            {/* Public Routes */}
+            <Route path="/signin" element={<SignIn />} />
+            <Route path="/signup" element={<SignUp />} />
+            <Route path="/" element={<Navigate to="/signin" replace />} />
 
-          {/* Protected Routes */}
-          <Route element={<ProtectedRoute />}>
-            {/* Dashboard Layout */}
-            <Route element={<AppLayout />}>
-              <Route index element={<Home />} />
-              <Route path="recruiting" element={<RecruitingDashboard />} />
-              <Route path="companies" element={<Companies />} />
-              <Route path="jobs" element={<Jobs />} />
-              <Route path="create-job" element={<CreateJob />} />
-              <Route path="job/:jobId" element={<PreviewJob />} />
-              <Route path="company/:companyId" element={<PreviewCompany />} />
-              
-              {/* Applicants routes with status filtering */}
-              <Route path="applicants" element={<Applicants />} />
-              <Route path="applicants/status/:status" element={<ApplicantsWithStatus />} />
-              <Route path="applicants/company/:companyId/status/:status" element={<ApplicantsWithCompanyAndStatus />} />
-              
-              <Route path="recruiting/company-settings" element={<CompanySettingsPage />} />
-              <Route
-                element={
-                  <PermissionProtectedRoute
+            {/* Protected Routes */}
+            <Route element={<ProtectedRoute />}>
+              {/* Dashboard Layout */}
+              <Route element={<AppLayout />}>
+                <Route index element={<Home />} />
+                <Route path="recruiting" element={<RecruitingDashboard />} />
+                <Route path="companies" element={<Companies />} />
+                <Route path="jobs" element={<Jobs />} />
+                <Route path="create-job" element={<CreateJob />} />
+                <Route path="job/:jobId" element={<PreviewJob />} />
+                <Route path="company/:companyId" element={<PreviewCompany />} />
+
+                {/* Applicants routes with status filtering */}
+                <Route path="applicants" element={<Applicants />} />
+                <Route
+                  path="applicants/status/:status"
+                  element={<ApplicantsWithStatus />}
+                />
+                <Route
+                  path="applicants/company/:companyId/status/:status"
+                  element={<ApplicantsWithCompanyAndStatus />}
+                />
+
+                <Route
+                  path="recruiting/company-settings"
+                  element={<CompanySettingsPage />}
+                />
+                <Route
+                  element={
+                    <PermissionProtectedRoute
                       requiredPermissions={[
-                        "Interview Settings Management",
-                        "Company Management",
-                        "Settings Management",
+                        'Interview Settings Management',
+                        'Company Management',
+                        'Settings Management',
                       ]}
                       accessLevel="read"
                     />
-                }
-              >
-                <Route path="recruiting/interview-settings" element={<InterviewCompanySettingsPage />} />
-              </Route>
-              <Route
-                path="company/:companyId/create-job"
-                element={<CreateJob />}
-              />
-              <Route path="applicants/mobile" element={<ApplicantsMobilePage />} />
-              <Route path="applicants/rejected" element={<RejectedApplicants />} />
-              <Route path="applicant/interview" element={<InterviewApplicant />} />
-              <Route
-                element={
-                  <PermissionProtectedRoute
-                    requiredPermissions={["Mail Management"]}
-                    accessLevel="read"
+                  }
+                >
+                  <Route
+                    path="recruiting/interview-settings"
+                    element={<InterviewCompanySettingsPage />}
                   />
-                }
-              >
-                <Route path="applicants/mail-preview" element={<MailPreview />} />
-              </Route>
-              <Route path="applicant-details/:id" element={<ApplicantData />} />
-              <Route path="recruiting/saved-fields" element={<SavedFields />} />
-              <Route path="recruiting/saved-questions" element={<SavedQuestions />} />
-              <Route path="recruiting/saved-fields/preview/:fieldId" element={<SavedFieldsPreview />} />
-              <Route path="recruiting/saved-fields/create" element={<CreateSavedField />} />
-
-              {/* Admin Routes - Protected by permissions */}
-              <Route
-                element={
-                  <PermissionProtectedRoute
-                    requiredPermissions={[
-                      "User Management",
-                      "Role Management",
-                      "Settings Management",
-                    ]}
-                    requireAll={false}
-                  />
-                }
-              >
-                <Route path="users" element={<Users />} />
-                <Route path="user/add" element={<CreateUser />} />
-                <Route path="user/:id" element={<PreviewUser />} />
-                <Route path="user/:id/edit" element={<EditUser />} />
-                <Route path="permissions" element={<Permissions />} />
-                <Route path="role/:id" element={<PreviewRole />} />
+                </Route>
                 <Route
-                  path="recommended-fields"
-                  element={<RecommendedFields />}
+                  path="company/:companyId/create-job"
+                  element={<CreateJob />}
                 />
+                <Route
+                  path="applicants/mobile"
+                  element={<ApplicantsMobilePage />}
+                />
+                <Route
+                  path="/applicants/page/:pageName"
+                  element={<ApplicantDynamicPage />}
+                />
+                <Route
+                  element={
+                    <PermissionProtectedRoute
+                      requiredPermissions={['Mail Management']}
+                      accessLevel="read"
+                    />
+                  }
+                >
+                  <Route
+                    path="applicants/mail-preview"
+                    element={<MailPreview />}
+                  />
+                </Route>
+                <Route
+                  path="applicant-details/:id"
+                  element={<ApplicantData />}
+                />
+                <Route
+                  path="recruiting/saved-fields"
+                  element={<SavedFields />}
+                />
+                <Route
+                  path="recruiting/saved-questions"
+                  element={<SavedQuestions />}
+                />
+                <Route
+                  path="recruiting/saved-fields/preview/:fieldId"
+                  element={<SavedFieldsPreview />}
+                />
+                <Route
+                  path="recruiting/saved-fields/create"
+                  element={<CreateSavedField />}
+                />
+
+                {/* Admin Routes - Protected by permissions */}
+                <Route
+                  element={
+                    <PermissionProtectedRoute
+                      requiredPermissions={[
+                        'User Management',
+                        'Role Management',
+                        'Settings Management',
+                      ]}
+                      requireAll={false}
+                    />
+                  }
+                >
+                  <Route path="users" element={<Users />} />
+                  <Route path="user/add" element={<CreateUser />} />
+                  <Route path="user/:id" element={<PreviewUser />} />
+                  <Route path="user/:id/edit" element={<EditUser />} />
+                  <Route path="permissions" element={<Permissions />} />
+                  <Route path="role/:id" element={<PreviewRole />} />
+                  <Route
+                    path="recommended-fields"
+                    element={<RecommendedFields />}
+                  />
+                </Route>
+
+                {/* Others Page */}
+                <Route path="profile" element={<UserProfiles />} />
+                <Route path="calendar" element={<Calendar />} />
+                <Route path="blank" element={<Blank />} />
+
+                {/* Forms */}
+                <Route path="form-elements" element={<FormElements />} />
+
+                {/* Tables */}
+                <Route path="basic-tables" element={<BasicTables />} />
+
+                {/* Ui Elements */}
+                <Route path="alerts" element={<Alerts />} />
+                <Route path="avatars" element={<Avatars />} />
+                <Route path="badge" element={<Badges />} />
+                <Route path="buttons" element={<Buttons />} />
+                <Route path="images" element={<Images />} />
+                <Route path="videos" element={<Videos />} />
+
+                {/* Charts */}
+                <Route path="line-chart" element={<LineChart />} />
+                <Route path="bar-chart" element={<BarChart />} />
               </Route>
-
-              {/* Others Page */}
-              <Route path="profile" element={<UserProfiles />} />
-              <Route path="calendar" element={<Calendar />} />
-              <Route path="blank" element={<Blank />} />
-
-              {/* Forms */}
-              <Route path="form-elements" element={<FormElements />} />
-
-              {/* Tables */}
-              <Route path="basic-tables" element={<BasicTables />} />
-
-              {/* Ui Elements */}
-              <Route path="alerts" element={<Alerts />} />
-              <Route path="avatars" element={<Avatars />} />
-              <Route path="badge" element={<Badges />} />
-              <Route path="buttons" element={<Buttons />} />
-              <Route path="images" element={<Images />} />
-              <Route path="videos" element={<Videos />} />
-
-              {/* Charts */}
-              <Route path="line-chart" element={<LineChart />} />
-              <Route path="bar-chart" element={<BarChart />} />
             </Route>
-          </Route>
 
-          {/* Fallback Route */}
-          <Route path="*" element={<NotFound />} />
+            {/* Fallback Route */}
+            <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>
       </Router>
