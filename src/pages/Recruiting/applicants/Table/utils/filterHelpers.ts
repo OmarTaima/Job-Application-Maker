@@ -455,6 +455,10 @@ export function applyCustomFilters(
             applicant?.customResponses?.['تاريخ الميلاد'] ||
             raw || '';
         }
+
+        if (filter.fieldId === '__address') {
+          raw = applicant?.address ?? applicant?.location ?? (applicant as any)?.city ?? (applicant as any)?.street ?? getCustomResponseValue(applicant as ExtendedApplicant, { fieldId: 'address', labelEn: 'Address', type: 'text', value: '' }) ?? raw ?? '';
+        }
         
         if (filter.fieldId === '__has_cv') {
           raw = hasCV(applicant);

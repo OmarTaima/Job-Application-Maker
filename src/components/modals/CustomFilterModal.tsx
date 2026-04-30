@@ -37,6 +37,7 @@ import FilterListIcon from '@mui/icons-material/FilterList';
 import BusinessIcon from '@mui/icons-material/Business';
 import WorkIcon from '@mui/icons-material/Work';
 import PersonIcon from '@mui/icons-material/Person';
+import LocationOnIcon from '@mui/icons-material/LocationOn';
 import WcIcon from '@mui/icons-material/Wc';
 import CakeIcon from '@mui/icons-material/Cake';
 import DescriptionIcon from '@mui/icons-material/Description';
@@ -1186,6 +1187,59 @@ const CustomFilterModal: React.FC<Props> = ({
                     })()}
                   </Box>
                   </Box>
+
+                {/* Address */}
+                <Box>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <LocationOnIcon fontSize="small" color="primary" />
+                    Address
+                  </Typography>
+                  {(() => {
+                    const existing = customFilters.find((cf: any) => cf.fieldId === '__address') || {};
+                    const addrVal = existing.value ?? '';
+                    return (
+                      <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start', flexDirection: { xs: 'column', sm: 'row' } }}>
+                        <TextField
+                          size="small"
+                          label="Address"
+                          multiline
+                          rows={3}
+                          value={addrVal}
+                          onChange={(e) => {
+                            const nv = e.target.value;
+                            setCustomFilters(prev => {
+                              const next = prev.filter((p: any) => p.fieldId !== '__address');
+                              if (nv && String(nv).trim()) {
+                                next.push({
+                                  fieldId: '__address',
+                                  labelEn: 'Address',
+                                  labelAr: 'العنوان',
+                                  type: 'text',
+                                  value: String(nv).trim(),
+                                });
+                              }
+                              return next;
+                            });
+                          }}
+                          placeholder="Search by address (city, street, area)..."
+                          sx={{ flex: 1, minWidth: 200 }}
+                        />
+                        {addrVal ? (
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            color="error"
+                            onClick={() => {
+                              setCustomFilters((prev) => prev.filter((p: any) => p.fieldId !== '__address'));
+                            }}
+                          >
+                            Clear
+                          </Button>
+                        ) : null}
+                      </Box>
+                    );
+                  })()}
+                </Box>
 
                   {/* Duplicates Only */}
                   <Box>
