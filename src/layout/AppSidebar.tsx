@@ -151,8 +151,6 @@ const AppSidebar: React.FC = () => {
       name: 'Applicants',
       subItems: [
         { name: 'All Applicants', path: '/applicants', pro: false },
-        { name: 'Rejected', path: '/applicants/page/rejected?statuses=rejected', pro: false },
-        { name: 'interview', path: '/applicants/page/interview?statuses=interview,interviewed', pro: false },
         ...applicantPageSubItems, // 👈 dynamic pages injected here
       ],
     },

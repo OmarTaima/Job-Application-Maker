@@ -1,7 +1,7 @@
 import Swal from '../../utils/swal';
 import { Modal } from '../ui/modal';
 import { useState, useRef, useEffect, useMemo } from 'react';
-import useSendBatchEmail from '../../hooks/queries/useSendBatchEmail';
+import { useSendBatchEmail } from '../../hooks/queries';
 import { useJobPositions, useSendMessage } from '../../hooks/queries';
 import { getErrorMessage } from '../../utils/errorHandler';
 import { companiesService } from '../../services/companiesService';

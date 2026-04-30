@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
+import SmartText from '../../../../components/common/SmartText';
 
 type Props = {
   applicant: any;
@@ -389,7 +390,13 @@ export default function CustomResponses({ applicant, customFields }: Props) {
                                                     </button>
                                                   </span>
                                                 ) : (
-                                                  <span>{displayNode}</span>
+                                                  <span>
+                                                    {React.isValidElement(displayNode) ? (
+                                                      displayNode
+                                                    ) : (
+                                                      <SmartText value={itemValue} preserveNewlines className="break-words" />
+                                                    )}
+                                                  </span>
                                                 )}
                                               </div>
                                             </div>
