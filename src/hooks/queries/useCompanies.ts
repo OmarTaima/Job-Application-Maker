@@ -1,28 +1,32 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { companiesService } from "../../services/companiesService";
-import { useAppSelector } from "../../store/hooks";
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { companiesService } from '../../services/companiesService';
+import { useAppSelector } from '../../store/hooks';
 import type {
   CreateCompanyRequest,
   UpdateCompanyRequest,
   Company,
   InterviewSettings,
   UpdateRejectionReasonsRequest,
+  UpdateApplicantPagesRequest,
   UpdateCompanySettingsRequest,
   UpdateInterviewSettingsRequest,
-} from "../../services/companiesService";
-import type { Applicant } from "../../store/slices/applicantsSlice";
+} from '../../services/companiesService';
+import type { Applicant } from '../../store/slices/applicantsSlice';
 
 // Query keys
 export const companiesKeys = {
-  all: ["companies"] as const,
-  lists: () => [...companiesKeys.all, "list"] as const,
-  list: (companyId?: string[]) => [...companiesKeys.lists(), { companyId }] as const,
-  details: () => [...companiesKeys.all, "detail"] as const,
+  all: ['companies'] as const,
+  lists: () => [...companiesKeys.all, 'list'] as const,
+  list: (companyId?: string[]) =>
+    [...companiesKeys.lists(), { companyId }] as const,
+  details: () => [...companiesKeys.all, 'detail'] as const,
   detail: (id: string) => [...companiesKeys.details(), id] as const,
-  settings: () => [...companiesKeys.all, "settings"] as const,
-  setting: (companyId: string) => [...companiesKeys.settings(), companyId] as const,
-  interviewSettings: () => [...companiesKeys.settings(), "interview"] as const,
-  interviewSetting: (companyId: string) => [...companiesKeys.interviewSettings(), companyId] as const,
+  settings: () => [...companiesKeys.all, 'settings'] as const,
+  setting: (companyId: string) =>
+    [...companiesKeys.settings(), companyId] as const,
+  interviewSettings: () => [...companiesKeys.settings(), 'interview'] as const,
+  interviewSetting: (companyId: string) =>
+    [...companiesKeys.interviewSettings(), companyId] as const,
 };
 
 // Get all companies (optionally filtered by company IDs)
@@ -31,10 +35,12 @@ export function useCompanies(companyId?: string[]) {
 
   const userCompanyIds = (() => {
     const roleName = authUser?.roleId?.name?.toLowerCase?.();
-    if (roleName === "admin" || roleName === "super admin") return undefined;
+    if (roleName === 'admin' || roleName === 'super admin') return undefined;
     const fromCompanies = Array.isArray(authUser?.companies)
       ? authUser.companies
-          .map((c: any) => (typeof c?.companyId === "string" ? c.companyId : c?.companyId?._id))
+          .map((c: any) =>
+            typeof c?.companyId === 'string' ? c.companyId : c?.companyId?._id
+          )
           .filter(Boolean)
       : [];
     const fromAssigned = Array.isArray(authUser?.assignedcompanyId)
@@ -44,14 +50,17 @@ export function useCompanies(companyId?: string[]) {
     return merged.length > 0 ? merged : undefined;
   })();
 
-  const effectiveCompanyId = companyId && companyId.length > 0 ? companyId : userCompanyIds;
+  const effectiveCompanyId =
+    companyId && companyId.length > 0 ? companyId : userCompanyIds;
 
   return useQuery<Company[]>({
     queryKey: companiesKeys.list(effectiveCompanyId),
     queryFn: async () => {
       // If caller passed a single companyId, prefer the single-company endpoint
       if (effectiveCompanyId && effectiveCompanyId.length === 1) {
-        const comp = await companiesService.getCompanyById(effectiveCompanyId[0]);
+        const comp = await companiesService.getCompanyById(
+          effectiveCompanyId[0]
+        );
         return [comp];
       }
       return companiesService.getAllCompanies(effectiveCompanyId);
@@ -71,7 +80,9 @@ export function useCompany(id: string, options?: { enabled?: boolean }) {
   return useQuery<Company>({
     queryKey: companiesKeys.detail(id),
     queryFn: async () => {
-      const list = queryClient.getQueryData(companiesKeys.list()) as any[] | undefined;
+      const list = queryClient.getQueryData(companiesKeys.list()) as
+        | any[]
+        | undefined;
 
       if (list && list.length > 0) {
         for (const c of list) {
@@ -81,7 +92,9 @@ export function useCompany(id: string, options?: { enabled?: boolean }) {
           if (c.company && c.company._id === id) return c.company;
           if (c.data && c.data._id === id) return c.data;
           // sometimes nested under other keys
-          const nested = Object.values(c).find((v: any) => v && typeof v === 'object' && v._id === id);
+          const nested = Object.values(c).find(
+            (v: any) => v && typeof v === 'object' && v._id === id
+          );
           if (nested) return nested as any;
         }
       }
@@ -94,38 +107,60 @@ export function useCompany(id: string, options?: { enabled?: boolean }) {
 }
 
 // Company settings: fetch by company id
-export function useCompanySettings(companyId: string | undefined, options?: { enabled?: boolean }) {
+export function useCompanySettings(
+  companyId: string | undefined,
+  options?: { enabled?: boolean }
+) {
   const queryClient = useQueryClient();
 
   return useQuery<any>({
-    queryKey: companiesKeys.setting(companyId ?? ""),
+    queryKey: companiesKeys.setting(companyId ?? ''),
     queryFn: async () => {
       if (!companyId) return null;
 
       // If the companies list already contains the requested company and it
       // includes settings/rejectReasons/interviewSettings, reuse it to avoid
       // an extra network request when switching company selection.
-      const list = queryClient.getQueryData(companiesKeys.list()) as any[] | undefined;
+      const list = queryClient.getQueryData(companiesKeys.list()) as
+        | any[]
+        | undefined;
       if (list && list.length > 0) {
         for (const c of list) {
           if (!c) continue;
 
           // Normalize common wrapper shapes used across the app
           let companyObj: any = c;
-          if (companyObj.company && typeof companyObj.company === "object") companyObj = companyObj.company;
-          if (companyObj.data && typeof companyObj.data === "object") companyObj = companyObj.data;
+          if (companyObj.company && typeof companyObj.company === 'object')
+            companyObj = companyObj.company;
+          if (companyObj.data && typeof companyObj.data === 'object')
+            companyObj = companyObj.data;
 
-          const cid = companyObj._id ?? (companyObj.company && (typeof companyObj.company === "string" ? companyObj.company : companyObj.company?._id));
+          const cid =
+            companyObj._id ??
+            (companyObj.company &&
+              (typeof companyObj.company === 'string'
+                ? companyObj.company
+                : companyObj.company?._id));
           if (!cid) continue;
           if (String(cid) === String(companyId)) {
             // If the cached company object contains settings-like fields,
             // return it as the settings payload.
-            if (companyObj.settings || companyObj.rejectReasons || companyObj.interviewSettings || companyObj.mailSettings) {
+            if (
+              companyObj.settings ||
+              companyObj.rejectReasons ||
+              companyObj.interviewSettings ||
+              companyObj.mailSettings
+            ) {
               return companyObj;
             }
 
             // Some list entries themselves are wrapper objects with settings
-            if (c.settings || c.rejectReasons || c.interviewSettings || c.mailSettings) {
+            if (
+              c.settings ||
+              c.rejectReasons ||
+              c.interviewSettings ||
+              c.mailSettings
+            ) {
               return c;
             }
           }
@@ -134,67 +169,107 @@ export function useCompanySettings(companyId: string | undefined, options?: { en
 
       return companiesService.getCompanySettingsByCompany(companyId);
     },
-    enabled: options?.enabled !== undefined ? options.enabled && !!companyId : !!companyId,
+    enabled:
+      options?.enabled !== undefined
+        ? options.enabled && !!companyId
+        : !!companyId,
     staleTime: 5 * 60 * 1000,
   });
 }
 
-export function useCompanyInterviewSettings(companyId: string | undefined, options?: { enabled?: boolean }) {
+export function useCompanyInterviewSettings(
+  companyId: string | undefined,
+  options?: { enabled?: boolean }
+) {
   const queryClient = useQueryClient();
 
   return useQuery<InterviewSettings | null>({
-    queryKey: companiesKeys.interviewSetting(companyId ?? ""),
+    queryKey: companiesKeys.interviewSetting(companyId ?? ''),
     queryFn: async () => {
       if (!companyId) return null;
 
       // Try to reuse any cached company object from the companies list to avoid
       // unnecessary network requests when the list already contains settings.
-      const list = queryClient.getQueryData(companiesKeys.list()) as any[] | undefined;
+      const list = queryClient.getQueryData(companiesKeys.list()) as
+        | any[]
+        | undefined;
       if (list && list.length > 0) {
         for (const c of list) {
           if (!c) continue;
 
           // Normalize wrapper shapes used across the app
           let companyObj: any = c;
-          if (companyObj.company && typeof companyObj.company === "object") companyObj = companyObj.company;
-          if (companyObj.data && typeof companyObj.data === "object") companyObj = companyObj.data;
+          if (companyObj.company && typeof companyObj.company === 'object')
+            companyObj = companyObj.company;
+          if (companyObj.data && typeof companyObj.data === 'object')
+            companyObj = companyObj.data;
 
-          const cid = companyObj._id ?? (companyObj.company && (typeof companyObj.company === "string" ? companyObj.company : companyObj.company?._id));
+          const cid =
+            companyObj._id ??
+            (companyObj.company &&
+              (typeof companyObj.company === 'string'
+                ? companyObj.company
+                : companyObj.company?._id));
           if (!cid) continue;
           if (String(cid) === String(companyId)) {
-            const interview = companyObj.interviewSettings ?? companyObj.settings?.interviewSettings ?? null;
+            const interview =
+              companyObj.interviewSettings ??
+              companyObj.settings?.interviewSettings ??
+              null;
             if (interview) return interview;
           }
         }
       }
 
-      const settings = await companiesService.getCompanySettingsByCompany(companyId);
-      return settings?.interviewSettings ?? settings?.settings?.interviewSettings ?? null;
+      const settings =
+        await companiesService.getCompanySettingsByCompany(companyId);
+      return (
+        settings?.interviewSettings ??
+        settings?.settings?.interviewSettings ??
+        null
+      );
     },
-    enabled: options?.enabled !== undefined ? options.enabled && !!companyId : !!companyId,
+    enabled:
+      options?.enabled !== undefined
+        ? options.enabled && !!companyId
+        : !!companyId,
     staleTime: 5 * 60 * 1000,
   });
 }
-
-
 
 export function useUpdateCompanySettings() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: UpdateCompanySettingsRequest }) => companiesService.updateCompanySettings(id, data),
+    mutationFn: ({
+      id,
+      data,
+    }: {
+      id: string;
+      data: UpdateCompanySettingsRequest;
+    }) => companiesService.updateCompanySettings(id, data),
     onSuccess: (data: any) => {
       // Normalize server response which may be { message, result: { ... } } or { data: ... } or the settings object itself
       const payload = data?.result ?? data?.data ?? data;
-      const companyId = payload?.company || payload?.companyId || (payload && payload.company && typeof payload.company === 'string' ? payload.company : undefined);
-      const mailSettings = payload?.mailSettings ?? payload?.settings?.mailSettings ?? payload;
-      const interviewSettings = payload?.interviewSettings ?? payload?.settings?.interviewSettings;
+      const companyId =
+        payload?.company ||
+        payload?.companyId ||
+        (payload && payload.company && typeof payload.company === 'string'
+          ? payload.company
+          : undefined);
+      const mailSettings =
+        payload?.mailSettings ?? payload?.settings?.mailSettings ?? payload;
+      const interviewSettings =
+        payload?.interviewSettings ?? payload?.settings?.interviewSettings;
 
       if (companyId) {
         // Update the settings cache for this company
         queryClient.setQueryData(companiesKeys.setting(companyId), payload);
         if (interviewSettings) {
-          queryClient.setQueryData(companiesKeys.interviewSetting(companyId), interviewSettings);
+          queryClient.setQueryData(
+            companiesKeys.interviewSetting(companyId),
+            interviewSettings
+          );
         }
 
         // Also update any cached company details in list/detail queries to include updated settings
@@ -204,22 +279,52 @@ export function useUpdateCompanySettings() {
             return old.map((c: any) => {
               if (!c) return c;
               // handle wrapped shapes
-              if (c._id === companyId) return { ...c, settings: payload, mailSettings, interviewSettings };
-              if (c.company && c.company._id === companyId) return { ...c, company: { ...c.company, settings: payload, mailSettings, interviewSettings } };
+              if (c._id === companyId)
+                return {
+                  ...c,
+                  settings: payload,
+                  mailSettings,
+                  interviewSettings,
+                };
+              if (c.company && c.company._id === companyId)
+                return {
+                  ...c,
+                  company: {
+                    ...c.company,
+                    settings: payload,
+                    mailSettings,
+                    interviewSettings,
+                  },
+                };
               return c;
             });
           }
           if (old && old.data && Array.isArray(old.data)) {
-            return { ...old, data: old.data.map((c: any) => c._id === companyId ? { ...c, settings: payload, mailSettings, interviewSettings } : c) };
+            return {
+              ...old,
+              data: old.data.map((c: any) =>
+                c._id === companyId
+                  ? { ...c, settings: payload, mailSettings, interviewSettings }
+                  : c
+              ),
+            };
           }
           return old;
         });
 
         // Update detail cache
-        queryClient.setQueryData(companiesKeys.detail(companyId), (old: any) => {
-          if (!old) return old;
-          return { ...old, settings: payload, mailSettings, interviewSettings };
-        });
+        queryClient.setQueryData(
+          companiesKeys.detail(companyId),
+          (old: any) => {
+            if (!old) return old;
+            return {
+              ...old,
+              settings: payload,
+              mailSettings,
+              interviewSettings,
+            };
+          }
+        );
       }
     },
   });
@@ -238,9 +343,7 @@ export function useUpdateCompanyRejectionReasons() {
     }) => companiesService.updateCompanyRejectionReasons(companyId, data),
     onSuccess: (result: any, variables) => {
       const companyId =
-        result?.company ??
-        result?.companyId ??
-        variables.companyId;
+        result?.company ?? result?.companyId ?? variables.companyId;
 
       if (!companyId) return;
 
@@ -316,17 +419,114 @@ export function useUpdateCompanyRejectionReasons() {
   });
 }
 
+export function useUpdateCompanyApplicantPages() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      companyId,
+      data,
+    }: {
+      companyId: string;
+      data: UpdateApplicantPagesRequest;
+    }) => companiesService.updateCompanyApplicantPages(companyId, data),
+    onSuccess: (result: any, variables) => {
+      const companyId =
+        result?.company ?? result?.companyId ?? variables.companyId;
+
+      if (!companyId) return;
+
+      const applicantPages = Array.isArray(result?.applicantPages)
+        ? result.applicantPages
+        : (variables.data?.applicantPages ?? []);
+
+      queryClient.setQueryData(companiesKeys.setting(companyId), (old: any) => {
+        if (!old) {
+          return { company: companyId, applicantPages };
+        }
+        return {
+          ...old,
+          applicantPages,
+          settings: {
+            ...(old.settings ?? {}),
+            applicantPages,
+          },
+        };
+      });
+
+      queryClient.setQueryData(companiesKeys.list(), (old: any) => {
+        if (!old) return old;
+
+        if (Array.isArray(old)) {
+          return old.map((company: any) => {
+            if (!company) return company;
+            if (company._id !== companyId) return company;
+            return {
+              ...company,
+              applicantPages,
+              settings: {
+                ...(company.settings ?? {}),
+                applicantPages,
+              },
+            };
+          });
+        }
+
+        if (old && old.data && Array.isArray(old.data)) {
+          return {
+            ...old,
+            data: old.data.map((company: any) =>
+              company._id === companyId
+                ? {
+                    ...company,
+                    applicantPages,
+                    settings: {
+                      ...(company.settings ?? {}),
+                      applicantPages,
+                    },
+                  }
+                : company
+            ),
+          };
+        }
+
+        return old;
+      });
+
+      queryClient.setQueryData(companiesKeys.detail(companyId), (old: any) => {
+        if (!old) return old;
+        return {
+          ...old,
+          applicantPages,
+          settings: {
+            ...(old.settings ?? {}),
+            applicantPages,
+          },
+        };
+      });
+    },
+  });
+}
+
 export function useUpdateCompanyInterviewSettings() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ companyId, data }: { companyId: string; data: UpdateInterviewSettingsRequest }) =>
-      companiesService.updateCompanyInterviewSettings(companyId, data),
+    mutationFn: ({
+      companyId,
+      data,
+    }: {
+      companyId: string;
+      data: UpdateInterviewSettingsRequest;
+    }) => companiesService.updateCompanyInterviewSettings(companyId, data),
     onSuccess: (interviewSettings, variables) => {
       const companyId = variables.companyId;
       if (!companyId) return;
 
-      queryClient.setQueryData(companiesKeys.interviewSetting(companyId), interviewSettings);
+      queryClient.setQueryData(
+        companiesKeys.interviewSetting(companyId),
+        interviewSettings
+      );
 
       queryClient.setQueryData(companiesKeys.setting(companyId), (old: any) => {
         if (!old) return { company: companyId, interviewSettings };
@@ -352,7 +552,10 @@ export function useUpdateCompanyInterviewSettings() {
                 company: {
                   ...c.company,
                   interviewSettings,
-                  settings: { ...(c.company.settings ?? {}), interviewSettings },
+                  settings: {
+                    ...(c.company.settings ?? {}),
+                    interviewSettings,
+                  },
                 },
               };
             }
@@ -365,7 +568,11 @@ export function useUpdateCompanyInterviewSettings() {
             ...old,
             data: old.data.map((c: any) =>
               c._id === companyId
-                ? { ...c, interviewSettings, settings: { ...(c.settings ?? {}), interviewSettings } }
+                ? {
+                    ...c,
+                    interviewSettings,
+                    settings: { ...(c.settings ?? {}), interviewSettings },
+                  }
                 : c
             ),
           };
@@ -406,7 +613,8 @@ export function useCreateCompany() {
           createdAt: new Date().toISOString(),
         };
         if (Array.isArray(anyOld)) return [...anyOld, tempCompany];
-        if (anyOld.data && Array.isArray(anyOld.data)) return { ...anyOld, data: [...anyOld.data, tempCompany] };
+        if (anyOld.data && Array.isArray(anyOld.data))
+          return { ...anyOld, data: [...anyOld.data, tempCompany] };
         return anyOld;
       });
 
@@ -414,7 +622,10 @@ export function useCreateCompany() {
     },
     onError: (_err, _variables, context) => {
       if (context?.previousCompanies) {
-        queryClient.setQueryData<any>(companiesKeys.list(), context.previousCompanies);
+        queryClient.setQueryData<any>(
+          companiesKeys.list(),
+          context.previousCompanies
+        );
       }
     },
     onSuccess: (newCompany) => {
@@ -422,11 +633,25 @@ export function useCreateCompany() {
         const anyOld = old as any;
         if (!anyOld) return { data: [newCompany] };
         if (Array.isArray(anyOld)) {
-          const updated = anyOld.map((company: any) => company._id.startsWith('temp-') ? newCompany : company).filter((company: any, index: number, self: any[]) => self.findIndex((c: any) => c._id === company._id) === index);
+          const updated = anyOld
+            .map((company: any) =>
+              company._id.startsWith('temp-') ? newCompany : company
+            )
+            .filter(
+              (company: any, index: number, self: any[]) =>
+                self.findIndex((c: any) => c._id === company._id) === index
+            );
           return updated;
         }
         if (anyOld && anyOld.data && Array.isArray(anyOld.data)) {
-          const updated = anyOld.data.map((company: any) => company._id.startsWith('temp-') ? newCompany : company).filter((company: any, index: number, self: any[]) => self.findIndex((c: any) => c._id === company._id) === index);
+          const updated = anyOld.data
+            .map((company: any) =>
+              company._id.startsWith('temp-') ? newCompany : company
+            )
+            .filter(
+              (company: any, index: number, self: any[]) =>
+                self.findIndex((c: any) => c._id === company._id) === index
+            );
           return { ...anyOld, data: updated };
         }
         return anyOld;
@@ -454,10 +679,25 @@ export function useUpdateCompany() {
 
       queryClient.setQueryData<any>(companiesKeys.list(), (old: any) => {
         if (!old) return old;
-        if (Array.isArray(old)) return old.map((company: any) => company._id === id ? { ...company, ...data } : company);
-        if (old && old.data && Array.isArray(old.data)) return { ...old, data: old.data.map((company: any) => company._id === id ? { ...company, ...data } : company) };
+        if (Array.isArray(old))
+          return old.map((company: any) =>
+            company._id === id ? { ...company, ...data } : company
+          );
+        if (old && old.data && Array.isArray(old.data))
+          return {
+            ...old,
+            data: old.data.map((company: any) =>
+              company._id === id ? { ...company, ...data } : company
+            ),
+          };
         return old;
-        if (old.data && Array.isArray(old.data)) return { ...old, data: old.data.map((company: any) => company._id === id ? { ...company, ...data } : company) };
+        if (old.data && Array.isArray(old.data))
+          return {
+            ...old,
+            data: old.data.map((company: any) =>
+              company._id === id ? { ...company, ...data } : company
+            ),
+          };
         return old;
       });
 
@@ -473,7 +713,10 @@ export function useUpdateCompany() {
         queryClient.setQueryData(companiesKeys.list(), context.previousList);
       }
       if (context?.previousDetail) {
-        queryClient.setQueryData(companiesKeys.detail(_variables.id), context.previousDetail);
+        queryClient.setQueryData(
+          companiesKeys.detail(_variables.id),
+          context.previousDetail
+        );
       }
     },
     onSettled: () => {
@@ -495,8 +738,13 @@ export function useDeleteCompany() {
       queryClient.setQueryData<any>(companiesKeys.list(), (old: any) => {
         const anyOld = old as any;
         if (!anyOld) return anyOld;
-        if (Array.isArray(anyOld)) return anyOld.filter((company: any) => company._id !== id);
-        if (anyOld.data && Array.isArray(anyOld.data)) return { ...anyOld, data: anyOld.data.filter((company: any) => company._id !== id) };
+        if (Array.isArray(anyOld))
+          return anyOld.filter((company: any) => company._id !== id);
+        if (anyOld.data && Array.isArray(anyOld.data))
+          return {
+            ...anyOld,
+            data: anyOld.data.filter((company: any) => company._id !== id),
+          };
         return anyOld;
       });
 
@@ -504,7 +752,10 @@ export function useDeleteCompany() {
     },
     onError: (_err, _variables, context) => {
       if (context?.previousCompanies) {
-        queryClient.setQueryData<any>(companiesKeys.list(), context.previousCompanies);
+        queryClient.setQueryData<any>(
+          companiesKeys.list(),
+          context.previousCompanies
+        );
       }
     },
     onSettled: () => {
@@ -514,25 +765,29 @@ export function useDeleteCompany() {
 }
 
 // Get companies that have applicants
-export function useCompaniesWithApplicants(applicants: Applicant[] | undefined) {
+export function useCompaniesWithApplicants(
+  applicants: Applicant[] | undefined
+) {
   // Compute unique company IDs from applicants so we can key the query per-company
-  const companyIds = applicants && applicants.length > 0
-    ? Array.from(
-        new Set(
-          applicants
-            .map((applicant) => {
-              if (typeof applicant.companyId === "string") return applicant.companyId;
-              return (applicant.companyId as any)?._id;
-            })
-            .filter(Boolean)
-        )
-      ) as string[]
-    : [];
+  const companyIds =
+    applicants && applicants.length > 0
+      ? (Array.from(
+          new Set(
+            applicants
+              .map((applicant) => {
+                if (typeof applicant.companyId === 'string')
+                  return applicant.companyId;
+                return (applicant.companyId as any)?._id;
+              })
+              .filter(Boolean)
+          )
+        ) as string[])
+      : [];
 
-  const keySuffix = companyIds.length > 0 ? companyIds.join(",") : "none";
+  const keySuffix = companyIds.length > 0 ? companyIds.join(',') : 'none';
 
   return useQuery({
-    queryKey: [...companiesKeys.lists(), "withApplicants", keySuffix],
+    queryKey: [...companiesKeys.lists(), 'withApplicants', keySuffix],
     queryFn: async () => {
       if (companyIds.length === 0) return [];
       return companiesService.getCompaniesByIds(companyIds);
@@ -541,4 +796,3 @@ export function useCompaniesWithApplicants(applicants: Applicant[] | undefined) 
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 }
-

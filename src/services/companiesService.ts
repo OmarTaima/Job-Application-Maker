@@ -1,5 +1,5 @@
-import axios from "../config/axios";
-import { getErrorMessage } from "../utils/errorHandler";
+import axios from '../config/axios';
+import { getErrorMessage } from '../utils/errorHandler';
 
 // Types
 export interface Company {
@@ -49,12 +49,12 @@ export interface CompanyResponse {
 }
 
 export type InterviewAnswerType =
-  | "text"
-  | "number"
-  | "radio"
-  | "checkbox"
-  | "dropdown"
-  | "tags";
+  | 'text'
+  | 'number'
+  | 'radio'
+  | 'checkbox'
+  | 'dropdown'
+  | 'tags';
 
 export interface InterviewQuestion {
   question: string;
@@ -114,6 +114,7 @@ export interface CompanySettings {
   // Custom per-company lead status/pipeline configuration
   statuses?: any[];
   interviewSettings?: InterviewSettings;
+  applicantPages: any[];
   // Company-like fields that may be present when the API returns a full company
   // object from the settings query.
   name?: string | { en: string; ar?: string };
@@ -166,6 +167,7 @@ export interface UpdateCompanySettingsRequest {
   rejectReasons?: string[];
   applicantStatus?: any[];
   statuses?: any[];
+  applicantPages?: any[];
 }
 
 export interface UpdateInterviewSettingsRequest {
@@ -176,6 +178,10 @@ export interface UpdateRejectionReasonsRequest {
   rejectReasons: string[];
 }
 
+export interface UpdateApplicantPagesRequest {
+  applicantPages: any[];
+}
+
 // API Error class
 export class ApiError extends Error {
   constructor(
@@ -184,7 +190,7 @@ export class ApiError extends Error {
     public details?: any
   ) {
     super(message);
-    this.name = "ApiError";
+    this.name = 'ApiError';
   }
 }
 
@@ -198,23 +204,30 @@ const normalizeInterviewSettings = (payload: any): InterviewSettings | null => {
   const normalizeQuestion = (q: any): InterviewQuestion => {
     const score = Number(q?.score);
     const answerType =
-      q?.answerType && ["text", "number", "radio", "checkbox", "dropdown", "tags"].includes(q.answerType)
+      q?.answerType &&
+      ['text', 'number', 'radio', 'checkbox', 'dropdown', 'tags'].includes(
+        q.answerType
+      )
         ? q.answerType
-        : "text";
+        : 'text';
 
     return {
-      question: String(q?.question ?? ""),
+      question: String(q?.question ?? ''),
       score: Number.isFinite(score) ? score : 0,
       answerType,
       choices: Array.isArray(q?.choices)
-        ? (q.choices as any[]).map((c) => String(c ?? "").trim()).filter(Boolean)
+        ? (q.choices as any[])
+            .map((c) => String(c ?? '').trim())
+            .filter(Boolean)
         : [],
     };
   };
 
   const normalizeGroup = (g: any): InterviewGroup => ({
-    name: String(g?.name ?? ""),
-    questions: Array.isArray(g?.questions) ? g.questions.map(normalizeQuestion) : [],
+    name: String(g?.name ?? ''),
+    questions: Array.isArray(g?.questions)
+      ? g.questions.map(normalizeQuestion)
+      : [],
   });
 
   if (candidate && Array.isArray(candidate.groups)) {
@@ -234,20 +247,28 @@ export const companiesService = {
   async getAllCompanies(companyId?: string[]): Promise<Company[]> {
     try {
       const normalizedCompanyIds = Array.isArray(companyId)
-        ? Array.from(new Set(companyId.map((id) => String(id || "").trim()).filter(Boolean)))
+        ? Array.from(
+            new Set(
+              companyId.map((id) => String(id || '').trim()).filter(Boolean)
+            )
+          )
         : [];
 
       const extractCompanies = (payload: any): Company[] => {
         if (Array.isArray(payload)) return payload as Company[];
-        if (payload && Array.isArray(payload.data)) return payload.data as Company[];
-        if (payload && payload.data && Array.isArray(payload.data.data)) return payload.data.data as Company[];
+        if (payload && Array.isArray(payload.data))
+          return payload.data as Company[];
+        if (payload && payload.data && Array.isArray(payload.data.data))
+          return payload.data.data as Company[];
         return [];
       };
 
       const fetchOne = async (singleCompanyId?: string): Promise<Company[]> => {
-        const params: any = { deleted: "false" };
+        const params: any = { deleted: 'false' };
         if (singleCompanyId) params.companyId = singleCompanyId;
-        const response = await axios.get<CompaniesResponse>("/companies", { params });
+        const response = await axios.get<CompaniesResponse>('/companies', {
+          params,
+        });
         return extractCompanies(response.data);
       };
 
@@ -255,7 +276,9 @@ export const companiesService = {
         return fetchOne(normalizedCompanyIds[0]);
       }
 
-      const companyLists = await Promise.all(normalizedCompanyIds.map((id) => fetchOne(id)));
+      const companyLists = await Promise.all(
+        normalizedCompanyIds.map((id) => fetchOne(id))
+      );
       const unique = new Map<string, Company>();
       companyLists.flat().forEach((company) => {
         if (company && company._id) unique.set(company._id, company);
@@ -278,16 +301,25 @@ export const companiesService = {
       // Request the company only if it's not deleted (use string to ensure server-side parsing)
       const response = await axios.get<CompanyResponse>(
         `/companies/${companyId}`,
-        { params: { deleted: "false" } }
+        { params: { deleted: 'false' } }
       );
       // Normalize possible response shapes:
       // - { data: Company }
       // - { company: Company }
       // - { data: { data: Company } }
       // - directly the Company object
-      let maybe: any = response.data?.data ?? (response.data as any)?.company ?? response.data ?? null;
+      let maybe: any =
+        response.data?.data ??
+        (response.data as any)?.company ??
+        response.data ??
+        null;
 
-      if (maybe && maybe.data && typeof maybe.data === 'object' && maybe.data._id) {
+      if (
+        maybe &&
+        maybe.data &&
+        typeof maybe.data === 'object' &&
+        maybe.data._id
+      ) {
         maybe = maybe.data;
       }
 
@@ -297,14 +329,23 @@ export const companiesService = {
 
       if (!maybe) {
         // As a last resort, try to find a nested object with _id
-        const nested = Object.values(response.data || {}).find((v: any) => v && typeof v === 'object' && v._id);
+        const nested = Object.values(response.data || {}).find(
+          (v: any) => v && typeof v === 'object' && v._id
+        );
         if (nested) maybe = nested;
       }
 
       if (!maybe) {
-        console.warn("companiesService.getCompanyById: unexpected response shape", response.data);
+        console.warn(
+          'companiesService.getCompanyById: unexpected response shape',
+          response.data
+        );
         // Throw to let callers handle the error uniformly
-        throw new ApiError(getErrorMessage(response as any), response.status ?? undefined, response as any);
+        throw new ApiError(
+          getErrorMessage(response as any),
+          response.status ?? undefined,
+          response as any
+        );
       }
 
       return maybe as Company;
@@ -320,26 +361,39 @@ export const companiesService = {
   // Create company
   async createCompany(companyData: CreateCompanyRequest): Promise<Company> {
     try {
-      const response = await axios.post<CompanyResponse>("/companies", companyData);
+      const response = await axios.post<CompanyResponse>(
+        '/companies',
+        companyData
+      );
 
       // Backend may return the created resource in different shapes:
       // { data: Company }, { company: Company }, or directly the Company
       // response.data can come in different shapes; cast to any when checking non-standard fields
-      let created: any = response.data?.data ?? (response.data as any)?.company ?? response.data ?? null;
+      let created: any =
+        response.data?.data ??
+        (response.data as any)?.company ??
+        response.data ??
+        null;
 
       if (!created) {
-        console.warn("companiesService.createCompany: unexpected response shape", response.data);
+        console.warn(
+          'companiesService.createCompany: unexpected response shape',
+          response.data
+        );
         return response.data as any;
       }
 
       // If response was { message: "..", company: { ... } }, our created will be that inner company.
       // Ensure we return the actual Company object (not a wrapper) to callers.
-      if (created.company && typeof created.company === "object") {
+      if (created.company && typeof created.company === 'object') {
         created = created.company;
       }
 
       if (!created._id) {
-        console.warn("companiesService.createCompany: created company missing _id", created);
+        console.warn(
+          'companiesService.createCompany: created company missing _id',
+          created
+        );
       }
 
       return created as Company;
@@ -391,7 +445,7 @@ export const companiesService = {
       // Let the server filter by IDs and active flag when possible
       const companies = await this.getAllCompanies(companyId);
       // Fallback: if server ignored companyId, still filter locally
-      return companies.filter(company => companyId.includes(company._id));
+      return companies.filter((company) => companyId.includes(company._id));
     } catch (error: any) {
       throw new ApiError(
         getErrorMessage(error),
@@ -402,7 +456,9 @@ export const companiesService = {
   },
 
   // Company settings endpoints
-  async getCompanySettingsByCompany(companyId: string): Promise<CompanySettings | null> {
+  async getCompanySettingsByCompany(
+    companyId: string
+  ): Promise<CompanySettings | null> {
     try {
       if (!companyId) return null;
 
@@ -425,10 +481,6 @@ export const companiesService = {
       );
     }
   },
-
-
-
- 
 
   async updateCompanyInterviewSettings(
     companyId: string,
@@ -455,7 +507,7 @@ export const companiesService = {
         const status = error?.response?.status;
         const isValidation = status === 400 || status === 422;
 
-        if (isValidation && hasValidationDetail(error, "interviewSettings")) {
+        if (isValidation && hasValidationDetail(error, 'interviewSettings')) {
           // Some deployments validate this route against a direct interview payload.
           response = await axios.put<any>(
             `/companies/${encodeURIComponent(companyId)}/settings/interview`,
@@ -464,17 +516,21 @@ export const companiesService = {
         } else if (status === 404) {
           try {
             response = await axios.put<any>(
-              "/settings/interview",
+              '/settings/interview',
               { interviewSettings: { groups } },
               { params: { companyId } }
             );
           } catch (fallbackError: any) {
             const fallbackStatus = fallbackError?.response?.status;
-            const fallbackValidation = fallbackStatus === 400 || fallbackStatus === 422;
+            const fallbackValidation =
+              fallbackStatus === 400 || fallbackStatus === 422;
 
-            if (fallbackValidation && hasValidationDetail(fallbackError, "interviewSettings")) {
+            if (
+              fallbackValidation &&
+              hasValidationDetail(fallbackError, 'interviewSettings')
+            ) {
               response = await axios.put<any>(
-                "/settings/interview",
+                '/settings/interview',
                 { groups },
                 { params: { companyId } }
               );
@@ -505,7 +561,9 @@ export const companiesService = {
   ): Promise<CompanySettings> {
     try {
       const rejectReasons = Array.isArray(payload?.rejectReasons)
-        ? payload.rejectReasons.map((reason) => String(reason ?? "").trim()).filter(Boolean)
+        ? payload.rejectReasons
+            .map((reason) => String(reason ?? '').trim())
+            .filter(Boolean)
         : [];
 
       let response: any;
@@ -526,19 +584,18 @@ export const companiesService = {
         }
       }
 
-      const data = response.data?.result ?? response.data?.data ?? response.data ?? {};
+      const data =
+        response.data?.result ?? response.data?.data ?? response.data ?? {};
       const normalizedReasons = Array.isArray((data as any)?.rejectReasons)
         ? (data as any).rejectReasons
-            .map((reason: any) => String(reason ?? "").trim())
+            .map((reason: any) => String(reason ?? '').trim())
             .filter(Boolean)
         : rejectReasons;
 
       return {
         _id: (data as any)?._id ?? companyId,
         company:
-          (data as any)?.company ??
-          (data as any)?.companyId ??
-          companyId,
+          (data as any)?.company ?? (data as any)?.companyId ?? companyId,
         rejectReasons: normalizedReasons,
         mailSettings: (data as any)?.mailSettings,
         interviewSettings: (data as any)?.interviewSettings,
@@ -553,15 +610,74 @@ export const companiesService = {
     }
   },
 
-  async updateCompanySettings(id: string, payload: UpdateCompanySettingsRequest): Promise<CompanySettings> {
+  async updateCompanyApplicantPages(
+    companyId: string,
+    payload: UpdateApplicantPagesRequest
+  ): Promise<CompanySettings> {
     try {
-        const body: any = {};
+      const applicantPages = Array.isArray(payload?.applicantPages)
+        ? payload.applicantPages
+        : [];
+
+      let response: any;
+      try {
+        response = await axios.put<any>(
+          `/companies/${encodeURIComponent(companyId)}/settings/applicant-pages`,
+          { applicantPages }
+        );
+      } catch (error: any) {
+        // Keep backward compatibility for deployments that still accept only the generic settings endpoint.
+        if (error?.response?.status === 404) {
+          response = await axios.put<any>(
+            `/companies/${encodeURIComponent(companyId)}/settings`,
+            { applicantPages }
+          );
+        } else {
+          throw error;
+        }
+      }
+
+      const data =
+        response.data?.result ?? response.data?.data ?? response.data ?? {};
+      const normalizedPages = Array.isArray((data as any)?.applicantPages)
+        ? (data as any).applicantPages
+        : applicantPages;
+
+      return {
+        _id: (data as any)?._id ?? companyId,
+        company:
+          (data as any)?.company ?? (data as any)?.companyId ?? companyId,
+        applicantPages: normalizedPages,
+        mailSettings: (data as any)?.mailSettings,
+        interviewSettings: (data as any)?.interviewSettings,
+        defaultColorGradient: (data as any)?.defaultColorGradient,
+        rejectReasons: (data as any)?.rejectReasons,
+      } as CompanySettings;
+    } catch (error: any) {
+      throw new ApiError(
+        getErrorMessage(error),
+        error.response?.status,
+        error.response?.data?.details
+      );
+    }
+  },
+
+  async updateCompanySettings(
+    id: string,
+    payload: UpdateCompanySettingsRequest
+  ): Promise<CompanySettings> {
+    try {
+      const body: any = {};
       if (payload?.mailSettings) body.mailSettings = payload.mailSettings;
-      if (payload?.interviewSettings) body.interviewSettings = payload.interviewSettings;
-      if (payload?.defaultColorGradient) body.defaultColorGradient = payload.defaultColorGradient;
+      if (payload?.interviewSettings)
+        body.interviewSettings = payload.interviewSettings;
+      if (payload?.defaultColorGradient)
+        body.defaultColorGradient = payload.defaultColorGradient;
       if (payload?.rejectReasons) body.rejectReasons = payload.rejectReasons;
-        if (payload?.applicantStatus) body.applicantStatus = payload.applicantStatus;
-        if (payload?.statuses) body.statuses = payload.statuses;
+      if (payload?.applicantStatus)
+        body.applicantStatus = payload.applicantStatus;
+      if (payload?.statuses) body.statuses = payload.statuses;
+      if (payload?.applicantPages) body.applicantPages = payload.applicantPages;
 
       const response = await axios.put<any>(`/companies/${id}/settings`, body);
       const data = response.data?.data ?? response.data ?? null;
@@ -575,7 +691,11 @@ export const companiesService = {
           interviewSettings: (data as any).interviewSettings,
           defaultColorGradient: (data as any).defaultColorGradient,
           rejectReasons: (data as any).rejectReasons,
-          statuses: (data as any).statuses ?? (data as any).leadStatuses ?? (data as any).applicantStatus,
+          statuses:
+            (data as any).statuses ??
+            (data as any).leadStatuses ??
+            (data as any).applicantStatus,
+          applicantPages: (data as any).applicantPages ?? [],
         } as CompanySettings;
       }
 
@@ -588,6 +708,4 @@ export const companiesService = {
       );
     }
   },
-
- 
 };
