@@ -17,8 +17,8 @@ import type { Applicant } from '../../services/applicantsService';
 export const applicantsKeys = {
   all: ["applicants"] as const,
   lists: () => [...applicantsKeys.all, "list"] as const,
-  list: (companyId?: string[], jobPositionId?: string, status?: string | string[], fields?: string | string[]) =>
-    [...applicantsKeys.lists(), { companyId, jobPositionId, status, fields }] as const,
+  list: (companyId?: string[], jobPositionId?: string, status?: string | string[], fields?: string | string[], departmentId?: string[]) =>
+    [...applicantsKeys.lists(), { companyId, jobPositionId, status, fields, departmentId }] as const,
   details: () => [...applicantsKeys.all, "detail"] as const,
   detail: (id: string) => [...applicantsKeys.details(), id] as const,
 };
@@ -27,6 +27,7 @@ export const applicantsKeys = {
 export function useApplicants(
   companyId?: string[],
   jobPositionId?: string,
+  departmentId?: string[],
   options?: { enabled?: boolean }
 ) {
   const reduxApplicants = useAppSelector((s) => s.applicants.applicants);
@@ -51,8 +52,8 @@ export function useApplicants(
   const effectiveCompanyId = companyId && companyId.length > 0 ? companyId : userCompanyIds;
 
    return useQuery<Applicant[]>({  // Add explicit type parameter
-    queryKey: applicantsKeys.list(effectiveCompanyId, jobPositionId),
-    queryFn: () => applicantsService.getAllApplicants(effectiveCompanyId, jobPositionId as any),
+    queryKey: applicantsKeys.list(effectiveCompanyId, jobPositionId, undefined, undefined, departmentId),
+    queryFn: () => applicantsService.getAllApplicants(effectiveCompanyId, jobPositionId as any, undefined, undefined, departmentId),
     staleTime: 2 * 60 * 1000,
     enabled: options?.enabled !== undefined ? options.enabled : true,
     initialData: reduxApplicants && reduxApplicants.length > 0 ? reduxApplicants : undefined,

@@ -323,7 +323,8 @@ class ApplicantsService {
     companyId?: string[],
     jobPositionId?: string | string[],
     status?: string | string[],
-    fields?: string | string[]
+    fields?: string | string[],
+    departmentId?: string[]
   ): Promise<Applicant[]> {
     try {
       const normalizedCompanyIds = Array.isArray(companyId)
@@ -357,6 +358,7 @@ class ApplicantsService {
           const params = { ...paramsBase, page: currentPage, PageCount: 'all' } as any;
           if (opts?.companyId) params.companyId = opts.companyId;
           if (opts?.jobPositionId) params.jobPositionId = opts.jobPositionId;
+          if (departmentId && departmentId.length > 0) params.departmentId = departmentId.join(",");
           const response = await axios.get("/applicants", { params });
           const payload = response.data;
 

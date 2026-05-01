@@ -207,7 +207,7 @@ const BulkMessageModal = ({
     );
   };
 
-  const { data: jobPositions = [] } = useJobPositions(companyId ? [companyId] : undefined as any);
+  const { data: jobPositions = [] } = useJobPositions(companyId ? [companyId] : undefined as any, false);
   const jobTitleById = useMemo(() => {
     const map = new Map<string, string>();
     (jobPositions || []).forEach((j: any) => {

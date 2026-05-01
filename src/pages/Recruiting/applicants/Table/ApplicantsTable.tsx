@@ -311,6 +311,16 @@ export default function Applicants({
     return userCompanyId?.length ? userCompanyId : undefined;
   }, [companyIdOverride, user]);
 
+  // Extract department IDs from user companies
+  const departmentIds = useMemo(() => {
+    if (!user?.companies || !Array.isArray(user.companies)) return undefined;
+    const allDepts = user.companies
+      .flatMap((c: any) => c.departments || [])
+      .map((d: any) => (typeof d === 'string' ? d : d._id))
+      .filter(Boolean);
+    return allDepts.length > 0 ? allDepts : undefined;
+  }, [user]);
+
   const showCompanyColumn = useMemo(() => {
     if (!companyId) return true;
     if (Array.isArray(companyId) && companyId.length === 1) return false;
@@ -336,14 +346,14 @@ export default function Applicants({
     isFetching: isJobPositionsFetching,
     isFetched: isJobPositionsFetched,
     refetch: refetchJobPositions,
-  } = useJobPositions(companyId);
+  } = useJobPositions(companyId, false, departmentIds as any);
   const {
     data: applicants = [],
     error,
     refetch: refetchApplicants,
     isFetching: isApplicantsFetching,
     isFetched: isApplicantsFetched,
-  } = useApplicants(companyId as any);
+  } = useApplicants(companyId as any, undefined, departmentIds as any);
   const {
     data: allCompaniesRaw = [],
     refetch: refetchCompanies,

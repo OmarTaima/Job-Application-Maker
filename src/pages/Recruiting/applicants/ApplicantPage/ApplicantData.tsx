@@ -124,7 +124,7 @@ const ApplicantData = () => {
   const shouldFetchApplicants = !hasApplicantsListInState && !hasApplicantsListInCache;
 
   // Fetch all applicants for navigation only when we do not already have a list
-  const { data: allApplicantsData = [] } = useApplicants(companyId as any, undefined, {
+  const { data: allApplicantsData = [] } = useApplicants(companyId as any, undefined, undefined, {
     enabled: shouldFetchApplicants,
   });
   

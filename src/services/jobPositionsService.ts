@@ -406,12 +406,13 @@ class JobPositionsService {
     companyIdOrOptions?:
       | string[]
       | string
-      | { companyId?: string[] | string; deleted?: boolean }
+      | { companyId?: string[] | string; deleted?: boolean; departmentId?: string[] | string }
   ): Promise<JobPosition[]> {
     try {
       // Determine shape: either an array/string of ids, or an options object
       let ids: string[] | undefined;
       let deleted = false;
+      let departments: string[] | undefined;
 
       if (Array.isArray(companyIdOrOptions)) {
         ids = companyIdOrOptions as string[];
@@ -429,6 +430,14 @@ class JobPositionsService {
                 .filter(Boolean);
         }
         if (opts.deleted !== undefined) deleted = !!opts.deleted;
+        if (opts.departmentId) {
+          departments = Array.isArray(opts.departmentId)
+            ? opts.departmentId
+            : String(opts.departmentId)
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean);
+        }
       } else if (companyIdOrOptions !== undefined) {
         // single string id or comma separated
         ids = String(companyIdOrOptions)
@@ -447,6 +456,7 @@ class JobPositionsService {
           PageCount: "all",
         };
         if (singleCompanyId) params.companyId = singleCompanyId;
+        if (departments && departments.length > 0) params.departmentId = departments.join(",");
         const response = await axios.get("/job-positions", { params });
         const payload = response.data;
         const data = Array.isArray(payload)

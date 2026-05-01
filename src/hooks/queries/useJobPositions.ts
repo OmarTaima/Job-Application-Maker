@@ -10,8 +10,8 @@ import type {
 export const jobPositionsKeys = {
   all: ["jobPositions"] as const,
   lists: () => [...jobPositionsKeys.all, "list"] as const,
-  list: (companyId?: string[]) =>
-    [...jobPositionsKeys.lists(), { companyId }] as const,
+  list: (companyId?: string[], departmentId?: string[]) =>
+    [...jobPositionsKeys.lists(), { companyId, departmentId }] as const,
   details: () => [...jobPositionsKeys.all, "detail"] as const,
   detail: (id: string) => [...jobPositionsKeys.details(), id] as const,
   applicants: (id: string) =>
@@ -19,7 +19,7 @@ export const jobPositionsKeys = {
 };
 
 // Get all job positions
-export function useJobPositions(companyId?: string[], deleted: boolean = false, options?: { enabled?: boolean }) {
+export function useJobPositions(companyId?: string[], deleted: boolean = false, departmentId?: string[], options?: { enabled?: boolean }) {
   const authUser = useAppSelector((s: any) => s.auth.user);
 
   const userCompanyIds = (() => {
@@ -40,7 +40,7 @@ export function useJobPositions(companyId?: string[], deleted: boolean = false, 
   const effectiveCompanyId = companyId && companyId.length > 0 ? companyId : userCompanyIds;
 
   return useQuery<import("../../services/jobPositionsService").JobPosition[]>({
-    queryKey: jobPositionsKeys.list(effectiveCompanyId),
+    queryKey: jobPositionsKeys.list(effectiveCompanyId, departmentId),
     queryFn: () => {
       // Special sentinel to indicate "no companies assigned" -> return empty list
       if (effectiveCompanyId && effectiveCompanyId.length === 1 && effectiveCompanyId[0] === '__NO_COMPANY__') {
@@ -48,7 +48,7 @@ export function useJobPositions(companyId?: string[], deleted: boolean = false, 
       }
       // service now accepts a single options object
       // cast to any to satisfy current service typing (may expect a string[] overload)
-      return jobPositionsService.getAllJobPositions({ companyId: effectiveCompanyId, deleted } as any);
+      return jobPositionsService.getAllJobPositions({ companyId: effectiveCompanyId, deleted, departmentId } as any);
     },
     staleTime: 5 * 60 * 1000,
     enabled: options?.enabled !== undefined ? options.enabled : true,

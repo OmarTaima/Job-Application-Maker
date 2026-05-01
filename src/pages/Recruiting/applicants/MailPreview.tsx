@@ -381,7 +381,7 @@ export default function MailPreview() {
 		}
 		return assignedCompanyIds;
 	}, [isSuperAdmin, selectedCompanyId, assignedCompanyIds, availableCompanyIds]);
-	const { data: jobPositions } = useJobPositions(jobPositionParams);
+	const { data: jobPositions } = useJobPositions(jobPositionParams, false);
 
 	const scopedJobPositions = useMemo(() => {
 		if (selectedCompanyId === 'all') return [] as any[];
@@ -406,7 +406,7 @@ export default function MailPreview() {
 		isLoading: isApplicantsLoading,
 		isFetching: isApplicantsFetching,
 		isFetched: isApplicantsFetched,
-	} = useApplicants(applicantCompanyIds);
+	} = useApplicants(applicantCompanyIds, undefined, undefined);
 	const applicantById = useMemo(() => {
 		const map = new Map<string, any>();
 		(applicants || []).forEach((applicant: any) => {

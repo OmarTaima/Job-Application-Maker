@@ -183,12 +183,22 @@ export default function Jobs() {
     return usercompanyIds?.length ? usercompanyIds : ['__NO_COMPANY__'];
   }, [user, isAdmin]);
 
+  // Extract department IDs from user companies
+  const jobQueryDepartmentParam = useMemo(() => {
+    if (!user?.companies || !Array.isArray(user.companies)) return undefined;
+    const allDepts = user.companies
+      .flatMap((c: any) => c.departments || [])
+      .map((d: any) => (typeof d === 'string' ? d : d._id))
+      .filter(Boolean);
+    return allDepts.length > 0 ? allDepts : undefined;
+  }, [user]);
+
   const { 
     data: jobPositions = [], 
     isLoading: isLoadingJobs,
     refetch: refetchJobs,
     isFetching: isJobFetching
-  } = useJobPositions(jobQueryCompanyParam as any);
+  } = useJobPositions(jobQueryCompanyParam as any, false, jobQueryDepartmentParam as any);
 
   const deleteJobMutation = useDeleteJobPosition();
   const updateJobMutation = useUpdateJobPosition();

@@ -232,8 +232,8 @@ export default function ApplicantsMobilePage(): JSX.Element {
     ? [primarySelectedCompany as string]
     : companyId;
 
-  const { data: jobPositions = [], refetch: refetchJobPositions, isFetching: isJobPositionsFetching } = useJobPositions(jobPositionsFetchParam as any);
-  const { data: applicants = [], isLoading, error, refetch } = useApplicants(applicantsFetchParam as any, undefined);
+  const { data: jobPositions = [], refetch: refetchJobPositions, isFetching: isJobPositionsFetching } = useJobPositions(jobPositionsFetchParam as any, false);
+  const { data: applicants = [], isLoading, error, refetch } = useApplicants(applicantsFetchParam as any, undefined, undefined);
 
   const [columnFilters, _setColumnFilters] = useState<any[]>(() => {
     try {
