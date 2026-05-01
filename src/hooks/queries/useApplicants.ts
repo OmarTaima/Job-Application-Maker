@@ -26,7 +26,8 @@ export const applicantsKeys = {
 // Get all applicants
 export function useApplicants(
   companyId?: string[],
-  jobPositionId?: string
+  jobPositionId?: string,
+  options?: { enabled?: boolean }
 ) {
   const reduxApplicants = useAppSelector((s) => s.applicants.applicants);
   const authUser = useAppSelector((s: any) => s.auth.user);
@@ -53,20 +54,40 @@ export function useApplicants(
     queryKey: applicantsKeys.list(effectiveCompanyId, jobPositionId),
     queryFn: () => applicantsService.getAllApplicants(effectiveCompanyId, jobPositionId as any),
     staleTime: 2 * 60 * 1000,
+    enabled: options?.enabled !== undefined ? options.enabled : true,
     initialData: reduxApplicants && reduxApplicants.length > 0 ? reduxApplicants : undefined,
   });
 }
 
 // Get applicant by ID
-export function useApplicant(id: string, options?: { initialData?: any; enabled?: boolean }) {
+export function useApplicant(
+  id: string,
+  options?: {
+    initialData?: any;
+    enabled?: boolean;
+    staleTime?: number;
+    refetchOnMount?: boolean | 'always';
+    refetchOnWindowFocus?: boolean;
+    refetchOnReconnect?: boolean;
+  }
+) {
   return useQuery<import("../../services/applicantsService").Applicant>({
     queryKey: applicantsKeys.detail(id),
     queryFn: () => applicantsService.getApplicantById(id),
     enabled: !!id && (options?.enabled !== undefined ? options.enabled : true),
-    staleTime: 30 * 1000, // 30s - keep relatively fresh
+    staleTime: options?.staleTime ?? 30 * 1000, // 30s - keep relatively fresh
     // If caller supplied initialData (e.g. from list cache or navigation), avoid forcing a refetch on mount.
     // Otherwise preserve existing behavior of refreshing details on mount.
-    refetchOnMount: options?.initialData ? false : 'always',
+    refetchOnMount:
+      options?.refetchOnMount !== undefined
+        ? options.refetchOnMount
+        : options?.initialData
+        ? false
+        : 'always',
+    refetchOnWindowFocus:
+      options?.refetchOnWindowFocus !== undefined ? options.refetchOnWindowFocus : true,
+    refetchOnReconnect:
+      options?.refetchOnReconnect !== undefined ? options.refetchOnReconnect : true,
     initialData: options?.initialData,
   });
 }

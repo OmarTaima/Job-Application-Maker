@@ -71,39 +71,47 @@ const ApplicantData = () => {
     return usercompanyId?.length ? usercompanyId : undefined;
   }, [user]);
 
-  // Fetch all applicants for navigation
-  const { data: allApplicantsData = [] } = useApplicants(companyId as any);
+  const hasApplicantsListInState = Array.isArray((location.state as any)?.applicantsList);
+  const cachedApplicantsLists = queryClient.getQueriesData({ queryKey: applicantsKeys.lists() });
+  const cachedApplicantsListData = (() => {
+    for (const [, data] of cachedApplicantsLists) {
+      if (Array.isArray(data)) return data;
+      if (data && typeof data === 'object' && 'data' in data && Array.isArray((data as any).data)) {
+        return (data as any).data;
+      }
+    }
+    return undefined;
+  })();
+  const hasApplicantsListInCache = Array.isArray(cachedApplicantsListData);
+  const shouldFetchApplicants = !hasApplicantsListInState && !hasApplicantsListInCache;
+
+  // Fetch all applicants for navigation only when we do not already have a list
+  const { data: allApplicantsData = [] } = useApplicants(companyId as any, undefined, {
+    enabled: shouldFetchApplicants,
+  });
   
   // Get all applicants from props or cache
- // Get all applicants from props or cache
-// Get all applicants from props or cache
-const allApplicants = useMemo(() => {
-  // First try from location state (if coming from table with filters)
-  if (location.state?.applicantsList && Array.isArray(location.state.applicantsList)) {
-    return location.state.applicantsList;
-  }
+  const allApplicants = useMemo(() => {
+    // First try from location state (if coming from table with filters)
+    if (location.state?.applicantsList && Array.isArray(location.state.applicantsList)) {
+      return location.state.applicantsList;
+    }
 
+    // Then try from any cached list query
+    if (cachedApplicantsListData && Array.isArray(cachedApplicantsListData)) {
+      return cachedApplicantsListData;
+    }
 
-  
-  // Then try from query cache
-  const cachedData = queryClient.getQueryData(applicantsKeys.lists());
-  if (cachedData && Array.isArray(cachedData)) {
-    return cachedData;
-  }
-  if (cachedData && typeof cachedData === 'object' && 'data' in cachedData && Array.isArray((cachedData as any).data)) {
-    return (cachedData as any).data;
-  }
-  
-  // Fall back to fetched data - handle both array and object with data property
-  if (Array.isArray(allApplicantsData)) {
-    return allApplicantsData;
-  }
-  if (allApplicantsData && typeof allApplicantsData === 'object' && 'data' in allApplicantsData && Array.isArray((allApplicantsData as any).data)) {
-    return (allApplicantsData as any).data;
-  }
-  
-  return [];
-}, [location.state, queryClient, allApplicantsData]);
+    // Fall back to fetched data - handle both array and object with data property
+    if (Array.isArray(allApplicantsData)) {
+      return allApplicantsData;
+    }
+    if (allApplicantsData && typeof allApplicantsData === 'object' && 'data' in allApplicantsData && Array.isArray((allApplicantsData as any).data)) {
+      return (allApplicantsData as any).data;
+    }
+
+    return [];
+  }, [location.state, cachedApplicantsListData, allApplicantsData]);
 
   // Find current applicant index
   const currentApplicantIndex = useMemo(() => {
@@ -158,28 +166,18 @@ const allApplicants = useMemo(() => {
   const stateApplicant = location.state?.applicant as Applicant | undefined;
   const wasNavigated = Boolean(location.state?.applicant);
 
-  const isReload = (() => {
-    try {
-      if (typeof performance === 'undefined') return false;
-      const nav = (performance as any).getEntriesByType ? (performance as any).getEntriesByType('navigation') : undefined;
-      if (Array.isArray(nav) && nav.length > 0) return nav[0].type === 'reload';
-      if ((performance as any).navigation && (performance as any).navigation.type !== undefined) {
-        return (performance as any).navigation.type === (performance as any).navigation.TYPE_RELOAD;
-      }
-      return false;
-    } catch (e) {
-      return false;
-    }
-  })();
-
-  const [reloadFetchDone, setReloadFetchDone] = useState(false);
-
   const {
     data: fetchedApplicant,
     isLoading: isApplicantLoading,
     isFetched: isApplicantFetched,
     error: applicantError,
-  } = useApplicant(id || '', { initialData: wasNavigated ? stateApplicant : undefined, enabled: !isReload || reloadFetchDone });
+  } = useApplicant(id || '', {
+    initialData: wasNavigated ? stateApplicant : undefined,
+    enabled: !!id,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    staleTime: 2 * 60 * 1000,
+  });
 
   const applicant = (fetchedApplicant ?? stateApplicant) as any;
   const loading = isApplicantLoading && !fetchedApplicant && !stateApplicant;
@@ -194,7 +192,6 @@ const allApplicants = useMemo(() => {
     return '';
   }, [applicant?._id, (applicant as any)?.jobPositionId, (applicant as any)?.jobPosition]);
 
-  const { data: jobPositionsFallback = [], isFetched: isJobPositionsFallbackFetched } = useJobPositions(undefined, false, { enabled: !resolvedJobPosId });
   const { data: jobPositionDetail, isFetched: isJobPositionDetailFetched } = useJobPosition(resolvedJobPosId || '', { enabled: !!resolvedJobPosId });
 
   const jobPosCompanyId = jobPositionDetail && (jobPositionDetail as any).companyId
@@ -244,15 +241,23 @@ const allApplicants = useMemo(() => {
   const fetchedCompanyQuery = useCompany(resolvedCompanyFromList ? '' : (resolvedCompanyId || ''), { enabled: !!resolvedCompanyId && !resolvedCompanyFromList && isJobPositionDetailFetched && resolvedCompanyId !== jobPosCompanyId });
   const fetchedCompany = resolvedCompanyFromList ?? fetchedCompanyQuery.data;
 
+  const shouldFetchJobPositionsFallback = Boolean(applicant && !resolvedJobPosId && !resolvedCompanyId);
+  const { data: jobPositionsFallback = [], isFetched: isJobPositionsFallbackFetched } = useJobPositions(undefined, false, {
+    enabled: shouldFetchJobPositionsFallback,
+  });
+
   const jobPositionsFetchParam = useMemo(() => {
     if (!applicant) return ['__NO_COMPANY__'];
     if (resolvedJobPosId) return ['__NO_COMPANY__'];
     return resolvedCompanyId ? [resolvedCompanyId] : ['__NO_COMPANY__'];
   }, [applicant?._id, resolvedCompanyId, resolvedJobPosId]);
 
-  const _jobPositionsScoped = useJobPositions(jobPositionsFetchParam as any);
+  const shouldFetchJobPositionsScoped = Boolean(applicant && !resolvedJobPosId && resolvedCompanyId);
+  const _jobPositionsScoped = useJobPositions(jobPositionsFetchParam as any, false, {
+    enabled: shouldFetchJobPositionsScoped,
+  });
   const jobPositionsScopedData = _jobPositionsScoped?.data ?? jobPositionsFallback;
-  const isJobPositionsFetched = _jobPositionsScoped?.isFetched ?? isJobPositionsFallbackFetched;
+  const isJobPositionsFetched = Boolean(_jobPositionsScoped?.isFetched || isJobPositionsFallbackFetched);
   const jobPositions = jobPositionsScopedData;
 
   const cvUrl = useMemo(() => {
@@ -327,33 +332,6 @@ const allApplicants = useMemo(() => {
     hasMarkedSeenRef.current = false;
   }, [id]);
 
-  useEffect(() => {
-    if (!id) return;
-    if (!isReload) return;
-
-    let cancelled = false;
-    (async () => {
-      try {
-        const refreshedApplicant = await applicantsService.getApplicantById(id);
-        if (!cancelled && refreshedApplicant && typeof refreshedApplicant === 'object') {
-          queryClient.setQueryData(applicantsKeys.detail(id), refreshedApplicant);
-          queryClient.setQueriesData({ queryKey: applicantsKeys.lists() }, (old: any) => {
-            if (!old) return old;
-            if (Array.isArray(old)) return old.map((applicant: any) => (applicant && applicant._id === id ? { ...applicant, ...refreshedApplicant } : applicant));
-            if (old.data && Array.isArray(old.data)) return { ...old, data: old.data.map((applicant: any) => (applicant && applicant._id === id ? { ...applicant, ...refreshedApplicant } : applicant)) };
-            return old;
-          });
-          try { setReloadFetchDone(true); } catch (e) { /* ignore */ }
-        }
-      } catch (e) {
-        if (!cancelled) {
-          try { queryClient.invalidateQueries({ queryKey: applicantsKeys.detail(id) }); } catch (_) {}
-        }
-      }
-    })();
-
-    return () => { cancelled = true; };
-  }, [id, queryClient, isReload]);
 
   useEffect(() => {
     if (!applicant?._id || !user?._id || hasMarkedSeenRef.current) return;
