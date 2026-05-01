@@ -3,7 +3,6 @@ import {
   Routes,
   Route,
   Navigate,
-  useParams,
 } from 'react-router';
 import { Suspense, lazy } from 'react';
 
@@ -79,19 +78,6 @@ import ProtectedRoute from './components/auth/ProtectedRoute';
 import PermissionProtectedRoute from './components/auth/PermissionProtectedRoute';
 import ApplicantDynamicPage from './pages/Recruiting/applicants/Table/ApplicantDynamicPage';
 
-// Wrapper components to pass props to Applicants
-const ApplicantsWithStatus = () => {
-  const { status } = useParams<{ status: string }>();
-  return <Applicants onlyStatus={status} />;
-};
-
-const ApplicantsWithCompanyAndStatus = () => {
-  const { companyId, status } = useParams<{
-    companyId: string;
-    status: string;
-  }>();
-  return <Applicants companyIdOverride={companyId} onlyStatus={status} />;
-};
 
 export default function App() {
   return (
@@ -120,14 +106,10 @@ export default function App() {
                 {/* Applicants routes with status filtering */}
                 <Route path="applicants" element={<Applicants />} />
                 <Route
-                  path="applicants/status/:status"
-                  element={<ApplicantsWithStatus />}
+                  path="applicants/page/:pageName"
+                  element={<ApplicantDynamicPage />}
                 />
-                <Route
-                  path="applicants/company/:companyId/status/:status"
-                  element={<ApplicantsWithCompanyAndStatus />}
-                />
-
+              
                 <Route
                   path="recruiting/company-settings"
                   element={<CompanySettingsPage />}
@@ -156,10 +138,6 @@ export default function App() {
                 <Route
                   path="applicants/mobile"
                   element={<ApplicantsMobilePage />}
-                />
-                <Route
-                  path="/applicants/page/:pageName"
-                  element={<ApplicantDynamicPage />}
                 />
                 <Route
                   element={
