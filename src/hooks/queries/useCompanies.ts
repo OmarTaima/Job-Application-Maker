@@ -32,7 +32,7 @@ export const companiesKeys = {
 };
 
 // Get all companies (optionally filtered by company IDs)
-export function useCompanies(companyId?: string[]) {
+export function useCompanies(companyId?: string[], options?: { enabled?: boolean }) {
   const authUser = useAppSelector((s: any) => s.auth.user);
 
   const userCompanyIds = (() => {
@@ -72,6 +72,7 @@ export function useCompanies(companyId?: string[]) {
     refetchOnWindowFocus: false,
     refetchOnMount: false,
     refetchOnReconnect: false,
+    enabled: options?.enabled !== undefined ? options.enabled : true,
   });
 }
 

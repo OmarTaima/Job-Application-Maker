@@ -1,9 +1,8 @@
 import Swal from '../../utils/swal';
 import { Modal } from '../ui/modal';
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { useSendMessage, useSendEmail, useCompany, useJobPositions } from '../../hooks/queries';
+import { useSendMessage, useSendEmail } from '../../hooks/queries';
 import { getErrorMessage } from '../../utils/errorHandler';
-import { companiesService } from '../../services/companiesService';
 import Label from '../form/Label';
 import Select from '../form/Select';
 import Input from '../form/input/InputField';
@@ -94,9 +93,8 @@ const MessageModal = ({
   const [senderOptions, setSenderOptions] = useState<Array<{ value: string; label: string }>>([]);
 
   const companyIdForQuery = (applicant && (typeof applicant.companyId === 'string' ? applicant.companyId : applicant.company?._id)) || '';
-  const { data: companyFromQuery } = useCompany(companyIdForQuery || '', { enabled: !!companyIdForQuery });
 
-  const company = propCompany || (applicant && (applicant.company || applicant.companyObj)) || companyFromQuery || null;
+  const company = propCompany || (applicant && (applicant.company || applicant.companyObj)) || null;
 
   // Get email templates directly from the company object
   const emailTemplates: EmailTemplate[] = useMemo(() => {
@@ -104,17 +102,6 @@ const MessageModal = ({
     const templates = company?.settings?.mailSettings?.emailTemplates || [];
     return templates;
   }, [company]);
-
-  const { data: jobPositions = [] } = useJobPositions(companyIdForQuery ? [companyIdForQuery] : undefined as any);
-  const jobTitleById = useMemo(() => {
-    const map = new Map<string, string>();
-    (jobPositions || []).forEach((j: any) => {
-      const id = (j && (j._id || j.id)) || undefined;
-      if (!id) return;
-      map.set(id, toDisplayText((j as any)?.title || (j as any)?.name, ''));
-    });
-    return map;
-  }, [jobPositions]);
 
   const extractDomain = (email?: string | null) => {
     if (!email) return '';
@@ -217,20 +204,8 @@ const handleTemplateSelect = (templateId: string) => {
 
     (async () => {
       try {
-        let raw = company ?? null;
-        let normalized = raw && raw.company && typeof raw.company === 'object' ? raw.company : raw;
-
-        if (!normalized && companyIdForQuery) {
-          try {
-            const comp = await companiesService.getCompanySettingsByCompany(companyIdForQuery);
-            if (comp) {
-              raw = comp as any;
-              normalized = comp as any;
-            }
-          } catch (innerErr) {
-            // ignore
-          }
-        }
+        const raw = company ?? null;
+        const normalized = raw && raw.company && typeof raw.company === 'object' ? raw.company : raw;
 
         const availableCandidates: any[] = [];
         try {
@@ -314,7 +289,7 @@ const handleTemplateSelect = (templateId: string) => {
       }
     })();
     return () => { mounted = false; };
-  }, [isOpen, companyIdForQuery, company]);
+  }, [isOpen, company]);
 
   const sendMessageMutation = useSendMessage();
   const sendEmailMutation = useSendEmail();
@@ -383,16 +358,9 @@ const handleTemplateSelect = (templateId: string) => {
     try {
       const jp = (applicant as any)?.jobPositionId || (applicant as any)?.jobPosition;
       if (jp) {
-        if (typeof jp === 'string' && jp.trim()) {
-          const mapped = jobTitleById.get(jp.trim());
-          if (mapped) return mapped;
-        }
         if (typeof jp === 'object') {
-          const id = jp._id || jp.id;
-          if (id) {
-            const mapped = jobTitleById.get(id as string);
-            if (mapped) return mapped;
-          }
+          const title = toDisplayText(jp?.title || jp?.name, '');
+          if (title) return title;
         }
       }
     } catch (e) {

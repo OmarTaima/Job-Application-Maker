@@ -14,6 +14,7 @@ type Props = {
   handleStatusChange: (e: React.FormEvent) => void;
   isSubmittingStatus: boolean;
   companyId?: string;
+  companySettings?: any;
 };
 
 export default function StatusChangeModal({
@@ -26,11 +27,14 @@ export default function StatusChangeModal({
   handleStatusChange,
   isSubmittingStatus,
   companyId,
+  companySettings,
 }: Props) {
-  const { data: companySettings } = useCompanySettings(companyId, { enabled: !!companyId });
+  const shouldFetchCompanySettings = !!companyId && !companySettings;
+  const { data: fetchedCompanySettings } = useCompanySettings(companyId, { enabled: shouldFetchCompanySettings });
+  const resolvedCompanySettings = companySettings || fetchedCompanySettings;
   
   // Get statuses from the hook using company settings
-  const { statusOptions, getDescription } = useStatusSettings(companySettings);
+  const { statusOptions, getDescription } = useStatusSettings(resolvedCompanySettings);
 
   // State for search input and custom values
   const [customReasons, setCustomReasons] = useState<string[]>([]);
@@ -41,12 +45,12 @@ export default function StatusChangeModal({
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const reasonOptions = useMemo(() => {
-    const fromRoot = (companySettings as any)?.rejectReasons;
-    const fromNested = (companySettings as any)?.settings?.rejectReasons;
+    const fromRoot = (resolvedCompanySettings as any)?.rejectReasons;
+    const fromNested = (resolvedCompanySettings as any)?.settings?.rejectReasons;
     const list = Array.isArray(fromRoot) && fromRoot.length ? fromRoot : Array.isArray(fromNested) ? fromNested : [];
     const allReasons = [...new Set([...list, ...customReasons])];
     return allReasons.map((r: any) => ({ value: String(r ?? ''), text: String(r ?? '') }));
-  }, [companySettings, customReasons]);
+  }, [resolvedCompanySettings, customReasons]);
 
   // Check if selected status is rejected (case-insensitive)
   const isRejected = useMemo(() => {

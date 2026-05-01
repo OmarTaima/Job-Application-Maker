@@ -12,10 +12,6 @@ import { Modal } from '../../../../components/ui/modal';
 import { PlusIcon } from '../../../../icons';
 import {
   useApplicant,
-  useJobPositions,
-  useJobPosition,
-  useCompaniesWithApplicants,
-  useCompany,
   useUpdateApplicant,
   useUpdateApplicantStatus,
   useScheduleInterview,
@@ -26,6 +22,7 @@ import {
   useMarkApplicantSeen,
   applicantsKeys,
   useApplicants,
+  useCompanies,
 } from '../../../../hooks/queries';
 import { useAuth } from '../../../../context/AuthContext';
 import { useQueryClient } from '@tanstack/react-query';
@@ -70,6 +67,47 @@ const ApplicantData = () => {
     if (isSuperAdmin) return undefined;
     return usercompanyId?.length ? usercompanyId : undefined;
   }, [user]);
+
+  const userCompanies = useMemo(() => {
+    if (!user?.companies || !Array.isArray(user.companies)) return [] as any[];
+    return user.companies
+      .map((entry: any) => {
+        if (!entry) return null;
+        if (typeof entry.companyId === 'string') return null;
+        return entry.companyId || null;
+      })
+      .filter(Boolean);
+  }, [user]);
+
+  const userCompanyIds = useMemo(() => {
+    if (!Array.isArray(user?.companies)) return [] as string[];
+    return user.companies
+      .map((entry: any) => {
+        if (!entry) return null;
+        const companyId = entry.companyId;
+        if (!companyId) return null;
+        if (typeof companyId === 'string') return companyId;
+        if (typeof companyId === 'object') return companyId._id || companyId.id || null;
+        return null;
+      })
+      .filter(Boolean) as string[];
+  }, [user]);
+
+  const shouldFetchUserCompanies = useMemo(() => {
+    // Only fetch from server if we don't already have company objects on the `user`
+    return (!Array.isArray(userCompanies) || userCompanies.length === 0) && userCompanyIds.length > 0;
+  }, [userCompanies, userCompanyIds]);
+
+  const { data: userCompaniesFromServer = [] } = useCompanies(
+    shouldFetchUserCompanies ? userCompanyIds : undefined,
+    { enabled: shouldFetchUserCompanies }
+  );
+
+  const preferredUserCompanies = useMemo(() => {
+    if (Array.isArray(userCompanies) && userCompanies.length > 0) return userCompanies;
+    if (Array.isArray(userCompaniesFromServer) && userCompaniesFromServer.length > 0) return userCompaniesFromServer;
+    return [] as any[];
+  }, [userCompanies, userCompaniesFromServer]);
 
   const hasApplicantsListInState = Array.isArray((location.state as any)?.applicantsList);
   const cachedApplicantsLists = queryClient.getQueriesData({ queryKey: applicantsKeys.lists() });
@@ -166,6 +204,14 @@ const ApplicantData = () => {
   const stateApplicant = location.state?.applicant as Applicant | undefined;
   const wasNavigated = Boolean(location.state?.applicant);
 
+  const shouldSkipApplicantFetch = useMemo(() => {
+    if (!id) return false;
+    if (!wasNavigated || !stateApplicant) return false;
+    const companiesReady = (Array.isArray(userCompaniesFromServer) && userCompaniesFromServer.length > 0) || (Array.isArray(userCompanies) && userCompanies.length > 0);
+    const hasBasicApplicantData = !!(stateApplicant && (stateApplicant._id || stateApplicant.email || stateApplicant.status));
+    return Boolean(companiesReady && hasBasicApplicantData);
+  }, [id, wasNavigated, stateApplicant, userCompaniesFromServer, userCompanies]);
+
   const {
     data: fetchedApplicant,
     isLoading: isApplicantLoading,
@@ -173,7 +219,7 @@ const ApplicantData = () => {
     error: applicantError,
   } = useApplicant(id || '', {
     initialData: wasNavigated ? stateApplicant : undefined,
-    enabled: !!id,
+    enabled: !!id && !shouldSkipApplicantFetch,
     refetchOnMount: false,
     refetchOnWindowFocus: false,
     staleTime: 2 * 60 * 1000,
@@ -183,22 +229,31 @@ const ApplicantData = () => {
   const loading = isApplicantLoading && !fetchedApplicant && !stateApplicant;
   const error = applicantError as any;
 
-  const resolvedJobPosId = useMemo(() => {
-    if (!applicant) return '';
-    if (typeof (applicant as any).jobPositionId === 'string') return (applicant as any).jobPositionId;
-    if (typeof (applicant as any).jobPosition === 'string') return (applicant as any).jobPosition;
+  const applicantJobPosition = useMemo(() => {
+    if (!applicant) return null;
     const jp = (applicant as any).jobPositionId || (applicant as any).jobPosition;
-    if (jp && typeof jp === 'object') return jp._id || jp.id || '';
-    return '';
+    if (jp && typeof jp === 'object') return jp;
+    return null;
   }, [applicant?._id, (applicant as any)?.jobPositionId, (applicant as any)?.jobPosition]);
 
-  const { data: jobPositionDetail, isFetched: isJobPositionDetailFetched } = useJobPosition(resolvedJobPosId || '', { enabled: !!resolvedJobPosId });
+  const resolvedJobPosId = useMemo(() => {
+    if (!applicant) return '';
+    if (applicantJobPosition) return applicantJobPosition._id || applicantJobPosition.id || '';
+    if (typeof (applicant as any).jobPositionId === 'string') return (applicant as any).jobPositionId;
+    if (typeof (applicant as any).jobPosition === 'string') return (applicant as any).jobPosition;
+    return '';
+  }, [applicant?._id, applicantJobPosition, (applicant as any)?.jobPositionId, (applicant as any)?.jobPosition]);
 
-  const jobPosCompanyId = jobPositionDetail && (jobPositionDetail as any).companyId
-    ? typeof (jobPositionDetail as any).companyId === 'string'
-      ? (jobPositionDetail as any).companyId
-      : (jobPositionDetail as any).companyId?._id || ''
-    : '';
+  const jobPositionDetail = applicantJobPosition as any;
+  const isJobPositionDetailFetched = Boolean(applicantJobPosition);
+
+  const jobPosCompanyId = useMemo(() => {
+    if (!applicantJobPosition) return '';
+    const companyId = (applicantJobPosition as any).companyId;
+    if (!companyId) return '';
+    if (typeof companyId === 'string') return companyId;
+    return companyId._id || companyId.id || '';
+  }, [applicantJobPosition]);
 
   const applicantCompanyId = useMemo(() => {
     if (!applicant) return undefined;
@@ -207,58 +262,90 @@ const ApplicantData = () => {
     return undefined;
   }, [applicant?._id, (applicant as any)?.companyId]);
 
-  const applicantArray = useMemo(() => (applicantCompanyId ? ([{ companyId: applicantCompanyId }] as any as Applicant[]) : undefined), [applicantCompanyId]);
-  const { data: companies = [], isFetched: isCompaniesWithApplicantsFetched } = useCompaniesWithApplicants(applicantArray);
+  const userCompaniesById = useMemo(() => {
+    const map = new Map<string, any>();
+    (preferredUserCompanies || []).forEach((company: any) => {
+      const id = String(company?._id || company?.id || '');
+      if (id) map.set(id, company);
+    });
+    return map;
+  }, [preferredUserCompanies]);
+
+  const companies = useMemo(() => {
+    const map = new Map<string, any>();
+    const addCompany = (company: any) => {
+      if (!company) return;
+      const id = String(company?._id || company?.id || '');
+      if (!id) return;
+      if (!map.has(id)) map.set(id, company);
+    };
+    preferredUserCompanies.forEach(addCompany);
+    if (applicant && typeof applicant.companyId === 'object') addCompany(applicant.companyId);
+    if (applicantJobPosition && typeof (applicantJobPosition as any).companyId === 'object') {
+      addCompany((applicantJobPosition as any).companyId);
+    }
+    if ((applicant as any)?.company) addCompany((applicant as any).company);
+    if ((applicant as any)?.companyObj) addCompany((applicant as any).companyObj);
+    return Array.from(map.values());
+  }, [preferredUserCompanies, applicant?._id, applicantJobPosition]);
+  const isCompaniesWithApplicantsFetched = companies.length > 0;
 
   const jobPosCompanyFromList = useMemo(() => {
     if (!jobPosCompanyId) return null as any;
     return (companies || []).find((c: any) => String(c?._id || c?.id || '') === String(jobPosCompanyId)) || null;
   }, [jobPosCompanyId, companies]);
 
-  const jobPosCompanyQuery = useCompany(jobPosCompanyFromList ? '' : (jobPosCompanyId || ''), { enabled: !!jobPosCompanyId && !jobPosCompanyFromList });
-  const jobPosCompany = jobPosCompanyFromList ?? jobPosCompanyQuery.data;
-  const isJobPosCompanyFetched = Boolean(jobPosCompanyFromList) ? true : jobPosCompanyQuery.isFetched;
+  const jobPosCompany = useMemo(() => {
+    if (jobPosCompanyFromList) return jobPosCompanyFromList;
+    if (applicantJobPosition && typeof (applicantJobPosition as any).companyId === 'object') {
+      return (applicantJobPosition as any).companyId;
+    }
+    if (jobPosCompanyId && userCompaniesById.has(String(jobPosCompanyId))) {
+      return userCompaniesById.get(String(jobPosCompanyId));
+    }
+    return null as any;
+  }, [jobPosCompanyFromList, applicantJobPosition, jobPosCompanyId, userCompaniesById]);
 
   const isArabic = (s: any) => (typeof s === 'string' && /[\u0600-\u06FF]/.test(s));
   
   const resolvedCompanyId = useMemo(() => {
     if (!applicant) return '';
-    if (typeof applicant.jobPositionId === 'object') {
-      const jobPos = applicant.jobPositionId as any;
-      if (typeof jobPos.companyId === 'string') return jobPos.companyId;
-      if (typeof jobPos.companyId === 'object' && jobPos.companyId?._id) return jobPos.companyId._id;
+    if (applicantJobPosition) {
+      const companyId = (applicantJobPosition as any).companyId;
+      if (typeof companyId === 'string') return companyId;
+      if (typeof companyId === 'object' && companyId?._id) return companyId._id;
     }
     if (typeof applicant.companyId === 'string') return applicant.companyId;
     if (typeof applicant.companyId === 'object' && (applicant.companyId as any)?._id) return (applicant.companyId as any)._id;
     return '';
-  }, [applicant?._id, (applicant as any)?.jobPositionId, (applicant as any)?.companyId]);
+  }, [applicant?._id, applicantJobPosition, (applicant as any)?.companyId]);
+
+  const companyFromMe = useMemo(() => {
+    const idsToCheck = [resolvedCompanyId, jobPosCompanyId, applicantCompanyId]
+      .map((value) => String(value || ''))
+      .filter((value) => value);
+    for (const companyId of idsToCheck) {
+      if (userCompaniesById.has(companyId)) return userCompaniesById.get(companyId);
+    }
+    if (preferredUserCompanies.length === 1) return preferredUserCompanies[0];
+    return null as any;
+  }, [resolvedCompanyId, jobPosCompanyId, applicantCompanyId, userCompaniesById, preferredUserCompanies]);
 
   const resolvedCompanyFromList = useMemo(() => {
     if (!resolvedCompanyId) return null as any;
     return (companies || []).find((c: any) => String(c?._id || c?.id || '') === String(resolvedCompanyId)) || null;
   }, [resolvedCompanyId, companies]);
 
-  const fetchedCompanyQuery = useCompany(resolvedCompanyFromList ? '' : (resolvedCompanyId || ''), { enabled: !!resolvedCompanyId && !resolvedCompanyFromList && isJobPositionDetailFetched && resolvedCompanyId !== jobPosCompanyId });
-  const fetchedCompany = resolvedCompanyFromList ?? fetchedCompanyQuery.data;
+  const fetchedCompany = useMemo(() => {
+    if (resolvedCompanyFromList) return resolvedCompanyFromList;
+    if (applicant && typeof applicant.companyId === 'object') return applicant.companyId as any;
+    if (applicantJobPosition && typeof (applicantJobPosition as any).companyId === 'object') {
+      return (applicantJobPosition as any).companyId;
+    }
+    return null as any;
+  }, [resolvedCompanyFromList, applicant?._id, applicantJobPosition]);
 
-  const shouldFetchJobPositionsFallback = Boolean(applicant && !resolvedJobPosId && !resolvedCompanyId);
-  const { data: jobPositionsFallback = [], isFetched: isJobPositionsFallbackFetched } = useJobPositions(undefined, false, {
-    enabled: shouldFetchJobPositionsFallback,
-  });
-
-  const jobPositionsFetchParam = useMemo(() => {
-    if (!applicant) return ['__NO_COMPANY__'];
-    if (resolvedJobPosId) return ['__NO_COMPANY__'];
-    return resolvedCompanyId ? [resolvedCompanyId] : ['__NO_COMPANY__'];
-  }, [applicant?._id, resolvedCompanyId, resolvedJobPosId]);
-
-  const shouldFetchJobPositionsScoped = Boolean(applicant && !resolvedJobPosId && resolvedCompanyId);
-  const _jobPositionsScoped = useJobPositions(jobPositionsFetchParam as any, false, {
-    enabled: shouldFetchJobPositionsScoped,
-  });
-  const jobPositionsScopedData = _jobPositionsScoped?.data ?? jobPositionsFallback;
-  const isJobPositionsFetched = Boolean(_jobPositionsScoped?.isFetched || isJobPositionsFallbackFetched);
-  const jobPositions = jobPositionsScopedData;
+  const jobPositions: any[] = [];
 
   const cvUrl = useMemo(() => {
     if (!applicant?.cvFilePath) return null;
@@ -375,49 +462,23 @@ const ApplicantData = () => {
 
   const getJobTitle = (): { en: string } => {
     if (!applicant) return { en: '' };
-    if (
-      typeof applicant.jobPositionId === 'object' &&
-      (applicant.jobPositionId as any)?.title
-    ) {
-      const {title} = applicant.jobPositionId as any;
+    const jobPos = applicantJobPosition || (typeof applicant.jobPositionId === 'object' ? applicant.jobPositionId : null);
+    if (jobPos && (jobPos as any).title) {
+      const title = (jobPos as any).title;
       if (typeof title === 'string') return { en: title };
       if (typeof title === 'object' && title?.en) return { en: title.en };
-      return { en: '' };
     }
-    const jobPosId =
-      typeof applicant.jobPositionId === 'string'
-        ? applicant.jobPositionId
-        : (applicant.jobPositionId as any)?._id;
-    if (jobPositionDetail && ((jobPositionDetail as any)?._id || (jobPositionDetail as any)?.id)) {
-      const jpId = (jobPositionDetail as any)._id || (jobPositionDetail as any).id;
-      if (String(jpId) === String(jobPosId)) {
-        const t = (jobPositionDetail as any).title;
-        if (typeof t === 'string') return { en: t };
-        if (typeof t === 'object' && t?.en) return { en: t.en };
-      }
-    }
-    const found = jobPositions.find((j: any) => j._id === jobPosId);
-    return { en: found?.title?.en || '' };
+    return { en: '' };
   };
 
   const getCompanyName = () => {
     if (!applicant) return '';
-    if (typeof applicant.jobPositionId === 'object') {
-      const jobPos = applicant.jobPositionId as any;
-      if (typeof jobPos.companyId === 'object' && jobPos.companyId?.name) {
-        return toPlainString(jobPos.companyId.name);
-      }
-      const compId = typeof jobPos.companyId === 'string' ? jobPos.companyId : jobPos.companyId?._id;
-      const found = companies.find((c) => c._id === compId);
-      if (found) return toPlainString((found as any).name);
+    if (jobPosCompany && (jobPosCompany as any).name) {
+      return toPlainString((jobPosCompany as any).name);
     }
-    if (jobPositionDetail && (jobPositionDetail as any).companyId) {
-      const jp = jobPositionDetail as any;
-      if (jobPosCompany && (jobPosCompany as any)._id) return toPlainString((jobPosCompany as any).name || '');
-      if (typeof jp.companyId === 'object' && jp.companyId?.name) return toPlainString(jp.companyId.name);
-      const compId = typeof jp.companyId === 'string' ? jp.companyId : jp.companyId?._id;
-      const found = companies.find((c) => c._id === compId);
-      if (found) return toPlainString((found as any).name);
+    if (applicantJobPosition && typeof (applicantJobPosition as any).companyId === 'object') {
+      const comp = (applicantJobPosition as any).companyId;
+      if (comp?.name) return toPlainString(comp.name);
     }
     if (
       typeof applicant.companyId === 'object' &&
@@ -435,14 +496,8 @@ const ApplicantData = () => {
 
   const getDepartmentName = () => {
     if (!applicant) return '';
-    if (typeof applicant.jobPositionId === 'object') {
-      const jobPos = applicant.jobPositionId as any;
-      if (typeof jobPos.departmentId === 'object' && jobPos.departmentId?.name) {
-        return toPlainString(jobPos.departmentId.name);
-      }
-    }
-    if (jobPositionDetail && (jobPositionDetail as any).departmentId) {
-      const jp = jobPositionDetail as any;
+    if (applicantJobPosition && (applicantJobPosition as any).departmentId) {
+      const jp = applicantJobPosition as any;
       if (jobPosCompany && (jobPosCompany as any).departments) {
         const deps = (jobPosCompany as any).departments || [];
         const depId = typeof jp.departmentId === 'string' ? jp.departmentId : jp.departmentId?._id;
@@ -519,25 +574,11 @@ const ApplicantData = () => {
 
   const getCompanyAddress = () => {
     if (!applicant) return '';
-    let company: any = null;
-    if ((fetchedCompany as any) && (fetchedCompany as any)?._id) {
-      company = fetchedCompany as any;
-    }
-    if (typeof applicant.jobPositionId === 'object') {
-      const jobPos = applicant.jobPositionId as any;
-      if (typeof jobPos.companyId === 'object' && jobPos.companyId?._id) company = jobPos.companyId;
-      else {
-        const compId = typeof jobPos.companyId === 'string' ? jobPos.companyId : jobPos.companyId?._id;
-        if (compId) company = companies.find((c) => c._id === compId) || null;
-      }
-    }
-    if (!company) {
-      if (typeof applicant.companyId === 'object' && (applicant.companyId as any)?._id) company = applicant.companyId;
-      else {
-        const compId = typeof applicant.companyId === 'string' ? applicant.companyId : (applicant.companyId as any)?._id;
-        if (compId) company = companies.find((c) => c._id === compId) || null;
-      }
-    }
+    const company: any =
+      companyObj ||
+      fetchedCompany ||
+      jobPosCompany ||
+      (typeof applicant.companyId === 'object' ? applicant.companyId : null);
     if (!company) return '';
     const addrCandidates: any = company.address ?? company.addresses ?? company.location ?? company.locations ?? company.officeAddress ?? null;
     let addr: any = null;
@@ -578,7 +619,7 @@ const ApplicantData = () => {
 
   const fillCompanyAddress = (): boolean => {
     try {
-      const comp = (fetchedCompany as any && (fetchedCompany as any)?._id) ? (fetchedCompany as any) : companyObj;
+      const comp = companyObj || fetchedCompany || jobPosCompany;
       if (!comp) {
         return false;
       }
@@ -611,37 +652,22 @@ const ApplicantData = () => {
 
   const companyObj = useMemo(() => {
     if (!applicant) return null as any;
+    if (jobPosCompany) return jobPosCompany as any;
     if ((fetchedCompany as any) && (fetchedCompany as any)?._id) return fetchedCompany as any;
-    if (jobPositionDetail && (jobPositionDetail as any).companyId) {
-      const jp = jobPositionDetail as any;
-      if (typeof jp.companyId === 'object' && jp.companyId?._id) return jp.companyId;
-      const compId = typeof jp.companyId === 'string' ? jp.companyId : jp.companyId?._id;
-      if (compId) {
-        const found = companies.find((c) => c._id === compId);
-        if (found) return found as any;
-      }
+    if (resolvedCompanyFromList) return resolvedCompanyFromList as any;
+    if (applicantJobPosition && typeof (applicantJobPosition as any).companyId === 'object') {
+      const company = (applicantJobPosition as any).companyId;
+      if (company?._id) return company;
     }
-    if (typeof applicant.jobPositionId === 'object') {
-      const jobPos = applicant.jobPositionId as any;
-      if (typeof jobPos.companyId === 'object' && jobPos.companyId?._id) return jobPos.companyId;
-      const compId = typeof jobPos.companyId === 'string' ? jobPos.companyId : jobPos.companyId?._id;
-      if (compId) {
-        const found = companies.find((c) => c._id === compId);
-        if (found) return found as any;
-      }
-    }
-    if (typeof applicant.companyId === 'object' && (applicant.companyId as any)?._id) {
-      return applicant.companyId as any;
-    }
-    const compId = typeof applicant.companyId === 'string' ? applicant.companyId : (applicant.companyId as any)?._id;
-    if (compId) {
-      const found = companies.find((c) => c._id === compId);
-      if (found) return found as any;
+    if (typeof applicant.companyId === 'object' && (applicant.companyId as any)?._id) return applicant.companyId as any;
+    const compId = resolvedCompanyId || applicantCompanyId;
+    if (compId && userCompaniesById.has(String(compId))) {
+      return userCompaniesById.get(String(compId)) as any;
     }
     return null as any;
-  }, [fetchedCompany, jobPositionDetail, applicant?._id, companies, resolvedCompanyId]);
+  }, [applicant?._id, jobPosCompany, fetchedCompany, resolvedCompanyFromList, applicantJobPosition, resolvedCompanyId, applicantCompanyId, userCompaniesById]);
 
-  const { getColor, getTextColor, defaultStatus: hookDefaultStatus } = useStatusSettings(companyObj || fetchedCompany || jobPosCompany);
+  const { getColor, getTextColor, defaultStatus: hookDefaultStatus } = useStatusSettings(companyObj || jobPosCompany || fetchedCompany);
 
   const getStatusColor = (status: string) => {
     const bgColor = getColor(status);
@@ -649,9 +675,9 @@ const ApplicantData = () => {
     return { backgroundColor: bgColor, color: textColor };
   };
 
-  const jobTitle = useMemo(() => getJobTitle(), [applicant?._id, jobPositionDetail, jobPositions, jobPosCompany]);
-  const companyName = useMemo(() => getCompanyName(), [applicant?._id, jobPositionDetail, companies, jobPosCompany, fetchedCompany]);
-  const departmentName = useMemo(() => getDepartmentName(), [applicant?._id, jobPositionDetail, companies, jobPosCompany]);
+  const jobTitle = useMemo(() => getJobTitle(), [applicant?._id, applicantJobPosition]);
+  const companyName = useMemo(() => getCompanyName(), [applicant?._id, applicantJobPosition, companies, jobPosCompany]);
+  const departmentName = useMemo(() => getDepartmentName(), [applicant?._id, applicantJobPosition, companies, jobPosCompany]);
 
   const [phoneMenuAnchor, setPhoneMenuAnchor] = useState<null | HTMLElement>(null);
   const [selectedPhoneNumber, setSelectedPhoneNumber] = useState<string>('');
@@ -694,10 +720,10 @@ const ApplicantData = () => {
   }, [fetchedCompany, showInterviewModal]);
 
   useEffect(() => {
-    if (!lastRefetch && (isApplicantFetched || isJobPositionsFetched || isJobPositionDetailFetched || isJobPosCompanyFetched || isCompaniesWithApplicantsFetched)) {
+    if (!lastRefetch && (isApplicantFetched || isCompaniesWithApplicantsFetched || isJobPositionDetailFetched)) {
       setLastRefetch(new Date());
     }
-  }, [isApplicantFetched, isJobPositionsFetched, isJobPositionDetailFetched, isJobPosCompanyFetched, isCompaniesWithApplicantsFetched]);
+  }, [isApplicantFetched, isCompaniesWithApplicantsFetched, isJobPositionDetailFetched]);
 
   const [notificationChannels, setNotificationChannels] = useState({
     email: true,
@@ -4572,7 +4598,7 @@ const ApplicantData = () => {
           buildInterviewEmailHtml={buildInterviewEmailHtml}
           getJobTitle={getJobTitle}
           applicant={applicant}
-          companyData={companyObj}
+          companyData={companyFromMe || companyObj}
         />
 
         <InterviewSettingsModal
@@ -4619,7 +4645,7 @@ const ApplicantData = () => {
           onClose={() => setShowMessageModal(false)}
           applicant={applicant}
           id={applicant._id}
-          company={fetchedCompany || jobPosCompany || (applicant && (applicant.company || applicant.companyObj))}
+          company={companyFromMe || companyObj || jobPosCompany || (applicant && (applicant.company || applicant.companyObj))}
         />
 
         <CommentModal
@@ -4650,6 +4676,7 @@ const ApplicantData = () => {
           handleStatusChange={handleStatusChange}
           isSubmittingStatus={isSubmittingStatus}
           companyId={resolvedCompanyId}
+          companySettings={companyFromMe || companyObj}
         />
       </div>
     </>
