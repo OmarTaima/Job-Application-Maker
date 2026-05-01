@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import PageMeta from "../../components/common/PageMeta";
 import DatePicker from "../../components/form/date-picker";
 import { useAuth } from "../../context/AuthContext";
-import { getApplicantStatuses } from "../../hooks/queries/useApplicantStatuses";
+import { getApplicantStatuses } from "../../hooks/queries/useApplicants";
 import { useCompanies } from "../../hooks/queries/useCompanies";
 import { useStatusSettings } from "../../utils/useStatusSettings";
 import {

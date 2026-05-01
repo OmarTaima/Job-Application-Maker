@@ -12,7 +12,7 @@ import {
   useDeleteMailTemplate,
   useDuplicateMailTemplate,
   usePreviewMailTemplate
-} from "../../../hooks/queries/useMailTemplate";
+} from "../../../hooks/queries/useCompanies";
 import { EmailTemplate } from "../../../services/emailTemplatesService";
 import Label from "../../../components/form/Label";
 import Input from "../../../components/form/input/InputField";
