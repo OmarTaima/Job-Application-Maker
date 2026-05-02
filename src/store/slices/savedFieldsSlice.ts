@@ -1,12 +1,12 @@
 import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
 import {
   savedFieldsService,
-  SavedField,
-  CreateSavedFieldRequest,
-  UpdateSavedFieldRequest,
 } from "../../services/savedFieldsService";
-
-export type { SavedField, CreateSavedFieldRequest, UpdateSavedFieldRequest };
+import type {
+  CreateSavedFieldRequest,
+  SavedField,
+  UpdateSavedFieldRequest,
+} from '../../types/savedFields';
 
 interface SavedFieldsState {
   fields: SavedField[];

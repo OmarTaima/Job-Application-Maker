@@ -13,7 +13,7 @@ import type {
   UpdateCompanySettingsRequest,
   UpdateInterviewSettingsRequest,
 } from '../../services/companiesService';
-import type { Applicant } from '../../store/slices/applicantsSlice';
+import type { Applicant } from '../../types/applicants';
 
 // Query keys
 export const companiesKeys = {

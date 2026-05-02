@@ -1,14 +1,11 @@
 import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
-import { 
-  recommendedFieldsService,
-  RecommendedField,
+import { recommendedFieldsService } from "../../services/recommendedFieldsService";
+import type {
   CreateRecommendedFieldRequest,
-  UpdateRecommendedFieldRequest,
-  FieldType
-} from "../../services/recommendedFieldsService";
 
-// Re-export types for convenience
-export type { RecommendedField, CreateRecommendedFieldRequest, UpdateRecommendedFieldRequest, FieldType };
+  RecommendedField,
+  UpdateRecommendedFieldRequest,
+} from '../../types/recommendedFields';
 
 interface RecommendedFieldsState {
   fields: RecommendedField[];

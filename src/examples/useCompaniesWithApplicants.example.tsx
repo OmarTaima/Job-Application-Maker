@@ -7,7 +7,7 @@
 
 import { useState, useMemo } from "react";
 import { useApplicants, useCompaniesWithApplicants } from "../hooks/queries";
-import type { Applicant } from "../store/slices/applicantsSlice";
+import type { Applicant } from "../types/applicants";
 import type { Company } from "../services/companiesService";
 import { toPlainString } from "../utils/strings";
 

@@ -1,7 +1,10 @@
 import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
-import { jobPositionsService, JobPosition, CreateJobPositionRequest, UpdateJobPositionRequest } from "../../services/jobPositionsService";
-
-export type { JobPosition, CreateJobPositionRequest, UpdateJobPositionRequest };
+import { jobPositionsService } from "../../services/jobPositionsService";
+import type {
+  CreateJobPositionRequest,
+  JobPosition,
+  UpdateJobPositionRequest,
+} from '../../types/jobPositions';
 
 interface JobPositionsState {
   jobPositions: JobPosition[];

@@ -1,5 +1,5 @@
 import { useAuth } from "../context/AuthContext";
-import type { Company, CompanyStatus } from '../store/slices/companiesSlice';
+import type { Company, CompanyStatus } from '../types/companies';
 
 // Static status keys with their permanent descriptions (never change)
 const STATIC_STATUS_DESCRIPTIONS: Record<string, string> = {

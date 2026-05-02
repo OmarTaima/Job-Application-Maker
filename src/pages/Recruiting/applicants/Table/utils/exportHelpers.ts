@@ -1,7 +1,7 @@
 // utils/exportHelpers.ts
 import * as XLSX from 'xlsx';
 import Swal from '../../../../../utils/swal';
-import type { Applicant } from '../../../../../store/slices/applicantsSlice';
+import type { Applicant } from '../../../../../types/applicants';
 
 export interface ExportOptions {
   includeCustomFields?: boolean;

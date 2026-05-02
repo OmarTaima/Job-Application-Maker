@@ -1,5 +1,5 @@
 // utils/filterHelpers.ts
-import type { Applicant } from '../../../../../store/slices/applicantsSlice';
+import type { Applicant } from '../../../../../types/applicants';
 
 // Extend the Applicant type to include optional properties that might exist at runtime
 interface ExtendedApplicant extends Applicant {

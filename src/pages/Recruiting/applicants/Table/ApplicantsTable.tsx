@@ -49,7 +49,7 @@ import {
 } from 'material-react-table';
 import { ThemeProvider, createTheme } from '@mui/material';
 import { Skeleton } from '@mui/material';
-import { Applicant } from '../../../../store/slices/applicantsSlice';
+import type { Applicant } from '../../../../types/applicants';
 
 type ApiMailResponse = {
   message: string;

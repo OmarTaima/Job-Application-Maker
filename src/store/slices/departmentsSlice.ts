@@ -1,15 +1,10 @@
 import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
 import { departmentsService } from "../../services/departmentsService";
 import type {
-  Department as ServiceDepartment,
-  CreateDepartmentRequest as ServiceCreateDepartmentRequest,
-  UpdateDepartmentRequest as ServiceUpdateDepartmentRequest,
-} from "../../services/departmentsService";
-
-// Reuse service types to avoid duplication and mismatches
-export type Department = ServiceDepartment;
-export type CreateDepartmentRequest = ServiceCreateDepartmentRequest;
-export type UpdateDepartmentRequest = ServiceUpdateDepartmentRequest;
+  CreateDepartmentRequest,
+  Department,
+  UpdateDepartmentRequest,
+} from '../../types/departments';
 
 interface DepartmentsState {
   departments: Department[];
