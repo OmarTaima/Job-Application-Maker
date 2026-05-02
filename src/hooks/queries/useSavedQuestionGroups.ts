@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   savedQuestionGroupsService,
   type SavedQuestionGroup,
-} from "../../services/savedQuestionGroupsService";
+} from "../../services/usersService";
 
 export const savedQuestionGroupsKeys = {
   all: ["savedQuestionGroups"] as const,

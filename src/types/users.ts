@@ -1,8 +1,6 @@
 import type { FieldType, BilingualString, BilingualChoice } from './fieldTypes';
 
-
-
-
+// User types
 export interface User {
   _id: string;
   fullName?: string;
@@ -49,7 +47,40 @@ export interface UpdateUserRequest {
   department?: string;
 }
 
+// Company Access Types
+export interface AddCompanyAccessRequest {
+  companyId: string;
+  role?: string;
+  accessLevel?: string;
+  departments?: string[];
+}
 
+export interface UpdateDepartmentsRequest {
+  departments: string[];
+  accessLevel?: string;
+}
+
+// Response Types
+export interface UsersResponse {
+  success: boolean;
+  data: User[];
+  page?: number | string;
+  pageCount?: number | string;
+  totalCount?: number | string;
+  message?: string;
+}
+
+export interface UserResponse {
+  success: boolean;
+  data: User;
+}
+
+export interface MessageResponse {
+  success: boolean;
+  message: string;
+}
+
+// Saved Field types
 export type SavedField = {
   fieldId: string;
   label: BilingualString | string;
@@ -75,3 +106,25 @@ export type CreateSavedFieldRequest = {
 };
 
 export type UpdateSavedFieldRequest = Partial<CreateSavedFieldRequest>;
+
+// Saved Question Group Types
+export type SavedQuestionAnswerType =
+  | "text"
+  | "number"
+  | "radio"
+  | "checkbox"
+  | "dropdown"
+  | "tags";
+
+export type SavedQuestion = {
+  question: string;
+  score: number;
+  answerType: SavedQuestionAnswerType;
+  choices?: string[];
+};
+
+export type SavedQuestionGroup = {
+  _id?: string;
+  name: string;
+  questions: SavedQuestion[];
+};

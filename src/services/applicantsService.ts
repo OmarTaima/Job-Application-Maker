@@ -1,7 +1,38 @@
 import axios from "../config/axios";
 import { getErrorMessage } from "../utils/errorHandler";
 import { jobPositionsService } from "./jobPositionsService";
+import type {
+  Applicant,
+  CreateApplicantRequest,
+  UpdateApplicantRequest,
+  UpdateStatusRequest,
+  ScheduleInterviewRequest,
+  BulkScheduleInterviewRequest,
+  BulkScheduleInterviewItem,
+  UpdateInterviewStatusRequest,
+  AddCommentRequest,
+  SendMessageRequest,
+  Interview,
+  InterviewAnswer,
+} from '../types/applicants';
 
+// Re-export types for convenience
+export type {
+  Applicant,
+  CreateApplicantRequest,
+  UpdateApplicantRequest,
+  UpdateStatusRequest,
+  ScheduleInterviewRequest,
+  BulkScheduleInterviewRequest,
+  BulkScheduleInterviewItem,
+  UpdateInterviewStatusRequest,
+  AddCommentRequest,
+  SendMessageRequest,
+  Interview,
+  InterviewAnswer,
+} from '../types/applicants';
+
+// API Error class
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -12,203 +43,6 @@ export class ApiError extends Error {
     this.name = "ApiError";
   }
 }
-
-export type Interview = {
-  _id?: string;
-  issuedBy?: string;
-  scheduledAt?: string;
-  scheduledBy?: string;
-  startedAt?: string;
-  endedAt?: string;
-  conductedBy?: string;
-  videoLink?: string;
-  description?: string | null;
-  location?: string | null;
-  address?: string | null;
-  notes?: string;
-  interviewers?: string[];
-  type?: string;
-  status?: "scheduled" | "in_progress" | "completed" | "cancelled";
-  questions?: InterviewAnswer[];
-  notifications?: {
-    channels: {
-      email: boolean;
-      sms: boolean;
-      whatsapp: boolean;
-    };
-    emailOption?: "company" | "user" | "custom";
-    customEmail?: string;
-    phoneOption?: "company" | "user" | "whatsapp" | "custom";
-    customPhone?: string;
-  };
-};
-
-export type InterviewAnswer = {
-  question: string;
-  score: number;
-  achievedScore?: number;
-  notes?: string | null;
-  answerType?: string;
-  choices?: string[];
-};
-
-export type Message = {
-  _id?: string;
-  type: "email" | "sms" | "internal" | "whatsapp";
-  content: string;
-  sentAt?: string;
-  sentBy?: string;
-  subject?: string;
-};
-
-export type Comment = {
-  _id?: string;
-  changedBy: string;
-  changedAt: string;
-  comment: string;
-  text?: string;
-  author?: string;
-};
-
-export type StatusHistory = {
-  _id?: string;
-  status: string;
-  changedBy: string;
-  changedAt: string;
-  notes?: string;
-  notifications?: {
-    channels: {
-      email: boolean;
-      sms: boolean;
-      whatsapp: boolean;
-    };
-    emailOption?: "company" | "user" | "custom";
-    customEmail?: string;
-    phoneOption?: "company" | "user" | "whatsapp" | "custom";
-    customPhone?: string;
-  };
-};
-
-export type Applicant = {
-  _id: string;
-  companyId: string;
-  jobPositionId: string;
-  departmentId: string;
-  status: string; // Changed from union type to string to support dynamic status names
-  submittedAt: string;
-  fullName: string;
-  firstName?: string;
-  lastName?: string;
-  email: string;
-  phone: string;
-  address?: string;
-  profilePhoto?: string;
-  cvFilePath?: string;
-  resume?: string;
-  source?: string;
-  customResponses?: Record<string, any>;
-  interviews?: Interview[];
-  messages?: Message[];
-  comments?: Comment[];
-  statusHistory?: StatusHistory[];
-  createdAt?: string;
-  updatedAt?: string;
-};
-
-export type CreateApplicantRequest = {
-  firstName: string;
-  lastName: string;
-  email: string;
-  phone: string;
-  gender?: string;
-  jobPositionId: string;
-  companyId: string;
-  departmentId: string;
-  resume?: string;
-  source?: string;
-  address?: string;
-  customResponses?: Record<string, any>;
-};
-
-export type UpdateApplicantRequest = {
-  firstName?: string;
-  lastName?: string;
-  email?: string;
-  gender?: string;
-  phone?: string;
-  address?: string;
-  resume?: string;
-  customResponses?: Record<string, any>;
-};
-
-export type UpdateStatusRequest = {
-  status: string; // Change from union type to string
-  notes?: string;
-  notifications?: {
-    channels: {
-      email: boolean;
-      sms: boolean;
-      whatsapp: boolean;
-    };
-    emailOption?: "company" | "user" | "custom";
-    customEmail?: string;
-    phoneOption?: "company" | "user" | "whatsapp" | "custom";
-    customPhone?: string;
-  };
-  reasons?: string[];
-};
-
-export type ScheduleInterviewRequest = {
-  scheduledAt?: string;
-  conductedBy?: string;
-  scheduledBy?: string;
-  description?: string | null;
-  location?: string | null;
-  videoLink?: string;
-  address?: string | null;
-  type?: string | null;
-  notes?: string;
-  interviewers?: string[];
-  status?: "scheduled" | "in_progress" | "completed" | "cancelled";
-  questions?: InterviewAnswer[];
-};
-
-export type BulkScheduleInterviewItem = ScheduleInterviewRequest & {
-  applicantId: string;
-};
-
-export type BulkScheduleInterviewRequest = {
-  interviews: BulkScheduleInterviewItem[];
-};
-
-export type UpdateInterviewStatusRequest = {
-  scheduledAt?: string;
-  scheduledBy?: string;
-  startedAt?: string;
-  endedAt?: string;
-  conductedBy?: string;
-  description?: string | null;
-  location?: string | null;
-  videoLink?: string;
-  address?: string | null;
-  type?: string | null;
-  notes?: string | null;
-  status?: "scheduled" | "in_progress" | "completed" | "cancelled";
-  questions?: InterviewAnswer[];
-};
-
-export type AddCommentRequest = {
-  comment?: string;
-  text?: string;
-  author?: string;
-};
-
-export type SendMessageRequest = {
-  subject?: string;
-  content?: string;
-  comment?: string;
-  type?: "email" | "sms" | "internal" | "whatsapp";
-};
 
 class ApplicantsService {
   private normalizeInterviewQuestions(questions: any): InterviewAnswer[] {
@@ -271,7 +105,6 @@ class ApplicantsService {
       }
     });
 
-    // Keep questions as an array for backend handlers that iterate with forEach.
     item.questions = this.normalizeInterviewQuestions((data as any)?.questions);
 
     return item as BulkScheduleInterviewItem;
@@ -346,7 +179,6 @@ class ApplicantsService {
           paramsBase.fields = fields;
         }
       }
-      // Always filter out deleted applicants
       paramsBase.deleted = false;
 
       const collectFromOne = async (opts?: { companyId?: string; jobPositionId?: string }) => {
@@ -362,7 +194,6 @@ class ApplicantsService {
           const response = await axios.get("/applicants", { params });
           const payload = response.data;
 
-          // Extract applicants from current page
           let pageData: Applicant[] = [];
           if (Array.isArray(payload)) {
             pageData = payload;
@@ -376,11 +207,9 @@ class ApplicantsService {
 
           result.push(...pageData);
 
-          // If we requested 'all', assume single-page response and stop after first fetch
           if (params.PageCount === 'all') {
             totalPages = 1;
           } else {
-            // Determine total pages from response when using paged API
             if (payload && payload.TotalCount && payload.PageCount) {
               totalPages = Math.ceil(payload.TotalCount / payload.PageCount);
             } else if (payload && payload.page && typeof payload.page === 'string') {
@@ -397,7 +226,6 @@ class ApplicantsService {
         return result;
       };
 
-      // Normalize jobPositionId param to array if comma-separated string provided
       let jobIds: string[] | undefined;
       if (Array.isArray(jobPositionId)) jobIds = jobPositionId;
       else if (typeof jobPositionId === 'string' && jobPositionId.includes(',')) {
@@ -408,7 +236,6 @@ class ApplicantsService {
 
       let allApplicants: Applicant[] = [];
       if (normalizedCompanyIds.length > 0 && jobIds && jobIds.length > 0) {
-        // Fetch per company + per job and aggregate, deduplicating by applicant _id
         const sets = await Promise.all(
           normalizedCompanyIds.flatMap((cid) =>
             jobIds.map((jid) => collectFromOne({ companyId: cid, jobPositionId: jid }))
@@ -421,7 +248,6 @@ class ApplicantsService {
         });
         allApplicants = Object.values(uniqueMap);
       } else if (normalizedCompanyIds.length > 0) {
-        // Fetch per company and aggregate, deduplicating by applicant _id
         const sets = await Promise.all(normalizedCompanyIds.map((cid) => collectFromOne({ companyId: cid })));
         const combined = sets.flat();
         const uniqueMap: Record<string, Applicant> = {};
@@ -430,7 +256,6 @@ class ApplicantsService {
         });
         allApplicants = Object.values(uniqueMap);
       } else if (jobIds && jobIds.length > 0) {
-        // Fetch per job id and aggregate, deduplicating by applicant _id
         const sets = await Promise.all(jobIds.map((jid) => collectFromOne({ jobPositionId: jid })));
         const combined = sets.flat();
         const uniqueMap: Record<string, Applicant> = {};
@@ -439,7 +264,6 @@ class ApplicantsService {
         });
         allApplicants = Object.values(uniqueMap);
       } else {
-        // Single fetch (no job filter)
         allApplicants = await collectFromOne(undefined);
       }
 
@@ -459,7 +283,6 @@ class ApplicantsService {
   async getApplicantById(applicantId: string): Promise<Applicant> {
     try {
       const response = await axios.get(`/applicants/${applicantId}`);
-      // Normalize response shapes: { data: Applicant }, { applicant: Applicant }, or nested wrappers
       let maybe: any = response.data?.data ?? (response.data as any)?.applicant ?? response.data ?? null;
 
       if (!maybe || (typeof maybe === 'object' && !('_id' in maybe))) {
@@ -472,12 +295,10 @@ class ApplicantsService {
         throw new ApiError(getErrorMessage(response as any), response.status ?? undefined, response as any);
       }
 
-      // Normalize any job-specs data so callers can rely on `jobSpecsWithDetails`
       try {
         if (maybe.jobPositionId && typeof maybe.jobPositionId === 'object') {
           jobPositionsService.normalizeJobPosition(maybe.jobPositionId);
         }
-        // If applicant itself carries jobSpecsResponses or jobSpecs, normalize into jobSpecsWithDetails
         if (maybe.jobSpecsResponses || maybe.jobSpecs || maybe.jobSpecsWithDetails) {
           jobPositionsService.normalizeJobPosition(maybe as any);
         }
@@ -496,7 +317,7 @@ class ApplicantsService {
   }
 
   /**
-   * Create a new applicant (internal use)
+   * Create a new applicant
    */
   async createApplicant(data: CreateApplicantRequest): Promise<Applicant> {
     try {
@@ -608,8 +429,7 @@ class ApplicantsService {
   }
 
   /**
-   * Schedule interviews for multiple applicants in a single request.
-   * Supports common backend route/body variants to stay resilient.
+   * Schedule interviews for multiple applicants
    */
   async scheduleBulkInterviews(
     payload: BulkScheduleInterviewRequest | BulkScheduleInterviewItem[]
@@ -651,7 +471,6 @@ class ApplicantsService {
     data: UpdateInterviewStatusRequest
   ): Promise<Applicant> {
     try {
-      // Explicitly construct payload with only fields accepted by updateInterviewSchema
       const payload: any = {};
       const allowedKeys: Array<keyof UpdateInterviewStatusRequest> = [
         'scheduledAt',
@@ -693,24 +512,26 @@ class ApplicantsService {
     }
   }
 
-async batchUpdateStatus(
-  updates: Array<{ applicantId: string; status: string; notes?: string; reasons?: string[] }>
-): Promise<any> {
-  try {
-    // Wrap the array in an object with an empty string as the key
-    const payload = {
-      items: updates
-    };
-    const response = await axios.put('/applicants/batch-status', payload);
-    return response.data;
-  } catch (error: any) {
-    throw new ApiError(
-      getErrorMessage(error),
-      error.response?.status,
-      error.response?.data?.details
-    );
+  /**
+   * Batch update status for multiple applicants
+   */
+  async batchUpdateStatus(
+    updates: Array<{ applicantId: string; status: string; notes?: string; reasons?: string[] }>
+  ): Promise<any> {
+    try {
+      const payload = {
+        items: updates
+      };
+      const response = await axios.put('/applicants/batch-status', payload);
+      return response.data;
+    } catch (error: any) {
+      throw new ApiError(
+        getErrorMessage(error),
+        error.response?.status,
+        error.response?.data?.details
+      );
+    }
   }
-}
 
   /**
    * Add comment to an applicant
@@ -771,7 +592,10 @@ async batchUpdateStatus(
     }
   }
 
-  async getApplicantStatuses(companyId?: string[],  status?: string | string[] | string[]): Promise<any> {
+  /**
+   * Get applicant status insights
+   */
+  async getApplicantStatuses(companyId?: string[], status?: string | string[]): Promise<any> {
     try {
       const normalizedCompanyIds = Array.isArray(companyId)
         ? Array.from(new Set(companyId.map((id) => String(id || "").trim()).filter(Boolean)))
@@ -791,7 +615,6 @@ async batchUpdateStatus(
 
       const results = await Promise.all(normalizedCompanyIds.map((id) => fetchOne(id)));
 
-      // If endpoint returns arrays, merge/dedupe applicants.
       if (results.every((r) => Array.isArray(r))) {
         const unique = new Map<string, any>();
         results.flat().forEach((item: any) => {
@@ -800,7 +623,6 @@ async batchUpdateStatus(
         return Array.from(unique.values());
       }
 
-      // If endpoint returns aggregate objects, sum numeric keys.
       const aggregate: Record<string, number> = {};
       results.forEach((obj: any) => {
         if (!obj || typeof obj !== "object") return;
@@ -821,8 +643,7 @@ async batchUpdateStatus(
   }
 
   /**
-   * Mark an applicant as seen by the current authenticated user.
-   * Backend uses $addToSet so the operation is idempotent.
+   * Mark an applicant as seen
    */
   async markAsSeen(applicantId: string): Promise<void> {
     try {

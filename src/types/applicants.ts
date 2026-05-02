@@ -1,3 +1,5 @@
+// types/applicants.ts
+
 export type Interview = {
   _id?: string;
   issuedBy?: string;
@@ -17,6 +19,15 @@ export type Interview = {
     phoneOption?: "company" | "user" | "whatsapp" | "custom";
     customPhone?: string;
   };
+};
+
+export type InterviewAnswer = {
+  question: string;
+  score: number;
+  achievedScore?: number;
+  notes?: string | null;
+  answerType?: string;
+  choices?: string[];
 };
 
 export type Message = {
@@ -123,4 +134,56 @@ export type UpdateStatusRequest = {
     customPhone?: string;
   };
   reasons?: string[];
+};
+
+export type ScheduleInterviewRequest = {
+  scheduledAt?: string;
+  conductedBy?: string;
+  scheduledBy?: string;
+  description?: string | null;
+  location?: string | null;
+  videoLink?: string;
+  address?: string | null;
+  type?: string | null;
+  notes?: string;
+  interviewers?: string[];
+  status?: "scheduled" | "in_progress" | "completed" | "cancelled";
+  questions?: InterviewAnswer[];
+};
+
+export type BulkScheduleInterviewItem = ScheduleInterviewRequest & {
+  applicantId: string;
+};
+
+export type BulkScheduleInterviewRequest = {
+  interviews: BulkScheduleInterviewItem[];
+};
+
+export type UpdateInterviewStatusRequest = {
+  scheduledAt?: string;
+  scheduledBy?: string;
+  startedAt?: string;
+  endedAt?: string;
+  conductedBy?: string;
+  description?: string | null;
+  location?: string | null;
+  videoLink?: string;
+  address?: string | null;
+  type?: string | null;
+  notes?: string | null;
+  status?: "scheduled" | "in_progress" | "completed" | "cancelled";
+  questions?: InterviewAnswer[];
+};
+
+export type AddCommentRequest = {
+  comment?: string;
+  text?: string;
+  author?: string;
+};
+
+export type SendMessageRequest = {
+  subject?: string;
+  content?: string;
+  comment?: string;
+  type?: "email" | "sms" | "internal" | "whatsapp";
 };

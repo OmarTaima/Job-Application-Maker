@@ -1,3 +1,5 @@
+// types/companies.ts
+
 import type { Applicant } from './applicants';
 
 export type CompanyStatus = {
@@ -57,4 +59,81 @@ export interface UpdateCompanyRequest {
   website?: string;
   logoPath?: string;
   isActive?: boolean;
+}
+
+export interface MailSettings {
+  availableMails?: string[];
+  defaultMail?: string | null;
+  companyDomain?: string | null;
+  resendApiKey?: string | null;
+  sendApplicantDataMail?: boolean;
+  webhookSecret?: string | null;
+  applicantEmailTemplate?: {
+    subject?: string;
+    html?: string;
+  };
+  emailTemplates?: EmailTemplate[];
+}
+
+export interface EmailTemplate {
+  _id?: string;
+  name: string;
+  subject: string;
+  html: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+// Interview Settings Types
+export type InterviewAnswerType = 'text' | 'number' | 'radio' | 'checkbox' | 'dropdown' | 'tags';
+
+export interface InterviewQuestion {
+  question: string;
+  score: number;
+  answerType: InterviewAnswerType;
+  choices?: string[];
+}
+
+export interface InterviewGroup {
+  name: string;
+  questions: InterviewQuestion[];
+}
+
+export interface InterviewSettings {
+  groups: InterviewGroup[];
+}
+
+// Company Settings Types
+export interface UpdateCompanySettingsRequest {
+  mailSettings?: Partial<MailSettings>;
+  interviewSettings?: InterviewSettings;
+  defaultColorGradient?: string[];
+  rejectReasons?: string[];
+  applicantStatus?: any[];
+  statuses?: any[];
+  applicantPages?: any[];
+}
+
+export interface UpdateInterviewSettingsRequest {
+  groups: InterviewGroup[];
+}
+
+export interface UpdateRejectionReasonsRequest {
+  rejectReasons: string[];
+}
+
+export interface UpdateApplicantPagesRequest {
+  applicantPages: any[];
+}
+
+// Company Response Types
+export interface CompanyResponse {
+  success?: boolean;
+  data?: Company;
+  company?: Company;
+}
+
+export interface CompaniesResponse {
+  success: boolean;
+  data: Company[];
 }

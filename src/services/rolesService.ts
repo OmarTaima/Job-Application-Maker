@@ -1,63 +1,25 @@
 import axios from "../config/axios";
 import { getErrorMessage } from "../utils/errorHandler";
+import type {
+  Permission,
+  Role,
+  CreateRoleRequest,
+  UpdateRoleRequest,
+  PermissionsResponse,
+  RolesResponse,
+  CreateRoleResponse,
+} from '../types/roles';
 
-// Types
-export interface Permission {
-  _id: string;
-  name: string;
-  description?: string;
-  actions?: string[];
-  createdAt?: string;
-  __v?: number;
-}
-
-export interface Role {
-  _id: string;
-  name: string;
-  description: string;
-  permissions?: Array<string | { permission: string; access?: string[] }>;
-  isSystemRole?: boolean;
-  singleCompany?: boolean;
-  permissionsCount?: number;
-  usersCount?: number;
-  createdAt?: string;
-  __v?: number;
-}
-
-export interface CreateRoleRequest {
-  name: string;
-  permissions: {
-    permission: string;
-    access: string[];
-  }[];
-}
-
-export interface UpdateRoleRequest {
-  name?: string;
-  description?: string;
-  permissions?: {
-    permission: string;
-    access: string[];
-  }[];
-  isSystemRole?: boolean;
-  singleCompany?: boolean;
-}
-
-export interface PermissionsResponse {
-  success: boolean;
-  data: Permission[];
-}
-
-export interface RolesResponse {
-  success: boolean;
-  data: Role[];
-}
-
-export interface CreateRoleResponse {
-  success: boolean;
-  message: string;
-  data: Role;
-}
+// Re-export types for convenience
+export type {
+  Permission,
+  Role,
+  CreateRoleRequest,
+  UpdateRoleRequest,
+  PermissionsResponse,
+  RolesResponse,
+  CreateRoleResponse,
+} from '../types/roles';
 
 // API Error class
 export class ApiError extends Error {
@@ -72,13 +34,48 @@ export class ApiError extends Error {
 }
 
 // Roles & Permissions Service
-export const rolesService = {
+class RolesService {
+  private readonly PERMISSIONS_BASE = "/permissions";
+  private readonly ROLES_BASE = "/roles";
+
+  /**
+   * Extract role from response with fallback for different response shapes
+   */
+  private extractRoleFromResponse(responseData: any): Role {
+    // Try common response shapes
+    const role = 
+      responseData?.data ??           // Standard shape: { data: Role }
+      responseData?.role ??           // Alternative shape: { role: Role }
+      responseData ??                 // Direct role object
+      null;
+
+    // Check if we have a valid role with _id
+    if (role && typeof role === 'object' && '_id' in role) {
+      return role as Role;
+    }
+
+    // Try to find nested object with _id
+    const nestedWithId = Object.values(responseData || {}).find(
+      (v: any) => v && typeof v === 'object' && v._id
+    );
+
+    if (nestedWithId) {
+      return nestedWithId as Role;
+    }
+
+    // Log warning if we couldn't extract the role
+    console.warn('RolesService: Unable to extract role from response', responseData);
+    throw new ApiError('Invalid response format from server');
+  }
+
   /**
    * Get all permissions
    */
   async getAllPermissions(): Promise<Permission[]> {
     try {
-      const response = await axios.get<PermissionsResponse>("/permissions?PageCount=1000");
+      const response = await axios.get<PermissionsResponse>(
+        `${this.PERMISSIONS_BASE}?PageCount=1000`
+      );
       return response.data.data;
     } catch (error: any) {
       throw new ApiError(
@@ -87,16 +84,16 @@ export const rolesService = {
         error.response?.data
       );
     }
-  },
+  }
 
   /**
-   * Get all roles
+   * Get all roles (non-deleted by default)
    */
   async getAllRoles(): Promise<Role[]> {
     try {
-      // Request only non-deleted roles by default
-      // Always request only non-deleted roles
-      const response = await axios.get<RolesResponse>("/roles", { params: { deleted: "false" } });
+      const response = await axios.get<RolesResponse>(this.ROLES_BASE, {
+        params: { deleted: "false" }
+      });
       return response.data.data;
     } catch (error: any) {
       throw new ApiError(
@@ -105,29 +102,34 @@ export const rolesService = {
         error.response?.data
       );
     }
-  },
+  }
+
+  /**
+   * Get role by ID
+   */
+  async getRoleById(roleId: string): Promise<Role> {
+    try {
+      const response = await axios.get<{ data: Role }>(`${this.ROLES_BASE}/${roleId}`);
+      return response.data.data;
+    } catch (error: any) {
+      throw new ApiError(
+        getErrorMessage(error),
+        error.response?.status,
+        error.response?.data
+      );
+    }
+  }
 
   /**
    * Create a new role
    */
   async createRole(roleData: CreateRoleRequest): Promise<Role> {
     try {
-      const response = await axios.post<CreateRoleResponse>("/roles", roleData);
-      // Normalize response shapes: some backends return { data: Role } or { role: Role } or { message, role: Role }
-      let maybe: any = response.data?.data ?? (response.data as any)?.role ?? response.data ?? null;
-
-      if (!maybe || (typeof maybe === 'object' && !('_id' in maybe))) {
-        // Try to find a nested object with _id
-        const nested = Object.values(response.data || {}).find((v: any) => v && typeof v === 'object' && v._id);
-        if (nested) maybe = nested;
-      }
-
-      if (!maybe) {
-        console.warn('rolesService.createRole: unexpected response shape', response.data);
-        throw new ApiError(getErrorMessage(response as any), response.status ?? undefined, response as any);
-      }
-
-      return maybe as Role;
+      const response = await axios.post<CreateRoleResponse>(
+        this.ROLES_BASE,
+        roleData
+      );
+      return this.extractRoleFromResponse(response.data);
     } catch (error: any) {
       throw new ApiError(
         getErrorMessage(error),
@@ -135,15 +137,15 @@ export const rolesService = {
         error.response?.data
       );
     }
-  },
+  }
 
   /**
    * Update an existing role
    */
-  async updateRole(id: string, roleData: UpdateRoleRequest): Promise<Role> {
+  async updateRole(roleId: string, roleData: UpdateRoleRequest): Promise<Role> {
     try {
       const response = await axios.put<CreateRoleResponse>(
-        `/roles/${id}`,
+        `${this.ROLES_BASE}/${roleId}`,
         roleData
       );
       return response.data.data;
@@ -154,14 +156,14 @@ export const rolesService = {
         error.response?.data
       );
     }
-  },
+  }
 
   /**
-   * Delete a role
+   * Delete a role (soft delete)
    */
-  async deleteRole(id: string): Promise<void> {
+  async deleteRole(roleId: string): Promise<void> {
     try {
-      await axios.delete(`/roles/${id}`);
+      await axios.delete(`${this.ROLES_BASE}/${roleId}`);
     } catch (error: any) {
       throw new ApiError(
         getErrorMessage(error),
@@ -169,5 +171,60 @@ export const rolesService = {
         error.response?.data
       );
     }
-  },
-};
+  }
+
+  /**
+   * Get permissions by role ID
+   */
+  async getPermissionsByRole(roleId: string): Promise<Permission[]> {
+    try {
+      const response = await axios.get<{ data: Permission[] }>(
+        `${this.ROLES_BASE}/${roleId}/permissions`
+      );
+      return response.data.data;
+    } catch (error: any) {
+      throw new ApiError(
+        getErrorMessage(error),
+        error.response?.status,
+        error.response?.data
+      );
+    }
+  }
+
+  /**
+   * Assign permissions to role
+   */
+  async assignPermissionsToRole(roleId: string, permissions: string[]): Promise<Role> {
+    try {
+      const response = await axios.post<CreateRoleResponse>(
+        `${this.ROLES_BASE}/${roleId}/permissions`,
+        { permissions }
+      );
+      return response.data.data;
+    } catch (error: any) {
+      throw new ApiError(
+        getErrorMessage(error),
+        error.response?.status,
+        error.response?.data
+      );
+    }
+  }
+
+  /**
+   * Remove permission from role
+   */
+  async removePermissionFromRole(roleId: string, permissionId: string): Promise<void> {
+    try {
+      await axios.delete(`${this.ROLES_BASE}/${roleId}/permissions/${permissionId}`);
+    } catch (error: any) {
+      throw new ApiError(
+        getErrorMessage(error),
+        error.response?.status,
+        error.response?.data
+      );
+    }
+  }
+}
+
+// Export singleton instance
+export const rolesService = new RolesService();

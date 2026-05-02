@@ -1,3 +1,5 @@
+// types/roles.ts
+
 export interface Permission {
   _id: string;
   name: string;
@@ -40,4 +42,20 @@ export interface UpdateRoleRequest {
   }[];
   isSystemRole?: boolean;
   singleCompany?: boolean;
+}
+
+export interface PermissionsResponse {
+  success: boolean;
+  data: Permission[];
+}
+
+export interface RolesResponse {
+  success: boolean;
+  data: Role[];
+}
+
+export interface CreateRoleResponse {
+  success: boolean;
+  message: string;
+  data: Role;
 }
