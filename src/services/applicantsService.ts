@@ -12,7 +12,6 @@ import type {
   UpdateInterviewStatusRequest,
   AddCommentRequest,
   SendMessageRequest,
-  Interview,
   InterviewAnswer,
 } from '../types/applicants';
 
