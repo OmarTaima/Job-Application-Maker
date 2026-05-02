@@ -56,7 +56,7 @@ const ApplicantData = () => {
   const queryClient = useQueryClient();
 
   // Get company ID from user context for fetching applicants
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
   const companyId = useMemo(() => {
     if (!user) return undefined;
     const roleName = user?.roleId?.name?.toLowerCase();
@@ -122,6 +122,16 @@ const ApplicantData = () => {
   })();
   const hasApplicantsListInCache = Array.isArray(cachedApplicantsListData);
   const shouldFetchApplicants = !hasApplicantsListInState && !hasApplicantsListInCache;
+
+  const canManageApplicant =
+    hasPermission('Applicant Management', 'create') &&
+    hasPermission('Applicant Management', 'write');
+  const canManageInterviews =
+    hasPermission('Interview Settings Management', 'create') &&
+    hasPermission('Interview Settings Management', 'write');
+  const canManageMessages =
+    hasPermission('Message Management', 'create') &&
+    hasPermission('Message Management', 'write');
 
   // Fetch all applicants for navigation only when we do not already have a list
   const { data: allApplicantsData = [] } = useApplicants(companyId as any, undefined, undefined, {
@@ -815,6 +825,7 @@ const ApplicantData = () => {
   const [isEditOnlyMode, setIsEditOnlyMode] = useState(false);
 
   const openEditOnlyMode = () => {
+    if (!canManageApplicant) return;
     if (!applicant) return;
 
     const availableCustomFields = getAvailableCustomFieldsForInterview();
@@ -1711,6 +1722,7 @@ const ApplicantData = () => {
   ]);
 
   const openInterviewEditMode = () => {
+    if (!canManageInterviews) return;
     if (!applicant) return;
 
     const availableCustomFields = getAvailableCustomFieldsForInterview();
@@ -2425,6 +2437,7 @@ const ApplicantData = () => {
 
   const handleInterviewSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canManageInterviews) return;
     if (!id || !applicant) return;
 
     if (emailOption === 'custom' && !customEmail.trim()) {
@@ -2661,6 +2674,7 @@ const ApplicantData = () => {
 
   const handleCommentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canManageMessages) return;
     if (!id || !applicant) return;
 
     setIsSubmittingComment(true);
@@ -2735,6 +2749,7 @@ const ApplicantData = () => {
   };
 
   const handleDeleteApplicant = async () => {
+    if (!canManageApplicant) return;
     if (!id || !applicant) return;
 
     const result = await Swal.fire({
@@ -2909,29 +2924,33 @@ const ApplicantData = () => {
               {applicant.status ? applicant.status.charAt(0).toUpperCase() + applicant.status.slice(1) : 'Status'}
             </button>
             
-            <button
-              onClick={openEditOnlyMode}
-              disabled={isInterviewEditMode || isEditOnlyMode}
-              className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-brand-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              <svg className="h-3 w-3 sm:h-4 sm:w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-              </svg>
-              Edit
-            </button>
+            {canManageApplicant && (
+              <button
+                onClick={openEditOnlyMode}
+                disabled={isInterviewEditMode || isEditOnlyMode}
+                className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-brand-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <svg className="h-3 w-3 sm:h-4 sm:w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+                Edit
+              </button>
+            )}
 
-            <button
-              onClick={openInterviewEditMode}
-              disabled={isInterviewEditMode || isEditOnlyMode}
-              className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-amber-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              <svg className="h-3 w-3 sm:h-4 sm:w-4" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M8 5v14l11-7z" />
-              </svg>
-              Interview
-            </button>
+            {canManageInterviews && (
+              <button
+                onClick={openInterviewEditMode}
+                disabled={isInterviewEditMode || isEditOnlyMode}
+                className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-amber-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <svg className="h-3 w-3 sm:h-4 sm:w-4" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+                Interview
+              </button>
+            )}
 
-            {(isInterviewEditMode || isEditOnlyMode) && (
+            {(isInterviewEditMode ? canManageInterviews : canManageApplicant) && (isInterviewEditMode || isEditOnlyMode) && (
               <>
                 <button
                   onClick={isInterviewEditMode ? handleInterviewEditSave : handleEditSave}
@@ -2950,58 +2969,68 @@ const ApplicantData = () => {
               </>
             )}
 
-            <button
-              onClick={() => {
-                setFormResetKey(prev => prev + 1);
-                fillCompanyAddress();
-                setShowInterviewModal(true);
-              }}
-              className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-blue-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-blue-700"
-            >
-              <PlusIcon className="h-3 w-3 sm:h-4 sm:w-4" />
-              <span className="hidden sm:inline">Schedule</span> Interview
-            </button>
+            {canManageInterviews && (
+              <button
+                onClick={() => {
+                  setFormResetKey((prev) => prev + 1);
+                  fillCompanyAddress();
+                  setShowInterviewModal(true);
+                }}
+                className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-blue-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-blue-700"
+              >
+                <PlusIcon className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="hidden sm:inline">Schedule</span> Interview
+              </button>
+            )}
             
-            <button
-              onClick={() => {
-                setSelectedInterview(applicant.interviews?.[0] || null);
-                setShowInterviewSettingsModal(true);
-              }}
-              className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-indigo-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-indigo-700"
-            >
-              <svg className="h-3 w-3 sm:h-4 sm:w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-              Interview Settings
-            </button>
+            {canManageInterviews && (
+              <button
+                onClick={() => {
+                  setSelectedInterview(applicant.interviews?.[0] || null);
+                  setShowInterviewSettingsModal(true);
+                }}
+                className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-indigo-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-indigo-700"
+              >
+                <svg className="h-3 w-3 sm:h-4 sm:w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                Interview Settings
+              </button>
+            )}
             
-            <button
-              onClick={() => setShowMessageModal(true)}
-              className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-purple-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-purple-700"
-            >
-              <PlusIcon className="h-3 w-3 sm:h-4 sm:w-4" />
-              <span className="hidden sm:inline">Send</span> Message
-            </button>
+            {canManageMessages && (
+              <button
+                onClick={() => setShowMessageModal(true)}
+                className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-purple-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-purple-700"
+              >
+                <PlusIcon className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="hidden sm:inline">Send</span> Message
+              </button>
+            )}
             
-            <button
-              onClick={() => setShowCommentModal(true)}
-              className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-gray-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-gray-700"
-            >
-              <PlusIcon className="h-3 w-3 sm:h-4 sm:w-4" />
-              <span className="hidden sm:inline">Add</span> Comment
-            </button>
+            {canManageMessages && (
+              <button
+                onClick={() => setShowCommentModal(true)}
+                className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-gray-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-gray-700"
+              >
+                <PlusIcon className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="hidden sm:inline">Add</span> Comment
+              </button>
+            )}
 
-            <button
-              onClick={handleDeleteApplicant}
-              disabled={isSubmittingStatus}
-              className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-red-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              <svg className="h-3 w-3 sm:h-4 sm:w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
-              Delete
-            </button>
+            {canManageApplicant && (
+              <button
+                onClick={handleDeleteApplicant}
+                disabled={isSubmittingStatus}
+                className="inline-flex items-center gap-1 sm:gap-2 rounded-lg bg-red-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <svg className="h-3 w-3 sm:h-4 sm:w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                Delete
+              </button>
+            )}
           </div>
         </div>
 
@@ -4677,6 +4706,8 @@ const ApplicantData = () => {
           isSubmittingStatus={isSubmittingStatus}
           companyId={resolvedCompanyId}
           companySettings={companyFromMe || companyObj}
+          jobIds={applicantJobPosition ? [applicantJobPosition._id || applicantJobPosition.id || ''] : []}
+          jobs={applicantJobPosition ? [applicantJobPosition] : []}
         />
       </div>
     </>

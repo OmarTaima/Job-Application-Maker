@@ -15,6 +15,8 @@ type Props = {
   isSubmittingStatus: boolean;
   companyId?: string;
   companySettings?: any;
+  jobIds?: string[]; // Job IDs of selected applicants
+  jobs?: any[]; // All job positions with allowedStatuses
 };
 
 export default function StatusChangeModal({
@@ -28,6 +30,8 @@ export default function StatusChangeModal({
   isSubmittingStatus,
   companyId,
   companySettings,
+  jobIds = [],
+  jobs = [],
 }: Props) {
   const shouldFetchCompanySettings = !!companyId && !companySettings;
   const { data: fetchedCompanySettings } = useCompanySettings(companyId, { enabled: shouldFetchCompanySettings });
@@ -35,6 +39,35 @@ export default function StatusChangeModal({
   
   // Get statuses from the hook using company settings
   const { statusOptions, getDescription } = useStatusSettings(resolvedCompanySettings);
+
+  // Filter statuses based on selected applicants' jobs
+  const filteredStatusOptions = useMemo(() => {
+    // If we have job IDs and they're all from the same job
+    const uniqueJobIds = Array.from(new Set(jobIds));
+    if (uniqueJobIds.length === 1) {
+      // All applicants are from the same job
+      const jobId = uniqueJobIds[0];
+      const job = jobs?.find((j: any) => {
+        const jId = typeof j._id === 'string' ? j._id : j._id?._id || j.id;
+        return jId === jobId;
+      });
+
+      if (job?.allowedStatuses && Array.isArray(job.allowedStatuses) && job.allowedStatuses.length > 0) {
+        // Filter statusOptions to only include allowed statuses
+        return statusOptions.filter((option: any) => {
+          // Check if the status value/name matches any allowed status ID
+          return job.allowedStatuses.some((allowedId: any) => {
+            const normalizedAllowedId = String(allowedId?._id || allowedId?.id || allowedId || '').trim().toLowerCase();
+            const normalizedOptionValue = String(option.value || '').trim().toLowerCase();
+            return normalizedOptionValue === normalizedAllowedId || option.text?.toLowerCase() === normalizedAllowedId;
+          });
+        });
+      }
+    }
+
+    // If applicants are from different jobs or no job filter, return all statuses
+    return statusOptions;
+  }, [jobIds, jobs, statusOptions]);
 
   // State for search input and custom values
   const [customReasons, setCustomReasons] = useState<string[]>([]);
@@ -266,7 +299,7 @@ void handleKeyDown;
             <div>
               <Label htmlFor="status-select">New Status</Label>
               <Select
-                options={statusOptions}
+                options={filteredStatusOptions}
                 placeholder="Select new status"
                 value={statusForm?.status || ''}
                 onChange={handleStatusSelect}

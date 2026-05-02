@@ -159,6 +159,7 @@ export default function Jobs() {
   const isAdmin = user?.roleId?.name?.toLowerCase().includes("super admin");
   const canCreate = hasPermission("Job Position Management", "create");
   const canWrite = hasPermission("Job Position Management", "write");
+  const canManageJobs = canCreate && canWrite;
 
   const [searchTerm, setSearchTerm] = useState("");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
@@ -661,7 +662,7 @@ export default function Jobs() {
             <RefreshCwIcon className="size-4 text-slate-500" />
           </button>
           
-          {canCreate && (
+          {canManageJobs && (
             <button
               onClick={() => navigate("/create-job")}
               className="group flex items-center gap-2 rounded-xl bg-gradient-to-r from-brand-600 to-brand-400 px-5 py-2.5 text-sm font-semibold text-white shadow-lg transition-all hover:scale-[1.02] hover:shadow-brand-500/25 active:scale-95"
@@ -790,7 +791,7 @@ export default function Jobs() {
                       </div>
                       
                       <div className="flex flex-col items-end gap-2">
-                         {canWrite && (
+                         {canManageJobs && (
                            <div onClick={(e) => e.stopPropagation()}>
                              <Switch 
                                label="" 
@@ -823,7 +824,7 @@ export default function Jobs() {
                       </div>
                       
                       <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                        {canWrite && (
+                        {canManageJobs && (
                           <button 
                             onClick={(e) => { e.stopPropagation(); navigate(`/create-job?id=${job._id}`, { state: { job } }); }}
                             className="p-1.5 text-slate-400 hover:text-brand-600 transition-colors bg-white/80 rounded-lg dark:bg-slate-800"
@@ -831,7 +832,7 @@ export default function Jobs() {
                             <PencilIcon className="size-4" />
                           </button>
                         )}
-                        {canWrite && (
+                        {canManageJobs && (
                           <button 
                             onClick={(e) => handleDelete(e, job._id)}
                             className="p-1.5 text-slate-400 hover:text-red-600 transition-colors bg-white/80 rounded-lg dark:bg-slate-800"

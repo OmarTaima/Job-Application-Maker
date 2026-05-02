@@ -598,6 +598,29 @@ export default function Applicants({
     allCompaniesRaw,
   });
 
+  // Get job IDs for selected applicants
+  const selectedApplicantJobIds = useMemo(() => {
+    const jobIds = new Set<string>();
+    const ids = new Set(selectedApplicantIds);
+    
+    applicants.forEach((applicant: any) => {
+      const applicantId = typeof applicant._id === 'string' ? applicant._id : applicant._id?._id || applicant.id;
+      if (!ids.has(applicantId)) return;
+      
+      // Extract job ID from various possible locations
+      const jobId = 
+        (typeof applicant.jobPositionId === 'string' ? applicant.jobPositionId : applicant.jobPositionId?._id) ||
+        applicant.job?._id ||
+        applicant.jobId;
+      
+      if (jobId) {
+        jobIds.add(typeof jobId === 'string' ? jobId : jobId._id || jobId.id);
+      }
+    });
+    
+    return Array.from(jobIds);
+  }, [selectedApplicantIds, applicants]);
+
   // Bulk actions
   const {
     isDeleting,
@@ -2473,6 +2496,8 @@ export default function Applicants({
               handleStatusChange={handleBulkStatusChange}
               isSubmittingStatus={isSubmittingBulkStatus}
               companyId={selectedApplicantCompanyId ?? undefined}
+              jobIds={selectedApplicantJobIds}
+              jobs={jobPositions}
             />
 
             <InterviewScheduleModal

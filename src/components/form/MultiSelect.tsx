@@ -39,13 +39,20 @@ const MultiSelect: React.FC<MultiSelectProps> = ({
   const [focusedIndex, setFocusedIndex] = useState(-1);
   const [customInput, setCustomInput] = useState("");
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
+  const fixedDropdownRef = useRef<HTMLDivElement>(null);
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number }>({
+    top: 0,
+    left: 0,
+  });
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(event.target as Node)
-      ) {
+      const clickedElement = event.target as Node;
+      const isClickInTrigger = triggerRef.current && triggerRef.current.contains(clickedElement);
+      const isClickInDropdown = fixedDropdownRef.current && fixedDropdownRef.current.contains(clickedElement);
+      
+      if (!isClickInTrigger && !isClickInDropdown) {
         setIsOpen(false);
       }
     };
@@ -57,6 +64,37 @@ const MultiSelect: React.FC<MultiSelectProps> = ({
     }
   }, [isOpen]);
 
+  useEffect(() => {
+    if (isOpen && triggerRef.current) {
+      const handleScroll = () => {
+        const rect = triggerRef.current?.getBoundingClientRect();
+        if (rect) {
+          setDropdownPos({
+            top: rect.bottom + 4,
+            left: rect.left,
+          });
+        }
+      };
+
+      const handleResize = () => {
+        const rect = triggerRef.current?.getBoundingClientRect();
+        if (rect) {
+          setDropdownPos({
+            top: rect.bottom + 4,
+            left: rect.left,
+          });
+        }
+      };
+
+      window.addEventListener("scroll", handleScroll, true);
+      window.addEventListener("resize", handleResize);
+      return () => {
+        window.removeEventListener("scroll", handleScroll, true);
+        window.removeEventListener("resize", handleResize);
+      };
+    }
+  }, [isOpen]);
+
   const updateSelection = (newSelected: string[]) => {
     if (!isControlled) setInternalSelected(newSelected);
     onChange?.(newSelected);
@@ -64,6 +102,13 @@ const MultiSelect: React.FC<MultiSelectProps> = ({
 
   const toggleDropdown = () => {
     if (!disabled) {
+      if (!isOpen && triggerRef.current) {
+        const rect = triggerRef.current.getBoundingClientRect();
+        setDropdownPos({
+          top: rect.bottom + 4,
+          left: rect.left,
+        });
+      }
       setIsOpen((prev) => !prev);
       setFocusedIndex(-1);
     }
@@ -167,6 +212,7 @@ const MultiSelect: React.FC<MultiSelectProps> = ({
       <div className="relative z-20 inline-block w-full">
         <div className="relative flex flex-col items-center">
           <div
+            ref={triggerRef}
             onClick={toggleDropdown}
             onKeyDown={handleKeyDown}
             className="w-full"
@@ -282,7 +328,13 @@ const MultiSelect: React.FC<MultiSelectProps> = ({
 
           {isOpen && (
             <div
-              className={`absolute left-0 z-40 w-full overflow-y-auto bg-white rounded-lg shadow-sm top-full ${maxHeightClass} dark:bg-gray-900`}
+              ref={fixedDropdownRef}
+              className={`fixed z-50 w-80 overflow-y-auto bg-white rounded-lg shadow-lg ${maxHeightClass} dark:bg-gray-900`}
+              style={{
+                top: `${dropdownPos.top}px`,
+                left: `${dropdownPos.left}px`,
+                right: "auto",
+              }}
               onClick={(e) => e.stopPropagation()}
               role="listbox"
               aria-label={label}

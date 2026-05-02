@@ -9,6 +9,7 @@ import Input from "../../../components/form/input/InputField";
 import TextArea from "../../../components/form/input/TextArea";
 import Switch from "../../../components/form/switch/Switch";
 import Select from "../../../components/form/Select";
+import MultiSelect from "../../../components/form/MultiSelect";
 import { PlusIcon, TrashBinIcon, CheckCircleIcon } from "../../../icons";
 import { useAuth } from "../../../context/AuthContext";
 import { jobPositionsService } from "../../../services/jobPositionsService";
@@ -75,6 +76,12 @@ type CustomField = {
 
 type EmploymentType = 'full-time' | 'part-time' | 'contract' | 'internship';
 type WorkArrangement = 'on-site' | 'remote' | 'hybrid';
+
+type CompanyStatus = {
+  _id?: string;
+  id?: string;
+  name?: string;
+};
 
 type FieldConfigRule = {
   visible: boolean;
@@ -213,6 +220,51 @@ const normalizeFieldConfig = (
   };
 };
 
+const normalizeStatusLabel = (value: any): string =>
+  toPlainString(value).trim().toLowerCase();
+
+const normalizeAllowedStatuses = (
+  value: any,
+  companyStatuses: CompanyStatus[] = []
+): string[] => {
+  const rawValues = Array.isArray(value) ? value : [];
+  if (rawValues.length === 0) return [];
+
+  const statusMap = new Map<string, string>();
+  companyStatuses.forEach((status) => {
+    const statusId = String(status?._id || status?.id || '').trim();
+    if (!statusId) return;
+    statusMap.set(statusId, statusId);
+    const statusName = normalizeStatusLabel(status?.name);
+    if (statusName) statusMap.set(statusName, statusId);
+  });
+
+  return rawValues
+    .map((entry) => {
+      if (!entry) return '';
+      if (typeof entry === 'string') {
+        const trimmed = entry.trim();
+        return statusMap.get(trimmed) || statusMap.get(normalizeStatusLabel(trimmed)) || trimmed;
+      }
+      if (typeof entry === 'object') {
+        const id = String(entry._id || entry.id || '').trim();
+        if (id) return id;
+        const name = normalizeStatusLabel(entry.name);
+        return statusMap.get(name) || name;
+      }
+      return String(entry).trim();
+    })
+    .filter(Boolean);
+};
+
+const getPendingStatusId = (statuses: CompanyStatus[]): string | null => {
+  if (!Array.isArray(statuses) || statuses.length === 0) return null;
+  const pendingStatus = statuses.find(
+    (status) => normalizeStatusLabel(status?.name) === 'pending'
+  );
+  return pendingStatus ? String(pendingStatus._id || pendingStatus.id || '').trim() : null;
+};
+
 type JobForm = {
   companyId: string;
   departmentId: string;
@@ -228,6 +280,8 @@ type JobForm = {
   openPositions: number;
   registrationStart: string;
   registrationEnd: string;
+  allowedStatuses: string[];
+  hideAfterRegistrationEnd: boolean;
   termsAndConditions: string[];
   termsAndConditionsAr: string[];
   jobSpecs: JobSpec[];
@@ -336,6 +390,8 @@ export default function CreateJob() {
     openPositions: 1,
     registrationStart: "",
     registrationEnd: "",
+    allowedStatuses: [],
+    hideAfterRegistrationEnd: false,
     termsAndConditions: [],
     termsAndConditionsAr: [],
     jobSpecs: [],
@@ -521,6 +577,8 @@ export default function CreateJob() {
         openPositions: 1,
         registrationStart: "",
         registrationEnd: "",
+        allowedStatuses: [],
+        hideAfterRegistrationEnd: false,
         termsAndConditions: [],
         termsAndConditionsAr: [],
         jobSpecs: [],
@@ -556,6 +614,10 @@ export default function CreateJob() {
         openPositions: selectedJob.openPositions || 1,
         registrationStart: selectedJob.registrationStart ? new Date(selectedJob.registrationStart).toISOString().split("T")[0] : "",
         registrationEnd: selectedJob.registrationEnd ? new Date(selectedJob.registrationEnd).toISOString().split("T")[0] : "",
+        allowedStatuses: Array.isArray((selectedJob as any).allowedStatuses)
+          ? (selectedJob as any).allowedStatuses.map((status: any) => String(status || '').trim()).filter(Boolean)
+          : [],
+        hideAfterRegistrationEnd: Boolean((selectedJob as any).hideAfterRegistrationEnd),
         termsAndConditions: Array.isArray(selectedJob.termsAndConditions)
           ? selectedJob.termsAndConditions.map((t: any) => typeof t === 'string' ? t : t?.en || '')
           : [],
@@ -667,6 +729,10 @@ export default function CreateJob() {
             openPositions: job.openPositions || 1,
             registrationStart: formatDateForInput(job.registrationStart),
             registrationEnd: formatDateForInput(job.registrationEnd),
+            allowedStatuses: Array.isArray((job as any).allowedStatuses)
+              ? (job as any).allowedStatuses.map((status: any) => String(status || '').trim()).filter(Boolean)
+              : [],
+            hideAfterRegistrationEnd: Boolean((job as any).hideAfterRegistrationEnd),
             termsAndConditions:
               job.termsAndConditions && job.termsAndConditions.length > 0
                 ? job.termsAndConditions.map((t: any) =>
@@ -757,6 +823,39 @@ export default function CreateJob() {
 
     loadJobData();
   }, [editJobId, companies, jobFromState]);
+
+  const selectedCompany = useMemo(() => {
+    if (!jobForm.companyId) return null;
+    return (allCompanies as any[]).find((company: any) => company._id === jobForm.companyId) || null;
+  }, [allCompanies, jobForm.companyId]);
+
+  const allowedStatusOptions = useMemo(() => {
+    const rawStatuses = Array.isArray(selectedCompany?.settings?.statuses)
+      ? selectedCompany.settings.statuses
+      : [];
+
+    return rawStatuses
+      .map((status: CompanyStatus) => {
+        const value = String(status?._id || status?.id || '').trim();
+        if (!value) return null;
+        return {
+          value,
+          text: toPlainString(status?.name) || value,
+        };
+      })
+      .filter(Boolean) as Array<{ value: string; text: string }>;
+  }, [selectedCompany]);
+
+  useEffect(() => {
+    if (!jobForm.companyId) return;
+    setJobForm((prev) => {
+      const normalized = normalizeAllowedStatuses(prev.allowedStatuses, selectedCompany?.settings?.statuses || []);
+      const sameLength = normalized.length === (Array.isArray(prev.allowedStatuses) ? prev.allowedStatuses.length : 0);
+      const sameValues = sameLength && normalized.every((value, index) => value === prev.allowedStatuses[index]);
+      if (sameValues) return prev;
+      return { ...prev, allowedStatuses: normalized };
+    });
+  }, [jobForm.companyId, selectedCompany]);
 
   // Auto-select company for users with single company
   useEffect(() => {
@@ -1461,6 +1560,10 @@ export default function CreateJob() {
       payload.openPositions = jobForm.openPositions;
       payload.registrationStart = jobForm.registrationStart;
       payload.registrationEnd = jobForm.registrationEnd;
+      payload.allowedStatuses = Array.isArray(jobForm.allowedStatuses)
+        ? jobForm.allowedStatuses.filter(Boolean)
+        : [];
+      payload.hideAfterRegistrationEnd = Boolean(jobForm.hideAfterRegistrationEnd);
       payload.jobSpecs = jobForm.jobSpecs
         .filter((spec) => spec.spec.trim() || (jobForm.bilingual && spec.specAr?.trim()))
         .map((spec) => ({
@@ -1676,13 +1779,20 @@ export default function CreateJob() {
                 <div className="space-y-2">
                   <Label htmlFor="companyId" required>Target Company</Label>
                   {companies.length > 0 ? (
-                    <Select
+                  <Select
                       options={companies}
                       placeholder="Select company"
                       value={jobForm.companyId}
                       onChange={(value) => {
                         handleInputChange("companyId", value);
                         handleInputChange("departmentId", "");
+                        const companyData = jobForm.companyId === value 
+                          ? selectedCompany 
+                          : allCompanies.find((c: any) => c._id === value);
+                        const pendingStatusId = companyData 
+                          ? getPendingStatusId(companyData.settings?.statuses || [])
+                          : null;
+                        handleInputChange("allowedStatuses", pendingStatusId ? [pendingStatusId] : []);
                       }}
                       required
                     />
@@ -1970,6 +2080,37 @@ export default function CreateJob() {
                     onClick={(e) => (e.currentTarget as any).showPicker?.()}
                     required
                   />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                <div className="space-y-2">
+                  {jobForm.companyId ? (
+                    <MultiSelect
+                      label="Allowed Statuses"
+                      options={allowedStatusOptions}
+                      value={jobForm.allowedStatuses}
+                      onChange={(selected) => handleInputChange("allowedStatuses", selected)}
+                      placeholder={allowedStatusOptions.length > 0 ? "Select statuses" : "No company statuses available"}
+                      disabled={allowedStatusOptions.length === 0}
+                    />
+                  ) : (
+                    <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5 text-gray-500 dark:border-gray-700 dark:bg-gray-800/50">
+                      Select a company first to choose allowed statuses.
+                    </div>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <div className="group/toggle relative rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800/50">
+                    <Switch
+                      label="Hide After Registration End"
+                      checked={jobForm.hideAfterRegistrationEnd}
+                      onChange={(checked) => handleInputChange("hideAfterRegistrationEnd", checked)}
+                    />
+                    <p className="mt-1.5 ml-11 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400 opacity-70 group-hover/toggle:opacity-100 transition-opacity">
+                      Hide this job from public listings after the application deadline passes.
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>

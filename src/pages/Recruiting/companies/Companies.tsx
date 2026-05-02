@@ -35,6 +35,7 @@ export default function Companies() {
   const canRead = hasPermission("Company Management", "read");
   const canCreate = hasPermission("Company Management", "create");
   const canWrite = hasPermission("Company Management", "write");
+  const canManageCompanies = canCreate && canWrite;
 
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [page, setPage] = useState(1);
@@ -165,7 +166,7 @@ export default function Companies() {
                 className="w-full pl-11 pr-4 py-3 bg-white/60 dark:bg-white/5 backdrop-blur-md border border-white/20 dark:border-white/10 rounded-[1.25rem] focus:ring-2 focus:ring-brand-500/20 outline-none transition-all dark:text-white placeholder:text-gray-400 font-medium"
               />
             </div>
-            {canCreate && (
+            {canManageCompanies && (
               <button
                 onClick={() => navigate("/company/add")}
                 className="flex items-center gap-2 px-6 py-3 bg-brand-500 text-white rounded-[1.25rem] font-bold shadow-xl shadow-brand-500/20 hover:scale-105 active:scale-95 transition-all"
@@ -234,7 +235,7 @@ export default function Companies() {
                       </div>
 
                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all translate-y-2 group-hover:translate-y-0 duration-300">
-                        {canWrite && (
+                        {canManageCompanies && (
                           <button 
                             onClick={(e) => { e.stopPropagation(); navigate(`/company/${company._id}`); }}
                             className="size-8 rounded-lg bg-blue-500/10 text-blue-500 hover:bg-blue-500 hover:text-white flex items-center justify-center transition-all"
@@ -242,7 +243,7 @@ export default function Companies() {
                             <Pencil className="size-3.5" />
                           </button>
                         )}
-                        {canWrite && (
+                        {canManageCompanies && (
                           <button 
                             onClick={(e) => { e.stopPropagation(); handleDeleteCompany(company); }}
                             className="size-8 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white flex items-center justify-center transition-all"
