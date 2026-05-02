@@ -1,3 +1,8 @@
+import type { FieldType, BilingualString, BilingualChoice } from './fieldTypes';
+
+
+
+
 export interface User {
   _id: string;
   fullName?: string;
@@ -43,3 +48,30 @@ export interface UpdateUserRequest {
   phone?: string;
   department?: string;
 }
+
+
+export type SavedField = {
+  fieldId: string;
+  label: BilingualString | string;
+  inputType: FieldType;
+  defaultValue?: string;
+  minValue?: number;
+  maxValue?: number;
+  isRequired?: boolean;
+  choices?: BilingualChoice[] | string[];
+  groupFields?: SavedField[];
+};
+
+export type CreateSavedFieldRequest = {
+  fieldId: string;
+  label: BilingualString | string;
+  inputType: FieldType;
+  defaultValue?: string;
+  minValue?: number;
+  maxValue?: number;
+  isRequired?: boolean;
+  choices?: BilingualChoice[] | string[];
+  groupFields?: any[];
+};
+
+export type UpdateSavedFieldRequest = Partial<CreateSavedFieldRequest>;

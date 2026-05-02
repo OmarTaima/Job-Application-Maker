@@ -14,7 +14,7 @@ import {
   useUpdateRecommendedField,
   useDeleteRecommendedField,
 } from "../../../hooks/queries";
-import type { FieldType } from "../../../types/recommendedFields";
+import type { FieldType } from "../../../types/fieldTypes";
 
 type GroupField = {
   fieldId: string;

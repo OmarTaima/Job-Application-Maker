@@ -5,7 +5,7 @@ export * from './useJobPositions';
 export * from './useApplicants';
 export * from './useUsers';
 export * from './useRoles';
-export * from './useRecommendedFields';
+export * from './useSystemSettings';
 // mail template hooks moved into `useCompanies`
 export * from './useSendEmail';
 export * from './useSavedFields';

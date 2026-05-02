@@ -6,7 +6,7 @@ import departmentsReducer from "./slices/departmentsSlice";
 import jobPositionsReducer from "./slices/jobPositionsSlice";
 import usersReducer from "./slices/usersSlice";
 import rolesReducer from "./slices/rolesSlice";
-import recommendedFieldsReducer from "./slices/recommendedFieldsSlice";
+import recommendedFieldsReducer from "./slices/SystemSettings";
 
 export const store = configureStore({
   reducer: {

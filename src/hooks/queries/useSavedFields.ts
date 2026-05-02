@@ -1,9 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { savedFieldsService } from "../../services/savedFieldsService";
+import { savedFieldsService } from "../../services/usersService";
 import type {
   CreateSavedFieldRequest,
   UpdateSavedFieldRequest,
-} from "../../services/savedFieldsService";
+} from "../../services/usersService";
 
 export const savedFieldsKeys = {
   all: ["savedFields"] as const,

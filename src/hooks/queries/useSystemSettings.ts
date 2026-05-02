@@ -1,9 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { recommendedFieldsService } from "../../services/recommendedFieldsService";
+import { recommendedFieldsService } from "../../services/SystemSettings";
 import type {
   CreateRecommendedFieldRequest,
   UpdateRecommendedFieldRequest,
-} from "../../services/recommendedFieldsService";
+} from "../../services/SystemSettings";
 
 // Query keys
 export const recommendedFieldsKeys = {

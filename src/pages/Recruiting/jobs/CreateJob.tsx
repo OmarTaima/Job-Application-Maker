@@ -18,7 +18,7 @@ import {
   useDepartments,
 } from "../../../hooks/queries";
 import { useSavedFields } from "../../../hooks/queries";
-import { useRecommendedFields } from "../../../hooks/queries/useRecommendedFields";
+import { useRecommendedFields } from "../../../hooks/queries/useSystemSettings";
 import { useCreateJobPosition, useUpdateJobPosition, useJobPositions } from "../../../hooks/queries/useJobPositions";
 import { toPlainString } from "../../../utils/strings";
 

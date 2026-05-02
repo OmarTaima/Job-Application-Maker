@@ -1,5 +1,26 @@
 import axios from "../config/axios";
 import { getErrorMessage } from "../utils/errorHandler";
+import type {
+  JobPosition,
+  CreateJobPositionRequest,
+  UpdateJobPositionRequest,
+  ReorderJobPositionsRequestItem,
+  JobFieldConfig,
+  JobFieldConfigRule,
+} from '../types/jobPositions';
+import type { Applicant } from '../types/applicants';
+
+// Re-export types for backward compatibility
+export type {
+  JobPosition,
+  CreateJobPositionRequest,
+  UpdateJobPositionRequest,
+  ReorderJobPositionsRequestItem,
+  LocalizedString,
+  JobFieldConfig,
+  JobFieldConfigRule,
+} from '../types/jobPositions';
+export type { Applicant } from '../types/applicants';
 
 export class ApiError extends Error {
   constructor(
@@ -12,26 +33,7 @@ export class ApiError extends Error {
   }
 }
 
-export type LocalizedString = { en: string; ar: string };
-
-export type JobFieldConfigRule = {
-  visible: boolean;
-  required: boolean;
-};
-
-export type JobFieldConfig = {
-  fullName: JobFieldConfigRule;
-  email: JobFieldConfigRule;
-  phone: JobFieldConfigRule;
-  gender: JobFieldConfigRule;
-  birthDate: JobFieldConfigRule;
-  address: JobFieldConfigRule;
-  profilePhoto: JobFieldConfigRule;
-  cvFilePath: JobFieldConfigRule;
-  expectedSalary: JobFieldConfigRule;
-};
-
-const getDefaultFieldConfig = (): JobFieldConfig => ({
+const getDefaultJobFieldConfig = (): JobFieldConfig => ({
   fullName: { visible: true, required: true },
   email: { visible: true, required: true },
   phone: { visible: true, required: true },
@@ -43,11 +45,11 @@ const getDefaultFieldConfig = (): JobFieldConfig => ({
   expectedSalary: { visible: false, required: false },
 });
 
-const normalizeFieldConfig = (
+const normalizeJobFieldConfig = (
   value: any,
   legacySalaryFieldVisible?: boolean
 ): JobFieldConfig => {
-  const defaults = getDefaultFieldConfig();
+  const defaults = getDefaultJobFieldConfig();
   const raw = value && typeof value === "object" ? value : {};
 
   const withFallbackExpectedSalary = {
@@ -102,180 +104,7 @@ const normalizeFieldConfig = (
   };
 };
 
-export type JobPosition = {
-  _id: string;
-  companyId: string;
-  departmentId: string;
-  jobCode: string;
-  order?: number;
-  title: LocalizedString;
-  description?: LocalizedString;
-  bilingual?: boolean;
-  isActive?: boolean;
-  employmentType: 'full-time' | 'part-time' | 'contract' | 'internship';
-  workArrangement: 'on-site' | 'remote' | 'hybrid';
-  salary?: number;
-  salaryVisible?: boolean;
-  fieldConfig?: JobFieldConfig;
-  openPositions?: number;
-  registrationStart?: string;
-  registrationEnd?: string;
-  status: "open" | "closed" | "archived";
-  termsAndConditions?: LocalizedString[];
-  jobSpecs?: Array<{
-    spec: LocalizedString;
-    weight: number;
-  }>;
-  jobSpecsWithDetails?: Array<{
-    jobSpecId: string;
-    spec: string;
-    weight: number;
-    answer: boolean;
-  }>;
-  customFields?: Array<{
-    fieldId: string;
-    label: LocalizedString;
-    inputType: string;
-    isRequired: boolean;
-    defaultValue?: string;
-    minValue?: number;
-    maxValue?: number;
-    choices?: Array<LocalizedString>;
-    groupFields?: Array<{
-      fieldId: string;
-      label: LocalizedString;
-      inputType: string;
-      isRequired: boolean;
-      choices?: Array<LocalizedString>;
-      order?: number;
-      defaultValue?: string;
-      minValue?: number;
-      maxValue?: number;
-    }>;
-    order: number;
-  }>;
-  createdAt?: string;
-  updatedAt?: string;
-};
 
-export type CreateJobPositionRequest = {
-  companyId: string;
-  departmentId: string;
-  jobCode: string;
-  order?: number;
-  title: LocalizedString;
-  description?: LocalizedString;
-  bilingual?: boolean;
-  isActive?: boolean;
-  employmentType: 'full-time' | 'part-time' | 'contract' | 'internship';
-  workArrangement: 'on-site' | 'remote' | 'hybrid';
-  salary?: number;
-  salaryVisible?: boolean;
-  openPositions?: number;
-  registrationStart: string;
-  registrationEnd: string;
-  termsAndConditions?: LocalizedString[];
-  fieldConfig?: JobFieldConfig;
-  createdBy?: string;
-  // optional legacy/extra fields
-  requirements?: string[];
-  status?: string;
-  jobSpecs?: Array<{
-    spec: LocalizedString;
-    weight: number;
-  }>;
-  customFields?: Array<{
-    fieldId: string;
-    label: LocalizedString;
-    inputType: string;
-    isRequired: boolean;
-    defaultValue?: string;
-    minValue?: number;
-    maxValue?: number;
-    choices?: Array<LocalizedString>;
-    groupFields?: Array<{
-      fieldId: string;
-      label: LocalizedString;
-      inputType: string;
-      isRequired: boolean;
-      choices?: Array<LocalizedString>;
-      order?: number;
-      defaultValue?: string;
-      minValue?: number;
-      maxValue?: number;
-    }>;
-    order: number;
-  }>;
-};
-
-export type UpdateJobPositionRequest = {
-  departmentId?: string;
-  title?: LocalizedString;
-  description?: LocalizedString;
-  bilingual?: boolean;
-  employmentType?: 'full-time' | 'part-time' | 'contract' | 'internship';
-  workArrangement?: 'on-site' | 'remote' | 'hybrid';
-  isActive?: boolean;
-  salary?: number;
-  salaryVisible?: boolean;
-  openPositions?: number;
-  registrationStart?: string;
-  registrationEnd?: string;
-  termsAndConditions?: LocalizedString[];
-  fieldConfig?: JobFieldConfig;
-  // allow updating these optional fields as well
-  companyId?: string;
-  jobCode?: string;
-  requirements?: string[];
-  status?: string;
-  order?: number;
-  jobSpecs?: Array<{
-    spec: LocalizedString;
-    weight: number;
-  }>;
-  customFields?: Array<{
-    fieldId: string;
-    label: LocalizedString;
-    inputType: string;
-    isRequired: boolean;
-    defaultValue?: string;
-    minValue?: number;
-    maxValue?: number;
-    choices?: Array<LocalizedString>;
-    groupFields?: Array<{
-      fieldId: string;
-      label: LocalizedString;
-      inputType: string;
-      isRequired: boolean;
-      choices?: Array<LocalizedString>;
-      order?: number;
-      defaultValue?: string;
-      minValue?: number;
-      maxValue?: number;
-    }>;
-    order: number;
-  }>;
-};
-
-export type Applicant = {
-  _id: string;
-  jobPositionId: string | JobPosition;
-  userId?: string;
-  name: string;
-  email: string;
-  phone?: string;
-  resume?: string;
-  coverLetter?: string;
-  customFieldResponses?: Record<string, any>;
-  status: "pending" | "reviewed" | "shortlisted" | "rejected" | "hired";
-  appliedAt: string;
-  reviewedAt?: string;
-};
-
-export type ReorderJobPositionsRequestItem = {
-  id: string;
-  order: number;
-};
 
 class JobPositionsService {
   private looksLikeJobPositionEntity(value: any): boolean {
@@ -333,7 +162,7 @@ class JobPositionsService {
   normalizeJobPosition(maybe: any): any {
     if (!maybe || typeof maybe !== 'object') return maybe;
 
-    maybe.fieldConfig = normalizeFieldConfig(
+    maybe.fieldConfig = normalizeJobFieldConfig(
       maybe.fieldConfig,
       typeof maybe.salaryFieldVisible === "boolean"
         ? maybe.salaryFieldVisible
@@ -532,7 +361,7 @@ class JobPositionsService {
       if (data.salaryVisible !== undefined)
         payload.salaryVisible = data.salaryVisible;
       if (data.fieldConfig)
-        payload.fieldConfig = normalizeFieldConfig(data.fieldConfig);
+        payload.fieldConfig = normalizeJobFieldConfig(data.fieldConfig);
       if (data.bilingual !== undefined) payload.bilingual = data.bilingual;
       if (data.isActive !== undefined) payload.isActive = data.isActive;
       if (data.employmentType) payload.employmentType = data.employmentType;
@@ -628,7 +457,7 @@ class JobPositionsService {
       if (data.salaryVisible !== undefined)
         payload.salaryVisible = data.salaryVisible;
       if (data.fieldConfig)
-        payload.fieldConfig = normalizeFieldConfig(data.fieldConfig);
+        payload.fieldConfig = normalizeJobFieldConfig(data.fieldConfig);
       if (data.bilingual !== undefined) payload.bilingual = data.bilingual;
       if (data.isActive !== undefined) payload.isActive = data.isActive;
       if (data.employmentType) payload.employmentType = data.employmentType;
