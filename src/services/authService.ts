@@ -1,101 +1,25 @@
+// services/authService.ts
 import { tokenStorage } from "../config/api";
+import {
+  ApiError, // Import as value (not type)
+  type LoginRequest,
+  type RegisterRequest,
+  type AuthResponse,
+  type UserProfileResponse,
+  type User,
+  type ChangePasswordRequest,
+} from "../types/auth";
 
-// Types
-export interface LoginRequest {
-  email: string;
-  password: string;
-}
-
-export interface RegisterRequest {
-  email: string;
-  password: string;
-  firstName?: string;
-  lastName?: string;
-  name?: string;
-}
-
-export interface TableLayout {
-  columnVisibility: Record<string, boolean>;
-  columnSizing: Record<string, number>;
-  columnOrder: string[];
-}
-
-export interface User {
-  _id?: string;
-  id?: string;
-  email: string;
-  fullName?: string;
-  name?: string;
-  roleId?: {
-    _id: string;
-    name: string;
-    permissions?: Array<{
-      permission: {
-        _id: string;
-        name: string;
-      };
-      access?: string[];
-    }>;
-  };
-  role?: 'admin' | 'company_user';
-  assignedcompanyId?: string[];
-  companies?: Array<{
-    _id?: string;
-    companyId: {
-      _id: string;
-      name: string;
-    };
-    departments?: Array<{
-      _id: string;
-      name: string;
-    }>;
-  }>;
-  // Optional profile fields used across the app
-  profilePhoto?: string;
-  avatar?: string;
-  location?: string;
-  address?: string;
-  phone?: string;
-  bio?: string;
-  country?: string;
-  city?: string;
-  state?: string;
-  postalCode?: string;
-  taxId?: string;
-  tablePreferences: Record<string, TableLayout>;
-}
-
-export interface AuthResponse {
-  success: boolean;
-  message: string;
-  data: {
-    user: User;
-    accessToken: string;
-    refreshToken: string;
-  };
-}
-
-export interface UserProfileResponse {
-  success: boolean;
-  data: User;
-}
-
-export interface ChangePasswordRequest {
-  currentPassword: string;
-  newPassword: string;
-}
-
-// API Error class
-export class ApiError extends Error {
-  constructor(
-    message: string,
-    public statusCode?: number,
-    public data?: unknown
-  ) {
-    super(message);
-    this.name = "ApiError";
-  }
-}
+// Re-export types for convenience
+export type {
+  LoginRequest,
+  RegisterRequest,
+  AuthResponse,
+  UserProfileResponse,
+  User,
+  ChangePasswordRequest,
+} from "../types/auth";
+export { ApiError } from "../types/auth"; // Re-export the class
 
 // Helper function to make API requests
 async function apiRequest<T>(
@@ -114,7 +38,6 @@ async function apiRequest<T>(
 
   try {
     const response = await fetch(url, config);
-
     const data = await response.json();
 
     if (!response.ok) {
@@ -130,7 +53,6 @@ async function apiRequest<T>(
     if (error instanceof ApiError) {
       throw error;
     }
-
     throw new ApiError(
       error instanceof Error ? error.message : "Network error occurred"
     );
@@ -159,15 +81,11 @@ export const authService = {
       body: JSON.stringify(credentials),
     });
 
-   
-
-    // Store tokens - handle different response structures
     const accessToken = response.data?.accessToken || response.accessToken;
     const refreshToken = response.data?.refreshToken || response.refreshToken;
 
     if (accessToken && refreshToken) {
       tokenStorage.setTokens(accessToken, refreshToken);
-    } else {
     }
 
     return response;
@@ -182,7 +100,6 @@ export const authService = {
       body: JSON.stringify(userData),
     });
 
-    // Store tokens
     if (response.data.accessToken && response.data.refreshToken) {
       tokenStorage.setTokens(
         response.data.accessToken,
@@ -197,10 +114,13 @@ export const authService = {
    * Get current user profile
    */
   async getCurrentUser(): Promise<User> {
-    const response = await apiRequest<UserProfileResponse>("/auth/me?populate=roleId.permissions.permission", {
-      method: "GET",
-      headers: getAuthHeaders(),
-    });
+    const response = await apiRequest<UserProfileResponse>(
+      "/auth/me?populate=roleId.permissions.permission",
+      {
+        method: "GET",
+        headers: getAuthHeaders(),
+      }
+    );
 
     return response.data;
   },
@@ -220,7 +140,6 @@ export const authService = {
       body: JSON.stringify({ refreshToken }),
     });
 
-    // Update tokens
     if (response.data.accessToken && response.data.refreshToken) {
       tokenStorage.setTokens(
         response.data.accessToken,

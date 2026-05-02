@@ -1,6 +1,5 @@
 import { configureStore } from "@reduxjs/toolkit";
 import authReducer from "./slices/authSlice";
-import applicantsReducer from "./slices/applicantsSlice";
 import companiesReducer from "./slices/companiesSlice";
 import departmentsReducer from "./slices/departmentsSlice";
 import jobPositionsReducer from "./slices/jobPositionsSlice";
@@ -11,7 +10,6 @@ import recommendedFieldsReducer from "./slices/SystemSettings";
 export const store = configureStore({
   reducer: {
     auth: authReducer,
-    applicants: applicantsReducer,
     companies: companiesReducer,
     departments: departmentsReducer,
     jobPositions: jobPositionsReducer,
