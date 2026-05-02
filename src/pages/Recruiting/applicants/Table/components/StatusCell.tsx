@@ -1,6 +1,6 @@
 // components/StatusCell.tsx
 import { useMemo } from 'react';
-import { useStatusSettings } from '../../../../../utils/useStatusSettings';
+import { useStatusSettings } from '../../../../../hooks/useStatusSettings';
 
 interface StatusCellProps {
   status: string;
@@ -25,33 +25,33 @@ export function StatusCell({
 }: StatusCellProps) {
   // Determine which company to use for status settings
   const effectiveCompany = useMemo(() => {
-    
-    
     // Priority 1: If a single company is selected in the filter (for Super Admin)
     if (selectedCompanyFilter && selectedCompanyFilter.length === 1) {
-      const found = allCompanies.find((c: any) => c._id === selectedCompanyFilter[0]);
+      const found = allCompanies.find(
+        (c: any) => c._id === selectedCompanyFilter[0]
+      );
       if (found) {
-        
         return found;
       }
     }
-    
+
     // Priority 2: Use provided companyId
     if (companyId) {
       const found = allCompanies.find((c: any) => c._id === companyId);
       if (found) {
-        
         return found;
       }
     }
-    
+
     // Priority 3: Try to extract company from applicant
     if (applicant) {
-      const rawCompany = applicant?.companyId || applicant?.company || applicant?.companyObj;
+      const rawCompany =
+        applicant?.companyId || applicant?.company || applicant?.companyObj;
       if (rawCompany) {
-        const companyIdValue = typeof rawCompany === 'string' 
-          ? rawCompany 
-          : rawCompany?._id || rawCompany?.id;
+        const companyIdValue =
+          typeof rawCompany === 'string'
+            ? rawCompany
+            : rawCompany?._id || rawCompany?.id;
         if (companyIdValue) {
           const found = allCompanies.find((c: any) => c._id === companyIdValue);
           if (found) {
@@ -60,12 +60,13 @@ export function StatusCell({
         }
       }
     }
-    
+
     return null;
   }, [selectedCompanyFilter, companyId, applicant, allCompanies]);
 
   // Get status settings for the effective company
-  const { getColor, getTextColor, getDescription, statusOptions } = useStatusSettings(effectiveCompany);
+  const { getColor, getTextColor, getDescription, statusOptions } =
+    useStatusSettings(effectiveCompany);
 
   // Get status colors
   const colors = useMemo(() => {
@@ -76,20 +77,21 @@ export function StatusCell({
     // Try to get colors from company settings
     const bgColor = getColor(status);
     const textColor = getTextColor(status);
-    
-    
-    
+
     // If we got valid colors from company settings, use them
     if (bgColor && textColor) {
       return { bg: bgColor, color: textColor };
     }
-    
+
     // Fallback - try to find the status in statusOptions
-    const statusOption = statusOptions.find(opt => opt.value === status);
+    const statusOption = statusOptions.find((opt) => opt.value === status);
     if (statusOption && statusOption.color) {
-      return { bg: statusOption.color, color: statusOption.textColor || '#FFFFFF' };
+      return {
+        bg: statusOption.color,
+        color: statusOption.textColor || '#FFFFFF',
+      };
     }
-    
+
     // Ultimate fallback
     return { bg: '#F3F4F6', color: '#1F2937' };
   }, [status, getColor, getTextColor, statusOptions]);
@@ -104,7 +106,7 @@ export function StatusCell({
   const label = useMemo(() => {
     if (!status) return '-';
     // Try to get custom label from statusOptions
-    const statusOption = statusOptions.find(opt => opt.value === status);
+    const statusOption = statusOptions.find((opt) => opt.value === status);
     if (statusOption && statusOption.label && statusOption.label !== status) {
       return statusOption.label;
     }

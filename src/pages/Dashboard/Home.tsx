@@ -1,13 +1,12 @@
-import { useMemo, useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import PageMeta from "../../components/common/PageMeta";
-import DatePicker from "../../components/form/date-picker";
-import { useAuth } from "../../context/AuthContext";
-import { getApplicantStatuses } from "../../hooks/queries/useApplicants";
-import { useCompanies } from "../../hooks/queries/useCompanies";
-import { useStatusSettings } from "../../utils/useStatusSettings";
+import { useMemo, useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import PageMeta from '../../components/common/PageMeta';
+import DatePicker from '../../components/form/date-picker';
+import { useAuth } from '../../context/AuthContext';
+import { getApplicantStatuses } from '../../hooks/queries/useApplicants';
+import { useCompanies } from '../../hooks/queries/useCompanies';
+import { useStatusSettings } from '../../hooks/useStatusSettings';
 import {
-
   TimeIcon,
   ChatIcon,
   CheckCircleIcon,
@@ -15,10 +14,8 @@ import {
   CloseLineIcon,
   TrashBinIcon,
   UserIcon,
-} from "../../icons";
-import InterviewScheduleWidget from "../../components/charts/MyInterviewWidget";
-
-
+} from '../../icons';
+import InterviewScheduleWidget from '../../components/charts/MyInterviewWidget';
 
 // Map status names to icons (fallback icons for common statuses)
 const getStatusIcon = (statusName: string): any => {
@@ -33,41 +30,53 @@ const getStatusIcon = (statusName: string): any => {
     trashed: TrashBinIcon,
     deleted: TrashBinIcon,
   };
-  
+
   return iconMap[lowerStatus] || UserIcon;
 };
 
 // Helper to get the appropriate company ID based on user role and selected company
-function getCompanyIdFromUser(user: any, selectedCompanyId?: string): string | string[] | undefined {
+function getCompanyIdFromUser(
+  user: any,
+  selectedCompanyId?: string
+): string | string[] | undefined {
   const roleName = user?.roleId?.name?.toLowerCase();
-  
+
   // Super admin can select a company or see all
-  if (roleName === "super admin") {
+  if (roleName === 'super admin') {
     if (selectedCompanyId) return selectedCompanyId;
     return undefined; // undefined means fetch all
   }
-  
+
   // Regular user - get their assigned companies
-  const userCompanyIds = user?.companies?.map((c: any) =>
-    typeof c.companyId === "string" ? c.companyId : c.companyId._id
-  ) || [];
-  
+  const userCompanyIds =
+    user?.companies?.map((c: any) =>
+      typeof c.companyId === 'string' ? c.companyId : c.companyId._id
+    ) || [];
+
   return userCompanyIds.length > 0 ? userCompanyIds : undefined;
 }
 
 export default function Home() {
   const navigate = useNavigate();
-  const [selectedCompanyId, setSelectedCompanyId] = useState<string | undefined>(undefined);
+  const [selectedCompanyId, setSelectedCompanyId] = useState<
+    string | undefined
+  >(undefined);
   const [range, setRange] = useState<Date[] | null>(null);
   const { user } = useAuth();
-  
+
   const isSuperAdmin = useMemo(() => {
     const roleName = user?.roleId?.name?.toLowerCase();
-    return roleName === "super admin";
+    return roleName === 'super admin';
   }, [user?.roleId?.name]);
 
   // Get companies for super admin selector
-  const { data: companies = [] } = useCompanies(isSuperAdmin ? undefined : (user?.companies?.map((c: any) => c.companyId?._id || c.companyId) as any));
+  const { data: companies = [] } = useCompanies(
+    isSuperAdmin
+      ? undefined
+      : (user?.companies?.map(
+          (c: any) => c.companyId?._id || c.companyId
+        ) as any)
+  );
 
   // Determine companyId for the query
   const companyId = useMemo(() => {
@@ -90,8 +99,12 @@ export default function Home() {
   const { statusOptions, getColor } = useStatusSettings(selectedCompany);
 
   // Use React Query hook
-const { data: applicantsData = [], isLoading: loading, refetch, isFetching } =
-  getApplicantStatuses(
+  const {
+    data: applicantsData = [],
+    isLoading: loading,
+    refetch,
+    isFetching,
+  } = getApplicantStatuses(
     companyId as any,
     range && range.length === 2
       ? `${range[0].toISOString()},${range[1].toISOString()}`
@@ -99,7 +112,11 @@ const { data: applicantsData = [], isLoading: loading, refetch, isFetching } =
   );
   // Extract counts from the response
   const countsData = useMemo(() => {
-    if (applicantsData && typeof applicantsData === 'object' && !Array.isArray(applicantsData)) {
+    if (
+      applicantsData &&
+      typeof applicantsData === 'object' &&
+      !Array.isArray(applicantsData)
+    ) {
       return applicantsData;
     }
     return null;
@@ -123,13 +140,13 @@ const { data: applicantsData = [], isLoading: loading, refetch, isFetching } =
     }
     const formatRelative = (d: Date) => {
       const diffSec = Math.floor((Date.now() - d.getTime()) / 1000);
-      if (diffSec < 60) return "now";
+      if (diffSec < 60) return 'now';
       const mins = Math.floor(diffSec / 60);
       if (mins < 60) return `${mins} min ago`;
       const hours = Math.floor(mins / 60);
       if (hours < 24) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
       const days = Math.floor(hours / 24);
-      if (days === 1) return "yesterday";
+      if (days === 1) return 'yesterday';
       if (days < 7) return `${days} days ago`;
       return d.toLocaleDateString();
     };
@@ -141,78 +158,84 @@ const { data: applicantsData = [], isLoading: loading, refetch, isFetching } =
   }, [lastRefetch]);
 
   // Handle card click to navigate to applicants page with status filter
- // Handle card click to navigate to applicants page with status filter
-const handleStatusCardClick = (statusName: string) => {
-  // For non-super admin or when a specific company is selected
-  if (selectedCompanyId) {
-    // Use the company-specific route with onlyStatus prop approach
-    navigate(`/applicants/company/${selectedCompanyId}/status/${statusName.toLowerCase()}`);
-  } else {
-    // Use query parameters for super admin (all companies)
-    const searchParams = new URLSearchParams();
-    searchParams.append('status', statusName.toLowerCase());
-    
-    if (range && range.length === 2) {
-      searchParams.append('startDate', range[0].toISOString());
-      searchParams.append('endDate', range[1].toISOString());
-    }
-    
-    navigate(`/applicants?${searchParams.toString()}`);
-  }
-};
+  // Handle card click to navigate to applicants page with status filter
+  const handleStatusCardClick = (statusName: string) => {
+    // For non-super admin or when a specific company is selected
+    if (selectedCompanyId) {
+      // Use the company-specific route with onlyStatus prop approach
+      navigate(
+        `/applicants/company/${selectedCompanyId}/status/${statusName.toLowerCase()}`
+      );
+    } else {
+      // Use query parameters for super admin (all companies)
+      const searchParams = new URLSearchParams();
+      searchParams.append('status', statusName.toLowerCase());
 
-const handleTotalCardClick = () => {
-  if (selectedCompanyId) {
-    navigate(`/applicants/company/${selectedCompanyId}`);
-  } else {
-    const searchParams = new URLSearchParams();
-    if (range && range.length === 2) {
-      searchParams.append('startDate', range[0].toISOString());
-      searchParams.append('endDate', range[1].toISOString());
+      if (range && range.length === 2) {
+        searchParams.append('startDate', range[0].toISOString());
+        searchParams.append('endDate', range[1].toISOString());
+      }
+
+      navigate(`/applicants?${searchParams.toString()}`);
     }
-    navigate(`/applicants?${searchParams.toString()}`);
-  }
-};
+  };
+
+  const handleTotalCardClick = () => {
+    if (selectedCompanyId) {
+      navigate(`/applicants/company/${selectedCompanyId}`);
+    } else {
+      const searchParams = new URLSearchParams();
+      if (range && range.length === 2) {
+        searchParams.append('startDate', range[0].toISOString());
+        searchParams.append('endDate', range[1].toISOString());
+      }
+      navigate(`/applicants?${searchParams.toString()}`);
+    }
+  };
 
   // Handle total card click (show all applicants except trashed)
- 
 
   // Build dynamic status cards from the API response with company colors
-const statusCards = useMemo(() => {
-  if (!countsData) return [];
+  const statusCards = useMemo(() => {
+    if (!countsData) return [];
 
-  const excludeFromCards = ['total', 'trashed', 'deleted'];
+    const excludeFromCards = ['total', 'trashed', 'deleted'];
 
-  const cards = Object.entries(countsData)
-    .filter(([key]) => !excludeFromCards.includes(key.toLowerCase()))
-    .map(([statusName, count]) => {
-      const statusOption = statusOptions?.find(
-        (opt: any) =>
-          opt.label.toLowerCase() === statusName.toLowerCase() ||
-          opt.value.toLowerCase() === statusName.toLowerCase()
-      );
+    const cards = Object.entries(countsData)
+      .filter(([key]) => !excludeFromCards.includes(key.toLowerCase()))
+      .map(([statusName, count]) => {
+        const statusOption = statusOptions?.find(
+          (opt: any) =>
+            opt.label.toLowerCase() === statusName.toLowerCase() ||
+            opt.value.toLowerCase() === statusName.toLowerCase()
+        );
 
-      const bgColor =
-        statusOption?.color || getColor(statusName) || '#94a3b8';
+        const bgColor =
+          statusOption?.color || getColor(statusName) || '#94a3b8';
 
-      return {
-        name: statusName,
-        count: Number(count),
-        bgColor,
-        textColor: '#111827',
-        icon: getStatusIcon(statusName),
-      };
-    })
-    .sort((a, b) => b.count - a.count);
+        return {
+          name: statusName,
+          count: Number(count),
+          bgColor,
+          textColor: '#111827',
+          icon: getStatusIcon(statusName),
+        };
+      })
+      .sort((a, b) => b.count - a.count);
 
-  return cards;
-}, [countsData, statusOptions, getColor]);
+    return cards;
+  }, [countsData, statusOptions, getColor]);
 
   // Get total excluding trashed/deleted
   const totalApplicants = useMemo(() => {
     if (!countsData) return 0;
     const total = countsData.total || 0;
-    const trashed = countsData.Trashed || countsData.Deleted || countsData.trashed || countsData.deleted || 0;
+    const trashed =
+      countsData.Trashed ||
+      countsData.Deleted ||
+      countsData.trashed ||
+      countsData.deleted ||
+      0;
     return total - trashed;
   }, [countsData]);
 
