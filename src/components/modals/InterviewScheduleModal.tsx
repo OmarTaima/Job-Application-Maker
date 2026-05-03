@@ -1,16 +1,16 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import 'quill/dist/quill.snow.css';
 import { Modal } from '../ui/modal';
-import { companiesService } from '../../services/companiesService';
 import DatePicker from '../form/date-picker';
 import Label from '../form/Label';
 import Input from '../form/input/InputField';
 import TextArea from '../form/input/TextArea';
 import Select from '../form/Select';
 import { toPlainString } from '../../utils/strings';
-import { EmailTemplate } from '../../services/emailTemplatesService';
+import { EmailTemplate } from '../../services/companiesService';
 import { useAuth } from '../../context/AuthContext';
 import { useUsers } from '../../hooks/queries';
+import { useCompany } from '../../hooks/queries/useCompanies';
 
 // Simple HTML escape utility
 function escapeHtml(str: string) {
@@ -26,7 +26,7 @@ function escapeHtml(str: string) {
   });
 }
 
-// Lightweight Quill editor wrapper (local to this modal)
+// Lightweight Quill editor wrapper
 function QuillEditor({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const quillRef = useRef<any>(null);
@@ -121,12 +121,47 @@ export default function InterviewScheduleModal(props: Props) {
 } = props;
 
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
+  const { user } = useAuth();
 
   const emailTemplates: EmailTemplate[] = useMemo(() => {
     const company = companyData || (applicant && (applicant.company || applicant.companyObj));
     const templates = company?.settings?.mailSettings?.emailTemplates || [];
     return templates;
   }, [companyData, applicant]);
+
+  // Get company ID for fetching users
+  const getCompanyIdVal = useCallback(() => {
+    const company = companyData || (applicant && (applicant.company || applicant.companyObj)) || null;
+    const companyCompany = company || (applicant as any)?.jobPositionId?.companyId || (applicant as any)?.jobPositionId?.company || null;
+    const c = companyCompany as any;
+    return c?._id || c?.id || c?.company || (c?.companyId && (typeof c.companyId === 'string' ? c.companyId : c.companyId._id)) || null;
+  }, [companyData, applicant]);
+
+  const companyId = getCompanyIdVal();
+  
+  // Fetch company data directly to ensure we have the latest settings
+  const { data: companyDetails } = useCompany(companyId || '', { enabled: !!companyId });
+  
+  // Fetch users for the company using the correct hook
+  const { data: usersData = [], isLoading: isLoadingUsers } = useUsers(
+    companyId ? { companyId: [companyId] } : { page: 1, PageCount: 1000 }
+  );
+
+  // Extract users array from response
+  const companyUsers = useMemo(() => {
+    if (!usersData) return [];
+    if (Array.isArray(usersData)) return usersData;
+    if ((usersData as any)?.data && Array.isArray((usersData as any).data)) return (usersData as any).data;
+    return [];
+  }, [usersData]);
+
+  // Set default conductedBy to current user when modal opens
+  useEffect(() => {
+    if (!isOpen) return;
+    if (user?._id && !interviewForm?.conductedBy) {
+      setInterviewForm((prev: any) => ({ ...prev, conductedBy: user._id }));
+    }
+  }, [isOpen, user, interviewForm?.conductedBy, setInterviewForm]);
 
   const isUrl = (s?: string): boolean => {
     if (!s) return false;
@@ -153,7 +188,7 @@ export default function InterviewScheduleModal(props: Props) {
         (applicant as any)?.jobPositionId?.companyId ||
         (applicant as any)?.jobPositionId?.company ||
         null;
-      const comp = companyData || fallbackComp;
+      const comp = companyData || fallbackComp || companyDetails;
       if (!comp) return [];
 
       const source = (comp as any).address ?? (comp as any).addresses ?? [];
@@ -407,7 +442,6 @@ export default function InterviewScheduleModal(props: Props) {
     setMessageTemplate(generateMessageTemplate());
   };
 
-  // Helper to get address label from location URL
   const getAddressLabelFromLocation = (locationUrl: string): string => {
     if (!locationUrl) return '';
     const entries = getCompanyAddressEntries();
@@ -415,88 +449,57 @@ export default function InterviewScheduleModal(props: Props) {
     return matched?.label || '';
   };
 
- const handlePreview = () => {
-  console.log('Bulk Mode:', bulkMode);
-  console.log('Recipients:', recipients);
-  console.log('Recipients length:', recipients?.length);
-  
-  const baseInterviewDate = interviewForm.date 
-    ? (() => {
-        const [year, month, day] = interviewForm.date.split('-');
-        const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-        return date.toLocaleDateString('en-US', {
-          weekday: 'long',
-          year: 'numeric',
-          month: 'long',
-          day: 'numeric',
-        });
-      })()
-    : 'No Date Set';
-  
-  // Get location URL and address label
-  const locationUrl = interviewForm.location || '';
-  const addressLabel = getAddressLabelFromLocation(locationUrl);
-  
-  // Helper function to create clickable location HTML
-  const createClickableLocation = (url: string, text?: string) => {
-    if (!url) return '[No Location]';
-    const displayText = text || url;
-    const normalizedUrl = url.startsWith('http') ? url : `https://${url}`;
-    return `<a href="${normalizedUrl}" target="_blank" rel="noopener noreferrer" style="color: #3b82f6; text-decoration: underline;">${escapeHtml(displayText)}</a>`;
-  };
-  
-  if (bulkMode && recipients && recipients.length > 0) {
-    const previewSections = recipients.map((recipient: any, index: any) => {
-      console.log(`Processing recipient ${index}:`, recipient);
-      
-      const applicantName = (() => {
-        const name = recipient.fullName || 
-                     recipient.applicantName || 
-                     recipient.name || 
-                     recipient.candidateName ||
-                     (recipient.applicant?.fullName) ||
-                     (recipient.applicant?.name) ||
-                     recipient.email?.split('@')[0] || 
-                     `Candidate ${index + 1}`;
-        return name.trim();
-      })();
-      
-      const jobTitle = (() => {
-        try {
-          const isMap = jobTitleById && typeof jobTitleById.get === 'function';
-          
-          if (recipient.jobTitle) return recipient.jobTitle;
-          if (recipient.position) return recipient.position;
-          
-          if (typeof recipient.jobPositionId === 'string') {
-            if (isMap) {
-              const mapped = jobTitleById.get(recipient.jobPositionId);
-              if (mapped) return mapped;
-            } else if (jobTitleById && recipient.jobPositionId) {
-              const mapped = (jobTitleById as any)[recipient.jobPositionId];
-              if (mapped) {
-                const title = mapped.title || mapped.name;
-                if (typeof title === 'string') return title;
-                if (title?.en) return title.en;
-                if (title?.ar) return title.ar;
-              }
-            }
-          }
-          
-          if (recipient.jobPositionId && typeof recipient.jobPositionId === 'object') {
-            const title = recipient.jobPositionId.title || recipient.jobPositionId.name;
-            if (typeof title === 'string') return title;
-            if (title?.en) return title.en;
-            if (title?.ar) return title.ar;
-          }
-          
-          if (recipient.jobPosition) {
-            if (typeof recipient.jobPosition === 'string') {
+  const handlePreview = () => {
+    const baseInterviewDate = interviewForm.date 
+      ? (() => {
+          const [year, month, day] = interviewForm.date.split('-');
+          const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+          return date.toLocaleDateString('en-US', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+          });
+        })()
+      : 'No Date Set';
+    
+    const locationUrl = interviewForm.location || '';
+    const addressLabel = getAddressLabelFromLocation(locationUrl);
+    
+    const createClickableLocation = (url: string, text?: string) => {
+      if (!url) return '[No Location]';
+      const displayText = text || url;
+      const normalizedUrl = url.startsWith('http') ? url : `https://${url}`;
+      return `<a href="${normalizedUrl}" target="_blank" rel="noopener noreferrer" style="color: #3b82f6; text-decoration: underline;">${escapeHtml(displayText)}</a>`;
+    };
+    
+    if (bulkMode && recipients && recipients.length > 0) {
+      const previewSections = recipients.map((recipient: any, index: number) => {
+        const applicantName = (() => {
+          const name = recipient.fullName || 
+                       recipient.applicantName || 
+                       recipient.name || 
+                       recipient.candidateName ||
+                       (recipient.applicant?.fullName) ||
+                       (recipient.applicant?.name) ||
+                       recipient.email?.split('@')[0] || 
+                       `Candidate ${index + 1}`;
+          return name.trim();
+        })();
+        
+        const jobTitle = (() => {
+          try {
+            const isMap = jobTitleById && typeof jobTitleById.get === 'function';
+            
+            if (recipient.jobTitle) return recipient.jobTitle;
+            if (recipient.position) return recipient.position;
+            
+            if (typeof recipient.jobPositionId === 'string') {
               if (isMap) {
-                const mapped = jobTitleById.get(recipient.jobPosition);
+                const mapped = jobTitleById.get(recipient.jobPositionId);
                 if (mapped) return mapped;
-              } else if (jobTitleById && recipient.jobPosition) {
-                const mapped = (jobTitleById as any)[recipient.jobPosition];
+              } else if (jobTitleById && recipient.jobPositionId) {
+                const mapped = (jobTitleById as any)[recipient.jobPositionId];
                 if (mapped) {
                   const title = mapped.title || mapped.name;
                   if (typeof title === 'string') return title;
@@ -505,38 +508,165 @@ export default function InterviewScheduleModal(props: Props) {
                 }
               }
             }
-            if (typeof recipient.jobPosition === 'object') {
-              const title = recipient.jobPosition.title || recipient.jobPosition.name;
+            
+            if (recipient.jobPositionId && typeof recipient.jobPositionId === 'object') {
+              const title = recipient.jobPositionId.title || recipient.jobPositionId.name;
               if (typeof title === 'string') return title;
               if (title?.en) return title.en;
               if (title?.ar) return title.ar;
             }
+            
+            if (recipient.jobPosition) {
+              if (typeof recipient.jobPosition === 'string') {
+                if (isMap) {
+                  const mapped = jobTitleById.get(recipient.jobPosition);
+                  if (mapped) return mapped;
+                } else if (jobTitleById && recipient.jobPosition) {
+                  const mapped = (jobTitleById as any)[recipient.jobPosition];
+                  if (mapped) {
+                    const title = mapped.title || mapped.name;
+                    if (typeof title === 'string') return title;
+                    if (title?.en) return title.en;
+                    if (title?.ar) return title.ar;
+                  }
+                }
+              }
+              if (typeof recipient.jobPosition === 'object') {
+                const title = recipient.jobPosition.title || recipient.jobPosition.name;
+                if (typeof title === 'string') return title;
+                if (title?.en) return title.en;
+                if (title?.ar) return title.ar;
+              }
+            }
+            
+            return '[Position]';
+          } catch (error) {
+            console.error('Error getting job title:', error);
+            return '[Position]';
           }
-          
-          return '[Position]';
-        } catch (error) {
-          console.error('Error getting job title:', error);
-          return '[Position]';
+        })();
+
+        let interviewTimeDisplay = interviewForm.time || 'No Time Set';
+        if (bulkMode && intervalMinutes && index > 0 && interviewForm.time) {
+          const [hours, minutes] = interviewForm.time.split(':').map(Number);
+          const totalMinutes = (hours * 60) + minutes + (index * intervalMinutes);
+          const newHours = Math.floor(totalMinutes / 60) % 24;
+          const newMinutes = totalMinutes % 60;
+          interviewTimeDisplay = `${String(newHours).padStart(2, '0')}:${String(newMinutes).padStart(2, '0')}`;
+        }
+        
+        const formattedTime = interviewTimeDisplay !== 'No Time Set' ? formatTime12Hour(interviewTimeDisplay) : 'No Time Set';
+        
+        const interviewType = interviewForm.type || 'phone';
+        const typeLabel = interviewType === 'in-person' ? 'In-person' : 
+                          interviewType.charAt(0).toUpperCase() + interviewType.slice(1);
+        
+        let processedSubject = interviewEmailSubject || 'Interview Invitation';
+        let processedBody = messageTemplate || '';
+        
+        const clickableLocation = createClickableLocation(locationUrl, locationUrl);
+        
+        processedSubject = processedSubject
+          .replace(/\{\{\s*candidateName\s*\}\}/gi, applicantName)
+          .replace(/\{\{\s*(?:position|jobTitle)\s*\}\}/gi, jobTitle)
+          .replace(/\{\{\s*InterviewDate\s*\}\}/gi, baseInterviewDate)
+          .replace(/\{\{\s*interviewTime\s*\}\}/gi, formattedTime)
+          .replace(/\{\{\s*interviewType\s*\}\}/gi, typeLabel)
+          .replace(/\{\{\s*location\s*\}\}/gi, clickableLocation)
+          .replace(/\{\{\s*address\s*\}\}/gi, addressLabel || '[Address]');
+        
+        let bodyWithReplacements = processedBody;
+        bodyWithReplacements = bodyWithReplacements
+          .replace(/\{\{\s*candidateName\s*\}\}/gi, escapeHtml(applicantName))
+          .replace(/\{\{\s*(?:position|jobTitle)\s*\}\}/gi, escapeHtml(jobTitle))
+          .replace(/\{\{\s*InterviewDate\s*\}\}/gi, escapeHtml(baseInterviewDate))
+          .replace(/\{\{\s*interviewTime\s*\}\}/gi, escapeHtml(formattedTime))
+          .replace(/\{\{\s*interviewType\s*\}\}/gi, escapeHtml(typeLabel))
+          .replace(/\{\{\s*location\s*\}\}/gi, clickableLocation)
+          .replace(/\{\{\s*address\s*\}\}/gi, escapeHtml(addressLabel || '[Address]'));
+        
+        return `
+          <div style="margin-bottom: 40px; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; page-break-inside: avoid;">
+            <div style="background-color: #f3f4f6; padding: 12px 20px; border-bottom: 1px solid #e5e7eb;">
+              <h3 style="margin: 0; font-size: 14px; color: #374151;">
+                📧 ${escapeHtml(applicantName)}${jobTitle !== '[Position]' ? ` - ${escapeHtml(jobTitle)}` : ''}
+              </h3>
+              <div style="margin-top: 5px; font-size: 12px; color: #6b7280;">
+                Time: ${escapeHtml(formattedTime)} | Date: ${escapeHtml(baseInterviewDate)}
+              </div>
+            </div>
+            <div style="background-color: #ffffff; padding: 20px;">
+              <div style="margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #e5e7eb;">
+                <strong style="font-size: 14px;">Subject:</strong> 
+                <span style="font-size: 14px;">${escapeHtml(processedSubject)}</span>
+              </div>
+              <div style="line-height: 1.6;">
+                ${bodyWithReplacements || '<p>No content provided</p>'}
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+      
+      const previewHtmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Bulk Email Preview - ${recipients.length} Recipients</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 20px; margin: 0; background-color: #f5f5f5; }
+            .container { max-width: 700px; margin: 0 auto; }
+            .header { background-color: #ffffff; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+            .header h1 { color: #111827; margin: 0 0 10px 0; font-size: 24px; }
+            .header p { color: #6b7280; margin: 0; font-size: 14px; }
+            .preview-count { background-color: #dbeafe; border-radius: 6px; padding: 8px 12px; margin-top: 10px; font-size: 13px; color: #1e40af; }
+            a { color: #3b82f6; text-decoration: underline; }
+            a:hover { color: #2563eb; }
+            @media print {
+              body { background-color: white; padding: 0; }
+              .header { box-shadow: none; border: 1px solid #e5e7eb; }
+              .preview-count { background-color: #f3f4f6; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>📧 Bulk Email Preview</h1>
+              <p>Sending to ${recipients.length} recipient(s) on ${baseInterviewDate}</p>
+              <div class="preview-count">
+                ⏰ Time interval: ${intervalMinutes} minute(s) between each interview
+              </div>
+            </div>
+            ${previewSections}
+          </div>
+        </body>
+        </html>
+      `;
+      
+      setPreviewHtml(previewHtmlContent);
+      setShowPreviewModal(true);
+    } else {
+      const jobTitle = (() => {
+        try {
+          const title = getJobTitle?.();
+          if (!title) return '';
+          if (typeof title === 'string') return title.trim();
+          const en = typeof (title as any).en === 'string' ? (title as any).en.trim() : '';
+          const ar = typeof (title as any).ar === 'string' ? (title as any).ar.trim() : '';
+          return en || ar || '';
+        } catch {
+          return '';
         }
       })();
-
-      const createClickableLocation = (url: string, text?: string) => {
-  if (!url) return '[No Location]';
-  const displayText = text || url;
-  const normalizedUrl = url.startsWith('http') ? url : `https://${url}`;
-  return `<a href="${normalizedUrl}" target="_blank" rel="noopener noreferrer" style="color: #3b82f6; text-decoration: underline;">${escapeHtml(displayText)}</a>`;
-};
       
-      let interviewTimeDisplay = interviewForm.time || 'No Time Set';
-      if (bulkMode && intervalMinutes && index > 0 && interviewForm.time) {
-        const [hours, minutes] = interviewForm.time.split(':').map(Number);
-        const totalMinutes = (hours * 60) + minutes + (index * intervalMinutes);
-        const newHours = Math.floor(totalMinutes / 60) % 24;
-        const newMinutes = totalMinutes % 60;
-        interviewTimeDisplay = `${String(newHours).padStart(2, '0')}:${String(newMinutes).padStart(2, '0')}`;
-      }
-      
-      const formattedTime = interviewTimeDisplay !== 'No Time Set' ? formatTime12Hour(interviewTimeDisplay) : 'No Time Set';
+      const applicantName = (applicant?.fullName || applicant?.applicantName || applicant?.name || '').trim() || 'Candidate';
+      const interviewDate = baseInterviewDate;
+      const interviewTime = interviewForm.time 
+        ? formatTime12Hour(interviewForm.time)
+        : 'No Time Set';
       
       const interviewType = interviewForm.type || 'phone';
       const typeLabel = interviewType === 'in-person' ? 'In-person' : 
@@ -545,204 +675,65 @@ export default function InterviewScheduleModal(props: Props) {
       let processedSubject = interviewEmailSubject || 'Interview Invitation';
       let processedBody = messageTemplate || '';
       
-      // Create clickable location HTML
       const clickableLocation = createClickableLocation(locationUrl, locationUrl);
       
-      // Replace all variables including {{location}} and {{address}}
       processedSubject = processedSubject
-        .replace(/\{\{\s*candidateName\s*\}\}/gi, applicantName)
-        .replace(/\{\{\s*(?:position|jobTitle)\s*\}\}/gi, jobTitle)
-        .replace(/\{\{\s*InterviewDate\s*\}\}/gi, baseInterviewDate)
-        .replace(/\{\{\s*interviewTime\s*\}\}/gi, formattedTime)
-        .replace(/\{\{\s*interviewType\s*\}\}/gi, typeLabel)
-        .replace(/\{\{\s*location\s*\}\}/gi, clickableLocation)
-        .replace(/\{\{\s*address\s*\}\}/gi, addressLabel || '[Address]');
+        .replace(/\{\{\s*candidateName\s*\}\}/gi, escapeHtml(applicantName))
+        .replace(/\{\{\s*(?:position|jobTitle)\s*\}\}/gi, escapeHtml(jobTitle || '[Position]'))
+        .replace(/\{\{\s*InterviewDate\s*\}\}/gi, escapeHtml(interviewDate))
+        .replace(/\{\{\s*interviewTime\s*\}\}/gi, escapeHtml(interviewTime))
+        .replace(/\{\{\s*interviewType\s*\}\}/gi, escapeHtml(typeLabel))
+        .replace(/\{\{\s*location\s*\}\}/gi, escapeHtml(locationUrl || '[Location URL]'))
+        .replace(/\{\{\s*address\s*\}\}/gi, escapeHtml(addressLabel || '[Address]'));
       
-      // For body, replace location with clickable HTML
       let bodyWithReplacements = processedBody;
       bodyWithReplacements = bodyWithReplacements
         .replace(/\{\{\s*candidateName\s*\}\}/gi, escapeHtml(applicantName))
-        .replace(/\{\{\s*(?:position|jobTitle)\s*\}\}/gi, escapeHtml(jobTitle))
-        .replace(/\{\{\s*InterviewDate\s*\}\}/gi, escapeHtml(baseInterviewDate))
-        .replace(/\{\{\s*interviewTime\s*\}\}/gi, escapeHtml(formattedTime))
+        .replace(/\{\{\s*(?:position|jobTitle)\s*\}\}/gi, escapeHtml(jobTitle || '[Position]'))
+        .replace(/\{\{\s*InterviewDate\s*\}\}/gi, escapeHtml(interviewDate))
+        .replace(/\{\{\s*interviewTime\s*\}\}/gi, escapeHtml(interviewTime))
         .replace(/\{\{\s*interviewType\s*\}\}/gi, escapeHtml(typeLabel))
-        .replace(/\{\{\s*location\s*\}\}/gi, clickableLocation) // This becomes HTML, not escaped
+        .replace(/\{\{\s*location\s*\}\}/gi, clickableLocation)
         .replace(/\{\{\s*address\s*\}\}/gi, escapeHtml(addressLabel || '[Address]'));
       
-      const location = interviewForm.location || '';
-      let locationDisplay = location;
-      if (location && (location.startsWith('http') || location.startsWith('www'))) {
-        locationDisplay = `<a href="${location}" target="_blank" rel="noopener noreferrer" style="color: #3b82f6; text-decoration: underline;">${escapeHtml(location)}</a>`;
-      } else if (location) {
-        locationDisplay = escapeHtml(location);
-      } else {
-        locationDisplay = 'No location specified';
-        void locationDisplay;
-      }
-
-      return `
-        <div style="margin-bottom: 40px; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; page-break-inside: avoid;">
-          <div style="background-color: #f3f4f6; padding: 12px 20px; border-bottom: 1px solid #e5e7eb;">
-            <h3 style="margin: 0; font-size: 14px; color: #374151;">
-              📧 ${escapeHtml(applicantName)}${jobTitle !== '[Position]' ? ` - ${escapeHtml(jobTitle)}` : ''}
-            </h3>
-            <div style="margin-top: 5px; font-size: 12px; color: #6b7280;">
-              Time: ${escapeHtml(formattedTime)} | Date: ${escapeHtml(baseInterviewDate)}
+      const previewHtmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Email Preview</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 20px; margin: 0; background-color: #f5f5f5; }
+            .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+            .header { background-color: #ffffff; border-bottom: 1px solid #e5e7eb; padding: 24px 30px; text-align: center; }
+            .header h1 { color: #111827; margin: 0; font-size: 22px; font-weight: 700; }
+            .content { padding: 30px; }
+            .content p { margin: 0 0 16px 0; line-height: 1.6; }
+            a { color: #3b82f6; text-decoration: underline; }
+            a:hover { color: #2563eb; }
+            hr { margin: 30px 0; border: none; border-top: 1px solid #eee; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>${escapeHtml(processedSubject) || 'No Subject'}</h1>
             </div>
-          </div>
-          <div style="background-color: #ffffff; padding: 20px;">
-            <div style="margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #e5e7eb;">
-              <strong style="font-size: 14px;">Subject:</strong> 
-              <span style="font-size: 14px;">${escapeHtml(processedSubject)}</span>
-            </div>
-            <div style="line-height: 1.6;">
+            <div class="content">
               ${bodyWithReplacements || '<p>No content provided</p>'}
             </div>
-            ${addressLabel ? `
-            <div style="margin-top: 20px; padding-top: 10px; border-top: 1px solid #e5e7eb; font-size: 12px; color: #6b7280;">
-            </div>
-            ` : ''}
-            ${locationUrl ? `
-            <div style="margin-top: 5px; font-size: 12px; color: #6b7280;">
-            </div>
-            ` : ''}
           </div>
-        </div>
+        </body>
+        </html>
       `;
-    }).join('');
-    
-    const previewHtmlContent = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Bulk Email Preview - ${recipients.length} Recipients</title>
-        <style>
-          body { font-family: Arial, sans-serif; padding: 20px; margin: 0; background-color: #f5f5f5; }
-          .container { max-width: 700px; margin: 0 auto; }
-          .header { background-color: #ffffff; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-          .header h1 { color: #111827; margin: 0 0 10px 0; font-size: 24px; }
-          .header p { color: #6b7280; margin: 0; font-size: 14px; }
-          .preview-count { background-color: #dbeafe; border-radius: 6px; padding: 8px 12px; margin-top: 10px; font-size: 13px; color: #1e40af; }
-          a { color: #3b82f6; text-decoration: underline; }
-          a:hover { color: #2563eb; }
-          @media print {
-            body { background-color: white; padding: 0; }
-            .header { box-shadow: none; border: 1px solid #e5e7eb; }
-            .preview-count { background-color: #f3f4f6; }
-          }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <div class="header">
-            <h1>📧 Bulk Email Preview</h1>
-            <p>Sending to ${recipients.length} recipient(s) on ${baseInterviewDate}</p>
-            <div class="preview-count">
-              ⏰ Time interval: ${intervalMinutes} minute(s) between each interview
-            </div>
-          </div>
-          ${previewSections}
-        </div>
-      </body>
-      </html>
-    `;
-    
-    setPreviewHtml(previewHtmlContent);
-    setShowPreviewModal(true);
-  } else {
-    // Single mode
-    console.log('Single mode - applicant:', applicant);
-    
-    const jobTitle = (() => {
-      try {
-        const title = getJobTitle?.();
-        if (!title) return '';
-        if (typeof title === 'string') return title.trim();
-        const en = typeof (title as any).en === 'string' ? (title as any).en.trim() : '';
-        const ar = typeof (title as any).ar === 'string' ? (title as any).ar.trim() : '';
-        return en || ar || '';
-      } catch {
-        return '';
-      }
-    })();
-    
-    const applicantName = (applicant?.fullName || applicant?.applicantName || applicant?.name || '').trim() || 'Candidate';
-    const interviewDate = baseInterviewDate;
-    const interviewTime = interviewForm.time 
-      ? formatTime12Hour(interviewForm.time)
-      : 'No Time Set';
-    
-    const interviewType = interviewForm.type || 'phone';
-    const typeLabel = interviewType === 'in-person' ? 'In-person' : 
-                      interviewType.charAt(0).toUpperCase() + interviewType.slice(1);
-    
-    let processedSubject = interviewEmailSubject || 'Interview Invitation';
-    let processedBody = messageTemplate || '';
-    
-    // Create clickable location HTML
-    const clickableLocation = createClickableLocation(locationUrl, locationUrl);
-    
-    // Replace subject (subject should have escaped HTML, not clickable links)
-    processedSubject = processedSubject
-      .replace(/\{\{\s*candidateName\s*\}\}/gi, escapeHtml(applicantName))
-      .replace(/\{\{\s*(?:position|jobTitle)\s*\}\}/gi, escapeHtml(jobTitle || '[Position]'))
-      .replace(/\{\{\s*InterviewDate\s*\}\}/gi, escapeHtml(interviewDate))
-      .replace(/\{\{\s*interviewTime\s*\}\}/gi, escapeHtml(interviewTime))
-      .replace(/\{\{\s*interviewType\s*\}\}/gi, escapeHtml(typeLabel))
-      .replace(/\{\{\s*location\s*\}\}/gi, escapeHtml(locationUrl || '[Location URL]'))
-      .replace(/\{\{\s*address\s*\}\}/gi, escapeHtml(addressLabel || '[Address]'));
-    
-    // Replace body - location becomes clickable HTML
-    let bodyWithReplacements = processedBody;
-    bodyWithReplacements = bodyWithReplacements
-      .replace(/\{\{\s*candidateName\s*\}\}/gi, escapeHtml(applicantName))
-      .replace(/\{\{\s*(?:position|jobTitle)\s*\}\}/gi, escapeHtml(jobTitle || '[Position]'))
-      .replace(/\{\{\s*InterviewDate\s*\}\}/gi, escapeHtml(interviewDate))
-      .replace(/\{\{\s*interviewTime\s*\}\}/gi, escapeHtml(interviewTime))
-      .replace(/\{\{\s*interviewType\s*\}\}/gi, escapeHtml(typeLabel))
-      .replace(/\{\{\s*location\s*\}\}/gi, clickableLocation) // This becomes HTML, not escaped
-      .replace(/\{\{\s*address\s*\}\}/gi, escapeHtml(addressLabel || '[Address]'));
-    
-    const previewHtmlContent = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Email Preview</title>
-        <style>
-          body { font-family: Arial, sans-serif; padding: 20px; margin: 0; background-color: #f5f5f5; }
-          .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-          .header { background-color: #ffffff; border-bottom: 1px solid #e5e7eb; padding: 24px 30px; text-align: center; }
-          .header h1 { color: #111827; margin: 0; font-size: 22px; font-weight: 700; }
-          .content { padding: 30px; }
-          .content p { margin: 0 0 16px 0; line-height: 1.6; }
-          a { color: #3b82f6; text-decoration: underline; }
-          a:hover { color: #2563eb; }
-          hr { margin: 30px 0; border: none; border-top: 1px solid #eee; }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <div class="header">
-            <h1>${escapeHtml(processedSubject) || 'No Subject'}</h1>
-          </div>
-          <div class="content">
-            ${bodyWithReplacements || '<p>No content provided</p>'}
-          </div>
-        </div>
-      </body>
-      </html>
-    `;
-    
-    setPreviewHtml(previewHtmlContent);
-    setShowPreviewModal(true);
-  }
-};
+      
+      setPreviewHtml(previewHtmlContent);
+      setShowPreviewModal(true);
+    }
+  };
 
-  // Stable handlers for DatePicker to avoid re-initialization which closes the picker
+  // Stable handlers for DatePicker
   const handleDateChange = useCallback((selectedDates: Date[]) => {
     if (selectedDates.length > 0) {
       const date = selectedDates[0];
@@ -763,57 +754,30 @@ export default function InterviewScheduleModal(props: Props) {
     }
   }, [setInterviewForm]);
 
-  const company = companyData || (applicant && (applicant.company || applicant.companyObj)) || null;
-  const companyCompany = company || (applicant as any)?.jobPositionId?.companyId || (applicant as any)?.jobPositionId?.company || (applicant as any)?.jobPositionId?.companyObj || null;
+  const company = companyData || (applicant && (applicant.company || applicant.companyObj)) || companyDetails || null;
+  const companyCompany = company || (applicant as any)?.jobPositionId?.companyId || (applicant as any)?.jobPositionId?.company || null;
 
-  const getCompanyIdVal = () => {
-    const c = companyCompany as any;
-    return c?._id || c?.id || c?.company || (c?.companyId && (typeof c.companyId === 'string' ? c.companyId : c.companyId._id)) || null;
-  };
-
-  useEffect(() => {
-    if (isOpen) {
-      try {
-        console.debug('InterviewScheduleModal company:', company);
-      } catch (e) { /* ignore */ }
-    }
-  }, [isOpen, company]);
-
-  try {
-    console.debug('InterviewScheduleModal mailSettings.availableMails:', company?.mailSettings?.availableMails);
-    console.debug('InterviewScheduleModal company.availableMails:', (company as any)?.availableMails);
-    console.debug('InterviewScheduleModal mailSettings.other variants:', company?.mailSettings?.available_senders, (company as any)?.available_senders, (company as any)?.mail?.availableMails);
-  } catch (e) { /* ignore */ }
   const senderOptions: Array<{ value: string; label: string }> = [];
-
   const availableCandidates: any[] = [];
+  
   if (companyCompany) {
-    const ms = (companyCompany as any).mailSettings || (companyCompany as any).settings?.mailSettings || (companyCompany as any).settings?.mail || null;
+    const ms = (companyCompany as any).mailSettings || (companyCompany as any).settings?.mailSettings || null;
     if (ms && Array.isArray(ms.availableMails)) availableCandidates.push(...ms.availableMails);
     if (ms && Array.isArray(ms.available_senders)) availableCandidates.push(...ms.available_senders);
     if (ms && Array.isArray(ms.availableSenders)) availableCandidates.push(...ms.availableSenders);
 
     if (Array.isArray((companyCompany as any).availableMails)) availableCandidates.push(...(companyCompany as any).availableMails);
     if (Array.isArray((companyCompany as any).available_senders)) availableCandidates.push(...(companyCompany as any).available_senders);
-    if (Array.isArray((companyCompany as any).mail?.availableMails)) availableCandidates.push(...(companyCompany as any).mail.availableMails);
   }
 
-  try {
-    const nested = (applicant as any)?.jobPositionId?.companyId?.settings?.mailSettings;
-    if (nested) {
-      if (Array.isArray(nested.availableMails)) availableCandidates.push(...nested.availableMails);
-    }
-  } catch (e) { /* ignore */ }
-
-  const seen = new Set<string>(senderOptions.map((s) => s.value));
+  const seen = new Set<string>();
   availableCandidates.forEach((m: any) => {
     let email = '';
     if (!m) return;
     if (typeof m === 'string') {
       email = m;
     } else if (typeof m === 'object') {
-      email = m.email || m.address || m.value || m.addressEmail || '';
-      if (!email && m.contact) email = m.contact;
+      email = m.email || m.address || m.value || '';
     }
     email = String(email || '').trim();
     if (!email) return;
@@ -822,21 +786,17 @@ export default function InterviewScheduleModal(props: Props) {
     senderOptions.push({ value: email, label: email });
   });
 
-  const fallbackEmail = (companyCompany as any)?.contactEmail || (companyCompany as any)?.email || (companyCompany as any)?.contactEmail || (companyCompany as any)?.contactEmailAddress;
+  const fallbackEmail = (companyCompany as any)?.contactEmail || (companyCompany as any)?.email;
   if (fallbackEmail && !senderOptions.find((s) => s.value === fallbackEmail)) {
     senderOptions.push({ value: fallbackEmail, label: fallbackEmail });
   }
 
-  try {
-    console.debug('InterviewScheduleModal computed senderOptions:', senderOptions);
-  } catch (e) { /* ignore */ }
   const [newLocalEmail, setNewLocalEmail] = useState('');
 
   const getCompanyDomain = () => {
     const domainFromResponse =
       (companyCompany as any)?.settings?.mailSettings?.companyDomain ||
       (companyCompany as any)?.mailSettings?.companyDomain ||
-      (companyCompany as any)?.company?.settings?.mailSettings?.companyDomain ||
       '';
 
     if (domainFromResponse) {
@@ -846,7 +806,6 @@ export default function InterviewScheduleModal(props: Props) {
     const defaultMail =
       (companyCompany as any)?.settings?.mailSettings?.defaultMail ||
       (companyCompany as any)?.mailSettings?.defaultMail ||
-      (companyCompany as any)?.company?.settings?.mailSettings?.defaultMail ||
       (companyCompany as any)?.contactEmail ||
       (companyCompany as any)?.email ||
       '';
@@ -858,8 +817,7 @@ export default function InterviewScheduleModal(props: Props) {
 
     const firstAvailableMail =
       (companyCompany as any)?.settings?.mailSettings?.availableMails?.[0] ||
-      (companyCompany as any)?.mailSettings?.availableMails?.[0] ||
-      (companyCompany as any)?.company?.settings?.mailSettings?.availableMails?.[0];
+      (companyCompany as any)?.mailSettings?.availableMails?.[0];
 
     if (firstAvailableMail && firstAvailableMail.includes('@')) {
       const extractedDomain = firstAvailableMail.split('@')[1];
@@ -872,90 +830,26 @@ export default function InterviewScheduleModal(props: Props) {
   const companyDomain = getCompanyDomain();
   const domainForDisplay = companyDomain;
 
-  // ConductedBy: fetch users for the company and default to current user
-  const { user } = useAuth();
-  const companyIdForUsers = getCompanyIdVal();
-  const { data: companyUsersResponse } = useUsers(
-    companyIdForUsers ? { page: 1, PageCount: 1000, companyId: [companyIdForUsers] } : { page: 1, PageCount: 1000 }
-  );
-
-  const companyUsers = useMemo(() => {
-    if (!companyUsersResponse) return [];
-    return Array.isArray(companyUsersResponse) ? companyUsersResponse : ((companyUsersResponse as any)?.data ?? []);
-  }, [companyUsersResponse]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    try {
-      const defaultConducted = user?._id || '';
-      if (defaultConducted && !(interviewForm && interviewForm.conductedBy)) {
-        setInterviewForm((prev: any) => ({ ...prev, conductedBy: defaultConducted }));
-      }
-    } catch (e) {
-      /* ignore */
-    }
-  }, [isOpen, user, setInterviewForm]);
-
   const onSubmit = async (e: any) => {
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
 
     if (notificationChannels.email && emailOption === 'new' && newLocalEmail && newLocalEmail.trim()) {
       const local = newLocalEmail.trim();
       const domain = domainForDisplay;
+      if (!domain) {
+        setInterviewError('Company domain not configured. Please set a domain in mail settings first.');
+        return;
+      }
+      
       const newEmail = `${local}@${domain}`;
-
-      const cid = getCompanyIdVal();
-      if (!cid) {
-        setInterviewError('Unable to determine company to add new sender');
-        return;
-      }
-
-      try {
-        const settings = await companiesService.getCompanySettingsByCompany(cid);
-        const collectExisting = (obj: any): string[] => {
-          const out: string[] = [];
-          try {
-            if (!obj) return out;
-            const pushIfArray = (a: any) => { if (Array.isArray(a)) out.push(...a.filter(Boolean).map(String)); };
-            pushIfArray(obj?.mailSettings?.availableMails);
-            pushIfArray(obj?.settings?.mailSettings?.availableMails);
-            pushIfArray(obj?.availableMails);
-            pushIfArray(obj?.available_senders);
-            pushIfArray(obj?.availableSenders);
-            pushIfArray(obj?.mail?.availableMails);
-          } catch (e) { /* ignore */ }
-          return Array.from(new Set(out));
-        };
-        const existing = collectExisting(settings);
-        const merged = Array.from(new Set([...(existing || []), newEmail]));
-        const findSettingsId = (obj: any): string | undefined => {
-          if (!obj || typeof obj !== 'object') return undefined;
-          if (obj.settings && obj.settings._id) return obj.settings._id;
-          if (obj._id && typeof obj._id === 'string' && obj._id.match(/^[0-9a-fA-F]{24}$/)) return obj._id;
-          if (obj.company && obj.company.settings && obj.company.settings._id) return obj.company.settings._id;
-          if (obj.company && obj.company._id && typeof obj.company._id === 'string' && obj.company._id.match(/^[0-9a-fA-F]{24}$/)) return obj.company._id;
-          if (obj.mailSettings && obj.mailSettings._id) return obj.mailSettings._id;
-          for (const k of Object.keys(obj)) {
-            if (k.endsWith('_id') && typeof obj[k] === 'string' && obj[k].match(/^[0-9a-fA-F]{24}$/)) return obj[k];
-          }
-          return undefined;
-        };
-
-        const companySettingsId = (companyCompany as any)?.settings?._id;
-        const generatedSettingsId = companySettingsId ?? findSettingsId(settings);
-        const idToSend = generatedSettingsId ?? cid;
-        try { console.debug('InterviewScheduleModal.updateCompanySettings', { idToSend, merged, settings }); } catch (e) { /* ignore */ }
-        await companiesService.updateCompanySettings(idToSend, { mailSettings: { availableMails: merged } });
-        try { setCustomEmail(newEmail); } catch (ignore) {}
-      } catch (err: any) {
-        const msg = (err && err.message) ? err.message : 'Failed to add new sender address';
-        setInterviewError(msg);
-        return;
-      }
+      
+      // Instead of calling updateCompanySettings, just set the custom email
+      // The actual addition to availableMails should be handled by the backend when sending
+      setCustomEmail(newEmail);
     }
 
     // Validate required conductedBy field
-    if (!interviewForm?.conductedBy) {
+    if (!interviewForm?.conductedBy && !bulkMode) {
       setInterviewError('Please select who will conduct the interview');
       return;
     }
@@ -963,9 +857,7 @@ export default function InterviewScheduleModal(props: Props) {
     try {
       await handleInterviewSubmit(e);
     } catch (err: any) {
-      const msg =
-        (err && (err.message || err.response?.data?.message)) ||
-        'Failed to schedule interview.';
+      const msg = (err && (err.message || err.response?.data?.message)) || 'Failed to schedule interview.';
       setInterviewError(String(msg));
     }
   };
@@ -1031,6 +923,8 @@ export default function InterviewScheduleModal(props: Props) {
       }))
     ];
   }, [emailTemplates]);
+
+
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} className="max-w-[1100px] p-6 lg:p-10" closeOnBackdrop={false}>
@@ -1162,12 +1056,22 @@ export default function InterviewScheduleModal(props: Props) {
             <div>
               <Label htmlFor="interview-conducted-by">Conducted By</Label>
               <Select
-                options={(companyUsers || []).map((u: any) => ({ value: u._id, label: toPlainString(u.fullName || u.name || u.email || u.username || u._id) }))}
-                value={interviewForm.conductedBy || ''}
+                options={[
+                  { value: user?._id || '', label: toPlainString(user?.fullName || user?.name || user?.email || 'Current User') },
+                  ...companyUsers.filter((u: any) => u._id !== user?._id).map((u: any) => ({ 
+                    value: u._id, 
+                    label: toPlainString(u.fullName || u.name || u.email || u.username || u._id) 
+                  }))
+                ]}
+                value={interviewForm.conductedBy || user?._id || ''}
                 placeholder="Select interviewer"
-                onChange={(value: any) => { setInterviewForm({ ...interviewForm, conductedBy: value }); setInterviewError(''); }}
+                onChange={(value: any) => { 
+                  setInterviewForm({ ...interviewForm, conductedBy: value }); 
+                  setInterviewError(''); 
+                }}
               />
               <p className="mt-1 text-xs text-gray-500">Required — who will conduct the interview</p>
+              {isLoadingUsers && <p className="mt-1 text-xs text-gray-400">Loading users...</p>}
             </div>
           </div>
 
@@ -1195,12 +1099,12 @@ export default function InterviewScheduleModal(props: Props) {
                 <label className="group relative inline-flex items-center gap-3 cursor-pointer rounded-lg border border-gray-300 bg-white px-4 py-2.5 transition-all hover:border-brand-400 hover:bg-brand-50/50 dark:border-gray-600 dark:bg-gray-800 dark:hover:border-brand-600 dark:hover:bg-brand-900/20">
                   <input type="radio" name="notificationChannel" checked={notificationChannels.sms} onChange={() => { const nextChannels = { email: false, sms: true, whatsapp: false }; setNotificationChannels(nextChannels); setPhoneOption('company'); setMessageTemplate(generateMessageTemplate(nextChannels)); setSelectedTemplateId(''); }} className="peer sr-only" />
                   <div className="h-5 w-5 rounded-full border-2 border-gray-300 bg-white transition-all peer-checked:border-brand-600 peer-checked:bg-brand-600 dark:border-gray-600 dark:bg-gray-700 dark:peer-checked:border-brand-500 dark:peer-checked:bg-brand-500 flex items-center justify-center"><div className="h-2 w-2 rounded-full bg-white scale-0 peer-checked:scale-100 transition-transform"></div></div>
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">💬 SMS<span className="ml-2 inline-block rounded px-1.5 py-0.5 text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700">Soon</span></span>
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">💬 SMS</span>
                 </label>
                 <label className="group relative inline-flex items-center gap-3 cursor-pointer rounded-lg border border-gray-300 bg-white px-4 py-2.5 transition-all hover:border-brand-400 hover:bg-brand-50/50 dark:border-gray-600 dark:bg-gray-800 dark:hover:border-brand-600 dark:hover:bg-brand-900/20">
                   <input type="radio" name="notificationChannel" checked={notificationChannels.whatsapp} onChange={() => { const nextChannels = { email: false, sms: false, whatsapp: true }; setNotificationChannels(nextChannels); setMessageTemplate(generateMessageTemplate(nextChannels)); setSelectedTemplateId(''); }} className="peer sr-only" />
                   <div className="h-5 w-5 rounded-full border-2 border-gray-300 bg-white transition-all peer-checked:border-brand-600 peer-checked:bg-brand-600 dark:border-gray-600 dark:bg-gray-700 dark:peer-checked:border-brand-500 dark:peer-checked:bg-brand-500 flex items-center justify-center"><div className="h-2 w-2 rounded-full bg-white scale-0 peer-checked:scale-100 transition-transform"></div></div>
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">📱 WhatsApp<span className="ml-2 inline-block rounded px-1.5 py-0.5 text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700">Soon</span></span>
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">📱 WhatsApp</span>
                 </label>
               </div>
 
@@ -1270,7 +1174,6 @@ export default function InterviewScheduleModal(props: Props) {
                       <>
                         <Select options={[{ value: 'company', label: 'Company Number' },{ value: 'user', label: 'My Phone' },{ value: 'whatsapp', label: 'Current WhatsApp Number' },{ value: 'custom', label: 'Custom Number' }]} value={phoneOption} placeholder="Select phone option" onChange={(value: any) => setPhoneOption(value)} />
                         {phoneOption === 'custom' && <Input id="custom-phone" type="tel" value={customPhone} onChange={(e: any) => setCustomPhone(e.target.value)} placeholder="Enter custom phone number" className="mt-2" />}
-                        {phoneOption === 'whatsapp' && <p className="text-xs text-gray-500 dark:text-gray-400">Will use the number currently logged in to WhatsApp Web/Desktop</p>}
                       </>
                     )}
                   </div>

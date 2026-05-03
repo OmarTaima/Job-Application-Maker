@@ -6,11 +6,11 @@ import PageBreadCrumb from '../../../components/common/PageBreadCrumb';
 import { useAuth } from '../../../context/AuthContext';
 import {
   useCompanies,
-  useCompanySettings,
-  useUpdateCompanySettings,
+  useUpdateCompanyStatuses,
 } from '../../../hooks/queries/useCompanies';
 import { useStatusSettings } from '../../../hooks/useStatusSettings';
 import { useQueryClient } from '@tanstack/react-query';
+import type { CompanyStatus } from '../../../types/companies';
 
 type LeadStatus = {
   name: string;
@@ -116,23 +116,6 @@ const getContrastColor = (hex: string | undefined): string => {
   }
 };
 
-const getCompanyIdFromPayload = (
-  company: any,
-  fallbackCompanyId?: string | undefined
-): string | undefined => {
-  const idFromSettings = company?.settings?.company;
-  if (typeof idFromSettings === 'string' && idFromSettings.trim())
-    return idFromSettings;
-  if (company?._id) return company._id;
-  return fallbackCompanyId;
-};
-
-const getCompanySettingsIdFromPayload = (company: any): string | undefined => {
-  const settingsId = company?.settings?._id;
-  if (typeof settingsId === 'string' && settingsId.trim()) return settingsId;
-  return undefined;
-};
-
 // Check if status is locked (only color can be changed)
 const isLockedStatus = (statusKey: string): boolean => {
   const lockedKeys = ['interview', 'rejected', 'trashed'];
@@ -162,11 +145,7 @@ export default function StatusLabelsSettings({
   const [selectedCompanyId, setSelectedCompanyId] = useState<
     string | undefined
   >(companyId ?? undefined);
-  const { data: selectedCompanySettings } = useCompanySettings(
-    selectedCompanyId,
-    { enabled: !!selectedCompanyId }
-  );
-  const updateMutation = useUpdateCompanySettings();
+  const updateMutation = useUpdateCompanyStatuses();
 
   const isSuperAdmin = !!user?.roleId?.name
     ?.toString()
@@ -206,10 +185,11 @@ export default function StatusLabelsSettings({
     [companies, selectedCompanyId]
   );
 
+  // Get statuses directly from the selected company (from /auth/me data)
   const deriveStatuses = (payload: any): LeadStatus[] => {
-    const fromSettings =
-      payload?.statuses ?? payload?.settings?.statuses ?? payload?.settings;
-
+    // Try to get statuses from settings
+    const fromSettings = payload?.settings?.statuses;
+    
     if (Array.isArray(fromSettings) && fromSettings.length > 0) {
       return fromSettings.map((s: any) => {
         const statusKey = s.statusKey || s.name?.toLowerCase();
@@ -233,32 +213,6 @@ export default function StatusLabelsSettings({
       });
     }
 
-    const companyLevel =
-      (payload ?? {})?.statuses ??
-      (payload ?? {})?.applicantStatus ??
-      (payload ?? {})?.leadStatuses;
-    if (Array.isArray(companyLevel) && companyLevel.length > 0) {
-      return companyLevel.map((s: any) => {
-        const statusKey = s.statusKey || s.name?.toLowerCase();
-        const isLocked = isLockedStatus(statusKey);
-
-        return {
-          name: String(s?.name ?? '').trim() || '',
-          color: String(s?.color ?? '#94a3b8'),
-          textColor: String(
-            s?.textColor ??
-              s?.text_color ??
-              getContrastColor(s?.color ?? '#94a3b8')
-          ),
-          description: isLocked
-            ? DEFAULT_STATUS_DESCRIPTIONS[statusKey]
-            : String(s?.description ?? ''),
-          isDefault: !!s?.isDefault,
-          statusKey: statusKey,
-        };
-      });
-    }
-
     return DEFAULT_STATUSES;
   };
 
@@ -275,17 +229,15 @@ export default function StatusLabelsSettings({
 
   // Get the hook for checking static statuses
   const { isStaticStatus: checkIsStatic, getDescription } = useStatusSettings(
-    selectedCompanySettings || selectedCompany
+    selectedCompany
   );
 
   useEffect(() => {
-    const normalized = deriveStatuses(
-      selectedCompanySettings ?? selectedCompany ?? {}
-    );
+    const normalized = deriveStatuses(selectedCompany ?? {});
     setStatuses(normalized);
     setStatusIds(normalized.map(() => makeId()));
     setOriginalStatusesJson(JSON.stringify(normalized));
-  }, [selectedCompanySettings, selectedCompanyId, selectedCompany]);
+  }, [selectedCompanyId, selectedCompany]);
 
   const canEdit =
     !!hasPermission &&
@@ -374,160 +326,64 @@ export default function StatusLabelsSettings({
     setStatusIds((prev) => arrayMove(prev, fromIndex, statusIds.length - 1));
   };
 
-  const handleSave = async () => {
-    if (!selectedCompanyId) {
-      Swal.fire('Validation', 'Please select a company first.', 'warning');
-      return;
-    }
 
-    const targetCompanyId = getCompanyIdFromPayload(
-      selectedCompany,
-      selectedCompanyId
-    );
-    const companySettingsId = getCompanySettingsIdFromPayload(selectedCompany);
-    const primarySaveId = companySettingsId ?? targetCompanyId;
-    const fallbackSaveId =
-      companySettingsId &&
-      targetCompanyId &&
-      companySettingsId !== targetCompanyId
-        ? targetCompanyId
-        : undefined;
+const handleSave = async () => {
+  if (!selectedCompanyId) {
+    Swal.fire('Validation', 'Please select a company first.', 'warning');
+    return;
+  }
 
-    if (!primarySaveId) {
-      Swal.fire(
-        'Validation',
-        'Unable to resolve company identity for saving.',
-        'warning'
-      );
-      return;
-    }
+  // Prepare payload as array of CompanyStatus objects
+  const payload: CompanyStatus[] = statuses.map((s) => ({
+    ...(s._id ? { _id: s._id } : {}),
+    name: String(s.name ?? '').trim(),
+    color: s.color,
+    textColor: s.textColor,
+    description: isStaticStatus(s.statusKey || s.name)
+      ? ''
+      : String(s.description ?? '').trim(),
+    isDefault: !!s.isDefault,
+  }));
 
-    // Get the original statuses from the company settings to preserve _id
-    const originalStatuses = deriveStatuses(
-      selectedCompanySettings ?? selectedCompany ?? {}
-    );
+  // Get the settings ID from the selected company
+  const settingsId = selectedCompany?.settings?._id;
 
-    // Create a map of original statuses by name/statusKey for matching
-    const originalStatusMap = new Map();
-    originalStatuses.forEach((originalStatus: LeadStatus) => {
-      // Store by name and statusKey for matching
-      if (originalStatus.name) {
-        originalStatusMap.set(
-          originalStatus.name.toLowerCase(),
-          originalStatus
-        );
-      }
-      if (originalStatus.statusKey) {
-        originalStatusMap.set(
-          originalStatus.statusKey.toLowerCase(),
-          originalStatus
-        );
-      }
+  setIsSaving(true);
+
+  try {
+    await updateMutation.mutateAsync({
+      companyId: selectedCompanyId,
+      settingsId: settingsId,  // Pass the settings ID
+      data: payload,
     });
 
-    // Prepare payload WITH _id for existing statuses, WITHOUT for new ones
-    const payload = statuses.map((s) => ({
-      ...(s._id ? { _id: s._id } : {}), // ✅ much cleaner
-      name: String(s.name ?? '').trim(),
-      color: s.color,
-      textColor: s.textColor,
-      description: isStaticStatus(s.statusKey || s.name)
-        ? ''
-        : String(s.description ?? '').trim(),
-      isDefault: !!s.isDefault,
+    // Invalidate queries to refresh data across the app
+    queryClient.invalidateQueries({ queryKey: ['companies'] });
+    queryClient.invalidateQueries({ queryKey: ['applicants'] });
+
+    Swal.fire({
+      title: 'Saved',
+      icon: 'success',
+      timer: 1200,
+      showConfirmButton: false,
+    });
+
+    // Update the original statuses JSON to reflect saved state
+    const payloadWithKeys = statuses.map((s, idx) => ({
+      ...payload[idx],
+      statusKey: s.statusKey,
     }));
-
-    setIsSaving(true);
-
-    try {
-      await updateMutation.mutateAsync({
-        id: primarySaveId,
-        data: { statuses: payload } as any,
-      });
-
-      // Invalidate queries to refresh data across the app
-      queryClient.invalidateQueries({
-        queryKey: ['company-settings', selectedCompanyId],
-      });
-      queryClient.invalidateQueries({
-        queryKey: ['company', selectedCompanyId],
-      });
-      queryClient.invalidateQueries({ queryKey: ['companies'] });
-      queryClient.invalidateQueries({ queryKey: ['applicants'] });
-
-      if (targetCompanyId && targetCompanyId !== selectedCompanyId) {
-        queryClient.invalidateQueries({
-          queryKey: ['company-settings', targetCompanyId],
-        });
-        queryClient.invalidateQueries({
-          queryKey: ['company', targetCompanyId],
-        });
-      }
-
-      if (companySettingsId) {
-        queryClient.invalidateQueries({
-          queryKey: ['company-settings', companySettingsId],
-        });
-      }
-
-      Swal.fire({
-        title: 'Saved',
-        icon: 'success',
-        timer: 1200,
-        showConfirmButton: false,
-      });
-
-      // Update the original statuses JSON to reflect saved state
-      const payloadWithKeys = statuses.map((s, idx) => ({
-        ...payload[idx],
-        statusKey: s.statusKey,
-      }));
-      setOriginalStatusesJson(JSON.stringify(payloadWithKeys));
-    } catch (err: any) {
-      if (fallbackSaveId) {
-        try {
-          await updateMutation.mutateAsync({
-            id: fallbackSaveId,
-            data: { statuses: payload } as any,
-          });
-
-          queryClient.invalidateQueries({
-            queryKey: ['company-settings', fallbackSaveId],
-          });
-          queryClient.invalidateQueries({
-            queryKey: ['company', fallbackSaveId],
-          });
-          queryClient.invalidateQueries({ queryKey: ['companies'] });
-          queryClient.invalidateQueries({ queryKey: ['applicants'] });
-
-          Swal.fire({
-            title: 'Saved',
-            icon: 'success',
-            timer: 1200,
-            showConfirmButton: false,
-          });
-
-          const payloadWithKeys = statuses.map((s, idx) => ({
-            ...payload[idx],
-            statusKey: s.statusKey,
-          }));
-          setOriginalStatusesJson(JSON.stringify(payloadWithKeys));
-          setIsSaving(false);
-          return;
-        } catch (e) {
-          // fall through
-        }
-      }
-      Swal.fire(
-        'Failure',
-        err?.message || 'Failed to update configuration',
-        'error'
-      );
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
+    setOriginalStatusesJson(JSON.stringify(payloadWithKeys));
+  } catch (err: any) {
+    Swal.fire(
+      'Failure',
+      err?.message || 'Failed to update configuration',
+      'error'
+    );
+  } finally {
+    setIsSaving(false);
+  }
+};
   // Helper to check if a status is locked (only color editable)
   const isLocked = (status: LeadStatus) => {
     return isLockedStatus(status.statusKey || status.name);

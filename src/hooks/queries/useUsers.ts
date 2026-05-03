@@ -23,31 +23,25 @@ export function useUsers(params: any = {}) {
 
   const userCompanyIds = (() => {
     const roleName = authUser?.roleId?.name?.toLowerCase?.();
-    if (roleName === "admin" || roleName === "super admin") return undefined;
+    if (roleName === 'admin' || roleName === 'super admin') return undefined;
     const fromCompanies = Array.isArray(authUser?.companies)
       ? authUser.companies
-          .map((c: any) => (typeof c?.companyId === "string" ? c.companyId : c?.companyId?._id))
-          .filter(Boolean)
+          .map((c: any) => (typeof c?.companyId === 'string' ? c.companyId : c?.companyId?._id))
+          .filter((id: any) => typeof id === 'string')
       : [];
     const fromAssigned = Array.isArray(authUser?.assignedcompanyId)
-      ? authUser.assignedcompanyId.filter(Boolean)
+      ? authUser.assignedcompanyId.filter((id: any) => typeof id === 'string')
       : [];
     const merged = Array.from(new Set([...fromCompanies, ...fromAssigned]));
     return merged.length > 0 ? merged : undefined;
   })();
 
-  const paramsWithCompany = {
-    ...params,
-    companyId: params?.companyId ?? userCompanyIds,
-  };
+  const companies = params?.companies ?? userCompanyIds;
 
-  // Ensure page is a number
-  const pageParam = typeof paramsWithCompany.page === "string" ? parseInt(paramsWithCompany.page, 10) : paramsWithCompany.page;
   return useQuery({
-    queryKey: [...usersKeys.list(paramsWithCompany.companyId), { page: pageParam }],
-    queryFn: () => usersService.getAllUsers({ ...paramsWithCompany, page: pageParam }),
+    queryKey: [...usersKeys.list(companies), ],
+    queryFn: () => usersService.getAllUsers({ companies }),
     staleTime: 5 * 60 * 1000,
-    // Keep previous page data while fetching next page to avoid empty loading states
     keepPreviousData: true,
   } as any);
 }

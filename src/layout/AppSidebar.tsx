@@ -5,7 +5,7 @@ import { Link, useLocation } from 'react-router';
 import { ChevronDownIcon, GridIcon, HorizontaLDots, TaskIcon } from '../icons';
 import { useSidebar } from '../context/SidebarContext';
 import { useAuth } from '../context/AuthContext';
-import { useAllCompanySettings } from '../hooks/queries/useCompanies';
+import { useCompanies } from '../hooks/queries/useCompanies';
 
 type NavItem = {
   name: string;
@@ -13,34 +13,6 @@ type NavItem = {
   path?: string;
   subItems?: { name: string; path: string; pro?: boolean; new?: boolean }[];
 };
-
-//   icon: <CalenderIcon />,
-//   name: "Calendar",
-//   path: "/calendar",
-// },
-// {
-//   icon: <UserCircleIcon />,
-//   name: "User Profile",
-//   path: "/profile",
-// },
-// {
-//   name: "Forms",
-//   icon: <ListIcon />,
-//   subItems: [{ name: "Form Elements", path: "/form-elements", pro: false }],
-// },
-// {
-//   name: "Tables",
-//   icon: <TableIcon />,
-//   subItems: [{ name: "Basic Tables", path: "/basic-tables", pro: false }],
-// },
-// {
-//   name: "Pages",
-//   icon: <PageIcon />,
-//   subItems: [
-//     { name: "Blank Page", path: "/blank", pro: false },
-//     { name: "404 Error", path: "/error-404", pro: false },
-//   ],
-// },
 
 const adminItems: NavItem[] = [
   {
@@ -58,21 +30,37 @@ const AppSidebar: React.FC = () => {
   const { isExpanded, isMobileOpen, isHovered, setIsHovered } = useSidebar();
   const { hasPermission, user } = useAuth();
   const location = useLocation();
+  const { data: companies = [] } = useCompanies();
 
-  const userCompanyIds = useMemo(() => {
-    const fromCompanies = Array.isArray(user?.companies)
-      ? user.companies
-          .map((c: any) =>
-            typeof c?.companyId === 'string' ? c.companyId : c?.companyId?._id
-          )
-          .filter(Boolean)
-      : [];
-    const fromAssigned = Array.isArray((user as any)?.assignedcompanyId)
-      ? (user as any).assignedcompanyId.filter(Boolean)
-      : [];
-    return Array.from(new Set([...fromCompanies, ...fromAssigned].map(String)));
-  }, [user]);
-  const allCompanySettingsResults = useAllCompanySettings(userCompanyIds);
+
+
+  // Get applicant pages from companies data (from /auth/me)
+  const applicantPageSubItems = useMemo(() => {
+    const seen = new Set<string>();
+    
+    // Collect applicant pages from all companies the user has access to
+    const allPages: any[] = [];
+    
+    companies.forEach((company: any) => {
+      const pages = company?.settings?.applicantPages ?? [];
+      if (Array.isArray(pages)) {
+        allPages.push(...pages);
+      }
+    });
+    
+    return allPages
+      .filter((p: any) => {
+        if (seen.has(p.name)) return false;
+        seen.add(p.name);
+        return true;
+      })
+      .map((p: any) => ({
+        name: p.name,
+        path: `/applicants/page/${encodeURIComponent(p.name)}?statuses=${(p.statuses || []).map(encodeURIComponent).join(',')}`,
+        pro: false,
+      }));
+  }, [companies]);
+
   const hasSingleAssignedCompany = useMemo(() => {
     const roleName = user?.roleId?.name?.toLowerCase?.();
     const isAdminRole = roleName === 'admin' || roleName === 'super admin';
@@ -118,27 +106,10 @@ const AppSidebar: React.FC = () => {
   );
   const subMenuRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
-  // const isActive = (path: string) => location.pathname === path;
   const isActive = useCallback(
     (path: string) => location.pathname === path,
     [location.pathname]
   );
-
-  const applicantPageSubItems = useMemo(() => {
-    const seen = new Set<string>();
-    return allCompanySettingsResults
-      .flatMap((result) => result.data?.settings?.applicantPages ?? [])
-      .filter((p: any) => {
-        if (seen.has(p.name)) return false; // deduplicate by name
-        seen.add(p.name);
-        return true;
-      })
-      .map((p: any) => ({
-        name: p.name,
-        path: `/applicants/page/${encodeURIComponent(p.name)}?statuses=${p.statuses.map(encodeURIComponent).join(',')}`,
-        pro: false,
-      }));
-  }, [allCompanySettingsResults]);
 
   const navItems: NavItem[] = [
     {
@@ -151,7 +122,7 @@ const AppSidebar: React.FC = () => {
       name: 'Applicants',
       subItems: [
         { name: 'All Applicants', path: '/applicants', pro: false },
-        ...applicantPageSubItems, // 👈 dynamic pages injected here
+        ...applicantPageSubItems,
       ],
     },
     {
@@ -249,12 +220,10 @@ const AppSidebar: React.FC = () => {
   };
 
   const renderMenuItems = (items: NavItem[], menuType: 'main' | 'admin') => {
-    // Filter menu items based on permissions
     const filterSubItems = (
       subItems: { name: string; path: string; pro?: boolean; new?: boolean }[]
     ) => {
       return subItems.filter((subItem) => {
-        // Map menu items to their required permissions
         if (subItem.path === '/applicants')
           return hasPermission('Applicant Management', 'read');
         if (subItem.path === '/applicants/mail-preview')
@@ -284,29 +253,21 @@ const AppSidebar: React.FC = () => {
             hasPermission('Settings Management', 'create') &&
             hasPermission('Settings Management', 'write')
           );
-        if (subItem.path === '/recruiting/saved-fields') return true; // Saved fields are available to authenticated users
-        if (subItem.path === '/recruiting/saved-questions') return true; // Saved questions are available to authenticated users
-        // Default: allow access (for dashboard, etc.)
+        if (subItem.path === '/recruiting/saved-fields') return true;
+        if (subItem.path === '/recruiting/saved-questions') return true;
         return true;
       });
     };
 
-    // Hide the whole "Company Management" nav if the user doesn't have create permission
-    const filteredItems = items.filter((nav) => {
-      if (nav.name === 'Company Management') {
-      }
-      return true;
-    });
+    const filteredItems = items;
 
     return (
       <ul className="flex flex-col gap-4">
         {filteredItems.map((nav, index) => {
-          // Filter sub-items if they exist
           const visibleSubItems = nav.subItems
             ? filterSubItems(nav.subItems)
             : undefined;
 
-          // Don't render if no visible sub-items and it's a submenu
           if (nav.subItems && visibleSubItems && visibleSubItems.length === 0) {
             return null;
           }
@@ -503,7 +464,6 @@ const AppSidebar: React.FC = () => {
                     : 'justify-start'
                 }`}
               >
-                {/* Menu title commented out */}
                 {isExpanded || isHovered || isMobileOpen ? null : (
                   <HorizontaLDots className="size-6" />
                 )}
@@ -519,7 +479,6 @@ const AppSidebar: React.FC = () => {
                       : 'justify-start'
                   }`}
                 >
-                  {/* Admin title commented out */}
                   {isExpanded || isHovered || isMobileOpen ? null : (
                     <HorizontaLDots />
                   )}

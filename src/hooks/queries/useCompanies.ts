@@ -1,4 +1,5 @@
-import { useQuery, useMutation, useQueryClient, useQueries } from '@tanstack/react-query';
+// hooks/queries/useCompanies.ts
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { companiesService, emailTemplatesService } from '../../services/companiesService';
 import { useAppSelector } from '../../store/hooks';
 import Swal from '../../utils/swal';
@@ -9,11 +10,12 @@ import type {
   InterviewSettings,
   UpdateRejectionReasonsRequest,
   UpdateApplicantPagesRequest,
-  UpdateCompanySettingsRequest,
   UpdateInterviewSettingsRequest,
   EmailTemplate,
+  CompanyStatus,
 } from '../../types/companies';
 import type { Applicant } from '../../types/applicants';
+import { useAuth } from '../../context/AuthContext';
 
 // Query keys
 export const companiesKeys = {
@@ -26,6 +28,8 @@ export const companiesKeys = {
   settings: () => [...companiesKeys.all, 'settings'] as const,
   setting: (companyId: string) =>
     [...companiesKeys.settings(), companyId] as const,
+  mailSettings: () => [...companiesKeys.all, 'mailSettings'] as const,  // Add this
+  mailSetting: (companyId: string) => [...companiesKeys.mailSettings(), companyId] as const,  // Add this
   interviewSettings: () => [...companiesKeys.settings(), 'interview'] as const,
   interviewSetting: (companyId: string) =>
     [...companiesKeys.interviewSettings(), companyId] as const,
@@ -39,6 +43,17 @@ export const emailTemplatesKeys = {
   details: () => [...emailTemplatesKeys.all, 'detail'] as const,
   detail: (id: string) => [...emailTemplatesKeys.details(), id] as const,
 };
+
+// Helper to get company data from user (from /auth/me)
+function useCompanyFromUser(companyId: string): any | undefined {
+  const { user } = useAuth();
+  const company = user?.companies?.find((c: any) => {
+    const companyData = c.companyId;
+    const cid = typeof companyData === 'string' ? companyData : companyData?._id;
+    return cid === companyId;
+  });
+  return company?.companyId;
+}
 
 // Get all companies (optionally filtered by company IDs)
 export function useCompanies(companyId?: string[], options?: { enabled?: boolean }) {
@@ -68,9 +83,7 @@ export function useCompanies(companyId?: string[], options?: { enabled?: boolean
     queryKey: companiesKeys.list(effectiveCompanyId),
     queryFn: async () => {
       if (effectiveCompanyId && effectiveCompanyId.length === 1) {
-        const comp = await companiesService.getCompanyById(
-          effectiveCompanyId[0]
-        );
+        const comp = await companiesService.getCompanyById(effectiveCompanyId[0]);
         return [comp];
       }
       return companiesService.getAllCompanies(effectiveCompanyId);
@@ -82,25 +95,418 @@ export function useCompanies(companyId?: string[], options?: { enabled?: boolean
     enabled: options?.enabled !== undefined ? options.enabled : true,
   });
 }
+export function useUpdateMailSettings() {
+  const queryClient = useQueryClient();
 
-// Hook to fetch email templates
-export function useEmailTemplates(settingsId: string, options?: { enabled?: boolean }) {
-  return useQuery({
-    queryKey: emailTemplatesKeys.list(settingsId),
-    queryFn: async () => {
-      if (!settingsId) return [];
-      try {
-        const company = await companiesService.getCompanySettingsByCompany(settingsId);
-        const templates = (company as any)?.settings?.mailSettings?.emailTemplates ?? 
-                         (company as any)?.mailSettings?.emailTemplates ?? 
-                         [];
-        return templates as EmailTemplate[];
-      } catch (error) {
-        console.error('Error fetching email templates:', error);
-        return [];
-      }
+  return useMutation({
+    mutationFn: ({ companyId, data }: { companyId: string; data: { availableMails?: string[]; defaultMail?: string | null; companyDomain?: string | null } }) =>
+      companiesService.updateMailSettings(companyId, data),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: companiesKeys.mailSetting(variables.companyId) });
+      Swal.fire({
+        title: "Success",
+        text: "Mail settings updated successfully",
+        icon: "success",
+        timer: 1500,
+        showConfirmButton: false,
+      });
     },
-    enabled: !!settingsId && (options?.enabled ?? true),
+    onError: (error: any) => {
+      Swal.fire({
+        title: "Error",
+        text: error.message || "Failed to update mail settings",
+        icon: "error",
+      });
+    },
+  });
+}
+
+// Get company by ID
+export function useCompany(id: string, options?: { enabled?: boolean }) {
+  const queryClient = useQueryClient();
+
+  return useQuery<Company>({
+    queryKey: companiesKeys.detail(id),
+    queryFn: async () => {
+      const list = queryClient.getQueryData(companiesKeys.list()) as any[] | undefined;
+
+      if (list && list.length > 0) {
+        for (const c of list) {
+          if (!c) continue;
+          if (c._id === id) return c;
+          if (c.company && c.company._id === id) return c.company;
+          if (c.data && c.data._id === id) return c.data;
+          const nested = Object.values(c).find(
+            (v: any) => v && typeof v === 'object' && v._id === id
+          );
+          if (nested) return nested as any;
+        }
+      }
+
+      return companiesService.getCompanyById(id);
+    },
+    enabled: options?.enabled !== undefined ? options.enabled : !!id,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+// ==================== GETTER HOOKS (from user data first, then API) ====================
+
+// Company interview settings - First try from user's company data, then fallback
+export function useCompanyInterviewSettings(
+  companyId: string | undefined,
+  options?: { enabled?: boolean }
+) {
+  const queryClient = useQueryClient();
+  const companyFromUser = useCompanyFromUser(companyId || '');
+
+  return useQuery<InterviewSettings | null>({
+    queryKey: companiesKeys.interviewSetting(companyId ?? ''),
+    queryFn: async () => {
+      if (!companyId) return null;
+
+      // Strategy 1: Get from user's company data (from /auth/me)
+      if (companyFromUser) {
+        const interviewSettings = 
+          companyFromUser?.settings?.interviewSettings ??
+          companyFromUser?.interviewSettings ??
+          null;
+        if (interviewSettings && interviewSettings.groups?.length > 0) {
+          return interviewSettings;
+        }
+      }
+
+      // Strategy 2: Try from cached companies list
+      const list = queryClient.getQueryData(companiesKeys.list()) as any[] | undefined;
+      if (list && list.length > 0) {
+        for (const c of list) {
+          if (!c) continue;
+          let companyObj: any = c;
+          if (companyObj.company && typeof companyObj.company === 'object')
+            companyObj = companyObj.company;
+          if (companyObj.data && typeof companyObj.data === 'object')
+            companyObj = companyObj.data;
+          const cid = companyObj._id ?? companyObj.company?._id;
+          if (!cid) continue;
+          if (String(cid) === String(companyId)) {
+            const interview = companyObj.settings?.interviewSettings ??
+              companyObj.interviewSettings ?? null;
+            if (interview && interview.groups?.length > 0) {
+              return interview;
+            }
+          }
+        }
+      }
+
+      // Strategy 3: Fallback to API call
+      try {
+        const company = await companiesService.getCompanyById(companyId);
+        const interviewSettings = 
+          (company as any)?.settings?.interviewSettings ??
+          (company as any)?.interviewSettings ?? null;
+        if (interviewSettings && interviewSettings.groups?.length > 0) {
+          queryClient.setQueryData(companiesKeys.detail(companyId), company);
+          return interviewSettings;
+        }
+      } catch (companyError) {
+        console.warn('Failed to fetch company data:', companyError);
+      }
+
+      return null;
+    },
+    enabled: options?.enabled !== undefined ? options.enabled && !!companyId : !!companyId,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+// ==================== MUTATION HOOKS (CORRECT ENDPOINTS) ====================
+
+// Update company interview settings
+
+// Update company interview settings mutation
+export function useUpdateCompanyInterviewSettings() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ companyId, data, settingsId }: { 
+      companyId?: string; 
+      data: UpdateInterviewSettingsRequest;
+      settingsId?: string;
+    }) => {
+      // Use settingsId if provided, otherwise fallback to companyId
+      const idToUse = settingsId || companyId;
+      if (!idToUse) {
+        throw new Error('No ID provided for interview settings update');
+      }
+      return companiesService.updateCompanyInterviewSettings(idToUse, data);
+    },
+    onSuccess: (interviewSettings, variables) => {
+      const companyId = variables.companyId;
+      
+      if (companyId) {
+        // Update cache
+        queryClient.setQueryData(companiesKeys.interviewSetting(companyId), interviewSettings);
+        queryClient.setQueryData(companiesKeys.list(), (old: any) => {
+          if (!old) return old;
+          if (Array.isArray(old)) {
+            return old.map((c: any) => {
+              if (!c) return c;
+              if (c._id === companyId || c.id === companyId) {
+                return { 
+                  ...c, 
+                  interviewSettings, 
+                  settings: { ...(c.settings ?? {}), interviewSettings } 
+                };
+              }
+              return c;
+            });
+          }
+          return old;
+        });
+      }
+
+      Swal.fire({
+        title: "Success",
+        text: "Interview settings updated successfully",
+        icon: "success",
+        timer: 1500,
+        showConfirmButton: false,
+      });
+    },
+    onError: (error: any) => {
+      Swal.fire({
+        title: "Error",
+        text: error.message || "Failed to update interview settings",
+        icon: "error",
+      });
+    },
+  });
+}
+
+// Update company rejection reasons
+// hooks/queries/useCompanies.ts - Update useUpdateCompanyRejectionReasons
+
+// Update company rejection reasons mutation
+export function useUpdateCompanyRejectionReasons() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ companyId, data, settingsId }: { 
+      companyId?: string; 
+      data: UpdateRejectionReasonsRequest;
+      settingsId?: string;  // Add settingsId parameter
+    }) => {
+      // Use settingsId if provided, otherwise fallback to companyId
+      const idToUse = settingsId || companyId;
+      if (!idToUse) {
+        throw new Error('No ID provided for rejection reasons update');
+      }
+      return companiesService.updateCompanyRejectionReasons(idToUse, data);
+    },
+    onSuccess: (result, variables) => {
+      const idUsed = variables.settingsId || variables.companyId;
+      void idUsed; // To satisfy TypeScript that we have an ID to work with
+      const companyId = variables.companyId;
+      
+      const rejectReasons = result?.rejectReasons ?? variables.data?.rejectReasons ?? [];
+      
+      // Update cache with the company ID (since that's what we use for list queries)
+      if (companyId) {
+        queryClient.setQueryData(companiesKeys.list(), (old: any) => {
+          if (!old) return old;
+          if (Array.isArray(old)) {
+            return old.map((c: any) => {
+              if (!c) return c;
+              if (c._id === companyId || c.id === companyId) {
+                return { ...c, rejectReasons, settings: { ...(c.settings ?? {}), rejectReasons } };
+              }
+              return c;
+            });
+          }
+          return old;
+        });
+      }
+
+      Swal.fire({
+        title: "Success",
+        text: "Rejection reasons updated successfully",
+        icon: "success",
+        timer: 1500,
+        showConfirmButton: false,
+      });
+    },
+    onError: (error: any) => {
+      Swal.fire({
+        title: "Error",
+        text: error.message || "Failed to update rejection reasons",
+        icon: "error",
+      });
+    },
+  });
+}
+
+// Update company applicant pages
+// hooks/queries/useCompanies.ts - Update useUpdateCompanyApplicantPages
+
+// Update company applicant pages mutation
+
+export function useUpdateCompanyApplicantPages() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ settingsId, data }: { 
+      settingsId: string;  // Use settingsId, not companyId
+      data: UpdateApplicantPagesRequest;
+    }) => companiesService.updateCompanyApplicantPages(settingsId, data),
+    onSuccess: (variables) => {
+      const settingsId = variables.settingsId;
+      void settingsId; 
+      
+      // Update cache - you may need to find which company this settingsId belongs to
+      // or invalidate the companies list to refetch
+      queryClient.invalidateQueries({ queryKey: companiesKeys.list() });
+
+      Swal.fire({
+        title: "Success",
+        text: "Applicant pages updated successfully",
+        icon: "success",
+        timer: 1500,
+        showConfirmButton: false,
+      });
+    },
+    onError: (error: any) => {
+      Swal.fire({
+        title: "Error",
+        text: error.message || "Failed to update applicant pages",
+        icon: "error",
+      });
+    },
+  });
+}
+// Update company statuses mutation
+// hooks/queries/useCompanies.ts - Update useUpdateCompanyStatuses
+
+// Update company statuses mutation
+export function useUpdateCompanyStatuses() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ companyId, data, settingsId }: { 
+      companyId?: string; 
+      data: CompanyStatus[];
+      settingsId?: string;
+    }) => {
+      // Use settingsId if provided, otherwise fallback to companyId
+      const idToUse = settingsId || companyId;
+      if (!idToUse) {
+        throw new Error('No ID provided for statuses update');
+      }
+      return companiesService.updateCompanyStatuses(idToUse, data);
+    },
+    onSuccess: (statuses, variables) => {
+      const companyId = variables.companyId;
+      
+      // Update cache with the company ID (since that's what we use for list queries)
+      if (companyId) {
+        queryClient.setQueryData(companiesKeys.list(), (old: any) => {
+          if (!old) return old;
+          if (Array.isArray(old)) {
+            return old.map((c: any) => {
+              if (!c) return c;
+              if (c._id === companyId || c.id === companyId) {
+                return { 
+                  ...c, 
+                  settings: { 
+                    ...(c.settings ?? {}), 
+                    statuses 
+                  } 
+                };
+              }
+              return c;
+            });
+          }
+          return old;
+        });
+      }
+
+      Swal.fire({
+        title: "Success",
+        text: "Statuses updated successfully",
+        icon: "success",
+        timer: 1500,
+        showConfirmButton: false,
+      });
+    },
+    onError: (error: any) => {
+      Swal.fire({
+        title: "Error",
+        text: error.message || "Failed to update statuses",
+        icon: "error",
+      });
+    },
+  });
+}
+// ==================== EMAIL TEMPLATE MUTATIONS ====================
+
+// Create email template
+export function useCreateMailTemplate() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ settingsId, template, existingTemplates }: {
+      settingsId: string;  // Change from companyId to settingsId
+      template: Omit<EmailTemplate, '_id' | 'createdAt' | 'updatedAt'>;
+      existingTemplates: EmailTemplate[];
+    }) => emailTemplatesService.createTemplate(settingsId, template, existingTemplates),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: emailTemplatesKeys.list(variables.settingsId) });
+      Swal.fire({
+        title: "Success",
+        text: "Email template created successfully",
+        icon: "success",
+        timer: 1500,
+        showConfirmButton: false,
+      });
+    },
+    onError: (error: any) => {
+      Swal.fire({
+        title: "Error",
+        text: error.message || "Failed to create email template",
+        icon: "error",
+      });
+    },
+  });
+}
+
+
+// Update email template
+export function useUpdateMailTemplate() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ settingsId, templateId, template, existingTemplates }: {
+      settingsId: string;  // Change from companyId to settingsId
+      templateId: string;
+      template: Partial<EmailTemplate>;
+      existingTemplates: EmailTemplate[];
+    }) => emailTemplatesService.updateTemplate(settingsId, templateId, template, existingTemplates),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: emailTemplatesKeys.list(variables.settingsId) });
+      Swal.fire({
+        title: "Success",
+        text: "Email template updated successfully",
+        icon: "success",
+        timer: 1500,
+        showConfirmButton: false,
+      });
+    },
+    onError: (error: any) => {
+      Swal.fire({
+        title: "Error",
+        text: error.message || "Failed to update email template",
+        icon: "error",
+      });
+    },
   });
 }
 
@@ -158,531 +564,7 @@ export function usePreviewMailTemplate() {
   return { previewTemplate };
 }
 
-// Create mail template mutation
-export function useCreateMailTemplate() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: ({ settingsId, template, existingTemplates }: {
-      settingsId: string;
-      template: Omit<EmailTemplate, '_id' | 'createdAt' | 'updatedAt'>;
-      existingTemplates: EmailTemplate[];
-    }) => emailTemplatesService.createTemplate(settingsId, template, existingTemplates),
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: companiesKeys.all });
-      queryClient.invalidateQueries({ queryKey: emailTemplatesKeys.list(variables.settingsId) });
-      Swal.fire({
-        title: "Success",
-        text: "Email template created successfully",
-        icon: "success",
-        timer: 1500,
-        showConfirmButton: false,
-      });
-    },
-    onError: (error: any) => {
-      Swal.fire({
-        title: "Error",
-        text: error.message || "Failed to create email template",
-        icon: "error",
-      });
-    },
-  });
-}
-
-// Update mail template mutation
-export function useUpdateMailTemplate() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: ({ settingsId, templateId, template, existingTemplates }: {
-      settingsId: string;
-      templateId: string;
-      template: Partial<EmailTemplate>;
-      existingTemplates: EmailTemplate[];
-    }) => emailTemplatesService.updateTemplate(settingsId, templateId, template, existingTemplates),
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: companiesKeys.all });
-      queryClient.invalidateQueries({ queryKey: emailTemplatesKeys.list(variables.settingsId) });
-      Swal.fire({
-        title: "Success",
-        text: "Email template updated successfully",
-        icon: "success",
-        timer: 1500,
-        showConfirmButton: false,
-      });
-    },
-    onError: (error: any) => {
-      Swal.fire({
-        title: "Error",
-        text: error.message || "Failed to update email template",
-        icon: "error",
-      });
-    },
-  });
-}
-
-// Delete mail template mutation
-export function useDeleteMailTemplate() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: ({ settingsId, templateId, existingTemplates }: {
-      settingsId: string;
-      templateId: string;
-      existingTemplates: EmailTemplate[];
-    }) => emailTemplatesService.deleteTemplate(settingsId, templateId, existingTemplates),
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: companiesKeys.all });
-      queryClient.invalidateQueries({ queryKey: emailTemplatesKeys.list(variables.settingsId) });
-      Swal.fire({
-        title: "Deleted",
-        text: "Email template deleted successfully",
-        icon: "success",
-        timer: 1500,
-        showConfirmButton: false,
-      });
-    },
-    onError: (error: any) => {
-      Swal.fire({
-        title: "Error",
-        text: error.message || "Failed to delete email template",
-        icon: "error",
-      });
-    },
-  });
-}
-
-// Duplicate mail template mutation
-export function useDuplicateMailTemplate() {
-  const queryClient = useQueryClient();
-  const createMutation = useCreateMailTemplate();
-
-  return useMutation({
-    mutationFn: async ({ settingsId, template, existingTemplates }: {
-      settingsId: string;
-      template: EmailTemplate;
-      existingTemplates: EmailTemplate[];
-    }) => {
-      const duplicatedTemplate = {
-        name: `${template.name} (Copy)`,
-        subject: template.subject,
-        html: template.html,
-      };
-      return await createMutation.mutateAsync({ 
-        settingsId, 
-        template: duplicatedTemplate, 
-        existingTemplates 
-      });
-    },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: companiesKeys.all });
-      queryClient.invalidateQueries({ queryKey: emailTemplatesKeys.list(variables.settingsId) });
-      Swal.fire({
-        title: "Success",
-        text: "Email template duplicated successfully",
-        icon: "success",
-        timer: 1500,
-        showConfirmButton: false,
-      });
-    },
-    onError: (error: any) => {
-      Swal.fire({
-        title: "Error",
-        text: error.message || "Failed to duplicate email template",
-        icon: "error",
-      });
-    },
-  });
-}
-
-// Get company by ID
-export function useCompany(id: string, options?: { enabled?: boolean }) {
-  const queryClient = useQueryClient();
-
-  return useQuery<Company>({
-    queryKey: companiesKeys.detail(id),
-    queryFn: async () => {
-      const list = queryClient.getQueryData(companiesKeys.list()) as any[] | undefined;
-
-      if (list && list.length > 0) {
-        for (const c of list) {
-          if (!c) continue;
-          if (c._id === id) return c;
-          if (c.company && c.company._id === id) return c.company;
-          if (c.data && c.data._id === id) return c.data;
-          const nested = Object.values(c).find(
-            (v: any) => v && typeof v === 'object' && v._id === id
-          );
-          if (nested) return nested as any;
-        }
-      }
-
-      return companiesService.getCompanyById(id);
-    },
-    enabled: options?.enabled !== undefined ? options.enabled : !!id,
-    staleTime: 5 * 60 * 1000,
-  });
-}
-
-// Company settings
-export function useCompanySettings(
-  companyId: string | undefined,
-  options?: { enabled?: boolean }
-) {
-  const queryClient = useQueryClient();
-
-  return useQuery<any>({
-    queryKey: companiesKeys.setting(companyId ?? ''),
-    queryFn: async () => {
-      if (!companyId) return null;
-
-      const list = queryClient.getQueryData(companiesKeys.list()) as any[] | undefined;
-      if (list && list.length > 0) {
-        for (const c of list) {
-          if (!c) continue;
-
-          let companyObj: any = c;
-          if (companyObj.company && typeof companyObj.company === 'object')
-            companyObj = companyObj.company;
-          if (companyObj.data && typeof companyObj.data === 'object')
-            companyObj = companyObj.data;
-
-          const cid = companyObj._id ??
-            (companyObj.company && typeof companyObj.company === 'string'
-              ? companyObj.company
-              : companyObj.company?._id);
-          
-          if (!cid) continue;
-          if (String(cid) === String(companyId)) {
-            if (
-              companyObj.settings ||
-              companyObj.rejectReasons ||
-              companyObj.interviewSettings ||
-              companyObj.mailSettings
-            ) {
-              return companyObj;
-            }
-
-            if (
-              c.settings ||
-              c.rejectReasons ||
-              c.interviewSettings ||
-              c.mailSettings
-            ) {
-              return c;
-            }
-          }
-        }
-      }
-
-      return companiesService.getCompanySettingsByCompany(companyId);
-    },
-    enabled: options?.enabled !== undefined ? options.enabled && !!companyId : !!companyId,
-    staleTime: 5 * 60 * 1000,
-  });
-}
-
-// Company mail templates
-export function useCompanyMailTemplates(
-  companyId: string | undefined,
-  options?: { enabled?: boolean }
-) {
-  const settingsQuery = useCompanySettings(companyId, options);
-  const { previewTemplate } = usePreviewMailTemplate();
-
-  const query = useQuery<any[]>({
-    queryKey: ['companyMailTemplates', companyId ?? ''],
-    queryFn: async () => {
-      if (!companyId) return [];
-      const settings = await companiesService.getCompanySettingsByCompany(companyId);
-      const templates = (settings as any)?.settings?.mailSettings?.emailTemplates ?? 
-                       (settings as any)?.mailSettings?.emailTemplates ?? 
-                       [];
-      return templates as any[];
-    },
-    enabled: options?.enabled !== undefined ? options.enabled && !!companyId : !!companyId,
-    staleTime: 5 * 60 * 1000,
-    initialData: settingsQuery.data
-      ? ((settingsQuery.data as any)?.settings?.mailSettings?.emailTemplates ?? 
-         (settingsQuery.data as any)?.mailSettings?.emailTemplates ?? 
-         undefined)
-      : undefined,
-  });
-
-  return { ...query, previewTemplate };
-}
-
-// Get all company settings for multiple companies
-export function useAllCompanySettings(companyIds: string[]) {
-  return useQueries({
-    queries: companyIds.map((id) => ({
-      queryKey: ['companySettings', id],
-      queryFn: () => companiesService.getCompanySettingsByCompany(id),
-      enabled: !!id,
-    })),
-  });
-}
-
-// Company interview settings
-export function useCompanyInterviewSettings(
-  companyId: string | undefined,
-  options?: { enabled?: boolean }
-) {
-  const queryClient = useQueryClient();
-
-  return useQuery<InterviewSettings | null>({
-    queryKey: companiesKeys.interviewSetting(companyId ?? ''),
-    queryFn: async () => {
-      if (!companyId) return null;
-
-      const list = queryClient.getQueryData(companiesKeys.list()) as any[] | undefined;
-      if (list && list.length > 0) {
-        for (const c of list) {
-          if (!c) continue;
-
-          let companyObj: any = c;
-          if (companyObj.company && typeof companyObj.company === 'object')
-            companyObj = companyObj.company;
-          if (companyObj.data && typeof companyObj.data === 'object')
-            companyObj = companyObj.data;
-
-          const cid = companyObj._id ??
-            (companyObj.company && typeof companyObj.company === 'string'
-              ? companyObj.company
-              : companyObj.company?._id);
-          
-          if (!cid) continue;
-          if (String(cid) === String(companyId)) {
-            const interview = companyObj.interviewSettings ??
-              companyObj.settings?.interviewSettings ??
-              null;
-            if (interview) return interview;
-          }
-        }
-      }
-
-      const settings = await companiesService.getCompanySettingsByCompany(companyId);
-      return settings?.interviewSettings ?? settings?.settings?.interviewSettings ?? null;
-    },
-    enabled: options?.enabled !== undefined ? options.enabled && !!companyId : !!companyId,
-    staleTime: 5 * 60 * 1000,
-  });
-}
-
-// Update company settings mutation
-export function useUpdateCompanySettings() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: UpdateCompanySettingsRequest }) =>
-      companiesService.updateCompanySettings(id, data),
-    onSuccess: (data: any) => {
-      const payload = data?.result ?? data?.data ?? data;
-      const companyId = payload?.company || payload?.companyId || 
-        (payload && payload.company && typeof payload.company === 'string' ? payload.company : undefined);
-      
-      const mailSettings = payload?.mailSettings ?? payload?.settings?.mailSettings ?? payload;
-      const interviewSettings = payload?.interviewSettings ?? payload?.settings?.interviewSettings;
-
-      if (companyId) {
-        queryClient.setQueryData(companiesKeys.setting(companyId), payload);
-        if (interviewSettings) {
-          queryClient.setQueryData(companiesKeys.interviewSetting(companyId), interviewSettings);
-        }
-
-        queryClient.setQueryData(companiesKeys.list(), (old: any) => {
-          if (!old) return old;
-          if (Array.isArray(old)) {
-            return old.map((c: any) => {
-              if (!c) return c;
-              if (c._id === companyId) {
-                return { ...c, settings: payload, mailSettings, interviewSettings };
-              }
-              if (c.company && c.company._id === companyId) {
-                return {
-                  ...c,
-                  company: { ...c.company, settings: payload, mailSettings, interviewSettings },
-                };
-              }
-              return c;
-            });
-          }
-          if (old && old.data && Array.isArray(old.data)) {
-            return {
-              ...old,
-              data: old.data.map((c: any) =>
-                c._id === companyId
-                  ? { ...c, settings: payload, mailSettings, interviewSettings }
-                  : c
-              ),
-            };
-          }
-          return old;
-        });
-
-        queryClient.setQueryData(companiesKeys.detail(companyId), (old: any) => {
-          if (!old) return old;
-          return { ...old, settings: payload, mailSettings, interviewSettings };
-        });
-      }
-    },
-  });
-}
-
-// Update company rejection reasons mutation
-export function useUpdateCompanyRejectionReasons() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: ({ companyId, data }: { companyId: string; data: UpdateRejectionReasonsRequest }) =>
-      companiesService.updateCompanyRejectionReasons(companyId, data),
-    onSuccess: (result: any, variables) => {
-      const companyId = result?.company ?? result?.companyId ?? variables.companyId;
-      if (!companyId) return;
-
-      const rejectReasons = Array.isArray(result?.rejectReasons)
-        ? result.rejectReasons
-        : (variables.data?.rejectReasons ?? []);
-
-      queryClient.setQueryData(companiesKeys.setting(companyId), (old: any) => {
-        if (!old) return { company: companyId, rejectReasons };
-        return { ...old, rejectReasons, settings: { ...(old.settings ?? {}), rejectReasons } };
-      });
-
-      queryClient.setQueryData(companiesKeys.list(), (old: any) => {
-        if (!old) return old;
-        if (Array.isArray(old)) {
-          return old.map((company: any) => {
-            if (!company) return company;
-            if (company._id !== companyId) return company;
-            return { ...company, rejectReasons, settings: { ...(company.settings ?? {}), rejectReasons } };
-          });
-        }
-        if (old && old.data && Array.isArray(old.data)) {
-          return {
-            ...old,
-            data: old.data.map((company: any) =>
-              company._id === companyId
-                ? { ...company, rejectReasons, settings: { ...(company.settings ?? {}), rejectReasons } }
-                : company
-            ),
-          };
-        }
-        return old;
-      });
-
-      queryClient.setQueryData(companiesKeys.detail(companyId), (old: any) => {
-        if (!old) return old;
-        return { ...old, rejectReasons, settings: { ...(old.settings ?? {}), rejectReasons } };
-      });
-    },
-  });
-}
-
-// Update company applicant pages mutation
-export function useUpdateCompanyApplicantPages() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: ({ companyId, data }: { companyId: string; data: UpdateApplicantPagesRequest }) =>
-      companiesService.updateCompanyApplicantPages(companyId, data),
-    onSuccess: (result: any, variables) => {
-      const companyId = result?.company ?? result?.companyId ?? variables.companyId;
-      if (!companyId) return;
-
-      const applicantPages = Array.isArray(result?.applicantPages)
-        ? result.applicantPages
-        : (variables.data?.applicantPages ?? []);
-
-      queryClient.setQueryData(companiesKeys.setting(companyId), (old: any) => {
-        if (!old) return { company: companyId, applicantPages };
-        return { ...old, applicantPages, settings: { ...(old.settings ?? {}), applicantPages } };
-      });
-
-      queryClient.setQueryData(companiesKeys.list(), (old: any) => {
-        if (!old) return old;
-        if (Array.isArray(old)) {
-          return old.map((company: any) => {
-            if (!company) return company;
-            if (company._id !== companyId) return company;
-            return { ...company, applicantPages, settings: { ...(company.settings ?? {}), applicantPages } };
-          });
-        }
-        if (old && old.data && Array.isArray(old.data)) {
-          return {
-            ...old,
-            data: old.data.map((company: any) =>
-              company._id === companyId
-                ? { ...company, applicantPages, settings: { ...(company.settings ?? {}), applicantPages } }
-                : company
-            ),
-          };
-        }
-        return old;
-      });
-
-      queryClient.setQueryData(companiesKeys.detail(companyId), (old: any) => {
-        if (!old) return old;
-        return { ...old, applicantPages, settings: { ...(old.settings ?? {}), applicantPages } };
-      });
-    },
-  });
-}
-
-// Update company interview settings mutation
-export function useUpdateCompanyInterviewSettings() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: ({ companyId, data }: { companyId: string; data: UpdateInterviewSettingsRequest }) =>
-      companiesService.updateCompanyInterviewSettings(companyId, data),
-    onSuccess: (interviewSettings, variables) => {
-      const companyId = variables.companyId;
-      if (!companyId) return;
-
-      queryClient.setQueryData(companiesKeys.interviewSetting(companyId), interviewSettings);
-      queryClient.setQueryData(companiesKeys.setting(companyId), (old: any) => {
-        if (!old) return { company: companyId, interviewSettings };
-        return { ...old, interviewSettings };
-      });
-
-      queryClient.setQueryData(companiesKeys.list(), (old: any) => {
-        if (!old) return old;
-        if (Array.isArray(old)) {
-          return old.map((c: any) => {
-            if (!c) return c;
-            if (c._id === companyId) {
-              return { ...c, interviewSettings, settings: { ...(c.settings ?? {}), interviewSettings } };
-            }
-            if (c.company && c.company._id === companyId) {
-              return {
-                ...c,
-                company: { ...c.company, interviewSettings, settings: { ...(c.company.settings ?? {}), interviewSettings } },
-              };
-            }
-            return c;
-          });
-        }
-        if (old && old.data && Array.isArray(old.data)) {
-          return {
-            ...old,
-            data: old.data.map((c: any) =>
-              c._id === companyId
-                ? { ...c, interviewSettings, settings: { ...(c.settings ?? {}), interviewSettings } }
-                : c
-            ),
-          };
-        }
-        return old;
-      });
-
-      queryClient.setQueryData(companiesKeys.detail(companyId), (old: any) => {
-        if (!old) return old;
-        return { ...old, interviewSettings, settings: { ...(old.settings ?? {}), interviewSettings } };
-      });
-    },
-  });
-}
+// ==================== CRUD MUTATIONS ====================
 
 // Create company mutation
 export function useCreateCompany() {
@@ -727,14 +609,6 @@ export function useCreateCompany() {
             );
           return updated;
         }
-        if (anyOld && anyOld.data && Array.isArray(anyOld.data)) {
-          const updated = anyOld.data
-            .map((company: any) => (company._id?.startsWith('temp-') ? newCompany : company))
-            .filter((company: any, index: number, self: any[]) =>
-              self.findIndex((c: any) => c._id === company._id) === index
-            );
-          return { ...anyOld, data: updated };
-        }
         return anyOld;
       });
     },
@@ -762,13 +636,6 @@ export function useUpdateCompany() {
           return old.map((company: any) =>
             company._id === id ? { ...company, ...data } : company
           );
-        if (old && old.data && Array.isArray(old.data))
-          return {
-            ...old,
-            data: old.data.map((company: any) =>
-              company._id === id ? { ...company, ...data } : company
-            ),
-          };
         return old;
       });
 
@@ -806,11 +673,6 @@ export function useDeleteCompany() {
         if (!anyOld) return anyOld;
         if (Array.isArray(anyOld))
           return anyOld.filter((company: any) => company._id !== id);
-        if (anyOld.data && Array.isArray(anyOld.data))
-          return {
-            ...anyOld,
-            data: anyOld.data.filter((company: any) => company._id !== id),
-          };
         return anyOld;
       });
 
@@ -848,5 +710,76 @@ export function useCompaniesWithApplicants(applicants: Applicant[] | undefined) 
     },
     enabled: companyIds.length > 0,
     staleTime: 5 * 60 * 1000,
+  });
+}
+
+
+export function useDeleteMailTemplate() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ settingsId, templateId, existingTemplates }: {
+      settingsId: string;  // Change from companyId to settingsId
+      templateId: string;
+      existingTemplates: EmailTemplate[];
+    }) => emailTemplatesService.deleteTemplate(settingsId, templateId, existingTemplates),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: emailTemplatesKeys.list(variables.settingsId) });
+      Swal.fire({
+        title: "Deleted",
+        text: "Email template deleted successfully",
+        icon: "success",
+        timer: 1500,
+        showConfirmButton: false,
+      });
+    },
+    onError: (error: any) => {
+      Swal.fire({
+        title: "Error",
+        text: error.message || "Failed to delete email template",
+        icon: "error",
+      });
+    },
+  });
+}
+// Duplicate mail template mutation
+export function useDuplicateMailTemplate() {
+  const queryClient = useQueryClient();
+  const createMutation = useCreateMailTemplate();
+
+  return useMutation({
+    mutationFn: async ({ settingsId, template, existingTemplates }: {
+      settingsId: string;  // Change from companyId to settingsId
+      template: EmailTemplate;
+      existingTemplates: EmailTemplate[];
+    }) => {
+      const duplicatedTemplate = {
+        name: `${template.name} (Copy)`,
+        subject: template.subject,
+        html: template.html,
+      };
+      return await createMutation.mutateAsync({ 
+        settingsId, 
+        template: duplicatedTemplate, 
+        existingTemplates 
+      });
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: emailTemplatesKeys.list(variables.settingsId) });
+      Swal.fire({
+        title: "Success",
+        text: "Email template duplicated successfully",
+        icon: "success",
+        timer: 1500,
+        showConfirmButton: false,
+      });
+    },
+    onError: (error: any) => {
+      Swal.fire({
+        title: "Error",
+        text: error.message || "Failed to duplicate email template",
+        icon: "error",
+      });
+    },
   });
 }

@@ -19,6 +19,10 @@ export type {
   EmailTemplate,
   CompanySet,
   CompanyStatus,
+  InterviewAnswerType,
+  InterviewGroup,
+  InterviewQuestion,
+  
 } from '../types/companies';
 
 // API Error class
@@ -41,15 +45,17 @@ interface CompanyResponse {
 }
 
 // Email Templates Service
+// services/companiesService.ts - Update EmailTemplatesService
+
 class EmailTemplatesService {
   private async updateTemplates(
-    companyId: string,
+    settingsId: string,  // Change from companyId to settingsId
     templates: EmailTemplate[]
   ): Promise<EmailTemplate[]> {
     try {
       const cleanedTemplates = templates.map(({ createdAt, updatedAt, ...rest }) => rest);
       const response = await axios.put<{ mailSettings: { emailTemplates: EmailTemplate[] } }>(
-        `/companies/${companyId}/settings/email-templates`,
+        `/companies/${settingsId}/settings/email-templates`,  // Use settingsId
         { 
           mailSettings: {
             emailTemplates: cleanedTemplates
@@ -68,19 +74,19 @@ class EmailTemplatesService {
   }
 
   async createTemplate(
-    companyId: string,
+    settingsId: string,  // Change from companyId to settingsId
     template: Omit<EmailTemplate, '_id' | 'createdAt' | 'updatedAt'>,
     existingTemplates: EmailTemplate[] = []
   ): Promise<EmailTemplate> {
     const updatedTemplates = [...existingTemplates, template as EmailTemplate];
-    const saved = await this.updateTemplates(companyId, updatedTemplates);
+    const saved = await this.updateTemplates(settingsId, updatedTemplates);
     const created = saved.find(t => t.name === template.name);
     if (!created) throw new ApiError("Failed to retrieve created template");
     return created;
   }
 
   async updateTemplate(
-    companyId: string,
+    settingsId: string,  // Change from companyId to settingsId
     templateId: string,
     template: Partial<EmailTemplate>,
     existingTemplates: EmailTemplate[] = []
@@ -88,19 +94,19 @@ class EmailTemplatesService {
     const updatedTemplates = existingTemplates.map(t =>
       t._id === templateId ? { ...t, ...template } : t
     );
-    await this.updateTemplates(companyId, updatedTemplates);
+    await this.updateTemplates(settingsId, updatedTemplates);
     const updated = updatedTemplates.find(t => t._id === templateId);
     if (!updated) throw new ApiError("Template not found after update");
     return updated;
   }
 
   async deleteTemplate(
-    companyId: string,
+    settingsId: string,  // Change from companyId to settingsId
     templateId: string,
     existingTemplates: EmailTemplate[] = []
   ): Promise<void> {
     const updatedTemplates = existingTemplates.filter(t => t._id !== templateId);
-    await this.updateTemplates(companyId, updatedTemplates);
+    await this.updateTemplates(settingsId, updatedTemplates);
   }
 }
 
@@ -304,21 +310,7 @@ class CompaniesService {
     }
   }
 
-  async getCompanySettingsByCompany(companyId: string): Promise<any> {
-    try {
-      if (!companyId) return null;
-      
-      const response = await axios.get(`/companies/${companyId}/settings`);
-      return response.data?.data ?? response.data ?? null;
-    } catch (error: any) {
-      if (error?.response?.status === 404) return null;
-      throw new ApiError(
-        getErrorMessage(error),
-        error.response?.status,
-        error.response?.data?.details
-      );
-    }
-  }
+  // REMOVED: getCompanySettingsByCompany - endpoint doesn't exist
 
   async getMailSettings(companyId: string): Promise<MailSettings | null> {
     try {
@@ -366,24 +358,28 @@ class CompaniesService {
     }
   }
 
-  async updateCompanyStatuses(companyId: string, statuses: CompanyStatus[]): Promise<CompanyStatus[]> {
-    try {
-      const response = await axios.put<{ data: CompanyStatus[] }>(`/companies/${companyId}/statuses`, { statuses });
-      const result = response.data?.data ?? response.data;
-      
-      if (!result) {
-        throw new ApiError('Failed to update company statuses');
-      }
-      
-      return result;
-    } catch (error: any) {
-      throw new ApiError(
-        getErrorMessage(error),
-        error.response?.status,
-        error.response?.data?.details
-      );
+
+async updateCompanyStatuses(companyId: string, statuses: CompanyStatus[]): Promise<CompanyStatus[]> {
+  try {
+    const response = await axios.put<{ data: CompanyStatus[] }>(
+      `/companies/${companyId}/settings`, 
+      { statuses }
+    );
+    const result = response.data?.data ?? response.data;
+    
+    if (!result) {
+      throw new ApiError('Failed to update company statuses');
     }
+    
+    return result;
+  } catch (error: any) {
+    throw new ApiError(
+      getErrorMessage(error),
+      error.response?.status,
+      error.response?.data?.details
+    );
   }
+}
 
   async updateCompanyInterviewSettings(companyId: string, data: any): Promise<any> {
     try {
@@ -411,18 +407,22 @@ class CompaniesService {
     }
   }
 
-  async updateCompanyApplicantPages(companyId: string, data: { applicantPages: any[] }): Promise<any> {
-    try {
-      const response = await axios.put(`/companies/${companyId}/settings/applicant-pages`, data);
-      return response.data?.data ?? response.data;
-    } catch (error: any) {
-      throw new ApiError(
-        getErrorMessage(error),
-        error.response?.status,
-        error.response?.data?.details
-      );
-    }
+
+async updateCompanyApplicantPages(settingsId: string, data: { applicantPages: any[] }): Promise<any> {
+  try {
+    const response = await axios.put(
+      `/companies/${settingsId}/settings/applicant-pages`,  // Use settingsId
+      data
+    );
+    return response.data?.data ?? response.data;
+  } catch (error: any) {
+    throw new ApiError(
+      getErrorMessage(error),
+      error.response?.status,
+      error.response?.data?.details
+    );
   }
+}
 }
 
 // Export singleton instances

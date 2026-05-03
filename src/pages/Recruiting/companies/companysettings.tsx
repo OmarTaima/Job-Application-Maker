@@ -3,7 +3,7 @@ import Swal from '../../../utils/swal';
 import { useAuth } from "../../../context/AuthContext";
 import PageMeta from "../../../components/common/PageMeta";
 import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
-import { useUpdateCompanySettings, useCompanies, useCompanySettings } from "../../../hooks/queries/useCompanies";
+import { useCompanies, useUpdateMailSettings } from "../../../hooks/queries/useCompanies";
 import { 
   Building2, 
   Mail, 
@@ -27,31 +27,9 @@ type Props = {
 export default function CompanySettingsPage({ companyId, onSaved, onChange }: Props) {
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | undefined>(companyId);
 
-  // Types
-  type MailSettings = {
-    companyDomain?: string | null;
-    availableMails?: string[];
-    defaultMail?: string | null;
-    _id?: string;
-  };
-
-  type CompanySettings = {
-    mailSettings?: MailSettings;
-    _id?: string;
-  };
-
-  type Company = {
-    _id: string;
-    contactEmail?: string | null;
-    name?: any;
-    settings?: CompanySettings | null;
-    mailSettings?: MailSettings | null;
-  };
-
   const { data: companies = [] } = useCompanies();
-  const { data: selectedCompanySettings } = useCompanySettings(selectedCompanyId, { enabled: !!selectedCompanyId });
   const { user, hasPermission } = useAuth();
-  const updateMutation = useUpdateCompanySettings();
+  const updateMailMutation = useUpdateMailSettings();
 
   const [availableMails, setAvailableMails] = useState<string[]>([]);
   const [defaultMail, setDefaultMail] = useState<string>("");
@@ -80,8 +58,9 @@ export default function CompanySettingsPage({ companyId, onSaved, onChange }: Pr
       const firstId = (companies[0] as any)._id;
       if (selectedCompanyId !== firstId) setSelectedCompanyId(firstId);
     }
-  }, [companyId, companies, userCompaniesIds.join(","), showSelector, selectedCompanyId]);
+  }, [companyId, companies, userCompaniesIds, showSelector, selectedCompanyId]);
 
+  // Get mail settings directly from the selected company (from /auth/me data)
   useEffect(() => {
     if (!selectedCompanyId) {
       setAvailableMails([]);
@@ -90,23 +69,18 @@ export default function CompanySettingsPage({ companyId, onSaved, onChange }: Pr
       return;
     }
 
-    const company = (companies as Company[]).find((c) => c._id === selectedCompanyId);
-
-    // Normalize settings from either dedicated settings endpoint or company payload.
-    const settings = (
-      (selectedCompanySettings as any)?.mailSettings ??
-      (selectedCompanySettings as any)?.settings?.mailSettings ??
-      (selectedCompanySettings as any)?.settings ??
-      (company as any)?.settings?.mailSettings ??
-      (company as any)?.mailSettings ??
-      (company as any)?.settings
-    ) as any;
-
-    const mails = settings?.availableMails ?? settings?.available_senders ?? settings?.availableSenders ?? [];
-    setAvailableMails(Array.isArray(mails) ? mails : []);
-    setDefaultMail(settings?.defaultMail || company?.contactEmail || "");
-    setCompanyDomain(settings?.companyDomain || "");
-  }, [selectedCompanyId, companies, selectedCompanySettings]);
+    const company = (companies as any[]).find((c) => c._id === selectedCompanyId);
+    
+    if (company) {
+      // Get mail settings from company.settings.mailSettings
+      const mailSettingsData = company?.settings?.mailSettings || company?.mailSettings || {};
+      
+      const mails = mailSettingsData?.availableMails ?? mailSettingsData?.available_senders ?? mailSettingsData?.availableSenders ?? [];
+      setAvailableMails(Array.isArray(mails) ? mails : []);
+      setDefaultMail(mailSettingsData?.defaultMail || company?.contactEmail || "");
+      setCompanyDomain(mailSettingsData?.companyDomain || "");
+    }
+  }, [selectedCompanyId, companies]);
 
   useEffect(() => {
     onChange?.({
@@ -135,14 +109,12 @@ export default function CompanySettingsPage({ companyId, onSaved, onChange }: Pr
     if (!selectedCompanyId) return;
     setIsSaving(true);
     try {
-      await updateMutation.mutateAsync({
-        id: selectedCompanyId,
+      await updateMailMutation.mutateAsync({
+        companyId: selectedCompanyId,
         data: {
-          mailSettings: {
-            availableMails,
-            defaultMail,
-            companyDomain
-          }
+          availableMails,
+          defaultMail,
+          companyDomain
         }
       });
       Swal.fire({ title: "Configuration Synced", icon: "success", timer: 1500, showConfirmButton: false });
@@ -154,7 +126,7 @@ export default function CompanySettingsPage({ companyId, onSaved, onChange }: Pr
     }
   };
 
-  const selectedCompany = (companies as Company[]).find((company) => company._id === selectedCompanyId);
+  const selectedCompany = (companies as any[]).find((company) => company._id === selectedCompanyId);
   const selectedCompanyName =
     (typeof selectedCompany?.name === "object"
       ? selectedCompany?.name?.en || selectedCompany?.name?.ar

@@ -1,10 +1,10 @@
+// components/settings/ApplicantPagesSettings.tsx
 import { useState, useEffect, useMemo } from 'react';
 import { PlusCircle, Save, Trash2, ArrowRight, Layout } from 'lucide-react';
 import Swal from '../../../utils/swal';
 import { useAuth } from '../../../context/AuthContext';
 import {
   useCompanies,
-  useCompanySettings,
   useUpdateCompanyApplicantPages,
 } from '../../../hooks/queries/useCompanies';
 import PageMeta from '../../../components/common/PageMeta';
@@ -33,10 +33,6 @@ export default function ApplicantPagesSettings({
   const [selectedCompanyId, setSelectedCompanyId] = useState<
     string | undefined
   >(companyId);
-  const { data: selectedCompanySettings } = useCompanySettings(
-    selectedCompanyId,
-    { enabled: !!selectedCompanyId }
-  );
   const updateMutation = useUpdateCompanyApplicantPages();
 
   const isSuperAdmin = !!user?.roleId?.name
@@ -80,16 +76,16 @@ export default function ApplicantPagesSettings({
     [companies, selectedCompanyId]
   );
 
+  // Get settings ID from the selected company
+  const settingsId = selectedCompany?.settings?._id;
+
   // Available statuses from company settings
   const availableStatuses: string[] = useMemo(() => {
-    const raw =
-      selectedCompanySettings?.statuses ??
-      selectedCompany?.settings?.statuses ??
-      [];
+    const raw = selectedCompany?.settings?.statuses ?? [];
     return Array.isArray(raw)
       ? raw.map((s: any) => s.name).filter(Boolean)
       : [];
-  }, [selectedCompanySettings, selectedCompany]);
+  }, [selectedCompany]);
 
   const [pages, setPages] = useState<ApplicantPage[]>([]);
   const [pageIds, setPageIds] = useState<string[]>([]);
@@ -97,10 +93,7 @@ export default function ApplicantPagesSettings({
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    const raw =
-      selectedCompanySettings?.applicantPages ??
-      selectedCompany?.settings?.applicantPages ??
-      [];
+    const raw = selectedCompany?.settings?.applicantPages ?? [];
     const normalized: ApplicantPage[] = Array.isArray(raw)
       ? raw.map((p: any) => ({
           _id: p._id,
@@ -111,7 +104,7 @@ export default function ApplicantPagesSettings({
     setPages(normalized);
     setPageIds(normalized.map(() => makeId()));
     setOriginalJson(JSON.stringify(normalized));
-  }, [selectedCompanySettings, selectedCompany, selectedCompanyId]);
+  }, [selectedCompany]);
 
   const hasChanges = useMemo(
     () => JSON.stringify(pages) !== originalJson,
@@ -155,6 +148,11 @@ export default function ApplicantPagesSettings({
       return;
     }
 
+    if (!settingsId) {
+      Swal.fire('Validation', 'Company settings not found. Please contact support.', 'warning');
+      return;
+    }
+
     for (let i = 0; i < pages.length; i++) {
       if (!pages[i].name.trim()) {
         Swal.fire('Validation', `Page ${i + 1} must have a name.`, 'warning');
@@ -170,23 +168,17 @@ export default function ApplicantPagesSettings({
       }
     }
 
-    const companySettingsId = selectedCompany?.settings?._id as
-      | string
-      | undefined;
-    const targetCompanyId = (selectedCompany?.settings?.company ??
-      selectedCompany?._id ??
-      selectedCompanyId) as string;
-    const primarySaveId = companySettingsId ?? targetCompanyId;
     const payload = pages.map((p) => ({
       ...(p._id ? { _id: p._id } : {}),
       name: p.name.trim(),
       statuses: p.statuses,
     }));
+    
     setIsSaving(true);
     try {
       await updateMutation.mutateAsync({
-        companyId: primarySaveId,
-        data: { applicantPages: payload } as any,
+        settingsId,  // Use settingsId, not companyId
+        data: { applicantPages: payload },
       });
       setOriginalJson(JSON.stringify(pages));
       Swal.fire({

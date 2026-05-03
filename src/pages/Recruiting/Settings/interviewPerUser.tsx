@@ -20,7 +20,7 @@ import type {
 	SavedQuestion,
 	SavedQuestionAnswerType,
 	SavedQuestionGroup,
-} from "../../../services/savedQuestionGroupsService";
+} from "../../../services/usersService";
 
 const ANSWER_TYPES: SavedQuestionAnswerType[] = [
 	"text",

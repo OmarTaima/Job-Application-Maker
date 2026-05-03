@@ -7,7 +7,7 @@ import Label from '../form/Label';
 import Select from '../form/Select';
 import Input from '../form/input/InputField';
 import TextArea from '../form/input/TextArea';
-import { EmailTemplate } from '../../services/emailTemplatesService';
+import { EmailTemplate } from '../../services/companiesService';
 
 import 'quill/dist/quill.snow.css';
 

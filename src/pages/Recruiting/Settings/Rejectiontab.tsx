@@ -16,7 +16,6 @@ import PageBreadCrumb from "../../../components/common/PageBreadCrumb";
 import { useAuth } from "../../../context/AuthContext";
 import {
 	useCompanies,
-	useCompanySettings,
 	useUpdateCompanyRejectionReasons,
 } from "../../../hooks/queries/useCompanies";
 import {
@@ -68,61 +67,6 @@ const getCompanyName = (company: CompanyShape | undefined): string => {
 	if (!company) return "No company selected";
 	if (typeof company.name === "string") return company.name;
 	return company.name?.en || company.name?.ar || "Unnamed Company";
-};
-
-const getCompanyIdFromPayload = (
-	company: CompanyShape | undefined,
-	fallbackCompanyId: string | undefined
-): string | undefined => {
-	const idFromSettings = company?.settings?.company;
-	if (typeof idFromSettings === "string" && idFromSettings.trim()) {
-		return idFromSettings;
-	}
-
-	if (company?._id) return company._id;
-	return fallbackCompanyId;
-};
-
-const getCompanySettingsIdFromPayload = (
-	company: CompanyShape | undefined
-): string | undefined => {
-	const settingsId = company?.settings?._id;
-	if (typeof settingsId === "string" && settingsId.trim()) {
-		return settingsId;
-	}
-	return undefined;
-};
-
-const hasInvalidCompanySettingsIdError = (error: any): boolean => {
-	const message = String(
-		error?.response?.data?.message ?? error?.message ?? ""
-	).toLowerCase();
-
-	if (message.includes("invalid companysettings id")) return true;
-
-	const details = error?.response?.data?.details;
-	if (!Array.isArray(details)) return false;
-
-	return details.some((detail: any) => {
-		const detailMessage = String(detail?.message ?? "").toLowerCase();
-		return detailMessage.includes("companysettings");
-	});
-};
-
-const hasInvalidCompanyIdError = (error: any): boolean => {
-	const message = String(
-		error?.response?.data?.message ?? error?.message ?? ""
-	).toLowerCase();
-
-	if (message.includes("invalid company id")) return true;
-
-	const details = error?.response?.data?.details;
-	if (!Array.isArray(details)) return false;
-
-	return details.some((detail: any) => {
-		const detailMessage = String(detail?.message ?? "").toLowerCase();
-		return detailMessage.includes("company id");
-	});
 };
 
 // Sortable Item Component
@@ -240,27 +184,21 @@ export default function RejectionTab({
 		[companies, selectedCompanyId]
 	);
 
-	const { data: selectedCompanySettings, isLoading: isSettingsLoading, isFetching: isSettingsFetching } =
-		useCompanySettings(selectedCompanyId, { enabled: !!selectedCompanyId });
-
 	const updateRejectionReasonsMutation = useUpdateCompanyRejectionReasons();
 
+	// Get rejection reasons directly from the selected company (from /auth/me data)
 	const derivedRejectReasons = useMemo(() => {
-		const fromSettings = normalizeRejectReasons((selectedCompanySettings as any)?.rejectReasons);
+		// Try to get from settings first, then from root
+		const fromSettings = normalizeRejectReasons(selectedCompany?.settings?.rejectReasons);
 		if (fromSettings.length > 0) return fromSettings;
 
-		const fromNestedSettings = normalizeRejectReasons(
-			(selectedCompanySettings as any)?.settings?.rejectReasons
-		);
-		if (fromNestedSettings.length > 0) return fromNestedSettings;
+		const fromRoot = normalizeRejectReasons(selectedCompany?.rejectReasons);
+		if (fromRoot.length > 0) return fromRoot;
 
-		const fromCompanyRoot = normalizeRejectReasons((selectedCompany as any)?.rejectReasons);
-		if (fromCompanyRoot.length > 0) return fromCompanyRoot;
+		return [];
+	}, [selectedCompany]);
 
-		return normalizeRejectReasons((selectedCompany as any)?.settings?.rejectReasons);
-	}, [selectedCompany, selectedCompanySettings]);
-
-	const isLoading = isCompaniesLoading || isSettingsLoading || isSettingsFetching;
+	const isLoading = isCompaniesLoading;
 
 	useEffect(() => {
 		if (companyId && companyId !== selectedCompanyId) {
@@ -313,89 +251,47 @@ export default function RejectionTab({
 		}
 	};
 
-	const handleSave = async () => {
-		if (!selectedCompanyId) {
-			Swal.fire("Validation", "Please select a company first.", "warning");
-			return;
-		}
+// In RejectionTab.tsx, update the handleSave function
 
-		const payload = normalizeRejectReasons(rejectReasons);
-		const targetCompanyId = getCompanyIdFromPayload(selectedCompany, selectedCompanyId);
-		const companySettingsId = getCompanySettingsIdFromPayload(selectedCompany);
-		const primarySaveId = companySettingsId ?? targetCompanyId;
-		const fallbackSaveId =
-			companySettingsId && targetCompanyId && companySettingsId !== targetCompanyId
-				? targetCompanyId
-				: undefined;
+const handleSave = async () => {
+  if (!selectedCompanyId) {
+    Swal.fire('Validation', 'Please select a company first.', 'warning');
+    return;
+  }
 
-		if (!primarySaveId) {
-			Swal.fire("Validation", "Unable to resolve company identity for saving.", "warning");
-			return;
-		}
+  const payload = normalizeRejectReasons(rejectReasons);
+  
+  // Get the settings ID from the selected company
+  const settingsId = selectedCompany?.settings?._id;
+  
+  setIsSaving(true);
+  try {
+    await updateRejectionReasonsMutation.mutateAsync({
+      companyId: selectedCompanyId,
+      settingsId: settingsId,  // Pass the settings ID
+      data: {
+        rejectReasons: payload,
+      },
+    });
 
-		setIsSaving(true);
-		try {
-			await updateRejectionReasonsMutation.mutateAsync({
-				companyId: primarySaveId,
-				data: {
-					rejectReasons: payload,
-				},
-			});
+    Swal.fire({
+      title: 'Saved',
+      icon: 'success',
+      timer: 1200,
+      showConfirmButton: false,
+    });
 
-			Swal.fire({
-				title: "Saved",
-				icon: "success",
-				timer: 1200,
-				showConfirmButton: false,
-			});
-
-			onSaved?.(payload);
-		} catch (error: any) {
-			const canRetryWithSettingsId =
-				!!fallbackSaveId &&
-				(
-					hasInvalidCompanySettingsIdError(error) ||
-					hasInvalidCompanyIdError(error) ||
-					error?.response?.status === 404
-				);
-
-			if (canRetryWithSettingsId) {
-				try {
-					await updateRejectionReasonsMutation.mutateAsync({
-						companyId: fallbackSaveId,
-						data: {
-							rejectReasons: payload,
-						},
-					});
-
-					Swal.fire({
-						title: "Saved",
-						icon: "success",
-						timer: 1200,
-						showConfirmButton: false,
-					});
-
-					onSaved?.(payload);
-					return;
-				} catch (retryError: any) {
-					Swal.fire(
-						"Save Failed",
-						retryError?.message || "Failed to save rejection reasons.",
-						"error"
-					);
-					return;
-				}
-			}
-
-			Swal.fire(
-				"Save Failed",
-				error?.message || "Failed to save rejection reasons.",
-				"error"
-			);
-		} finally {
-			setIsSaving(false);
-		}
-	};
+    onSaved?.(payload);
+  } catch (error: any) {
+    Swal.fire(
+      'Save Failed',
+      error?.message || 'Failed to save rejection reasons.',
+      'error'
+    );
+  } finally {
+    setIsSaving(false);
+  }
+};
 
 	// Set up sensors for drag and drop
 	const sensors = useSensors(

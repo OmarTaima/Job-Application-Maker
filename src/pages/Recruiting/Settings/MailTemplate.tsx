@@ -1,5 +1,5 @@
 // pages/Settings/EmailTemplates.tsx
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect} from "react";
 import {
   PlusCircle, Save, Trash2, Edit, Copy, Mail, Eye, X
 } from "lucide-react";
@@ -13,7 +13,6 @@ import {
   useDuplicateMailTemplate,
   usePreviewMailTemplate
 } from "../../../hooks/queries/useCompanies";
-import { EmailTemplate } from "../../../services/emailTemplatesService";
 import Label from "../../../components/form/Label";
 import Input from "../../../components/form/input/InputField";
 
@@ -68,9 +67,9 @@ function TemplateFormModal({
 }: {
   isOpen: boolean;
   onClose: () => void;
-  template?: EmailTemplate | null;
+  template?: any | null;
   settingsId: string;
-  existingTemplates: EmailTemplate[];
+  existingTemplates: any[];
 }) {
   const [formData, setFormData] = useState({ name: "", subject: "", html: "" });
   const createMutation = useCreateMailTemplate();
@@ -95,6 +94,12 @@ function TemplateFormModal({
       Swal.fire("Error", "Please fill in all fields", "error");
       return;
     }
+    
+    if (!settingsId) {
+      Swal.fire("Error", "Settings ID not found", "error");
+      return;
+    }
+    
     try {
       if (template?._id) {
         await updateMutation.mutateAsync({
@@ -113,12 +118,13 @@ function TemplateFormModal({
       onClose();
     } catch (error) {
       console.error(error);
+      Swal.fire("Error", "Failed to save template", "error");
     }
   };
 
   const handlePreview = () => {
     const previewHtml = previewTemplate(
-      { ...template, ...formData } as EmailTemplate,
+      { ...template, ...formData } as any,
       "John Doe", 
       "Software Engineer"
     );
@@ -163,30 +169,29 @@ function TemplateFormModal({
               placeholder="Interview Invitation for {{candidateName}}" 
               required 
             />
-            <p className="text-xs text-gray-500 mt-1">
-<p className="mt-1 text-xs text-gray-500">
-  Available variables: <code>{`{{candidateName}}`}</code>, <code>{`{{jobTitle}}`}</code>, <code>{`{{InterviewDate}}`}</code>, <code>{`{{interviewTime}}`}</code>, <code>{`{{interviewType}}`}</code>, <code>{`{{location}}`}</code>, <code>{`{{address}}`}</code>
-</p>            </p>
+            <p className="mt-1 text-xs text-gray-500">
+              Available variables: <code>{`{{candidateName}}`}</code>, <code>{`{{jobTitle}}`}</code>, <code>{`{{InterviewDate}}`}</code>, <code>{`{{interviewTime}}`}</code>, <code>{`{{interviewType}}`}</code>, <code>{`{{location}}`}</code>, <code>{`{{address}}`}</code>
+            </p>
           </div>
           
           <div>
             <Label htmlFor="html">Email Body *</Label>
             <QuillEditor value={formData.html} onChange={(content) => setFormData({ ...formData, html: content })} />
             <div className="mt-2 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-  <p className="text-xs font-semibold text-blue-800 dark:text-blue-300 mb-2">Available Variables:</p>
-  <div className="flex flex-wrap gap-3 text-xs">
-    <code className="bg-blue-100 dark:bg-blue-800 px-2 py-1 rounded text-blue-800 dark:text-blue-200">{`{{candidateName}}`}</code>
-    <code className="bg-blue-100 dark:bg-blue-800 px-2 py-1 rounded text-blue-800 dark:text-blue-200">{`{{jobTitle}}`}</code>
-    <code className="bg-blue-100 dark:bg-blue-800 px-2 py-1 rounded text-blue-800 dark:text-blue-200">{`{{InterviewDate}}`}</code>
-    <code className="bg-blue-100 dark:bg-blue-800 px-2 py-1 rounded text-blue-800 dark:text-blue-200">{`{{interviewTime}}`}</code>
-    <code className="bg-blue-100 dark:bg-blue-800 px-2 py-1 rounded text-blue-800 dark:text-blue-200">{`{{interviewType}}`}</code>
-    <code className="bg-blue-100 dark:bg-blue-800 px-2 py-1 rounded text-blue-800 dark:text-blue-200">{`{{location}}`}</code>
-    <code className="bg-blue-100 dark:bg-blue-800 px-2 py-1 rounded text-blue-800 dark:text-blue-200">{`{{address}}`}</code>
-  </div>
-  <p className="text-xs text-blue-700 dark:text-blue-300 mt-2">
-    These variables will be replaced with actual candidate, job position, and interview data when sending emails.
-  </p>
-</div>
+              <p className="text-xs font-semibold text-blue-800 dark:text-blue-300 mb-2">Available Variables:</p>
+              <div className="flex flex-wrap gap-3 text-xs">
+                <code className="bg-blue-100 dark:bg-blue-800 px-2 py-1 rounded text-blue-800 dark:text-blue-200">{`{{candidateName}}`}</code>
+                <code className="bg-blue-100 dark:bg-blue-800 px-2 py-1 rounded text-blue-800 dark:text-blue-200">{`{{jobTitle}}`}</code>
+                <code className="bg-blue-100 dark:bg-blue-800 px-2 py-1 rounded text-blue-800 dark:text-blue-200">{`{{InterviewDate}}`}</code>
+                <code className="bg-blue-100 dark:bg-blue-800 px-2 py-1 rounded text-blue-800 dark:text-blue-200">{`{{interviewTime}}`}</code>
+                <code className="bg-blue-100 dark:bg-blue-800 px-2 py-1 rounded text-blue-800 dark:text-blue-200">{`{{interviewType}}`}</code>
+                <code className="bg-blue-100 dark:bg-blue-800 px-2 py-1 rounded text-blue-800 dark:text-blue-200">{`{{location}}`}</code>
+                <code className="bg-blue-100 dark:bg-blue-800 px-2 py-1 rounded text-blue-800 dark:text-blue-200">{`{{address}}`}</code>
+              </div>
+              <p className="text-xs text-blue-700 dark:text-blue-300 mt-2">
+                These variables will be replaced with actual candidate, job position, and interview data when sending emails.
+              </p>
+            </div>
           </div>
 
           <div className="flex justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
@@ -210,10 +215,12 @@ function TemplateFormModal({
               disabled={isLoading} 
               className="px-6 py-2 bg-brand-500 text-white rounded-lg hover:bg-brand-600 disabled:opacity-50"
             >
-              {isLoading
-                ? <div className="size-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                : <><Save className="size-4 inline mr-2" />Save Template</>
-              }
+              {isLoading ? (
+                <div className="size-4 animate-spin rounded-full border-2 border-white/30 border-t-white inline-block mr-2" />
+              ) : (
+                <Save className="size-4 inline mr-2" />
+              )}
+              Save Template
             </button>
           </div>
         </form>
@@ -234,7 +241,7 @@ export default function EmailTemplates({
   const { data: companies = [] } = useCompanies();
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | undefined>(companyId ?? undefined);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingTemplate, setEditingTemplate] = useState<EmailTemplate | null>(null);
+  const [editingTemplate, setEditingTemplate] = useState<any | null>(null);
 
   const isSuperAdmin = !!user?.roleId?.name?.toString().toLowerCase().includes("admin");
   const userCompanyIds = (user?.companies ?? [])
@@ -264,15 +271,15 @@ export default function EmailTemplates({
     }
   }, [availableCompanies, companyId, selectedCompanyId]);
 
-  // Get templates and settingsId from the selected company's settings
+  // Get the selected company and its settings ID
   const selectedCompany = availableCompanies.find((c: any) => c._id === selectedCompanyId);
-  const templates: EmailTemplate[] = (selectedCompany as any)?.settings?.mailSettings?.emailTemplates ?? [];
-  const settingsId = (selectedCompany as any)?.settings?._id;
+  const settingsId = selectedCompany?.settings?._id;
+  const templates: any[] = selectedCompany?.settings?.mailSettings?.emailTemplates ?? [];
 
   const deleteMutation = useDeleteMailTemplate();
   const duplicateMutation = useDuplicateMailTemplate();
 
-  const handleDeleteTemplate = async (template: EmailTemplate) => {
+  const handleDeleteTemplate = async (template: any) => {
     if (!settingsId) {
       Swal.fire("Error", "Settings ID not found", "error");
       return;
@@ -294,7 +301,7 @@ export default function EmailTemplates({
     }
   };
 
-  const handleDuplicate = (template: EmailTemplate) => {
+  const handleDuplicate = (template: any) => {
     if (!settingsId) {
       Swal.fire("Error", "Settings ID not found", "error");
       return;
@@ -411,8 +418,7 @@ export default function EmailTemplates({
                     <strong>Subject:</strong> {template.subject}
                   </p>
                   <div className="text-xs text-slate-500 dark:text-slate-500 mt-3 pt-3 border-t border-slate-200 dark:border-slate-700">
-                    <p className="mt-1">
-                    </p>
+                    <p>Created: {template.createdAt ? new Date(template.createdAt).toLocaleDateString() : 'Unknown'}</p>
                   </div>
                 </div>
               ))}

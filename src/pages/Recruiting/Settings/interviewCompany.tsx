@@ -91,71 +91,23 @@ const normalizeGroups = (
   return groups.map((group) => ({
     name: String(group?.name ?? ''),
     questions: Array.isArray(group?.questions)
-      ? group.questions.map((question) => normalizeQuestion(question))
+      ? group.questions.map((question : any) => normalizeQuestion(question))
       : [],
   }));
 };
 
 const getCompanyName = (company: CompanyShape | undefined): string => {
   if (!company) return '';
-  if (typeof company.name === 'string') return company.name;
-  return company.name?.en || company.name?.ar || 'Unnamed Company';
+  // Handle case where company might be the nested companyId object
+  const companyData = (company as any)?.companyId || company;
+  if (typeof companyData.name === 'string') return companyData.name;
+  return companyData.name?.en || companyData.name?.ar || 'Unnamed Company';
 };
 
-const getCompanyIdFromPayload = (
-  company: CompanyShape | undefined,
-  fallbackCompanyId: string | undefined
-): string | undefined => {
-  const idFromSettings = company?.settings?.company;
-  if (typeof idFromSettings === 'string' && idFromSettings.trim()) {
-    return idFromSettings;
-  }
 
-  if (company?._id) return company._id;
-  return fallbackCompanyId;
-};
 
-const getCompanySettingsIdFromPayload = (
-  company: CompanyShape | undefined
-): string | undefined => {
-  const settingsId = company?.settings?._id;
-  if (typeof settingsId === 'string' && settingsId.trim()) {
-    return settingsId;
-  }
-  return undefined;
-};
 
-const hasInvalidCompanySettingsIdError = (error: any): boolean => {
-  const message = String(
-    error?.response?.data?.message ?? error?.message ?? ''
-  ).toLowerCase();
 
-  if (message.includes('invalid companysettings id')) return true;
-
-  const details = error?.response?.data?.details;
-  if (!Array.isArray(details)) return false;
-
-  return details.some((detail: any) => {
-    const detailMessage = String(detail?.message ?? '').toLowerCase();
-    return detailMessage.includes('companysettings');
-  });
-};
-
-const hasInvalidCompanyIdError = (error: any): boolean => {
-  const message = String(
-    error?.response?.data?.message ?? error?.message ?? ''
-  ).toLowerCase();
-
-  if (message.includes('invalid company id')) return true;
-
-  const details = error?.response?.data?.details;
-  if (!Array.isArray(details)) return false;
-
-  return details.some((detail: any) => {
-    const detailMessage = String(detail?.message ?? '').toLowerCase();
-    return detailMessage.includes('company id');
-  });
-};
 
 export default function InterviewCompanySettingsPage() {
   const { user, hasPermission } = useAuth();
@@ -223,10 +175,11 @@ export default function InterviewCompanySettingsPage() {
     enabled: !!selectedCompanyId && !isSuperAdmin,
   });
 
-  const derivedInterviewSettings = isSuperAdmin
-    ? ((selectedCompany as any)?.interviewSettings ??
-      (selectedCompany as any)?.settings?.interviewSettings ??
-      null)
+  // In InterviewCompanySettingsPage.tsx
+const derivedInterviewSettings = isSuperAdmin
+    ? (selectedCompany as any)?.settings?.interviewSettings ??
+      (selectedCompany as any)?.interviewSettings ??
+      null
     : interviewSettingsFromQuery;
 
   const isLoading = isSuperAdmin
@@ -372,7 +325,7 @@ export default function InterviewCompanySettingsPage() {
 
     return groups.map((group) => ({
       name: group.name.trim(),
-      questions: group.questions.map((question) => ({
+      questions: group.questions.map((question: any) => ({
         question: question.question.trim(),
         score: Number(question.score),
         answerType: question.answerType,
@@ -385,95 +338,50 @@ export default function InterviewCompanySettingsPage() {
     }));
   };
 
-  const handleSaveAll = async () => {
-    if (!selectedCompanyId) {
-      Swal.fire('Validation', 'Please select a company first.', 'warning');
-      return;
-    }
+const handleSaveAll = async () => {
+  if (!selectedCompanyId) {
+    Swal.fire('Validation', 'Please select a company first.', 'warning');
+    return;
+  }
 
-    const payloadGroups = validateGroups();
-    if (!payloadGroups) return;
+  const payloadGroups = validateGroups();
+  if (!payloadGroups) return;
 
-    const targetCompanyId = getCompanyIdFromPayload(
-      selectedCompany,
-      selectedCompanyId
-    );
-    const companySettingsId = getCompanySettingsIdFromPayload(selectedCompany);
-    const primarySaveId = companySettingsId ?? targetCompanyId;
-    const fallbackSaveId =
-      companySettingsId &&
-      targetCompanyId &&
-      companySettingsId !== targetCompanyId
-        ? targetCompanyId
-        : undefined;
+  // Get the settings ID from the selected company
+  const settingsId = selectedCompany?.settings?._id;
+  
+  if (!settingsId) {
+    Swal.fire('Validation', 'Company settings not found. Please contact support.', 'warning');
+    return;
+  }
 
-    if (!primarySaveId) {
-      Swal.fire(
-        'Validation',
-        'Unable to resolve company identity for saving.',
-        'warning'
-      );
-      return;
-    }
-
-    setIsSaving(true);
-    try {
-      await updateInterviewMutation.mutateAsync({
-        companyId: primarySaveId,
-        data: {
+  setIsSaving(true);
+  try {
+    await updateInterviewMutation.mutateAsync({
+      settingsId,  // Use settingsId
+      data: {
+        interviewSettings: {  // ✅ Wrap groups inside interviewSettings
           groups: payloadGroups,
         },
-      });
+      },
+    });
 
-      Swal.fire({
-        title: 'Saved',
-        icon: 'success',
-        timer: 1200,
-        showConfirmButton: false,
-      });
-    } catch (error: any) {
-      const canRetryWithSettingsId =
-        !!fallbackSaveId &&
-        (hasInvalidCompanySettingsIdError(error) ||
-          hasInvalidCompanyIdError(error) ||
-          error?.response?.status === 404);
-
-      if (canRetryWithSettingsId) {
-        try {
-          await updateInterviewMutation.mutateAsync({
-            companyId: fallbackSaveId,
-            data: {
-              groups: payloadGroups,
-            },
-          });
-
-          Swal.fire({
-            title: 'Saved',
-            icon: 'success',
-            timer: 1200,
-            showConfirmButton: false,
-          });
-          return;
-        } catch (retryError: any) {
-          Swal.fire(
-            'Save Failed',
-            retryError?.message || 'Failed to save interview settings.',
-            'error'
-          );
-          return;
-        }
-      }
-
-      Swal.fire(
-        'Save Failed',
-        error?.message || 'Failed to save interview settings.',
-        'error'
-      );
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
+    Swal.fire({
+      title: 'Saved',
+      icon: 'success',
+      timer: 1200,
+      showConfirmButton: false,
+    });
+  } catch (error: any) {
+    Swal.fire(
+      'Save Failed',
+      error?.message || 'Failed to save interview settings.',
+      'error'
+    );
+  } finally {
+    setIsSaving(false);
+  }
+};
   if (!canRead) {
     return (
       <div className="min-h-screen bg-slate-50 px-4 py-10 dark:bg-slate-950">

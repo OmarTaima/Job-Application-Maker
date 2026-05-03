@@ -27,6 +27,8 @@ export type {
   UsersResponse,
   UserResponse,
   SavedQuestionGroup,
+  SavedQuestion,
+  SavedQuestionAnswerType,
 } from '../types/users';
 
 // API Error class
@@ -215,9 +217,19 @@ class SavedQuestionGroupsService {
 // ==================== USERS SERVICE ====================
 class UsersService {
 
-async getAllUsers(params: any = {}): Promise<UsersResponse> {
+async getAllUsers(params: { companies?: string | string[] } = {}): Promise<UsersResponse> {
   try {
-    const response = await axios.get<UsersResponse>('/users', { params });
+    const queryParams: Record<string, any> = { PageCount: 'all' };
+
+    if (params.companies) {
+      queryParams.companies = Array.isArray(params.companies)
+        ? params.companies.length === 1
+          ? params.companies[0]
+          : params.companies
+        : params.companies;
+    }
+
+    const response = await axios.get<UsersResponse>('/users', { params: queryParams });
     return response.data;
   } catch (error: any) {
     throw new ApiError(
@@ -227,7 +239,6 @@ async getAllUsers(params: any = {}): Promise<UsersResponse> {
     );
   }
 }
-
   async getUserById(userId: string): Promise<User> {
     try {
       const response = await axios.get<UserResponse>(`/users/${userId}`);

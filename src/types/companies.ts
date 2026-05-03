@@ -114,9 +114,11 @@ export interface UpdateCompanySettingsRequest {
   applicantPages?: any[];
 }
 
-export interface UpdateInterviewSettingsRequest {
-  groups: InterviewGroup[];
-}
+export type UpdateInterviewSettingsRequest = {
+  interviewSettings: {
+    groups: InterviewGroup[];
+  };
+};
 
 export interface UpdateRejectionReasonsRequest {
   rejectReasons: string[];

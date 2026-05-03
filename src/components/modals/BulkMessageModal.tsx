@@ -4,11 +4,9 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { useSendBatchEmail } from '../../hooks/queries';
 import { useJobPositions, useSendMessage } from '../../hooks/queries';
 import { getErrorMessage } from '../../utils/errorHandler';
-import { companiesService } from '../../services/companiesService';
 import Label from '../form/Label';
 import Select from '../form/Select';
 import Input from '../form/input/InputField';
-import { EmailTemplate } from '../../services/emailTemplatesService';
 
 import 'quill/dist/quill.snow.css';
 
@@ -74,7 +72,6 @@ const BulkMessageModal = ({
   const [emailOption, setEmailOption] = useState<'company' | 'new' | 'available'>('company');
   const [customEmail, setCustomEmail] = useState('');
   const [newLocalEmail, setNewLocalEmail] = useState('');
-  const [companySettings, setCompanySettings] = useState<any | null>(null);
   const [senderOptions, setSenderOptions] = useState<Array<{value:string;label:string}>>([]);
   const [showPreview, setShowPreview] = useState(false);
   const [previewHtml, setPreviewHtml] = useState('');
@@ -83,10 +80,9 @@ const BulkMessageModal = ({
   const sendBatch = useSendBatchEmail();
   const sendMessageMutation = useSendMessage();
 
-  // Get email templates directly from the company object
-  const emailTemplates: EmailTemplate[] = useMemo(() => {
-    const templates = company?.settings?.mailSettings?.emailTemplates || [];
-    return templates;
+  // Email templates from company object (from /auth/me data)
+  const emailTemplates: any[] = useMemo(() => {
+    return company?.settings?.mailSettings?.emailTemplates || [];
   }, [company]);
 
   useEffect(() => {
@@ -97,14 +93,13 @@ const BulkMessageModal = ({
     }
   }, [isOpen]);
 
-  // Handle template selection
   const handleTemplateSelect = (templateId: string) => {
     if (!templateId) {
       setSelectedTemplateId('');
       return;
     }
     
-    const selectedTemplate = emailTemplates.find((t: EmailTemplate) => t._id === templateId);
+    const selectedTemplate = emailTemplates.find((t: any) => t._id === templateId);
     if (selectedTemplate) {
       let decodedHtml = selectedTemplate.html;
       try {
@@ -120,12 +115,6 @@ const BulkMessageModal = ({
       }));
       setSelectedTemplateId(templateId);
     }
-  };
-
-  const extractDomain = (email?: string | null) => {
-    if (!email) return '';
-    const parts = String(email).split('@');
-    return parts.length > 1 ? parts.slice(1).join('@') : '';
   };
 
   const buildEmailHtml = (subject: string, body: string, recipient?: any) => {
@@ -277,116 +266,88 @@ const BulkMessageModal = ({
       </div>
     </div>`;
 
-  const companyDomain =
-    companySettings?.mailSettings?.companyDomain ||
-    companySettings?.settings?.mailSettings?.companyDomain ||
-    extractDomain(companySettings?.mailSettings?.defaultMail) ||
-    extractDomain(companySettings?.settings?.mailSettings?.defaultMail) ||
-    extractDomain(companySettings?.email) ||
+  const companyDomain = company?.settings?.mailSettings?.companyDomain || 
+    company?.mailSettings?.companyDomain || 
+    (company?.settings?.mailSettings?.defaultMail?.split('@')[1]) || 
     '';
 
-  // fetch company settings when modal opens and companyId provided
+  // Get sender options from company object directly (from /auth/me data)
   useEffect(() => {
-    let mounted = true;
     if (!isOpen) return;
-    if (!companyId) {
-      setCompanySettings(null);
+    
+    if (!company && !companyId) {
       setSenderOptions([]);
       setCustomEmail('');
       return;
     }
-    (async () => {
-      try {
-        let s = company ?? await companiesService.getCompanySettingsByCompany(companyId);
-        if (!mounted) return;
-        let raw = s || null;
-        let normalized = raw && raw.company && typeof raw.company === 'object' ? raw.company : raw;
-
-        if (!normalized && companyId) {
-          try {
-            const comp = await companiesService.getCompanyById(companyId);
-            if (comp) {
-              raw = comp as any;
-              normalized = comp as any;
-            }
-          } catch (innerErr) {
-            // ignore
-          }
+    
+    const companyData = company || null;
+    
+    const availableCandidates: any[] = [];
+    let defaultMail = '';
+    
+    try {
+      // Get available mails from company settings
+      const companyMailSettings = companyData?.settings?.mailSettings || companyData?.mailSettings;
+      if (companyMailSettings) {
+        if (Array.isArray(companyMailSettings.availableMails)) {
+          availableCandidates.push(...companyMailSettings.availableMails);
         }
-
-        setCompanySettings(normalized || raw || null);
-
-        const availableCandidates: any[] = [];
-        try {
-          if (Array.isArray(normalized?.mailSettings?.availableMails)) { availableCandidates.push(...normalized.mailSettings.availableMails); }
-          if (normalized && typeof normalized === 'object' && normalized.mailSettings && Array.isArray((normalized.mailSettings as any)?.available_senders)) {
-            availableCandidates.push(...(normalized.mailSettings as any).available_senders);
-          }
-          if (normalized?.mailSettings && typeof normalized.mailSettings === 'object' && Array.isArray((normalized.mailSettings as any).availableSenders)) {
-            availableCandidates.push(...(normalized.mailSettings as any).availableSenders);
-          }
-          if (normalized && typeof normalized === 'object' && 'settings' in normalized && normalized.settings && typeof normalized.settings === 'object' && 'mailSettings' in normalized.settings && normalized.settings.mailSettings && typeof normalized.settings.mailSettings === 'object' && Array.isArray((normalized.settings.mailSettings as any)?.availableMails)) {
-            availableCandidates.push(...(normalized.settings.mailSettings as any).availableMails);
-          }
-          if (normalized && typeof normalized === 'object' && 'availableMails' in normalized && Array.isArray((normalized as any).availableMails)) {
-            availableCandidates.push(...(normalized as any).availableMails);
-          }
-          if (normalized && typeof normalized === 'object' && 'available_senders' in normalized && Array.isArray((normalized as any).available_senders)) {
-            availableCandidates.push(...(normalized as any).available_senders);
-          }
-        } catch (e) { /* ignore */ }
-
-        const deduped: Array<{ value: string; label: string }> = [];
-        const seen = new Set<string>();
-        availableCandidates.forEach((mitem: any) => {
-          let email = '';
-          if (!mitem) return;
-          if (typeof mitem === 'string') email = String(mitem).trim();
-          else if (typeof mitem === 'object') {
-            email = String(mitem.email || mitem.address || mitem.value || mitem.addressEmail || mitem.contact || '').trim();
-          }
-          if (!email) return;
-          if (seen.has(email)) return;
-          seen.add(email);
-          deduped.push({ value: email, label: email });
-        });
-
-        // also check nested 'company' wrapper
-        try {
-          const c = raw && (raw.company || raw);
-          if (c && typeof c === 'object') {
-            if ('settings' in c && c.settings && typeof c.settings === 'object' && 'mailSettings' in c.settings && c.settings.mailSettings && typeof c.settings.mailSettings === 'object' && Array.isArray((c.settings.mailSettings as any)?.availableMails)) {
-              ((c.settings.mailSettings as any)?.availableMails ?? []).forEach((em: any) => { if (!seen.has(em)) { seen.add(em); deduped.push({ value: em, label: em }); } });
-            }
-            if ('mailSettings' in c && c.mailSettings && typeof c.mailSettings === 'object' && Array.isArray(c.mailSettings.availableMails)) {
-              c.mailSettings.availableMails.forEach((em: any) => { if (!seen.has(em)) { seen.add(em); deduped.push({ value: em, label: em }); } });
-            }
-            if ('availableMails' in c && Array.isArray(c.availableMails)) {
-              c.availableMails.forEach((em: any) => { if (!seen.has(em)) { seen.add(em); deduped.push({ value: em, label: em }); } });
-            }
-          }
-        } catch (e) { /* ignore */ }
-
-        const fallbackEmail = normalized?.mailSettings?.defaultMail || normalized?.defaultMail || normalized?.contactEmail || normalized?.email || '';
-        if (fallbackEmail && !seen.has(fallbackEmail)) {
-          deduped.push({ value: fallbackEmail, label: fallbackEmail });
-          seen.add(fallbackEmail);
+        if (Array.isArray(companyMailSettings.available_senders)) {
+          availableCandidates.push(...companyMailSettings.available_senders);
         }
-
-        setSenderOptions(deduped);
-        const defaultMail = normalized?.mailSettings?.defaultMail || normalized?.settings?.mailSettings?.defaultMail || normalized?.defaultMail || '';
-        setCustomEmail(defaultMail || (deduped[0] && deduped[0].value) || '');
-        if (deduped.length > 0) setEmailOption('available');
-        else setEmailOption('company');
-      } catch (e) {
-        if (!mounted) return;
-        setCompanySettings(null);
-        setSenderOptions([]);
-        setCustomEmail('');
+        if (Array.isArray(companyMailSettings.availableSenders)) {
+          availableCandidates.push(...companyMailSettings.availableSenders);
+        }
+        defaultMail = companyMailSettings.defaultMail || '';
       }
-    })();
-    return () => { mounted = false; };
-  }, [isOpen, companyId]);
+      
+      // Also check root level
+      if (Array.isArray(companyData?.availableMails)) {
+        availableCandidates.push(...companyData.availableMails);
+      }
+      if (Array.isArray(companyData?.available_senders)) {
+        availableCandidates.push(...companyData.available_senders);
+      }
+      
+      // Fallback default mail
+      if (!defaultMail) {
+        defaultMail = companyData?.contactEmail || companyData?.email || '';
+      }
+    } catch (e) {
+      /* ignore */
+    }
+
+    const deduped: Array<{ value: string; label: string }> = [];
+    const seen = new Set<string>();
+    
+    availableCandidates.forEach((mitem: any) => {
+      let email = '';
+      if (!mitem) return;
+      if (typeof mitem === 'string') {
+        email = String(mitem).trim();
+      } else if (typeof mitem === 'object') {
+        email = String(mitem.email || mitem.address || mitem.value || '').trim();
+      }
+      if (!email) return;
+      if (seen.has(email)) return;
+      seen.add(email);
+      deduped.push({ value: email, label: email });
+    });
+
+    // Add default mail if available and not already added
+    if (defaultMail && !seen.has(defaultMail)) {
+      deduped.push({ value: defaultMail, label: defaultMail });
+    }
+
+    setSenderOptions(deduped);
+    setCustomEmail(deduped[0]?.value || defaultMail || '');
+    if (deduped.length > 0) {
+      setEmailOption('available');
+    } else {
+      setEmailOption('company');
+    }
+  }, [isOpen, company, companyId]);
 
   const handlePreview = () => {
     if (!form.body?.trim()) {
@@ -397,7 +358,7 @@ const BulkMessageModal = ({
     const normalizedRecipients = recipients
       .map((item) => {
         if (typeof item === 'string') {
-          return { to: item, applicant: undefined, jobPositionId: undefined, raw: item };
+          return { to: item, applicant: undefined, jobPositionId: undefined, raw: { email: item } };
         }
         let jobPositionId = item.jobPositionId || (item.jobPosition && typeof item.jobPosition === 'object' ? item.jobPosition._id : item.jobPosition);
         if (jobPositionId && typeof jobPositionId === 'object') {
@@ -408,7 +369,15 @@ const BulkMessageModal = ({
           applicant: item?.applicant || item?._id || item?.id,
           jobPositionId: typeof jobPositionId === 'string' ? jobPositionId : undefined,
           applicantName: item?.applicantName || item?.name || item?.fullName,
-          raw: item,
+          raw: {
+            email: String(item?.email || '').trim(),
+            applicantName: item?.applicantName || item?.name || item?.fullName,
+            fullName: item?.fullName || item?.applicantName || item?.name,
+            name: item?.name || item?.applicantName || item?.fullName,
+            jobPositionId: jobPositionId,
+            jobPosition: item?.jobPosition,
+            ...item
+          },
         };
       })
       .filter((item) => item.to);
@@ -457,86 +426,19 @@ const BulkMessageModal = ({
 
     setIsSubmitting(true);
     try {
-      let fromAddress = `<no-reply@${companyDomain || 'company.com'}>`;
-      if (emailOption === 'new' && newLocalEmail && newLocalEmail.trim()) {
-        const local = newLocalEmail.trim();
-        const domain = companyDomain || (companySettings && companySettings.mailSettings && companySettings.mailSettings.defaultMail ? companySettings.mailSettings.defaultMail.split('@')[1] : '') || 'company.com';
-        const newEmail = `${local}@${domain}`;
-        if (companyId) {
-          try {
-            let latestSettings = companySettings;
-            try {
-              latestSettings = await companiesService.getCompanySettingsByCompany(companyId) || latestSettings;
-            } catch (e) {
-              // ignore
-            }
+      let fromAddress = emailOption === 'new' && newLocalEmail
+        ? `${newLocalEmail}@${companyDomain || 'company.com'}`
+        : customEmail || company?.settings?.mailSettings?.defaultMail || '';
 
-            const collectExisting = (obj: any): string[] => {
-              const out: string[] = [];
-              try {
-                if (!obj) return out;
-                const pushIfArray = (a: any) => { if (Array.isArray(a)) out.push(...a.filter(Boolean).map(String)); };
-                pushIfArray(obj?.mailSettings?.availableMails);
-                pushIfArray(obj?.settings?.mailSettings?.availableMails);
-                pushIfArray(obj?.availableMails);
-                pushIfArray(obj?.available_senders);
-                pushIfArray(obj?.availableSenders);
-                pushIfArray(obj?.mail?.availableMails);
-              } catch (e) { /* ignore */ }
-              return Array.from(new Set(out));
-            };
-            const existing = collectExisting(latestSettings || companySettings || company);
-            const merged = Array.from(new Set([...(existing || []), newEmail]));
-            
-            const findSettingsId = (obj: any): string | undefined => {
-              if (!obj || typeof obj !== 'object') return undefined;
-              if (obj.settings && obj.settings._id) return obj.settings._id;
-              if (obj._id && typeof obj._id === 'string' && obj._id.match(/^[0-9a-fA-F]{24}$/)) return obj._id;
-              if (obj.company && obj.company.settings && obj.company.settings._id) return obj.company.settings._id;
-              if (obj.company && obj.company._id && typeof obj.company._id === 'string' && obj.company._id.match(/^[0-9a-fA-F]{24}$/)) return obj.company._id;
-              if (obj.mailSettings && obj.mailSettings._id) return obj.mailSettings._id;
-              for (const k of Object.keys(obj)) {
-                if (k.endsWith('_id') && typeof obj[k] === 'string' && obj[k].match(/^[0-9a-fA-F]{24}$/)) return obj[k];
-              }
-              return undefined;
-            };
-
-            const companySettingsId = (company && company.settings && (company.settings as any)._id) || undefined;
-            const generatedSettingsId = companySettingsId ?? findSettingsId(latestSettings || companySettings);
-            const idToSend = generatedSettingsId ?? companyId;
-            
-            await companiesService.updateCompanySettings(idToSend, { mailSettings: { availableMails: merged } });
-            
-            setSenderOptions((prev) => {
-              if (prev.find(p => p.value === newEmail)) return prev;
-              return [{ value: newEmail, label: newEmail }, ...prev];
-            });
-            setCustomEmail(newEmail);
-            fromAddress = `${newEmail}`;
-          } catch (err: any) {
-            setError(getErrorMessage(err));
-            setIsSubmitting(false);
-            return;
-          }
-        } else {
-          fromAddress = `${newEmail}`;
-        }
-      } else if (emailOption === 'available' && customEmail) {
-        fromAddress = customEmail;
-      } else if (companySettings?.mailSettings?.defaultMail) {
-        fromAddress = companySettings.mailSettings.defaultMail;
-      }
-
-      // Normalize recipients with the full object for substitution
+      // Normalize recipients
       const normalizedRecipients = recipients
         .map((item) => {
           if (typeof item === 'string') {
-            const email = item.trim();
             return { 
-              to: email, 
+              to: item.trim(), 
               applicant: undefined, 
               jobPositionId: undefined,
-              raw: { email }
+              raw: { email: item.trim() }
             };
           }
           let jobPositionId = item.jobPositionId || (item.jobPosition && typeof item.jobPosition === 'object' ? item.jobPosition._id : item.jobPosition);
@@ -556,7 +458,6 @@ const BulkMessageModal = ({
             to: String(item?.email || '').trim(),
             applicant: item?.applicant || item?._id || item?.id,
             jobPositionId: typeof jobPositionId === 'string' ? jobPositionId : undefined,
-            applicantName: item?.applicantName || item?.name || item?.fullName,
             raw: rawForSubstitution,
           };
         })
@@ -568,9 +469,7 @@ const BulkMessageModal = ({
         
         return {
           to,
-          from: (typeof fromAddress === 'string' && fromAddress.includes('<')) 
-            ? fromAddress.replace(/.*<\s*([^>]+)\s*>.*/, '$1') 
-            : String(fromAddress).replace(/[<>]/g, ''),
+          from: fromAddress,
           subject: subSubject,
           html: buildEmailHtml(subSubject, subBody, raw),
           applicant,
@@ -578,9 +477,7 @@ const BulkMessageModal = ({
         };
       });
 
-      const companyToSend = companyId ||
-        (company && (company._id || company.id)) ||
-        (companySettings && (companySettings._id || companySettings.id));
+      const companyToSend = companyId || company?._id;
 
       if (!companyToSend) {
         setError('Company is required to send batch email');
@@ -630,12 +527,21 @@ const BulkMessageModal = ({
   const templateOptions = useMemo(() => {
     return [
       { value: '', label: '-- Select a template --' },
-      ...emailTemplates.map((t: EmailTemplate) => ({ 
+      ...emailTemplates.map((t: any) => ({ 
         value: t._id || '', 
         label: t.name 
       }))
     ];
   }, [emailTemplates]);
+
+  // Helper to get company name for display
+  const getCompanyName = () => {
+    if (company?.name) {
+      if (typeof company.name === 'string') return company.name;
+      return company.name.en || company.name.ar || 'Company';
+    }
+    return 'Company';
+  };
 
   return (
     <>
@@ -682,7 +588,7 @@ const BulkMessageModal = ({
               <div>
                 <Label htmlFor="email-option">Email From</Label>
                 <Select
-                  options={[{ value: 'company', label: 'Company Email' }, { value: 'new', label: 'New Email' }]}
+                  options={[{ value: 'company', label: `${getCompanyName()} Email` }, { value: 'new', label: 'New Email' }]}
                   value={emailOption}
                   onChange={(v: any) => {
                     setEmailOption(v);
@@ -716,7 +622,7 @@ const BulkMessageModal = ({
                 <Input value={
                   emailOption === 'new' && newLocalEmail
                     ? `${newLocalEmail}@${companyDomain || 'company.com'}`
-                    : customEmail || (companySettings && companySettings.mailSettings && companySettings.mailSettings.defaultMail) || ''
+                    : customEmail || company?.settings?.mailSettings?.defaultMail || ''
                 } readOnly />
               </div>
             </div>

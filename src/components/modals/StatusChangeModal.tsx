@@ -1,7 +1,6 @@
 import React, { useMemo, useEffect, useState, useRef } from 'react';
 import Label from '../form/Label';
 import Select from '../form/Select';
-import { useCompanySettings } from '../../hooks/queries/useCompanies';
 import { useStatusSettings } from '../../hooks/useStatusSettings';
 
 type Props = {
@@ -15,8 +14,8 @@ type Props = {
   isSubmittingStatus: boolean;
   companyId?: string;
   companySettings?: any;
-  jobIds?: string[]; // Job IDs of selected applicants
-  jobs?: any[]; // All job positions with allowedStatuses
+  jobIds?: string[];
+  jobs?: any[];
 };
 
 export default function StatusChangeModal({
@@ -28,16 +27,12 @@ export default function StatusChangeModal({
   setStatusError,
   handleStatusChange,
   isSubmittingStatus,
-  companyId,
   companySettings,
   jobIds = [],
   jobs = [],
 }: Props) {
-  const shouldFetchCompanySettings = !!companyId && !companySettings;
-  const { data: fetchedCompanySettings } = useCompanySettings(companyId, {
-    enabled: shouldFetchCompanySettings,
-  });
-  const resolvedCompanySettings = companySettings || fetchedCompanySettings;
+  // Use companySettings directly (passed from parent, comes from company object)
+  const resolvedCompanySettings = companySettings;
 
   // Get statuses from the hook using company settings
   const { statusOptions, getDescription } = useStatusSettings(
@@ -95,6 +90,7 @@ export default function StatusChangeModal({
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const reasonOptions = useMemo(() => {
+    // Get rejection reasons from company settings (passed from parent)
     const fromRoot = (resolvedCompanySettings as any)?.rejectReasons;
     const fromNested = (resolvedCompanySettings as any)?.settings
       ?.rejectReasons;
@@ -233,31 +229,8 @@ export default function StatusChangeModal({
     handleReasonsChange(newSelected);
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && searchQuery.trim()) {
-      e.preventDefault();
+  
 
-      const trimmedValue = searchQuery.trim();
-      const exactMatch = reasonOptions.find(
-        (opt) => opt.text.toLowerCase() === trimmedValue.toLowerCase()
-      );
-
-      if (exactMatch) {
-        const selectedValues = statusForm.reasons || [];
-        if (!selectedValues.includes(exactMatch.value)) {
-          handleSelect(exactMatch.value);
-        }
-      } else {
-        handleCustomReasonAdd(trimmedValue);
-        setIsDropdownOpen(false);
-      }
-
-      setSearchQuery('');
-    } else if (e.key === 'Escape') {
-      setIsDropdownOpen(false);
-    }
-  };
-  void handleKeyDown;
   // Close modal when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
