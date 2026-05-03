@@ -1,3 +1,4 @@
+// store/slices/usersSlice.ts
 import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
 import { usersService, savedFieldsService } from "../../services/usersService";
 import type { UsersResponse } from "../../services/usersService";
@@ -46,9 +47,11 @@ const initialSavedFieldsState: SavedFieldsState = {
 // ==================== USERS THUNKS ====================
 export const fetchUsers = createAsyncThunk(
   "users/fetchAll",
-  async (companyId: string[] | undefined, { rejectWithValue }) => {
+  async (companyIds: string[] | undefined, { rejectWithValue }) => {
     try {
-      return await usersService.getAllUsers(companyId);
+      // Pass companyIds as an object with companies property
+      const response = await usersService.getAllUsers({ companies: companyIds });
+      return response;
     } catch (error: any) {
       return rejectWithValue(error.message || "Failed to fetch users");
     }

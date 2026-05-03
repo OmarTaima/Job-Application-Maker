@@ -216,29 +216,19 @@ class SavedQuestionGroupsService {
 
 // ==================== USERS SERVICE ====================
 class UsersService {
-
-async getAllUsers(params: { companies?: string | string[] } = {}): Promise<UsersResponse> {
-  try {
-    const queryParams: Record<string, any> = { PageCount: 'all' };
-
-    if (params.companies) {
-      queryParams.companies = Array.isArray(params.companies)
-        ? params.companies.length === 1
-          ? params.companies[0]
-          : params.companies
-        : params.companies;
+  async getAllUsers(params?: { companies?: string[] | string }): Promise<UsersResponse> {
+    try {
+      const response = await axios.get<UsersResponse>('/users', { params });
+      return response.data;
+    } catch (error: any) {
+      throw new ApiError(
+        getErrorMessage(error),
+        error.response?.status,
+        error.response?.data?.details
+      );
     }
-
-    const response = await axios.get<UsersResponse>('/users', { params: queryParams });
-    return response.data;
-  } catch (error: any) {
-    throw new ApiError(
-      getErrorMessage(error),
-      error.response?.status,
-      error.response?.data?.details
-    );
   }
-}
+
   async getUserById(userId: string): Promise<User> {
     try {
       const response = await axios.get<UserResponse>(`/users/${userId}`);
@@ -335,20 +325,14 @@ async getAllUsers(params: { companies?: string | string[] } = {}): Promise<Users
     }
   }
 
-  async getMyInterviews(params: {
+  async getMyInterviews(params?: {
     direction?: 'future' | 'past';
     status?: string;
     page?: number;
     limit?: number;
-  } = {}): Promise<any> {
+  }): Promise<any> {
     try {
-      const searchParams: any = {};
-      if (params.direction) searchParams.direction = params.direction;
-      if (params.status) searchParams.status = params.status;
-      if (params.page) searchParams.page = params.page;
-      if (params.limit) searchParams.limit = params.limit;
-
-      const response = await axios.get('/users/me/interviews', { params: searchParams });
+      const response = await axios.get('/users/me/interviews', { params });
       return response.data?.data ?? response.data;
     } catch (error: any) {
       throw new ApiError(
@@ -359,6 +343,7 @@ async getAllUsers(params: { companies?: string | string[] } = {}): Promise<Users
     }
   }
 }
+
 
 // ==================== EXPORTS ====================
 export const savedFieldsService = new SavedFieldsService();
