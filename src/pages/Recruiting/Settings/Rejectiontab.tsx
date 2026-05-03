@@ -267,11 +267,8 @@ const handleSave = async () => {
   setIsSaving(true);
   try {
     await updateRejectionReasonsMutation.mutateAsync({
-      companyId: selectedCompanyId,
-      settingsId: settingsId,  // Pass the settings ID
-      data: {
-        rejectReasons: payload,
-      },
+    settingsId: settingsId || '',  // Only settingsId
+    rejectReasons: payload,  // Array of strings      
     });
 
     Swal.fire({

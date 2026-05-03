@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { TableLayout } from '../../services/authService';
+import { TableLayout } from '../../types/auth';
 import axiosInstance from '../../config/axios';
 
 const EMPTY_LAYOUT: TableLayout = {

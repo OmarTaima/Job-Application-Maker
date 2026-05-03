@@ -144,9 +144,8 @@ export default function InterviewScheduleModal(props: Props) {
   
   // Fetch users for the company using the correct hook
   const { data: usersData = [], isLoading: isLoadingUsers } = useUsers(
-    companyId ? { companyId: [companyId] } : { page: 1, PageCount: 1000 }
-  );
-
+  companyId ? { companies: [companyId] } : {}
+);
   // Extract users array from response
   const companyUsers = useMemo(() => {
     if (!usersData) return [];

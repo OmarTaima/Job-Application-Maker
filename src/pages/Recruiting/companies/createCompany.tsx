@@ -5,8 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
 import PageMeta from "../../../components/common/PageMeta";
 import Swal from '../../../utils/swal';
-import { useAppDispatch } from "../../../store/hooks";
-import { createCompany } from "../../../store/slices/companiesSlice";
+import { useCreateCompany } from "../../../hooks/queries/useCompanies";
 import { companiesKeys } from "../../../hooks/queries/useCompanies";
 import { 
   Building2, 
@@ -19,7 +18,7 @@ import {
   Trash2, 
   Image as ImageIcon,
   Upload,
-  AlertCircle,
+ 
   ArrowLeft
 } from "lucide-react";
 
@@ -45,13 +44,11 @@ const defaultCompany: CompanyForm = {
 
 export default function CreateCompany() {
   const navigate = useNavigate();
-  const dispatch = useAppDispatch();
   const queryClient = useQueryClient();
+  const createCompanyMutation = useCreateCompany();
   
   const [companyForm, setCompanyForm] = useState<CompanyForm>(defaultCompany);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const handleCompanyChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -104,7 +101,7 @@ export default function CreateCompany() {
       const result: any = await uploadToCloudinary(file);
       setCompanyForm((prev) => ({ ...prev, logoPath: result.secure_url }));
     } catch (err: any) {
-      setError(err.message || "Failed to upload logo");
+      Swal.fire("Upload Failed", err.message || "Failed to upload logo", "error");
     } finally {
       setIsUploadingLogo(false);
     }
@@ -112,47 +109,55 @@ export default function CreateCompany() {
 
   const handleCompanySubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setIsSubmitting(true);
-    setError(null);
 
+    // Show loading toast
+    await Swal.fire({
+      title: "Submitting...",
+      text: "Registering new corporate Company",
+      icon: "info",
+      showConfirmButton: false,
+      timer: 1000
+    });
+
+    // Optimistic update
     const previousCompanies = queryClient.getQueryData(companiesKeys.list());
     const tempId = `temp-${Date.now()}`;
     const tempCompany: any = { ...companyForm, _id: tempId };
 
+    queryClient.setQueryData<any>(companiesKeys.list(), (old: any) => {
+      if (!old) return [tempCompany];
+      if (Array.isArray(old)) return [...old, tempCompany];
+      return { ...old, data: [...(old.data || []), tempCompany] };
+    });
+
     try {
-      queryClient.setQueryData<any>(companiesKeys.list(), (old: any) => {
-        if (!old) return [tempCompany];
-        if (Array.isArray(old)) return [...old, tempCompany];
-        return { ...old, data: [...(old.data || []), tempCompany] };
-      });
-
+      const newCompany = await createCompanyMutation.mutateAsync(companyForm);
+      
+      // Invalidate and refetch
+      await queryClient.invalidateQueries({ queryKey: companiesKeys.list() });
+      
       await Swal.fire({
-        title: "Submitting...",
-        text: "Registering new corporate Company",
-        icon: "info",
-        showConfirmButton: false,
-        timer: 1000
+        title: "Company Created",
+        icon: "success",
+        timer: 1500,
+        showConfirmButton: false
       });
-
-      const promise = dispatch(createCompany(companyForm)) as any;
-      const resultAction = await promise;
-
-      if (createCompany.fulfilled.match(resultAction)) {
-        const newCompany = resultAction.payload as any;
-        const newId = newCompany?._id ?? newCompany?.data?._id;
-        queryClient.invalidateQueries({ queryKey: companiesKeys.list() });
-        Swal.fire({ title: "Company Created", icon: "success", timer: 1500, showConfirmButton: false });
-        if (newId) navigate(`/company/${newId}`);
-        else navigate("/companies");
+      
+      // Navigate to the new company page
+      if (newCompany?._id) {
+        navigate(`/company/${newCompany._id}`);
       } else {
-        throw new Error(resultAction.payload || "Failed to create company");
+        navigate("/companies");
       }
     } catch (err: any) {
+      // Rollback optimistic update
       queryClient.setQueryData(companiesKeys.list(), previousCompanies);
-      setError(err.message || "Failed to create company");
-      Swal.fire("Registration Failed", err.message, "error");
-    } finally {
-      setIsSubmitting(false);
+      
+      await Swal.fire({
+        title: "Registration Failed",
+        text: err.message || "Failed to create company",
+        icon: "error"
+      });
     }
   };
 
@@ -182,10 +187,14 @@ export default function CreateCompany() {
           <button
             form="company-form"
             type="submit"
-            disabled={isSubmitting || isUploadingLogo}
+            disabled={createCompanyMutation.isPending || isUploadingLogo}
             className="flex items-center justify-center gap-2 px-8 py-4 bg-brand-500 text-white rounded-[1.25rem] font-bold shadow-xl shadow-brand-500/20 hover:scale-105 active:scale-95 disabled:opacity-50 transition-all"
           >
-            {isSubmitting ? <div className="size-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="size-5" />}
+            {createCompanyMutation.isPending ? (
+              <div className="size-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : (
+              <Save className="size-5" />
+            )}
             Save Company
           </button>
         </div>
@@ -387,13 +396,6 @@ export default function CreateCompany() {
                   </div>
                 </div>
               </div>
-
-              {error && (
-                <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center gap-3 animate-shake">
-                  <AlertCircle className="size-5 text-red-500 flex-shrink-0" />
-                  <p className="text-xs font-black text-red-500 leading-tight">{error}</p>
-                </div>
-              )}
             </div>
           </div>
         </form>

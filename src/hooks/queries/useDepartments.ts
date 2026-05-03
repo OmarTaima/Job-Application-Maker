@@ -1,11 +1,14 @@
+// hooks/queries/useDepartments.ts
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { departmentsService } from "../../services/departmentsService";
-import { useAppSelector } from "../../store/hooks";
+import { useAuth } from "../../context/AuthContext";
 import type {
   CreateDepartmentRequest,
   UpdateDepartmentRequest,
   Department,
-} from "../../services/departmentsService";
+} from "../../types/departments";
+import { ApiError } from "../../services/companiesService";
+import Swal from "../../utils/swal";
 
 // Query keys
 export const departmentsKeys = {
@@ -13,55 +16,33 @@ export const departmentsKeys = {
   lists: () => [...departmentsKeys.all, "list"] as const,
   list: (companyId?: string | string[]) =>
     [...departmentsKeys.lists(), { companyId }] as const,
-  details: () => [...departmentsKeys.all, "detail"] as const,
-  detail: (id: string) => [...departmentsKeys.details(), id] as const,
+  detail: (id: string) => [...departmentsKeys.all, "detail", id] as const,
 };
+
+// Helper to get user's company IDs from AuthContext
+function getUserCompanyIds(user: any): string[] | undefined {
+  const roleName = user?.roleId?.name?.toLowerCase?.();
+  if (roleName === "admin" || roleName === "super admin") return undefined;
+
+  const fromCompanies = user?.companies?.map((c: any) =>
+    typeof c?.companyId === "string" ? c.companyId : c?.companyId?._id
+  ).filter(Boolean) ?? [];
+
+  const fromAssigned = user?.assignedcompanyId?.filter(Boolean) ?? [];
+  const merged = [...new Set([...fromCompanies, ...fromAssigned])];
+  return merged.length > 0 ? merged : undefined;
+}
 
 // Get all departments
 export function useDepartments(companyId?: string | string[], options?: { enabled?: boolean }) {
-  const queryClient = useQueryClient();
-  const authUser = useAppSelector((s: any) => s.auth.user);
-
-  const userCompanyIds = (() => {
-    const roleName = authUser?.roleId?.name?.toLowerCase?.();
-    if (roleName === "admin" || roleName === "super admin") return undefined;
-    const fromCompanies = Array.isArray(authUser?.companies)
-      ? authUser.companies
-          .map((c: any) => (typeof c?.companyId === "string" ? c.companyId : c?.companyId?._id))
-          .filter(Boolean)
-      : [];
-    const fromAssigned = Array.isArray(authUser?.assignedcompanyId)
-      ? authUser.assignedcompanyId.filter(Boolean)
-      : [];
-    const merged = Array.from(new Set([...fromCompanies, ...fromAssigned]));
-    return merged.length > 0 ? merged : undefined;
-  })();
-
+  const { user } = useAuth();
+  const userCompanyIds = getUserCompanyIds(user);
   const effectiveCompanyId = companyId ?? userCompanyIds;
 
-  const normalizedCompanyIds = Array.isArray(effectiveCompanyId)
-    ? effectiveCompanyId
-    : effectiveCompanyId
-      ? [effectiveCompanyId]
-      : undefined;
-
-  return useQuery<Department[]>({
+  return useQuery({
     queryKey: departmentsKeys.list(effectiveCompanyId),
-    queryFn: async () => {
-      const cachedAll = queryClient.getQueryData(departmentsKeys.list()) as any[] | undefined;
-      if (cachedAll && cachedAll.length > 0) {
-        if (normalizedCompanyIds && normalizedCompanyIds.length > 0) {
-          const idSet = new Set(normalizedCompanyIds);
-          return cachedAll.filter((d: any) => {
-            const deptCompanyId = typeof d.companyId === "string" ? d.companyId : d.companyId?._id;
-            return idSet.has(deptCompanyId);
-          });
-        }
-        return cachedAll;
-      }
-      return departmentsService.getAllDepartments(effectiveCompanyId as any);
-    },
-    enabled: options?.enabled !== undefined ? options.enabled : true,
+    queryFn: () => departmentsService.getAllDepartments(effectiveCompanyId as any),
+    enabled: options?.enabled ?? true,
     staleTime: 5 * 60 * 1000,
   });
 }
@@ -72,20 +53,14 @@ export function useDepartment(id: string, options?: { enabled?: boolean }) {
 
   return useQuery({
     queryKey: departmentsKeys.detail(id),
-    queryFn: async () => {
-      const lists = queryClient.getQueriesData({ queryKey: departmentsKeys.lists() }) as Array<[any, any]> | undefined;
-      if (lists && lists.length > 0) {
-        for (const [, data] of lists) {
-          if (Array.isArray(data)) {
-            const found = data.find((d: any) => d._id === id);
-            if (found) return found;
-          }
-        }
-      }
-      return departmentsService.getDepartmentById(id);
-    },
-    enabled: options?.enabled !== undefined ? options.enabled : !!id,
+    queryFn: () => departmentsService.getDepartmentById(id),
+    enabled: options?.enabled ?? !!id,
     staleTime: 5 * 60 * 1000,
+    initialData: () => {
+      // Try to find from cached list
+      const cached = queryClient.getQueryData<Department[]>(departmentsKeys.list());
+      return cached?.find(d => d._id === id);
+    },
   });
 }
 
@@ -96,46 +71,20 @@ export function useCreateDepartment() {
   return useMutation({
     mutationFn: (data: CreateDepartmentRequest) =>
       departmentsService.createDepartment(data),
-    onMutate: async (newDepartment) => {
-      await queryClient.cancelQueries({ queryKey: departmentsKeys.lists() });
-      const previousDepartments = queryClient.getQueriesData({ queryKey: departmentsKeys.lists() });
-
-      queryClient.setQueriesData<any>({ queryKey: departmentsKeys.lists() }, (old: any) => {
-        if (!old) return old;
-        const tempDepartment = {
-          ...newDepartment,
-          _id: `temp-${Date.now()}`,
-          createdAt: new Date().toISOString(),
-        };
-        return [...old, tempDepartment];
-      });
-
-      return { previousDepartments };
-    },
-    onError: (_err, _variables, context) => {
-      if (context?.previousDepartments) {
-        context.previousDepartments.forEach(([queryKey, data]) => {
-          queryClient.setQueryData(queryKey, data);
-        });
-      }
-    },
     onSuccess: (newDepartment) => {
-      queryClient.setQueriesData<any>({ queryKey: departmentsKeys.lists() }, (old: any) => {
-        const anyOld = old as any;
-        if (!anyOld) return { data: [newDepartment] };
-        if (Array.isArray(anyOld)) {
-          const updated = anyOld.map((dept: any) => dept._id.startsWith('temp-') ? newDepartment : dept).filter((dept: any, index: number, self: any[]) => self.findIndex((d: any) => d._id === dept._id) === index);
-          return updated;
-        }
-        if (anyOld && anyOld.data && Array.isArray(anyOld.data)) {
-          const updated = anyOld.data.map((dept: any) => dept._id.startsWith('temp-') ? newDepartment : dept).filter((dept: any, index: number, self: any[]) => self.findIndex((d: any) => d._id === dept._id) === index);
-          return { ...anyOld, data: updated };
-        }
-        return anyOld;
+      // Update the list cache
+      queryClient.setQueryData<Department[]>(departmentsKeys.list(), (old) => {
+        if (!old) return [newDepartment];
+        return [...old.filter(d => !d._id?.startsWith('temp-')), newDepartment];
       });
+      
+      // Invalidate lists to ensure consistency
+      queryClient.invalidateQueries({ queryKey: departmentsKeys.lists() });
+      
+      showSuccessToast("Department created successfully");
     },
-    onSettled: () => {
-      // No refetch
+    onError: (error: ApiError) => {
+      showErrorToast(error.message, "Failed to create department");
     },
   });
 }
@@ -147,40 +96,20 @@ export function useUpdateDepartment() {
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: UpdateDepartmentRequest }) =>
       departmentsService.updateDepartment(id, data),
-    onMutate: async ({ id, data }) => {
-      await queryClient.cancelQueries({ queryKey: departmentsKeys.lists() });
-      await queryClient.cancelQueries({ queryKey: departmentsKeys.detail(id) });
-
-      const previousLists = queryClient.getQueriesData({ queryKey: departmentsKeys.lists() });
-      const previousDetail = queryClient.getQueryData(departmentsKeys.detail(id));
-
-      queryClient.setQueriesData<any>({ queryKey: departmentsKeys.lists() }, (old: any) => {
-        const anyOld = old as any;
-        if (!anyOld) return anyOld;
-        if (Array.isArray(anyOld)) return anyOld.map((dept: any) => dept._id === id ? { ...dept, ...data } : dept);
-        if (anyOld && anyOld.data && Array.isArray(anyOld.data)) return { ...anyOld, data: anyOld.data.map((dept: any) => dept._id === id ? { ...dept, ...data } : dept) };
-        return anyOld;
+    onSuccess: (updatedDepartment, { id }) => {
+      // Update the detail cache
+      queryClient.setQueryData(departmentsKeys.detail(id), updatedDepartment);
+      
+      // Update the list cache
+      queryClient.setQueryData<Department[]>(departmentsKeys.list(), (old) => {
+        if (!old) return [updatedDepartment];
+        return old.map(d => d._id === id ? updatedDepartment : d);
       });
-
-      queryClient.setQueryData<any>(departmentsKeys.detail(id), (old: any) => {
-        if (!old) return old;
-        return { ...old, ...data };
-      });
-
-      return { previousLists, previousDetail };
+      
+      showSuccessToast("Department updated successfully");
     },
-    onError: (_err, _variables, context) => {
-      if (context?.previousLists) {
-        context.previousLists.forEach(([queryKey, data]) => {
-          queryClient.setQueryData<any>(queryKey, data);
-        });
-      }
-      if (context?.previousDetail) {
-        queryClient.setQueryData<any>(departmentsKeys.detail(_variables.id), context.previousDetail);
-      }
-    },
-    onSettled: () => {
-      // No refetch
+    onError: (error: ApiError) => {
+      showErrorToast(error.message, "Failed to update department");
     },
   });
 }
@@ -191,29 +120,39 @@ export function useDeleteDepartment() {
 
   return useMutation({
     mutationFn: (id: string) => departmentsService.deleteDepartment(id),
-    onMutate: async (id) => {
-      await queryClient.cancelQueries({ queryKey: departmentsKeys.lists() });
-      const previousDepartments = queryClient.getQueriesData({ queryKey: departmentsKeys.lists() });
-
-      queryClient.setQueriesData<any>({ queryKey: departmentsKeys.lists() }, (old: any) => {
-        const anyOld = old as any;
-        if (!anyOld) return anyOld;
-        if (Array.isArray(anyOld)) return anyOld.filter((dept: any) => dept._id !== id);
-        if (anyOld.data && Array.isArray(anyOld.data)) return { ...anyOld, data: anyOld.data.filter((dept: any) => dept._id !== id) };
-        return anyOld;
+    onSuccess: (_, id) => {
+      // Remove from list cache
+      queryClient.setQueryData<Department[]>(departmentsKeys.list(), (old) => {
+        if (!old) return [];
+        return old.filter(d => d._id !== id);
       });
+      
+      // Remove detail cache
+      queryClient.removeQueries({ queryKey: departmentsKeys.detail(id) });
+      
+      showSuccessToast("Department deleted successfully");
+    },
+    onError: (error: ApiError) => {
+      showErrorToast(error.message, "Failed to delete department");
+    },
+  });
+}
 
-      return { previousDepartments };
-    },
-    onError: (_err, _variables, context) => {
-      if (context?.previousDepartments) {
-        context.previousDepartments.forEach(([queryKey, data]) => {
-          queryClient.setQueryData(queryKey, data);
-        });
-      }
-    },
-    onSettled: () => {
-      // No refetch
-    },
+// ===== Toast Helpers =====
+function showSuccessToast(message: string) {
+  Swal.fire({
+    title: "Success",
+    text: message,
+    icon: "success",
+    timer: 1500,
+    showConfirmButton: false,
+  });
+}
+
+function showErrorToast(message: string, fallback: string) {
+  Swal.fire({
+    title: "Error",
+    text: message || fallback,
+    icon: "error",
   });
 }

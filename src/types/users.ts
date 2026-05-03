@@ -129,3 +129,21 @@ export type SavedQuestionGroup = {
   questions: SavedQuestion[];
 };
 
+// Users State Interface
+export interface UsersState {
+  users: User[];
+  currentUser: User | null;
+  loading: boolean;
+  error: string | null;
+  isFetched: boolean;
+}
+
+// Saved Fields State Interface
+export interface SavedFieldsState {
+  fields: SavedField[];
+  currentField: SavedField | null;
+  loading: boolean;
+  error: string | null;
+  isFetched: boolean;
+}
+

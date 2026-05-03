@@ -150,14 +150,12 @@ const ApplicantData = () => {
     hasPermission('Message Management', 'write');
 
   // Fetch all applicants for navigation only when we do not already have a list
-  const { data: allApplicantsData = [] } = useApplicants(
-    companyId as any,
-    undefined,
-    undefined,
-    {
-      enabled: shouldFetchApplicants,
-    }
-  );
+  const { data: allApplicantsData = [] } = useApplicants({
+  companyId: companyId as any,
+  jobPositionId: undefined,
+  departmentId: undefined,
+  enabled: shouldFetchApplicants,
+});
 
   // Get all applicants from props or cache
   const allApplicants = useMemo(() => {
@@ -267,17 +265,15 @@ const ApplicantData = () => {
   ]);
 
   const {
-    data: fetchedApplicant,
-    isLoading: isApplicantLoading,
-    isFetched: isApplicantFetched,
-    error: applicantError,
-  } = useApplicant(id || '', {
-    initialData: wasNavigated ? stateApplicant : undefined,
-    enabled: !!id && !shouldSkipApplicantFetch,
-    refetchOnMount: false,
-    refetchOnWindowFocus: false,
-    staleTime: 2 * 60 * 1000,
-  });
+  data: fetchedApplicant,
+  isLoading: isApplicantLoading,
+  isFetched: isApplicantFetched,
+  error: applicantError,
+} = useApplicant(id || '', {
+  initialData: wasNavigated ? stateApplicant : undefined,
+  enabled: !!id && !shouldSkipApplicantFetch,
+  staleTime: 2 * 60 * 1000,
+});
 
   const applicant = (fetchedApplicant ?? stateApplicant) as any;
   const loading = isApplicantLoading && !fetchedApplicant && !stateApplicant;

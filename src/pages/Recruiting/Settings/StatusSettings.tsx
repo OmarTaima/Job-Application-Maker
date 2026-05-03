@@ -352,9 +352,8 @@ const handleSave = async () => {
 
   try {
     await updateMutation.mutateAsync({
-      companyId: selectedCompanyId,
       settingsId: settingsId,  // Pass the settings ID
-      data: payload,
+      statuses: payload,
     });
 
     // Invalidate queries to refresh data across the app

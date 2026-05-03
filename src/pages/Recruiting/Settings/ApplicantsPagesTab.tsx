@@ -177,8 +177,8 @@ export default function ApplicantPagesSettings({
     setIsSaving(true);
     try {
       await updateMutation.mutateAsync({
-        settingsId,  // Use settingsId, not companyId
-        data: { applicantPages: payload },
+         settingsId,
+      applicantPages: payload,
       });
       setOriginalJson(JSON.stringify(pages));
       Swal.fire({

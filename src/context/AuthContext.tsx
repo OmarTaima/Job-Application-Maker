@@ -1,16 +1,20 @@
+// context/AuthContext.tsx
 import {
   createContext,
   useContext,
   ReactNode,
+  useCallback,
+  useEffect,
 } from "react";
-import { User, ApiError } from "../services/authService";
-import { useAppSelector } from "../store/hooks";
+import type { User } from "../types/auth";
 import {
   useCurrentUser,
   useLoginMutation,
   useRegisterMutation,
   useLogoutMutation,
 } from "../hooks/queries/useAuth";
+import { useQueryClient } from "@tanstack/react-query";
+import { tokenStorage } from "../config/api";
 
 type AuthContextType = {
   user: User | null;
@@ -33,27 +37,27 @@ type AuthContextType = {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  // Get user from Redux store (synced via React Query hooks)
-  const user = useAppSelector((state) => state.auth.user);
-
-  // React Query hooks for auth operations
-  const { isLoading: isLoadingUser } = useCurrentUser();
+  const queryClient = useQueryClient();
+  
+  // ✅ Get user from React Query (no Redux)
+  const { data: user, isLoading: isLoadingUser, error: userError, refetch } = useCurrentUser();
+  
   const loginMutation = useLoginMutation();
   const registerMutation = useRegisterMutation();
   const logoutMutation = useLogoutMutation();
 
-  // Combine loading states
-  const isLoading = isLoadingUser || loginMutation.isPending || registerMutation.isPending;
+  const isLoading = isLoadingUser || loginMutation.isPending || registerMutation.isPending || logoutMutation.isPending;
 
-  // Get error from mutations
-  const error = loginMutation.error instanceof ApiError 
-    ? loginMutation.error.message 
-    : registerMutation.error instanceof ApiError
-    ? registerMutation.error.message
-    : null;
+  const error = 
+    (loginMutation.error instanceof Error ? loginMutation.error.message : null) ||
+    (registerMutation.error instanceof Error ? registerMutation.error.message : null) ||
+    (userError instanceof Error ? userError.message : null) ||
+    null;
 
   const login = async (email: string, password: string) => {
     await loginMutation.mutateAsync({ email, password });
+    // ✅ Force refetch after login to ensure fresh data
+    await refetch();
   };
 
   const register = async (userData: {
@@ -64,28 +68,62 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     name?: string;
   }) => {
     await registerMutation.mutateAsync(userData);
+    // ✅ Force refetch after register to ensure fresh data
+    await refetch();
   };
 
-  const logout = () => {
-    logoutMutation.mutate();
-  };
+  const logout = useCallback(() => {
+    // ✅ Use mutateAsync to ensure it completes
+    logoutMutation.mutate(undefined, {
+      onSuccess: () => {
+        // ✅ Hard reload to clear all memory
+        setTimeout(() => {
+          window.location.href = '/login';
+        }, 100);
+      },
+    });
+  }, [logoutMutation]);
+
+  // ✅ Watch for token changes and clear cache if needed
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'accessToken' && !e.newValue) {
+        // Token was removed from storage
+        queryClient.clear();
+        window.location.href = '/login';
+      }
+    };
+    
+    const checkTokenInterval = setInterval(() => {
+      const hasToken = !!tokenStorage.getAccessToken();
+      if (!hasToken && user) {
+        // No token but we have user data - clear cache
+        queryClient.clear();
+        window.location.href = '/login';
+      }
+    }, 5000); // Check every 5 seconds
+    
+    window.addEventListener('storage', handleStorageChange);
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      clearInterval(checkTokenInterval);
+    };
+  }, [user, queryClient]);
 
   const canAccessCompany = (companyId: string): boolean => {
     if (!user) return false;
 
-    // Admin and Super Admin can access all companies
-    const roleName = user.roleId?.name?.toLowerCase();
+    const roleName = (user.roleId as any)?.name?.toLowerCase();
     if (roleName === "admin" || roleName === "super admin") return true;
 
-    // Company users can only access assigned companies
-    const usercompanyId =
-      user.companies?.map((c) =>
-        typeof c.companyId === "string" ? c.companyId : c.companyId._id
+    const userCompanyIds =
+      user.companies?.map((c: any) =>
+        typeof c.companyId === "string" ? c.companyId : (c.companyId as any)?._id
       ) || [];
 
     return (
-      usercompanyId.includes(companyId) ||
-      user.assignedcompanyId?.includes(companyId) ||
+      userCompanyIds.includes(companyId) ||
+      !!user.assignedcompanyId?.includes(companyId) ||
       false
     );
   };
@@ -93,44 +131,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const hasPermission = (permissionName: string, accessLevel?: "read" | "write" | "create"): boolean => {
     if (!user) return false;
 
-    // Admin and Super Admin roles have all permissions
-    const roleName = user.roleId?.name?.toLowerCase();
+    const roleName = (user.roleId as any)?.name?.toLowerCase();
     if (roleName === "admin" || roleName === "super admin") {
       return true;
     }
 
-    // Check both user-level permissions (custom) and role-level permissions
-    // User-level permissions take precedence over role permissions
     const userPermissions = (user as any).permissions || [];
-    const rolePermissions = user.roleId?.permissions || [];
+    const rolePermissions = (user.roleId as any)?.permissions || [];
     const allPermissions = [...userPermissions, ...rolePermissions];
     
-    // Find the permission object
-    const permissionObj = allPermissions.find((p) => {
+    const permissionObj = allPermissions.find((p: any) => {
       if (typeof p === 'string') {
         return p === permissionName;
       }
-      // Handle both p.permission.name (populated) and p.permission (string ID)
       const permName = p.permission?.name || p.permission;
       return permName === permissionName;
     });
 
-    // If no permission found, deny access
-    if (!permissionObj) {
-      return false;
-    }
+    if (!permissionObj) return false;
+    if (!accessLevel) return true;
+    if (typeof permissionObj === 'string') return true;
 
-    // If no access level specified, just check if permission exists
-    if (!accessLevel) {
-      return true;
-    }
-
-    // If permission is a string (old format), grant all access
-    if (typeof permissionObj === 'string') {
-      return true;
-    }
-
-    // Check if the user has the required access level
     const accessArray = permissionObj.access || [];
     return accessArray.includes(accessLevel);
   };
@@ -138,7 +159,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return (
     <AuthContext.Provider
       value={{
-        user,
+        user: user || null,
         login,
         register,
         logout,

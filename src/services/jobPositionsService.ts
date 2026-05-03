@@ -1,3 +1,4 @@
+// services/jobPositionsService.ts
 import axios from "../config/axios";
 import { getErrorMessage } from "../utils/errorHandler";
 import type {
@@ -9,31 +10,21 @@ import type {
   JobFieldConfigRule,
 } from '../types/jobPositions';
 import type { Applicant } from '../types/applicants';
+import { ApiError } from "./companiesService";
 
-// Re-export types for backward compatibility
+// Re-export types
 export type {
   JobPosition,
   CreateJobPositionRequest,
   UpdateJobPositionRequest,
   ReorderJobPositionsRequestItem,
-  LocalizedString,
   JobFieldConfig,
   JobFieldConfigRule,
 } from '../types/jobPositions';
 export type { Applicant } from '../types/applicants';
 
-export class ApiError extends Error {
-  constructor(
-    message: string,
-    public statusCode?: number,
-    public details?: any
-  ) {
-    super(message);
-    this.name = "ApiError";
-  }
-}
-
-const getDefaultJobFieldConfig = (): JobFieldConfig => ({
+// ===== Constants =====
+const DEFAULT_FIELD_CONFIG: JobFieldConfig = {
   fullName: { visible: true, required: true },
   email: { visible: true, required: true },
   phone: { visible: true, required: true },
@@ -43,130 +34,85 @@ const getDefaultJobFieldConfig = (): JobFieldConfig => ({
   profilePhoto: { visible: true, required: true },
   cvFilePath: { visible: true, required: false },
   expectedSalary: { visible: false, required: false },
-});
+};
 
-const normalizeJobFieldConfig = (
-  value: any,
-  legacySalaryFieldVisible?: boolean
-): JobFieldConfig => {
-  const defaults = getDefaultJobFieldConfig();
+// ===== Helper Functions =====
+function normalizeFieldConfigRule(
+  incoming: any,
+  fallback: JobFieldConfigRule
+): JobFieldConfigRule {
+  const visible = typeof incoming?.visible === "boolean" ? incoming.visible : fallback.visible;
+  const required = typeof incoming?.required === "boolean" ? incoming.required : fallback.required;
+  return { visible, required: visible ? required : false };
+}
+
+function normalizeJobFieldConfig(value: any, legacySalaryFieldVisible?: boolean): JobFieldConfig {
   const raw = value && typeof value === "object" ? value : {};
-
+  
   const withFallbackExpectedSalary = {
     ...raw,
-    expectedSalary:
-      raw.expectedSalary && typeof raw.expectedSalary === "object"
-        ? raw.expectedSalary
-        : typeof legacySalaryFieldVisible === "boolean"
-        ? {
-            visible: legacySalaryFieldVisible,
-            required: false,
-          }
+    expectedSalary: raw.expectedSalary && typeof raw.expectedSalary === "object"
+      ? raw.expectedSalary
+      : typeof legacySalaryFieldVisible === "boolean"
+        ? { visible: legacySalaryFieldVisible, required: false }
         : raw.expectedSalary,
   };
 
-  const normalizeRule = (
-    incoming: any,
-    fallback: JobFieldConfigRule
-  ): JobFieldConfigRule => {
-    const visible =
-      typeof incoming?.visible === "boolean" ? incoming.visible : fallback.visible;
-    const required =
-      typeof incoming?.required === "boolean"
-        ? incoming.required
-        : fallback.required;
-
-    return {
-      visible,
-      required: visible ? required : false,
-    };
-  };
-
   return {
-    fullName: normalizeRule(withFallbackExpectedSalary.fullName, defaults.fullName),
-    email: normalizeRule(withFallbackExpectedSalary.email, defaults.email),
-    phone: normalizeRule(withFallbackExpectedSalary.phone, defaults.phone),
-    gender: normalizeRule(withFallbackExpectedSalary.gender, defaults.gender),
-    birthDate: normalizeRule(withFallbackExpectedSalary.birthDate, defaults.birthDate),
-    address: normalizeRule(withFallbackExpectedSalary.address, defaults.address),
-    profilePhoto: normalizeRule(
-      withFallbackExpectedSalary.profilePhoto,
-      defaults.profilePhoto
-    ),
-    cvFilePath: normalizeRule(
-      withFallbackExpectedSalary.cvFilePath,
-      defaults.cvFilePath
-    ),
-    expectedSalary: normalizeRule(
-      withFallbackExpectedSalary.expectedSalary,
-      defaults.expectedSalary
-    ),
+    fullName: normalizeFieldConfigRule(withFallbackExpectedSalary.fullName, DEFAULT_FIELD_CONFIG.fullName),
+    email: normalizeFieldConfigRule(withFallbackExpectedSalary.email, DEFAULT_FIELD_CONFIG.email),
+    phone: normalizeFieldConfigRule(withFallbackExpectedSalary.phone, DEFAULT_FIELD_CONFIG.phone),
+    gender: normalizeFieldConfigRule(withFallbackExpectedSalary.gender, DEFAULT_FIELD_CONFIG.gender),
+    birthDate: normalizeFieldConfigRule(withFallbackExpectedSalary.birthDate, DEFAULT_FIELD_CONFIG.birthDate),
+    address: normalizeFieldConfigRule(withFallbackExpectedSalary.address, DEFAULT_FIELD_CONFIG.address),
+    profilePhoto: normalizeFieldConfigRule(withFallbackExpectedSalary.profilePhoto, DEFAULT_FIELD_CONFIG.profilePhoto),
+    cvFilePath: normalizeFieldConfigRule(withFallbackExpectedSalary.cvFilePath, DEFAULT_FIELD_CONFIG.cvFilePath),
+    expectedSalary: normalizeFieldConfigRule(withFallbackExpectedSalary.expectedSalary, DEFAULT_FIELD_CONFIG.expectedSalary),
   };
-};
+}
 
-
-
+// ===== Job Positions Service =====
 class JobPositionsService {
-  private looksLikeJobPositionEntity(value: any): boolean {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-    return Boolean(
-      value._id ||
-      value.id ||
-      value.title ||
-      value.jobCode ||
-      value.companyId ||
-      value.fieldConfig ||
-      value.customFields ||
-      value.jobSpecs
-    );
+  private async request<T>(
+    method: 'get' | 'post' | 'put' | 'delete',
+    url: string,
+    data?: any,
+    params?: any
+  ): Promise<T> {
+    try {
+      const config = { params };
+      const response = method === 'get' || method === 'delete'
+        ? await axios[method](url, config)
+        : await axios[method](url, data, config);
+      
+      return response.data?.data ?? response.data;
+    } catch (error: any) {
+      throw new ApiError(
+        getErrorMessage(error),
+        error.response?.status,
+        error.response?.data?.details
+      );
+    }
   }
 
-  private unwrapJobPositionPayload(payload: any): any {
-    if (!payload) return payload;
-
-    // Common direct wrappers used by backend responses
-    if (this.looksLikeJobPositionEntity(payload)) return payload;
-    if (this.looksLikeJobPositionEntity(payload?.jobPosition)) return payload.jobPosition;
-    if (this.looksLikeJobPositionEntity(payload?.item)) return payload.item;
-
-    let current = payload;
-    const visited = new Set<any>();
-
-    while (
-      current &&
-      typeof current === 'object' &&
-      !Array.isArray(current) &&
-      Object.prototype.hasOwnProperty.call(current, 'data') &&
-      current.data !== undefined &&
-      current.data !== null
-    ) {
-      if (visited.has(current)) break;
-      visited.add(current);
-
-      if (this.looksLikeJobPositionEntity(current)) return current;
-
-      const next = current.data;
-      if (this.looksLikeJobPositionEntity(next)) return next;
-
-      current = next;
-    }
-
-    if (Array.isArray(current)) {
-      return current[0];
-    }
-
-    return current;
+  private extractJobPositions(payload: any): JobPosition[] {
+    const data = Array.isArray(payload)
+      ? payload
+      : Array.isArray(payload?.data)
+        ? payload.data
+        : Array.isArray(payload?.data?.data)
+          ? payload.data.data
+          : [];
+    return data.map((d: any) => this.normalizeJobPosition(d));
   }
 
-  // Normalize job position shapes so callers always get `jobSpecsWithDetails`
-  normalizeJobPosition(maybe: any): any {
+  public normalizeJobPosition(maybe: any): JobPosition {
     if (!maybe || typeof maybe !== 'object') return maybe;
 
+    // Normalize field config
     maybe.fieldConfig = normalizeJobFieldConfig(
       maybe.fieldConfig,
-      typeof maybe.salaryFieldVisible === "boolean"
-        ? maybe.salaryFieldVisible
-        : undefined
+      typeof maybe.salaryFieldVisible === "boolean" ? maybe.salaryFieldVisible : undefined
     );
 
     // If already has jobSpecsWithDetails, ensure answers are boolean
@@ -180,39 +126,34 @@ class JobPositionsService {
       return maybe;
     }
 
-    // Collect raw specs and responses from various possible properties
-    const rawSpecs: any[] = Array.isArray(maybe.jobSpecs) ? maybe.jobSpecs.slice() : [];
-    const responses: any[] = Array.isArray(maybe.jobSpecsResponses) ? maybe.jobSpecsResponses.slice() : [];
+    // Build jobSpecsWithDetails from raw specs and responses
+    const rawSpecs: any[] = Array.isArray(maybe.jobSpecs) ? [...maybe.jobSpecs] : [];
+    const responses: any[] = Array.isArray(maybe.jobSpecsResponses) ? [...maybe.jobSpecsResponses] : [];
 
-    // If server returned something like jobSpecsWithDetails under another key, try common variants
+    // Handle alternative response shapes
     if (Array.isArray(maybe.job_specs_with_details)) rawSpecs.push(...maybe.job_specs_with_details);
     if (Array.isArray(maybe.jobSpecsWithDetail)) rawSpecs.push(...maybe.jobSpecsWithDetail);
 
-    // Normalize specs into canonical entries
-    const specs = rawSpecs.map((s: any, idx: number) => {
-      if (!s) return { jobSpecId: `spec_${idx}`, spec: '', weight: 0 };
-      if (typeof s === 'string') return { jobSpecId: s, spec: s, weight: 0 };
-      const jobSpecId = s.jobSpecId ?? s._id ?? s.id ?? s.specId ?? `spec_${idx}`;
-      const specVal = s.spec ?? (s.spec && typeof s.spec === 'object' ? (s.spec.en ?? '') : s.spec) ?? '';
-      const weight = typeof s.weight === 'number' ? s.weight : (s.weight ? Number(s.weight) : 0);
-      return { jobSpecId, spec: specVal, weight };
-    });
+    // Normalize specs
+    const specs = rawSpecs.map((s: any, idx: number) => ({
+      jobSpecId: s.jobSpecId ?? s._id ?? s.id ?? s.specId ?? `spec_${idx}`,
+      spec: s.spec ?? (s.spec && typeof s.spec === 'object' ? (s.spec.en ?? '') : s.spec) ?? '',
+      weight: typeof s.weight === 'number' ? s.weight : (s.weight ? Number(s.weight) : 0),
+    }));
 
-    // Map responses by id
+    // Create response map
     const respMap = new Map<string, boolean>();
     responses.forEach((r: any) => {
-      if (!r) return;
       const id = r.jobSpecId ?? r._id ?? r.id ?? r.specId;
-      if (!id) return;
-      respMap.set(id, typeof r.answer === 'boolean' ? r.answer : Boolean(r.answer));
+      if (id) respMap.set(id, typeof r.answer === 'boolean' ? r.answer : Boolean(r.answer));
     });
 
-    // Build final details merging specs and responses
-    let details = specs.map((s: any) => ({
+    // Build final details
+    let details = specs.map(s => ({
       jobSpecId: s.jobSpecId,
       spec: s.spec,
       weight: s.weight,
-      answer: respMap.has(s.jobSpecId) ? respMap.get(s.jobSpecId) : false,
+      answer: respMap.get(s.jobSpecId) ?? false,
     }));
 
     // If no specs but responses exist, construct from responses
@@ -228,311 +169,127 @@ class JobPositionsService {
     maybe.jobSpecsWithDetails = details;
     return maybe;
   }
-  /**
-   * Get all job positions
-   */
-  async getAllJobPositions(
-    companyIdOrOptions?:
-      | string[]
-      | string
-      | { companyId?: string[] | string; deleted?: boolean; departmentId?: string[] | string }
-  ): Promise<JobPosition[]> {
-    try {
-      // Determine shape: either an array/string of ids, or an options object
-      let ids: string[] | undefined;
-      let deleted = false;
-      let departments: string[] | undefined;
 
-      if (Array.isArray(companyIdOrOptions)) {
-        ids = companyIdOrOptions as string[];
-      } else if (
-        companyIdOrOptions &&
-        typeof companyIdOrOptions === "object"
-      ) {
-        const opts: any = companyIdOrOptions;
-        if (opts.companyId) {
-          ids = Array.isArray(opts.companyId)
-            ? opts.companyId
-            : String(opts.companyId)
-                .split(",")
-                .map((s) => s.trim())
-                .filter(Boolean);
-        }
-        if (opts.deleted !== undefined) deleted = !!opts.deleted;
-        if (opts.departmentId) {
-          departments = Array.isArray(opts.departmentId)
-            ? opts.departmentId
-            : String(opts.departmentId)
-                .split(",")
-                .map((s) => s.trim())
-                .filter(Boolean);
-        }
-      } else if (companyIdOrOptions !== undefined) {
-        // single string id or comma separated
-        ids = String(companyIdOrOptions)
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean);
-      }
+  private buildJobPositionPayload(data: Partial<CreateJobPositionRequest | UpdateJobPositionRequest>): any {
+    const payload: any = {};
 
-      const normalizedCompanyIds = ids && ids.length > 0
-        ? Array.from(new Set(ids.map((id) => String(id || "").trim()).filter(Boolean)))
-        : [];
+    const fields = [
+      'title', 'description', 'departmentId', 'companyId', 'jobCode',
+      'requirements', 'termsAndConditions', 'employmentType', 'workArrangement',
+      'status', 'bilingual', 'isActive', 'createdBy'
+    ];
+    
+    fields.forEach(field => {
+      if ((data as any)[field] !== undefined) payload[field] = (data as any)[field];
+    });
 
-      const fetchOne = async (singleCompanyId?: string): Promise<JobPosition[]> => {
-        const params: any = {
-          deleted: deleted ? "true" : "false",
-          PageCount: "all",
-        };
-        if (singleCompanyId) params.companyId = singleCompanyId;
-        if (departments && departments.length > 0) params.departmentId = departments.join(",");
-        const response = await axios.get("/job-positions", { params });
-        const payload = response.data;
-        const data = Array.isArray(payload)
-          ? payload
-          : Array.isArray(payload?.data)
-            ? payload.data
-            : Array.isArray(payload?.data?.data)
-              ? payload.data.data
-              : [];
-        return (data as any[]).map((d: any) => this.normalizeJobPosition(d));
+    if (data.salary !== undefined) payload.salary = data.salary;
+    if (data.salaryVisible !== undefined) payload.salaryVisible = data.salaryVisible;
+    if (data.openPositions !== undefined) payload.openPositions = data.openPositions;
+    if (data.order !== undefined) payload.order = data.order;
+    if (data.registrationStart) payload.registrationStart = data.registrationStart;
+    if (data.registrationEnd) payload.registrationEnd = data.registrationEnd;
+    if (data.jobSpecs?.length) payload.jobSpecs = data.jobSpecs;
+    if (data.customFields?.length) payload.customFields = data.customFields;
+    if (data.fieldConfig) payload.fieldConfig = normalizeJobFieldConfig(data.fieldConfig);
+
+    return payload;
+  }
+
+  // ===== Public Methods =====
+  async getAllJobPositions(params?: {
+    companyId?: string | string[];
+    deleted?: boolean;
+    departmentId?: string | string[];
+  }): Promise<JobPosition[]> {
+    const companyIds = params?.companyId
+      ? Array.isArray(params.companyId)
+        ? params.companyId
+        : String(params.companyId).split(',').map(s => s.trim()).filter(Boolean)
+      : [];
+
+    const deleted = params?.deleted ?? false;
+    const departments = params?.departmentId
+      ? Array.isArray(params.departmentId)
+        ? params.departmentId
+        : String(params.departmentId).split(',').map(s => s.trim()).filter(Boolean)
+      : undefined;
+
+    const fetchOne = async (singleCompanyId?: string): Promise<JobPosition[]> => {
+      const queryParams: any = {
+        deleted: deleted ? "true" : "false",
+        PageCount: "all",
       };
+      if (singleCompanyId) queryParams.companyId = singleCompanyId;
+      if (departments?.length) queryParams.departmentId = departments.join(",");
+      
+      const response = await this.request<any>('get', "/job-positions", undefined, queryParams);
+      return this.extractJobPositions(response);
+    };
 
-      if (normalizedCompanyIds.length <= 1) {
-        return fetchOne(normalizedCompanyIds[0]);
-      }
-
-      const positionLists = await Promise.all(normalizedCompanyIds.map((id) => fetchOne(id)));
-      const unique = new Map<string, JobPosition>();
-      positionLists.flat().forEach((position) => {
-        if (position && position._id) unique.set(position._id, position);
-      });
-      return Array.from(unique.values());
-    } catch (error: any) {
-      throw new ApiError(
-        getErrorMessage(error),
-        error.response?.status,
-        error.response?.data?.details
-      );
+    if (companyIds.length <= 1) {
+      return fetchOne(companyIds[0]);
     }
+
+    const positionLists = await Promise.all(companyIds.map(id => fetchOne(id)));
+    const unique = new Map<string, JobPosition>();
+    positionLists.flat().forEach(position => {
+      if (position?._id) unique.set(position._id, position);
+    });
+    return Array.from(unique.values());
   }
 
-  /**
-   * Get a single job position by ID
-   */
-  async getJobPositionById(jobPositionId: string): Promise<JobPosition> {
-    try {
-      const response = await axios.get(`/job-positions/${jobPositionId}`);
-      const payload = response.data;
-      const data = this.unwrapJobPositionPayload(payload);
-      return this.normalizeJobPosition(data);
-    } catch (error: any) {
-      throw new ApiError(
-        getErrorMessage(error),
-        error.response?.status,
-        error.response?.data?.details
-      );
-    }
+  async getJobPositionById(id: string): Promise<JobPosition> {
+    const response = await this.request<any>('get', `/job-positions/${id}`);
+    return this.normalizeJobPosition(response);
   }
 
-  /**
-   * Create a new job position
-   */
-  async createJobPosition(
-    data: CreateJobPositionRequest
-  ): Promise<JobPosition> {
-    try {
-      // Build payload with only non-empty fields
-      const payload: any = {
-        title: data.title,
-        description: data.description ?? { en: "", ar: "" },
-        departmentId: data.departmentId || "",
-      };
-
-      // Include companyId for create operation
-      if (data.companyId) payload.companyId = data.companyId;
-
-      if (data.jobCode) payload.jobCode = data.jobCode;
-      if (data.requirements && data.requirements.length > 0)
-        payload.requirements = data.requirements;
-      if (data.termsAndConditions && data.termsAndConditions.length > 0)
-        payload.termsAndConditions = data.termsAndConditions;
-      if (data.salary !== undefined) payload.salary = data.salary;
-      if (data.salaryVisible !== undefined)
-        payload.salaryVisible = data.salaryVisible;
-      if (data.fieldConfig)
-        payload.fieldConfig = normalizeJobFieldConfig(data.fieldConfig);
-      if (data.bilingual !== undefined) payload.bilingual = data.bilingual;
-      if (data.isActive !== undefined) payload.isActive = data.isActive;
-      if (data.employmentType) payload.employmentType = data.employmentType;
-      if (data.workArrangement) payload.workArrangement = data.workArrangement;
-      if ((data as any).createdBy) payload.createdBy = (data as any).createdBy;
-      if (data.status) payload.status = data.status;
-      if (data.openPositions) payload.openPositions = data.openPositions;
-      if (data.order !== undefined) payload.order = data.order;
-      if (data.registrationStart)
-        payload.registrationStart = data.registrationStart;
-      if (data.registrationEnd) payload.registrationEnd = data.registrationEnd;
-      if (data.jobSpecs && data.jobSpecs.length > 0)
-        payload.jobSpecs = data.jobSpecs;
-      if (data.customFields && data.customFields.length > 0)
-        payload.customFields = data.customFields;
-
-      const response = await axios.post("/job-positions", payload);
-      // Normalize possible response shapes: { data: Job }, { job: Job }, or nested wrappers
-      let maybe: any = response.data?.data ?? (response.data as any)?.job ?? response.data ?? null;
-
-      if (!maybe || (typeof maybe === 'object' && !('_id' in maybe))) {
-        const nested = Object.values(response.data || {}).find((v: any) => v && typeof v === 'object' && v._id);
-        if (nested) maybe = nested;
-      }
-
-      if (!maybe) {
-        console.warn('jobPositionsService.createJobPosition: unexpected response shape', response.data);
-        throw new ApiError(getErrorMessage(response as any), response.status ?? undefined, response as any);
-      }
-
-      return this.normalizeJobPosition(maybe) as any;
-    } catch (error: any) {
-      throw new ApiError(
-        getErrorMessage(error),
-        error.response?.status,
-        error.response?.data?.details
-      );
-    }
+  async createJobPosition(data: CreateJobPositionRequest): Promise<JobPosition> {
+    const payload = this.buildJobPositionPayload(data);
+    if (data.companyId) payload.companyId = data.companyId;
+    
+    const response = await this.request<any>('post', "/job-positions", payload);
+    return this.normalizeJobPosition(response);
   }
 
-  /**
-   * Reorder job positions and persist display sequence in backend
-   */
+  async updateJobPosition(id: string, data: UpdateJobPositionRequest): Promise<JobPosition> {
+    const payload = this.buildJobPositionPayload(data);
+    const response = await this.request<any>('put', `/job-positions/${id}`, payload);
+    return this.normalizeJobPosition(response);
+  }
+
+  async deleteJobPosition(id: string): Promise<void> {
+    await this.request<void>('delete', `/job-positions/${id}`);
+  }
+
   async reorderJobPositions(
     items: ReorderJobPositionsRequestItem[],
     basePayloadById?: Record<string, UpdateJobPositionRequest>
   ): Promise<void> {
-    const normalizedItems = (items || [])
-      .map((item) => ({
+    const normalizedItems = items
+      .map(item => ({
         id: String(item?.id || "").trim(),
         order: Number(item?.order),
       }))
-      .filter((item) => item.id && Number.isFinite(item.order));
+      .filter(item => item.id && Number.isFinite(item.order));
 
     if (normalizedItems.length === 0) return;
 
-    // with servers that don't expose a batch reorder API.
     await Promise.all(
-      normalizedItems.map((item) => {
+      normalizedItems.map(item => {
         const basePayload = basePayloadById?.[item.id] || {};
-        const payload: UpdateJobPositionRequest = {
-          ...basePayload,
-          order: item.order,
-        };
-
-        return this.updateJobPosition(item.id, payload);
+        return this.updateJobPosition(item.id, { ...basePayload, order: item.order });
       })
     );
   }
 
-  /**
-   * Update a job position
-   */
-  async updateJobPosition(
-    jobPositionId: string,
-    data: UpdateJobPositionRequest
-  ): Promise<JobPosition> {
-    try {
-      // Build payload with only provided fields
-      const payload: any = {};
-
-      if (data.title) payload.title = data.title;
-      if (data.description) payload.description = data.description;
-      if (data.departmentId) payload.departmentId = data.departmentId;
-      if (data.companyId) payload.companyId = data.companyId;
-      if (data.jobCode) payload.jobCode = data.jobCode;
-      if (data.requirements) payload.requirements = data.requirements;
-      if (data.termsAndConditions)
-        payload.termsAndConditions = data.termsAndConditions;
-      if (data.salary !== undefined) payload.salary = data.salary;
-      if (data.salaryVisible !== undefined)
-        payload.salaryVisible = data.salaryVisible;
-      if (data.fieldConfig)
-        payload.fieldConfig = normalizeJobFieldConfig(data.fieldConfig);
-      if (data.bilingual !== undefined) payload.bilingual = data.bilingual;
-      if (data.isActive !== undefined) payload.isActive = data.isActive;
-      if (data.employmentType) payload.employmentType = data.employmentType;
-      if (data.workArrangement) payload.workArrangement = data.workArrangement;
-      if (data.status) payload.status = data.status;
-      if (data.openPositions) payload.openPositions = data.openPositions;
-      if (data.order !== undefined) payload.order = data.order;
-      if (data.registrationStart)
-        payload.registrationStart = data.registrationStart;
-      if (data.registrationEnd) payload.registrationEnd = data.registrationEnd;
-      if (data.jobSpecs) payload.jobSpecs = data.jobSpecs;
-      if (data.customFields) payload.customFields = data.customFields;
-
-      const response = await axios.put(
-        `/job-positions/${jobPositionId}`,
-        payload
-      );
-      const jobPositionData = response.data.data;
-      return this.normalizeJobPosition(jobPositionData);
-    } catch (error: any) {
-      throw new ApiError(
-        getErrorMessage(error),
-        error.response?.status,
-        error.response?.data?.details
-      );
-    }
-  }
-
-  /**
-   * Delete a job position
-   */
-  async deleteJobPosition(jobPositionId: string): Promise<void> {
-    try {
-      await axios.delete(`/job-positions/${jobPositionId}`);
-    } catch (error: any) {
-      throw new ApiError(
-        getErrorMessage(error),
-        error.response?.status,
-        error.response?.data?.details
-      );
-    }
-  }
-
-  /**
-   * Get applicants for a job position
-   */
   async getApplicantsForPosition(jobPositionId: string): Promise<Applicant[]> {
-    try {
-      const response = await axios.get(
-        `/job-positions/${jobPositionId}/applicants`
-      );
-      return response.data.data;
-    } catch (error: any) {
-      throw new ApiError(
-        getErrorMessage(error),
-        error.response?.status,
-        error.response?.data?.details
-      );
-    }
+    return this.request<Applicant[]>('get', `/job-positions/${jobPositionId}/applicants`);
   }
 
-  /**
-   * Clone a job position
-   */
   async cloneJobPosition(jobPositionId: string): Promise<JobPosition> {
-    try {
-      const response = await axios.post(
-        `/job-positions/${jobPositionId}/clone`
-      );
-      return response.data.data;
-    } catch (error: any) {
-      throw new ApiError(
-        getErrorMessage(error),
-        error.response?.status,
-        error.response?.data?.details
-      );
-    }
+    const response = await this.request<any>('post', `/job-positions/${jobPositionId}/clone`);
+    return this.normalizeJobPosition(response);
   }
 }
 

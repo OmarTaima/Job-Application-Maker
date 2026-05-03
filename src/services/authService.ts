@@ -1,254 +1,171 @@
+// services/authService.ts
 import { tokenStorage } from "../config/api";
+import type {
+  LoginRequest,
+  RegisterRequest,
+  User,
+  AuthResponse,
+  UserProfileResponse,
+  ChangePasswordRequest,
+} from "../types/auth";
+import { ApiError } from "../types/auth"; // Import the class
 
-// Types
-export interface LoginRequest {
-  email: string;
-  password: string;
-}
-
-export interface RegisterRequest {
-  email: string;
-  password: string;
-  firstName?: string;
-  lastName?: string;
-  name?: string;
-}
-
-export interface TableLayout {
-  columnVisibility: Record<string, boolean>;
-  columnSizing: Record<string, number>;
-  columnOrder: string[];
-}
-
-export interface User {
-  _id?: string;
-  id?: string;
-  email: string;
-  fullName?: string;
-  name?: string;
-  roleId?: {
-    _id: string;
-    name: string;
-    permissions?: Array<{
-      permission: {
-        _id: string;
-        name: string;
-      };
-      access?: string[];
-    }>;
-  };
-  role?: 'admin' | 'company_user';
-  assignedcompanyId?: string[];
-  companies?: Array<{
-    _id?: string;
-    companyId: {
-      _id: string;
-      name: string;
-    };
-    departments?: Array<{
-      _id: string;
-      name: string;
-    }>;
-  }>;
-  // Optional profile fields used across the app
-  profilePhoto?: string;
-  avatar?: string;
-  location?: string;
-  address?: string;
-  phone?: string;
-  bio?: string;
-  country?: string;
-  city?: string;
-  state?: string;
-  postalCode?: string;
-  taxId?: string;
-  tablePreferences: Record<string, TableLayout>;
-}
-
-export interface AuthResponse {
-  success: boolean;
-  message: string;
-  data: {
-    user: User;
-    accessToken: string;
-    refreshToken: string;
-  };
-}
-
-export interface UserProfileResponse {
-  success: boolean;
-  data: User;
-}
-
-export interface ChangePasswordRequest {
-  currentPassword: string;
-  newPassword: string;
-}
-
-// API Error class
-export class ApiError extends Error {
-  constructor(
-    message: string,
-    public statusCode?: number,
-    public data?: unknown
-  ) {
-    super(message);
-    this.name = "ApiError";
-  }
-}
-
-// Helper function to make API requests
-async function apiRequest<T>(
-  endpoint: string,
-  options: RequestInit = {}
-): Promise<T> {
-  const url = `${import.meta.env.VITE_API_BASE_URL}${endpoint}`;
-
-  const config: RequestInit = {
-    ...options,
-    headers: {
+// ===== API Client (reusable, clean) =====
+class ApiClient {
+  private async request<T>(
+    endpoint: string,
+    options: RequestInit = {},
+    requiresAuth: boolean = false
+  ): Promise<T> {
+    const url = `${import.meta.env.VITE_API_BASE_URL}${endpoint}`;
+    
+    const headers: Record<string, string> = {
       "Content-Type": "application/json",
-      ...options.headers,
-    },
-  };
+    };
 
-  try {
-    const response = await fetch(url, config);
+    // Add auth header if required
+    if (requiresAuth) {
+      const token = tokenStorage.getAccessToken();
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+    }
 
-    const data = await response.json();
+    // Merge with any custom headers from options
+    if (options.headers) {
+      const customHeaders = options.headers as Record<string, string>;
+      Object.assign(headers, customHeaders);
+    }
 
-    if (!response.ok) {
+    const config: RequestInit = {
+      ...options,
+      headers,
+    };
+
+    try {
+      const response = await fetch(url, config);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new ApiError(
+          data.message || "An error occurred",
+          response.status,
+          data
+        );
+      }
+
+      return data;
+    } catch (error) {
+      if (error instanceof ApiError) throw error;
       throw new ApiError(
-        data.message || "An error occurred",
-        response.status,
-        data
+        error instanceof Error ? error.message : "Network error occurred"
       );
     }
+  }
 
-    return data;
-  } catch (error) {
-    if (error instanceof ApiError) {
-      throw error;
-    }
+  get<T>(endpoint: string, requiresAuth: boolean = true): Promise<T> {
+    return this.request<T>(endpoint, { method: "GET" }, requiresAuth);
+  }
 
-    throw new ApiError(
-      error instanceof Error ? error.message : "Network error occurred"
+  post<T>(endpoint: string, data?: any, requiresAuth: boolean = true): Promise<T> {
+    return this.request<T>(
+      endpoint,
+      {
+        method: "POST",
+        body: data ? JSON.stringify(data) : undefined,
+      },
+      requiresAuth
     );
   }
-}
 
-// Helper to add auth header
-function getAuthHeaders(): HeadersInit {
-  const token = tokenStorage.getAccessToken();
-  if (token) {
-    return {
-      Authorization: `Bearer ${token}`,
-    };
+  put<T>(endpoint: string, data?: any, requiresAuth: boolean = true): Promise<T> {
+    return this.request<T>(
+      endpoint,
+      {
+        method: "PUT",
+        body: data ? JSON.stringify(data) : undefined,
+      },
+      requiresAuth
+    );
   }
-  return {};
+
+  delete<T>(endpoint: string, requiresAuth: boolean = true): Promise<T> {
+    return this.request<T>(endpoint, { method: "DELETE" }, requiresAuth);
+  }
 }
 
-// Auth Service
-export const authService = {
-  /**
-   * Login with email and password
-   */
-  async login(credentials: LoginRequest): Promise<AuthResponse> {
-    const response = await apiRequest<any>("/auth/login", {
-      method: "POST",
-      body: JSON.stringify(credentials),
-    });
+// ===== Auth Service =====
+class AuthService {
+  private api = new ApiClient();
 
-   
+  private extractTokens(response: AuthResponse): { accessToken: string; refreshToken: string } {
+    const accessToken = response.data?.accessToken || (response as any).accessToken;
+    const refreshToken = response.data?.refreshToken || (response as any).refreshToken;
+    
+    if (!accessToken || !refreshToken) {
+      console.warn("Tokens missing in response", response);
+    }
+    
+    return { accessToken, refreshToken };
+  }
 
-    // Store tokens - handle different response structures
-    const accessToken = response.data?.accessToken || response.accessToken;
-    const refreshToken = response.data?.refreshToken || response.refreshToken;
-
+  async login(credentials: LoginRequest): Promise<User> {
+    const response = await this.api.post<AuthResponse>("/auth/login", credentials, false);
+    const { accessToken, refreshToken } = this.extractTokens(response);
+    
     if (accessToken && refreshToken) {
       tokenStorage.setTokens(accessToken, refreshToken);
-    } else {
     }
+    
+    return response.data.user;
+  }
 
-    return response;
-  },
-
-  /**
-   * Register a new user
-   */
-  async register(userData: RegisterRequest): Promise<AuthResponse> {
-    const response = await apiRequest<AuthResponse>("/auth/register", {
-      method: "POST",
-      body: JSON.stringify(userData),
-    });
-
-    // Store tokens
-    if (response.data.accessToken && response.data.refreshToken) {
-      tokenStorage.setTokens(
-        response.data.accessToken,
-        response.data.refreshToken
-      );
+  async register(userData: RegisterRequest): Promise<User> {
+    const response = await this.api.post<AuthResponse>("/auth/register", userData, false);
+    const { accessToken, refreshToken } = this.extractTokens(response);
+    
+    if (accessToken && refreshToken) {
+      tokenStorage.setTokens(accessToken, refreshToken);
     }
+    
+    return response.data.user;
+  }
 
-    return response;
-  },
-
-  /**
-   * Get current user profile
-   */
   async getCurrentUser(): Promise<User> {
-    const response = await apiRequest<UserProfileResponse>("/auth/me?populate=roleId.permissions.permission", {
-      method: "GET",
-      headers: getAuthHeaders(),
-    });
-
+    const response = await this.api.get<UserProfileResponse>(
+      "/auth/me?populate=roleId.permissions.permission",
+      true
+    );
     return response.data;
-  },
+  }
 
-  /**
-   * Refresh access token
-   */
-  async refreshToken(): Promise<AuthResponse> {
+  async refreshToken(): Promise<void> {
     const refreshToken = tokenStorage.getRefreshToken();
-
     if (!refreshToken) {
       throw new ApiError("No refresh token available");
     }
 
-    const response = await apiRequest<AuthResponse>("/auth/refresh-token", {
-      method: "POST",
-      body: JSON.stringify({ refreshToken }),
-    });
-
-    // Update tokens
-    if (response.data.accessToken && response.data.refreshToken) {
-      tokenStorage.setTokens(
-        response.data.accessToken,
-        response.data.refreshToken
-      );
-    }
-
-    return response;
-  },
-
-  /**
-   * Change password
-   */
-  async changePassword(passwords: ChangePasswordRequest): Promise<void> {
-    await apiRequest<{ success: boolean; message: string }>(
-      "/auth/change-password",
-      {
-        method: "PUT",
-        headers: getAuthHeaders(),
-        body: JSON.stringify(passwords),
-      }
+    const response = await this.api.post<AuthResponse>(
+      "/auth/refresh-token",
+      { refreshToken },
+      false
     );
-  },
+    
+    const { accessToken, refreshToken: newRefreshToken } = this.extractTokens(response);
+    
+    if (accessToken && newRefreshToken) {
+      tokenStorage.setTokens(accessToken, newRefreshToken);
+    }
+  }
 
-  /**
-   * Logout (client-side)
-   */
+  async changePassword(passwords: ChangePasswordRequest): Promise<void> {
+    await this.api.put("/auth/change-password", passwords, true);
+  }
+
   logout(): void {
     tokenStorage.clearTokens();
-  },
-};
+  }
+}
+
+// ===== Singleton Export =====
+export const authService = new AuthService();

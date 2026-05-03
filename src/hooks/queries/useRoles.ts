@@ -1,35 +1,66 @@
+// hooks/queries/useRoles.ts
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { rolesService } from "../../services/rolesService";
 import type {
   CreateRoleRequest,
   UpdateRoleRequest,
   Role,
-  Permission,
-} from "../../services/rolesService";
+} from "../../types/roles";
+import { ApiError } from "../../services/companiesService";
+import Swal from "../../utils/swal";
 
 // Query keys
 export const rolesKeys = {
   all: ["roles"] as const,
   lists: () => [...rolesKeys.all, "list"] as const,
   list: () => [...rolesKeys.lists()] as const,
+  detail: (id: string) => [...rolesKeys.all, "detail", id] as const,
   permissions: () => [...rolesKeys.all, "permissions"] as const,
+  rolePermissions: (roleId: string) => [...rolesKeys.permissions(), roleId] as const,
 };
 
 // Get all roles
-export function useRoles() {
-  return useQuery<Role[]>({
+export function useRoles(options?: { enabled?: boolean }) {
+  return useQuery({
     queryKey: rolesKeys.list(),
     queryFn: () => rolesService.getAllRoles(),
-    staleTime: 10 * 60 * 1000, // 10 minutes - roles don't change often
+    staleTime: 10 * 60 * 1000,
+    enabled: options?.enabled ?? true,
+  });
+}
+
+// Get role by ID
+export function useRole(id: string, options?: { enabled?: boolean }) {
+  const queryClient = useQueryClient();
+
+  return useQuery({
+    queryKey: rolesKeys.detail(id),
+    queryFn: () => rolesService.getRoleById(id),
+    enabled: options?.enabled ?? !!id,
+    staleTime: 10 * 60 * 1000,
+    initialData: () => {
+      const cached = queryClient.getQueryData<Role[]>(rolesKeys.list());
+      return cached?.find(role => role._id === id);
+    },
   });
 }
 
 // Get all permissions
 export function usePermissions() {
-  return useQuery<Permission[]>({
+  return useQuery({
     queryKey: rolesKeys.permissions(),
     queryFn: () => rolesService.getAllPermissions(),
-    staleTime: 10 * 60 * 1000, // 10 minutes
+    staleTime: 10 * 60 * 1000,
+  });
+}
+
+// Get permissions by role
+export function useRolePermissions(roleId: string, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: rolesKeys.rolePermissions(roleId),
+    queryFn: () => rolesService.getPermissionsByRole(roleId),
+    enabled: options?.enabled ?? !!roleId,
+    staleTime: 10 * 60 * 1000,
   });
 }
 
@@ -39,55 +70,18 @@ export function useCreateRole() {
 
   return useMutation({
     mutationFn: (data: CreateRoleRequest) => rolesService.createRole(data),
-    onMutate: async (newRole) => {
-      await queryClient.cancelQueries({ queryKey: rolesKeys.lists() });
-      const previousRoles = queryClient.getQueryData(rolesKeys.list());
-
-      // Optimistically add the new role
-      queryClient.setQueryData(rolesKeys.list(), (old: any) => {
-        if (!old) return old;
-        const tempRole = {
-          ...newRole,
-          _id: `temp-${Date.now()}`,
-          createdAt: new Date().toISOString(),
-          permissionsCount: newRole.permissions?.length || 0,
-          usersCount: 0,
-        };
-        if (Array.isArray(old)) return [...old, tempRole];
-        if (old.data && Array.isArray(old.data)) return { ...old, data: [...old.data, tempRole] };
-        return old;
-      });
-
-      return { previousRoles };
-    },
-    onError: (_err, _variables, context) => {
-      if (context?.previousRoles) {
-        queryClient.setQueryData(rolesKeys.list(), context.previousRoles);
-      }
-    },
     onSuccess: (newRole) => {
-      // Replace temp role with actual role from server (be defensive about response shape)
-      if (!newRole || !(newRole as any)._id) {
-        // If server didn't return a usable role object, invalidate list so it refetches
-        queryClient.invalidateQueries({ queryKey: rolesKeys.list() });
-        return;
-      }
-
-      queryClient.setQueryData(rolesKeys.list(), (old: any) => {
-        if (!old) return { data: [newRole] };
-        if (Array.isArray(old)) {
-          const updated = old.map((role: any) => (role._id && String(role._id).startsWith("temp-") ? newRole : role)).filter((role: any, index: number, self: any[]) => self.findIndex((r: any) => r._id === role._id) === index);
-          return updated;
-        }
-        if (old.data && Array.isArray(old.data)) {
-          const updated = old.data.map((role: any) => (role._id && String(role._id).startsWith("temp-") ? newRole : role)).filter((role: any, index: number, self: any[]) => self.findIndex((r: any) => r._id === role._id) === index);
-          return { ...old, data: updated };
-        }
-        return old;
+      // Update list cache
+      queryClient.setQueryData<Role[]>(rolesKeys.list(), (old) => {
+        if (!old) return [newRole];
+        return [...old.filter(role => !role._id?.startsWith('temp-')), newRole];
       });
+      
+      queryClient.invalidateQueries({ queryKey: rolesKeys.lists() });
+      showSuccessToast("Role created successfully");
     },
-    onSettled: () => {
-      // No refetch
+    onError: (error: ApiError) => {
+      showErrorToast(error.message, "Failed to create role");
     },
   });
 }
@@ -99,26 +93,20 @@ export function useUpdateRole() {
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: UpdateRoleRequest }) =>
       rolesService.updateRole(id, data),
-    onMutate: async ({ id, data }) => {
-      await queryClient.cancelQueries({ queryKey: rolesKeys.lists() });
-      const previousRoles = queryClient.getQueryData(rolesKeys.list());
-
-      queryClient.setQueryData(rolesKeys.list(), (old: any) => {
-        if (!old) return old;
-        if (Array.isArray(old)) return old.map((role: any) => role._id === id ? { ...role, ...data } : role);
-        if (old.data && Array.isArray(old.data)) return { ...old, data: old.data.map((role: any) => role._id === id ? { ...role, ...data } : role) };
-        return old;
+    onSuccess: (updatedRole, { id }) => {
+      // Update detail cache
+      queryClient.setQueryData(rolesKeys.detail(id), updatedRole);
+      
+      // Update list cache
+      queryClient.setQueryData<Role[]>(rolesKeys.list(), (old) => {
+        if (!old) return [updatedRole];
+        return old.map(role => role._id === id ? updatedRole : role);
       });
-
-      return { previousRoles };
+      
+      showSuccessToast("Role updated successfully");
     },
-    onError: (_err, _variables, context) => {
-      if (context?.previousRoles) {
-        queryClient.setQueryData(rolesKeys.list(), context.previousRoles);
-      }
-    },
-    onSettled: () => {
-      // No refetch
+    onError: (error: ApiError) => {
+      showErrorToast(error.message, "Failed to update role");
     },
   });
 }
@@ -129,26 +117,80 @@ export function useDeleteRole() {
 
   return useMutation({
     mutationFn: (id: string) => rolesService.deleteRole(id),
-    onMutate: async (id) => {
-      await queryClient.cancelQueries({ queryKey: rolesKeys.lists() });
-      const previousRoles = queryClient.getQueryData(rolesKeys.list());
-
-      queryClient.setQueryData(rolesKeys.list(), (old: any) => {
-        if (!old) return old;
-        if (Array.isArray(old)) return old.filter((role: any) => role._id !== id);
-        if (old.data && Array.isArray(old.data)) return { ...old, data: old.data.filter((role: any) => role._id !== id) };
-        return old;
+    onSuccess: (_, id) => {
+      // Remove from list cache
+      queryClient.setQueryData<Role[]>(rolesKeys.list(), (old) => {
+        if (!old) return [];
+        return old.filter(role => role._id !== id);
       });
+      
+      // Remove detail cache
+      queryClient.removeQueries({ queryKey: rolesKeys.detail(id) });
+      
+      showSuccessToast("Role deleted successfully");
+    },
+    onError: (error: ApiError) => {
+      showErrorToast(error.message, "Failed to delete role");
+    },
+  });
+}
 
-      return { previousRoles };
+// Assign permissions to role
+export function useAssignPermissionsToRole() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ roleId, permissions }: { roleId: string; permissions: string[] }) =>
+      rolesService.assignPermissionsToRole(roleId, permissions),
+    onSuccess: (updatedRole, { roleId }) => {
+      // Invalidate permissions cache
+      queryClient.invalidateQueries({ queryKey: rolesKeys.rolePermissions(roleId) });
+      
+      // Update role detail cache
+      queryClient.setQueryData(rolesKeys.detail(roleId), updatedRole);
+      
+      showSuccessToast("Permissions assigned successfully");
     },
-    onError: (_err, _variables, context) => {
-      if (context?.previousRoles) {
-        queryClient.setQueryData(rolesKeys.list(), context.previousRoles);
-      }
+    onError: (error: ApiError) => {
+      showErrorToast(error.message, "Failed to assign permissions");
     },
-    onSettled: () => {
-      // No refetch
+  });
+}
+
+// Remove permission from role
+export function useRemovePermissionFromRole() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ roleId, permissionId }: { roleId: string; permissionId: string }) =>
+      rolesService.removePermissionFromRole(roleId, permissionId),
+    onSuccess: (_, { roleId}) => {
+      // Invalidate permissions cache
+      queryClient.invalidateQueries({ queryKey: rolesKeys.rolePermissions(roleId) });
+      
+      showSuccessToast("Permission removed successfully");
     },
+    onError: (error: ApiError) => {
+      showErrorToast(error.message, "Failed to remove permission");
+    },
+  });
+}
+
+// ===== Toast Helpers =====
+function showSuccessToast(message: string) {
+  Swal.fire({
+    title: "Success",
+    text: message,
+    icon: "success",
+    timer: 1500,
+    showConfirmButton: false,
+  });
+}
+
+function showErrorToast(message: string, fallback: string) {
+  Swal.fire({
+    title: "Error",
+    text: message || fallback,
+    icon: "error",
   });
 }

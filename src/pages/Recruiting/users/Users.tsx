@@ -32,34 +32,25 @@ export default function Users() {
   const navigate = useNavigate();
   const { hasPermission, user: authUser } = useAuth();
 
-  // (removed unused extractor) 
+  // Compute allowed company IDs for current auth user
+  const allowedCompanyIds = useMemo(() => {
+    const roleName = String(authUser?.roleId?.name || "").toLowerCase().trim();
+    
+    if (roleName === "admin" || roleName === "super admin") return undefined;
 
-  // Compute allowed company IDs for current auth user (mirrors useUsers logic)
- // Compute allowed company IDs for current auth user
-// Dedicated extractor for entries shaped as { companyId: { _id: "..." } }
+    const fromCompanies = Array.isArray(authUser?.companies)
+      ? authUser.companies
+          .map((c: any) => {
+            const cid = c?.companyId;
+            if (!cid) return null;
+            if (typeof cid === "string") return cid;
+            return String(cid._id || cid.id || "");
+          })
+          .filter(Boolean) as string[]
+      : [];
 
-
-const allowedCompanyIds = useMemo(() => {
-  const roleName = String(authUser?.roleId?.name || "").toLowerCase().trim();
-
-  
-  if (roleName === "admin" || roleName === "super admin") return undefined;
-
-  const fromCompanies = Array.isArray(authUser?.companies)
-    ? authUser.companies
-        .map((c: any) => {
-          const cid = c?.companyId;
-          if (!cid) return null;
-          if (typeof cid === "string") return cid;
-          return String(cid._id || cid.id || "");
-        })
-        .filter(Boolean) as string[]
-    : [];
-
-  return Array.from(new Set([...fromCompanies]));
-}, [authUser]);
-
-
+    return Array.from(new Set([...fromCompanies]));
+  }, [authUser]);
 
   // Permissions check
   const canRead = hasPermission("User Management", "read");
@@ -72,45 +63,57 @@ const allowedCompanyIds = useMemo(() => {
   const [page, setPage] = useState(1);
   const pageSize = 8;
 
-  // Data fetching: only include `companyId` param when allowedCompanyIds is defined
+  // ✅ Fixed: useUsers expects { companies?: string[] } not pagination params
   const usersQueryParams = allowedCompanyIds === undefined
-    ? { page: 1, PageCount: 1000 }
-    : { page: 1, PageCount: 1000,  };
+    ? {}
+    : { companies: allowedCompanyIds };
 
-  const { data: usersResponse, isLoading: usersLoading } = useUsers(usersQueryParams);
+  const { data: users, isLoading: usersLoading } = useUsers(usersQueryParams);
   const { data: roles = [] } = useRoles();
   const deleteUserMutation = useDeleteUser();
 
+  // ✅ Simplified: users is already an array from the hook
   const rawUsers = useMemo(() => {
-    if (!usersResponse) return [];
-    return Array.isArray(usersResponse)
-      ? usersResponse
-      : (((usersResponse as any)?.data ?? []) as any[]);
-  }, [usersResponse]);
+    if (!users) return [];
+    if (Array.isArray(users)) return users;
+    return [];
+  }, [users]);
 
-
-
-  // Filtering logic (includes company visibility)
- const filteredUsers = useMemo(() => {
-  return rawUsers.filter((user: any) => {
-    const targetIds = Array.isArray(user.companies)
-      ? user.companies.map((c: any) => {
-          const cid = c?.companyId;
-          if (!cid) return null;
-          if (typeof cid === "string") return cid;
-          return String(cid._id || cid.id || "");
-        }).filter(Boolean)
-      : [];
-
-    const matched = allowedCompanyIds === undefined ? true : targetIds.some((id: string) => (allowedCompanyIds || []).includes(id));
-
-    return matched;
-  });
-}, [rawUsers, allowedCompanyIds]);
+  // Filtering logic
+  const filteredBySearchAndRole = useMemo(() => {
+    let result = rawUsers;
+    
+    // Search filter
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      result = result.filter((user: any) => 
+        (user.fullName?.toLowerCase() || "").includes(term) ||
+        (user.name?.toLowerCase() || "").includes(term) ||
+        (user.email?.toLowerCase() || "").includes(term)
+      );
+    }
+    
+    // Role filter
+    if (roleFilter !== "all") {
+      result = result.filter((user: any) => 
+        user.roleId?._id === roleFilter || user.roleId === roleFilter
+      );
+    }
+    
+    // Status filter
+    if (statusFilter !== "all") {
+      const isActive = statusFilter === "active";
+      result = result.filter((user: any) => 
+        (user.isActive !== false) === isActive
+      );
+    }
+    
+    return result;
+  }, [rawUsers, searchTerm, roleFilter, statusFilter]);
 
   // Pagination
-  const totalPages = Math.ceil(filteredUsers.length / pageSize);
-  const paginatedUsers = filteredUsers.slice((page - 1) * pageSize, page * pageSize);
+  const totalPages = Math.ceil(filteredBySearchAndRole.length / pageSize);
+  const paginatedUsers = filteredBySearchAndRole.slice((page - 1) * pageSize, page * pageSize);
 
   const handleDeleteUser = async (user: any) => {
     const result = await Swal.fire({
@@ -215,7 +218,7 @@ const allowedCompanyIds = useMemo(() => {
 
             <div className="ml-auto flex items-center gap-2 px-4 py-2 bg-brand-500/10 text-brand-500 rounded-xl border border-brand-500/20">
               <UserCheck className="size-4" />
-              <span className="text-sm font-black tabular-nums">{filteredUsers.length} Found</span>
+              <span className="text-sm font-black tabular-nums">{filteredBySearchAndRole.length} Found</span>
             </div>
           </div>
 
@@ -281,7 +284,7 @@ const allowedCompanyIds = useMemo(() => {
 
                     <div className="space-y-1">
                       <h3 className="text-lg font-black text-gray-900 dark:text-white line-clamp-1 tracking-tight">
-                        {toPlainString(user.fullName || user.name || "Unknown Company")}
+                        {toPlainString(user.fullName || user.name || "Unknown")}
                       </h3>
                       <div className="flex items-center gap-2 text-xs font-bold text-gray-400 italic">
                         <Shield className="size-3 text-brand-500" />
@@ -305,7 +308,7 @@ const allowedCompanyIds = useMemo(() => {
                     </div>
 
                     <div className="flex items-center justify-between pt-2">
-                       <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-md ${isActive ? "bg-green-500/10 text-green-600" : "bg-red-500/10 text-red-600"}`}>
+                      <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-md ${isActive ? "bg-green-500/10 text-green-600" : "bg-red-500/10 text-red-600"}`}>
                         {isActive ? "Active Duty" : "Revoked"}
                       </span>
                       <div className="flex items-center gap-1 text-brand-500 font-black text-[10px] uppercase tracking-widest group-hover:gap-2 transition-all">
@@ -317,7 +320,7 @@ const allowedCompanyIds = useMemo(() => {
               );
             })}
 
-            {filteredUsers.length === 0 && (
+            {filteredBySearchAndRole.length === 0 && (
               <div className="col-span-full py-32 text-center bg-white/40 dark:bg-white/5 backdrop-blur-md border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-[3rem]">
                 <div className="size-20 rounded-full bg-slate-100 dark:bg-white/5 mx-auto mb-6 flex items-center justify-center">
                   <UserMinus className="size-10 text-slate-300 dark:text-slate-700" />

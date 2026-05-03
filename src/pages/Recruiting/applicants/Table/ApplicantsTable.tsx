@@ -342,18 +342,28 @@ export default function Applicants({
 
   // React Query hooks
   const {
-    data: jobPositions = [],
-    isFetching: isJobPositionsFetching,
-    isFetched: isJobPositionsFetched,
-    refetch: refetchJobPositions,
-  } = useJobPositions(companyId, false, departmentIds as any);
+  data: jobPositions = [],
+  isFetching: isJobPositionsFetching,
+  isFetched: isJobPositionsFetched,
+  refetch: refetchJobPositions,
+} = useJobPositions(
+  companyId as any,  // companyId
+  false,             // deleted
+  departmentIds as any, // departmentId
+  { enabled: true }  // options
+);
   const {
-    data: applicants = [],
-    error,
-    refetch: refetchApplicants,
-    isFetching: isApplicantsFetching,
-    isFetched: isApplicantsFetched,
-  } = useApplicants(companyId as any, undefined, departmentIds as any);
+  data: applicants = [],
+  error,
+  refetch: refetchApplicants,
+  isFetching: isApplicantsFetching,
+  isFetched: isApplicantsFetched,
+} = useApplicants({
+  companyId: companyId as any,
+  jobPositionId: undefined,
+  departmentId: departmentIds as any,
+  enabled: true,
+});
   const {
     data: allCompaniesRaw = [],
     refetch: refetchCompanies,

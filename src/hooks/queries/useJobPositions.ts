@@ -1,10 +1,14 @@
+// hooks/queries/useJobPositions.ts
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { jobPositionsService } from "../../services/jobPositionsService";
-import { useAppSelector } from "../../store/hooks";
+import { useAuth } from "../../context/AuthContext";
 import type {
   CreateJobPositionRequest,
   UpdateJobPositionRequest,
-} from "../../services/jobPositionsService";
+  JobPosition,
+} from "../../types/jobPositions";
+import { ApiError } from "../../services/companiesService";
+import Swal from "../../utils/swal";
 
 // Query keys
 export const jobPositionsKeys = {
@@ -12,70 +16,80 @@ export const jobPositionsKeys = {
   lists: () => [...jobPositionsKeys.all, "list"] as const,
   list: (companyId?: string[], departmentId?: string[]) =>
     [...jobPositionsKeys.lists(), { companyId, departmentId }] as const,
-  details: () => [...jobPositionsKeys.all, "detail"] as const,
-  detail: (id: string) => [...jobPositionsKeys.details(), id] as const,
-  applicants: (id: string) =>
-    [...jobPositionsKeys.detail(id), "applicants"] as const,
+  detail: (id: string) => [...jobPositionsKeys.all, "detail", id] as const,
+  applicants: (id: string) => [...jobPositionsKeys.detail(id), "applicants"] as const,
 };
 
+// Helper to get user's company IDs from AuthContext
+function getUserCompanyIds(user: any): string[] | undefined {
+  const roleName = user?.roleId?.name?.toLowerCase?.();
+  if (roleName === "admin" || roleName === "super admin") return undefined;
+
+  const fromCompanies = user?.companies?.map((c: any) =>
+    typeof c?.companyId === "string" ? c.companyId : c?.companyId?._id
+  ).filter(Boolean) ?? [];
+
+  const fromAssigned = user?.assignedcompanyId?.filter(Boolean) ?? [];
+  const merged = [...new Set([...fromCompanies, ...fromAssigned])];
+  return merged.length > 0 ? merged : undefined;
+}
+
 // Get all job positions
-export function useJobPositions(companyId?: string[], deleted: boolean = false, departmentId?: string[], options?: { enabled?: boolean }) {
-  const authUser = useAppSelector((s: any) => s.auth.user);
+export function useJobPositions(
+  companyId?: string[], 
+  deleted: boolean = false, 
+  departmentId?: string[], 
+  options?: { enabled?: boolean }
+) {
+  const { user } = useAuth();
+  const userCompanyIds = getUserCompanyIds(user);
+  const effectiveCompanyId = companyId?.length ? companyId : userCompanyIds;
 
-  const userCompanyIds = (() => {
-    const roleName = authUser?.roleId?.name?.toLowerCase?.();
-    if (roleName === "admin" || roleName === "super admin") return undefined;
-    const fromCompanies = Array.isArray(authUser?.companies)
-      ? authUser.companies
-          .map((c: any) => (typeof c?.companyId === "string" ? c.companyId : c?.companyId?._id))
-          .filter(Boolean)
-      : [];
-    const fromAssigned = Array.isArray(authUser?.assignedcompanyId)
-      ? authUser.assignedcompanyId.filter(Boolean)
-      : [];
-    const merged = Array.from(new Set([...fromCompanies, ...fromAssigned]));
-    return merged.length > 0 ? merged : undefined;
-  })();
+  // Special case: no companies assigned
+  if (effectiveCompanyId?.length === 1 && effectiveCompanyId[0] === '__NO_COMPANY__') {
+    return useQuery({
+      queryKey: jobPositionsKeys.list(effectiveCompanyId, departmentId),
+      queryFn: () => Promise.resolve([] as JobPosition[]),
+      enabled: false,
+    });
+  }
 
-  const effectiveCompanyId = companyId && companyId.length > 0 ? companyId : userCompanyIds;
-
-  return useQuery<import("../../services/jobPositionsService").JobPosition[]>({
+  return useQuery({
     queryKey: jobPositionsKeys.list(effectiveCompanyId, departmentId),
-    queryFn: () => {
-      // Special sentinel to indicate "no companies assigned" -> return empty list
-      if (effectiveCompanyId && effectiveCompanyId.length === 1 && effectiveCompanyId[0] === '__NO_COMPANY__') {
-        return Promise.resolve([] as any);
-      }
-      // service now accepts a single options object
-      // cast to any to satisfy current service typing (may expect a string[] overload)
-      return jobPositionsService.getAllJobPositions({ companyId: effectiveCompanyId, deleted, departmentId } as any);
-    },
+    queryFn: () => jobPositionsService.getAllJobPositions({ 
+      companyId: effectiveCompanyId, 
+      deleted, 
+      departmentId 
+    }),
+    enabled: options?.enabled ?? true,
     staleTime: 5 * 60 * 1000,
-    enabled: options?.enabled !== undefined ? options.enabled : true,
   });
 }
 
 // Get job position by ID
 export function useJobPosition(id: string, options?: { enabled?: boolean }) {
-  return useQuery<import("../../services/jobPositionsService").JobPosition | null>({
+  const queryClient = useQueryClient();
+
+  return useQuery({
     queryKey: jobPositionsKeys.detail(id),
-    queryFn: async () => {
-      if (!id) return null;
-      // Ensure the hook returns null instead of undefined when backend/hook returns no data
-      const res = await jobPositionsService.getJobPositionById(id);
-      return res ?? null;
+    queryFn: () => jobPositionsService.getJobPositionById(id),
+    enabled: options?.enabled ?? !!id,
+    staleTime: 5 * 60 * 1000,
+    initialData: () => {
+      // Try to find from cached list
+      const cached = queryClient.getQueryData<JobPosition[]>(jobPositionsKeys.list());
+      return cached?.find(job => job._id === id);
     },
-    enabled: options?.enabled !== undefined ? options.enabled : !!id,
   });
 }
 
 // Get applicants for job position
 export function useJobPositionApplicants(id: string) {
-  return useQuery<import("../../services/jobPositionsService").Applicant[]>({
+  return useQuery({
     queryKey: jobPositionsKeys.applicants(id),
     queryFn: () => jobPositionsService.getApplicantsForPosition(id),
     enabled: !!id,
-    staleTime: 2 * 60 * 1000, // 2 minutes - fresher data for applicants
+    staleTime: 2 * 60 * 1000,
   });
 }
 
@@ -86,45 +100,20 @@ export function useCreateJobPosition() {
   return useMutation({
     mutationFn: (data: CreateJobPositionRequest) =>
       jobPositionsService.createJobPosition(data),
-    onMutate: async (newJobPosition) => {
-      await queryClient.cancelQueries({ queryKey: jobPositionsKeys.lists() });
-      const previousJobPositions = queryClient.getQueriesData({ queryKey: jobPositionsKeys.lists() });
-
-      queryClient.setQueriesData({ queryKey: jobPositionsKeys.lists() }, (old: any) => {
-        if (!old) return old;
-        const tempJobPosition = {
-          ...newJobPosition,
-          _id: `temp-${Date.now()}`,
-          createdAt: new Date().toISOString(),
-          status: 'active',
-        };
-        return [...old, tempJobPosition];
-      });
-
-      return { previousJobPositions };
-    },
-    onError: (_err, _variables, context) => {
-      if (context?.previousJobPositions) {
-        context.previousJobPositions.forEach(([queryKey, data]) => {
-          queryClient.setQueryData(queryKey, data);
-        });
-      }
-    },
     onSuccess: (newJobPosition) => {
-      if (!newJobPosition || !(newJobPosition as any)._id) {
-        queryClient.invalidateQueries({ queryKey: jobPositionsKeys.lists() });
-        return;
-      }
-
-      queryClient.setQueriesData({ queryKey: jobPositionsKeys.lists() }, (old: any) => {
+      // Update list cache
+      queryClient.setQueryData<JobPosition[]>(jobPositionsKeys.list(), (old) => {
         if (!old) return [newJobPosition];
-        return old
-          .map((job: any) => (job._id && String(job._id).startsWith('temp-') ? newJobPosition : job))
-          .filter((job: any, index: number, self: any[]) => self.findIndex((j: any) => j._id === job._id) === index);
+        return [...old.filter(job => !job._id?.startsWith('temp-')), newJobPosition];
       });
+      
+      // Invalidate lists to ensure consistency
+      queryClient.invalidateQueries({ queryKey: jobPositionsKeys.lists() });
+      
+      showSuccessToast("Job position created successfully");
     },
-    onSettled: () => {
-      // No refetch
+    onError: (error: ApiError) => {
+      showErrorToast(error.message, "Failed to create job position");
     },
   });
 }
@@ -134,46 +123,22 @@ export function useUpdateJobPosition() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({
-      id,
-      data,
-    }: {
-      id: string;
-      data: UpdateJobPositionRequest;
-    }) => jobPositionsService.updateJobPosition(id, data),
-    onMutate: async ({ id, data }) => {
-      await queryClient.cancelQueries({ queryKey: jobPositionsKeys.lists() });
-      await queryClient.cancelQueries({ queryKey: jobPositionsKeys.detail(id) });
-
-      const previousLists = queryClient.getQueriesData({ queryKey: jobPositionsKeys.lists() });
-      const previousDetail = queryClient.getQueryData(jobPositionsKeys.detail(id));
-
-      queryClient.setQueriesData({ queryKey: jobPositionsKeys.lists() }, (old: any) => {
-        if (!old) return old;
-        if (Array.isArray(old)) return old.map((job: any) => job._id === id ? { ...job, ...data } : job);
-        if (old && old.data && Array.isArray(old.data)) return { ...old, data: old.data.map((job: any) => job._id === id ? { ...job, ...data } : job) };
-        return old;
+    mutationFn: ({ id, data }: { id: string; data: UpdateJobPositionRequest }) =>
+      jobPositionsService.updateJobPosition(id, data),
+    onSuccess: (updatedJob, { id }) => {
+      // Update detail cache
+      queryClient.setQueryData(jobPositionsKeys.detail(id), updatedJob);
+      
+      // Update list cache
+      queryClient.setQueryData<JobPosition[]>(jobPositionsKeys.list(), (old) => {
+        if (!old) return [updatedJob];
+        return old.map(job => job._id === id ? updatedJob : job);
       });
-
-      queryClient.setQueryData(jobPositionsKeys.detail(id), (old: any) => {
-        if (!old) return old;
-        return { ...old, ...data };
-      });
-
-      return { previousLists, previousDetail };
+      
+      showSuccessToast("Job position updated successfully");
     },
-    onError: (_err, _variables, context) => {
-      if (context?.previousLists) {
-        context.previousLists.forEach(([queryKey, data]) => {
-          queryClient.setQueryData(queryKey, data);
-        });
-      }
-      if (context?.previousDetail) {
-        queryClient.setQueryData(jobPositionsKeys.detail(_variables.id), context.previousDetail);
-      }
-    },
-    onSettled: () => {
-      // No refetch
+    onError: (error: ApiError) => {
+      showErrorToast(error.message, "Failed to update job position");
     },
   });
 }
@@ -184,26 +149,20 @@ export function useDeleteJobPosition() {
 
   return useMutation({
     mutationFn: (id: string) => jobPositionsService.deleteJobPosition(id),
-    onMutate: async (id) => {
-      await queryClient.cancelQueries({ queryKey: jobPositionsKeys.lists() });
-      const previousJobPositions = queryClient.getQueriesData({ queryKey: jobPositionsKeys.lists() });
-
-      queryClient.setQueriesData({ queryKey: jobPositionsKeys.lists() }, (old: any) => {
-        if (!old) return old;
-        return old.filter((job: any) => job._id !== id);
+    onSuccess: (_, id) => {
+      // Remove from list cache
+      queryClient.setQueryData<JobPosition[]>(jobPositionsKeys.list(), (old) => {
+        if (!old) return [];
+        return old.filter(job => job._id !== id);
       });
-
-      return { previousJobPositions };
+      
+      // Remove detail cache
+      queryClient.removeQueries({ queryKey: jobPositionsKeys.detail(id) });
+      
+      showSuccessToast("Job position deleted successfully");
     },
-    onError: (_err, _variables, context) => {
-      if (context?.previousJobPositions) {
-        context.previousJobPositions.forEach(([queryKey, data]) => {
-          queryClient.setQueryData(queryKey, data);
-        });
-      }
-    },
-    onSettled: () => {
-      // No refetch
+    onError: (error: ApiError) => {
+      showErrorToast(error.message, "Failed to delete job position");
     },
   });
 }
@@ -214,49 +173,62 @@ export function useCloneJobPosition() {
 
   return useMutation({
     mutationFn: (id: string) => jobPositionsService.cloneJobPosition(id),
-    onMutate: async (id) => {
-      await queryClient.cancelQueries({ queryKey: jobPositionsKeys.lists() });
-      const previousJobPositions = queryClient.getQueriesData({ queryKey: jobPositionsKeys.lists() });
-      const originalJob = queryClient.getQueryData(jobPositionsKeys.detail(id));
-
-      if (originalJob) {
-        queryClient.setQueriesData({ queryKey: jobPositionsKeys.lists() }, (old: any) => {
-          if (!old) return old;
-          const clonedJob = {
-            ...(originalJob as any),
-            _id: `temp-${Date.now()}`,
-            title: `${(originalJob as any).title} (Copy)`,
-            createdAt: new Date().toISOString(),
-          };
-          return [...old, clonedJob];
-        });
-      }
-
-      return { previousJobPositions };
-    },
-    onError: (_err, _variables, context) => {
-      if (context?.previousJobPositions) {
-        context.previousJobPositions.forEach(([queryKey, data]) => {
-          queryClient.setQueryData(queryKey, data);
-        });
-      }
-    },
     onSuccess: (clonedJob) => {
-      queryClient.setQueriesData({ queryKey: jobPositionsKeys.lists() }, (old: any) => {
-        if (!old) return { data: [clonedJob] };
-        if (Array.isArray(old)) {
-          const updated = old.map((job: any) => job._id.startsWith('temp-') ? clonedJob : job).filter((job: any, index: number, self: any[]) => self.findIndex((j: any) => j._id === job._id) === index);
-          return updated;
-        }
-        if (old && old.data && Array.isArray(old.data)) {
-          const updated = old.data.map((job: any) => job._id.startsWith('temp-') ? clonedJob : job).filter((job: any, index: number, self: any[]) => self.findIndex((j: any) => j._id === job._id) === index);
-          return { ...old, data: updated };
-        }
-        return old;
+      // Update list cache
+      queryClient.setQueryData<JobPosition[]>(jobPositionsKeys.list(), (old) => {
+        if (!old) return [clonedJob];
+        return [...old, clonedJob];
       });
+      
+      // Invalidate lists to ensure consistency
+      queryClient.invalidateQueries({ queryKey: jobPositionsKeys.lists() });
+      
+      showSuccessToast("Job position cloned successfully");
     },
-    onSettled: () => {
-      // No refetch
+    onError: (error: ApiError) => {
+      showErrorToast(error.message, "Failed to clone job position");
     },
+  });
+}
+
+// Reorder job positions
+export function useReorderJobPositions() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ 
+      items, 
+      basePayloadById 
+    }: { 
+      items: Array<{ id: string; order: number }>;
+      basePayloadById?: Record<string, UpdateJobPositionRequest>;
+    }) => jobPositionsService.reorderJobPositions(items, basePayloadById),
+    onSuccess: () => {
+      // Invalidate lists to refresh order
+      queryClient.invalidateQueries({ queryKey: jobPositionsKeys.lists() });
+      showSuccessToast("Job positions reordered successfully");
+    },
+    onError: (error: ApiError) => {
+      showErrorToast(error.message, "Failed to reorder job positions");
+    },
+  });
+}
+
+// ===== Toast Helpers =====
+function showSuccessToast(message: string) {
+  Swal.fire({
+    title: "Success",
+    text: message,
+    icon: "success",
+    timer: 1500,
+    showConfirmButton: false,
+  });
+}
+
+function showErrorToast(message: string, fallback: string) {
+  Swal.fire({
+    title: "Error",
+    text: message || fallback,
+    icon: "error",
   });
 }

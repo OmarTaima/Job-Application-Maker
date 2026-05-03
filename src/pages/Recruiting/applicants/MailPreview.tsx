@@ -17,7 +17,10 @@ import axiosInstance from '../../../config/axios';
 import { useCompanies } from '../../../hooks/queries/useCompanies';
 import { useJobPositions } from '../../../hooks/queries/useJobPositions';
 import { useApplicants } from '../../../hooks/queries/useApplicants';
-import { useAppSelector } from '../../../store/hooks';
+import { useAuth } from '../../../context/AuthContext';
+
+
+
 
 type MailStatus = 'queued' | 'delivery delayed' | 'sent' | 'delivered' | 'opened' | 'clicked' | 'bounced' | 'failed';
 
@@ -308,9 +311,9 @@ const MetricCard = ({ label, value, colorClass }: { label: string; value: string
 );
 
 export default function MailPreview() {
-	const user = useAppSelector((state) => state.auth.user);
-	const roleName = user?.roleId?.name?.toLowerCase();
-	const isSuperAdmin = roleName === 'super admin' || roleName === 'admin';
+const { user } = useAuth();
+const roleName = user?.roleId?.name?.toLowerCase();
+const isSuperAdmin = roleName === 'super admin' || roleName === 'admin';
 
 	// Filters
 	const [selectedCompanyId, setSelectedCompanyId] = useState<string>('all');
@@ -402,11 +405,16 @@ export default function MailPreview() {
 	}, [isSuperAdmin, assignedCompanyIds]);
 
 	const {
-		data: applicants = [],
-		isLoading: isApplicantsLoading,
-		isFetching: isApplicantsFetching,
-		isFetched: isApplicantsFetched,
-	} = useApplicants(applicantCompanyIds, undefined, undefined);
+  data: applicants = [],
+  isLoading: isApplicantsLoading,
+  isFetching: isApplicantsFetching,
+  isFetched: isApplicantsFetched,
+} = useApplicants({
+  companyId: applicantCompanyIds,
+  jobPositionId: undefined,
+  departmentId: undefined,
+  enabled: true,
+});
 	const applicantById = useMemo(() => {
 		const map = new Map<string, any>();
 		(applicants || []).forEach((applicant: any) => {

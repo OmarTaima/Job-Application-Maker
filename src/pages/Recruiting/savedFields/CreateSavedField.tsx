@@ -9,7 +9,7 @@ import Switch from "../../../components/form/switch/Switch";
 import { PlusIcon, PencilIcon, TrashBinIcon, CheckCircleIcon } from "../../../icons";
 import { useCreateSavedField, useUpdateSavedField } from "../../../hooks/queries";
 import { useQueryClient } from "@tanstack/react-query";
-import { savedFieldsKeys } from "../../../hooks/queries/useSavedFields";
+import { savedFieldsKeys } from "../../../hooks/queries/useUsers";
 import Swal from '../../../utils/swal';
 import { getErrorResponse} from "../../../utils/errorHandler";
 

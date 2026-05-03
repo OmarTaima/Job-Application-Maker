@@ -11,7 +11,7 @@ import {
   useUpdateMailTemplate,
   useDeleteMailTemplate,
   useDuplicateMailTemplate,
-  usePreviewMailTemplate
+  previewEmailTemplate // ✅ Changed from usePreviewMailTemplate to previewEmailTemplate
 } from "../../../hooks/queries/useCompanies";
 import Label from "../../../components/form/Label";
 import Input from "../../../components/form/input/InputField";
@@ -74,7 +74,7 @@ function TemplateFormModal({
   const [formData, setFormData] = useState({ name: "", subject: "", html: "" });
   const createMutation = useCreateMailTemplate();
   const updateMutation = useUpdateMailTemplate();
-  const { previewTemplate } = usePreviewMailTemplate();
+  // ✅ No more usePreviewMailTemplate - using direct function import
 
   useEffect(() => {
     if (template) {
@@ -123,7 +123,8 @@ function TemplateFormModal({
   };
 
   const handlePreview = () => {
-    const previewHtml = previewTemplate(
+    // ✅ Use previewEmailTemplate function directly
+    const previewHtml = previewEmailTemplate(
       { ...template, ...formData } as any,
       "John Doe", 
       "Software Engineer"

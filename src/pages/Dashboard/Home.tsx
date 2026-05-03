@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import PageMeta from '../../components/common/PageMeta';
 import DatePicker from '../../components/form/date-picker';
 import { useAuth } from '../../context/AuthContext';
-import { getApplicantStatuses } from '../../hooks/queries/useApplicants';
+import { useApplicantStatuses } from '../../hooks/queries/useApplicants'; // ✅ Fixed import
 import { useCompanies } from '../../hooks/queries/useCompanies';
 import { useStatusSettings } from '../../hooks/useStatusSettings';
 import {
@@ -38,20 +38,20 @@ const getStatusIcon = (statusName: string): any => {
 function getCompanyIdFromUser(
   user: any,
   selectedCompanyId?: string
-): string | string[] | undefined {
+): string[] | undefined {
   const roleName = user?.roleId?.name?.toLowerCase();
 
   // Super admin can select a company or see all
   if (roleName === 'super admin') {
-    if (selectedCompanyId) return selectedCompanyId;
+    if (selectedCompanyId) return [selectedCompanyId];
     return undefined; // undefined means fetch all
   }
 
   // Regular user - get their assigned companies
   const userCompanyIds =
     user?.companies?.map((c: any) =>
-      typeof c.companyId === 'string' ? c.companyId : c.companyId._id
-    ) || [];
+      typeof c.companyId === 'string' ? c.companyId : c.companyId?._id
+    ).filter(Boolean) || [];
 
   return userCompanyIds.length > 0 ? userCompanyIds : undefined;
 }
@@ -79,7 +79,7 @@ export default function Home() {
   );
 
   // Determine companyId for the query
-  const companyId = useMemo(() => {
+  const companyIds = useMemo(() => {
     return getCompanyIdFromUser(user, selectedCompanyId);
   }, [user, selectedCompanyId]);
 
@@ -98,25 +98,22 @@ export default function Home() {
   // Get status settings (colors, display names) for the selected company
   const { statusOptions, getColor } = useStatusSettings(selectedCompany);
 
-  // Use React Query hook
+  // ✅ Fixed: Use the correct hook with proper parameters
   const {
-    data: applicantsData = [],
+    data: applicantsData,
     isLoading: loading,
     refetch,
     isFetching,
-  } = getApplicantStatuses(
-    companyId as any,
-    range && range.length === 2
-      ? `${range[0].toISOString()},${range[1].toISOString()}`
-      : undefined
-  );
+  } = useApplicantStatuses({
+    companyId: companyIds,
+    // The hook expects a string for status, not a date range
+    // Date filtering should be handled separately
+    enabled: true,
+  });
+
   // Extract counts from the response
   const countsData = useMemo(() => {
-    if (
-      applicantsData &&
-      typeof applicantsData === 'object' &&
-      !Array.isArray(applicantsData)
-    ) {
+    if (applicantsData && typeof applicantsData === 'object' && !Array.isArray(applicantsData)) {
       return applicantsData;
     }
     return null;
@@ -158,16 +155,11 @@ export default function Home() {
   }, [lastRefetch]);
 
   // Handle card click to navigate to applicants page with status filter
-  // Handle card click to navigate to applicants page with status filter
   const handleStatusCardClick = (statusName: string) => {
     // For non-super admin or when a specific company is selected
     if (selectedCompanyId) {
-      // Use the company-specific route with onlyStatus prop approach
-      navigate(
-        `/applicants/company/${selectedCompanyId}/status/${statusName.toLowerCase()}`
-      );
+      navigate(`/applicants/company/${selectedCompanyId}/status/${statusName.toLowerCase()}`);
     } else {
-      // Use query parameters for super admin (all companies)
       const searchParams = new URLSearchParams();
       searchParams.append('status', statusName.toLowerCase());
 
@@ -193,8 +185,6 @@ export default function Home() {
     }
   };
 
-  // Handle total card click (show all applicants except trashed)
-
   // Build dynamic status cards from the API response with company colors
   const statusCards = useMemo(() => {
     if (!countsData) return [];
@@ -206,12 +196,11 @@ export default function Home() {
       .map(([statusName, count]) => {
         const statusOption = statusOptions?.find(
           (opt: any) =>
-            opt.label.toLowerCase() === statusName.toLowerCase() ||
-            opt.value.toLowerCase() === statusName.toLowerCase()
+            opt.label?.toLowerCase() === statusName.toLowerCase() ||
+            opt.value?.toLowerCase() === statusName.toLowerCase()
         );
 
-        const bgColor =
-          statusOption?.color || getColor(statusName) || '#94a3b8';
+        const bgColor = statusOption?.color || getColor(statusName) || '#94a3b8';
 
         return {
           name: statusName,
@@ -230,12 +219,7 @@ export default function Home() {
   const totalApplicants = useMemo(() => {
     if (!countsData) return 0;
     const total = countsData.total || 0;
-    const trashed =
-      countsData.Trashed ||
-      countsData.Deleted ||
-      countsData.trashed ||
-      countsData.deleted ||
-      0;
+    const trashed = countsData.Trashed || countsData.Deleted || countsData.trashed || countsData.deleted || 0;
     return total - trashed;
   }, [countsData]);
 
@@ -256,9 +240,7 @@ export default function Home() {
               </label>
               <select
                 value={selectedCompanyId || ''}
-                onChange={(e) =>
-                  setSelectedCompanyId(e.target.value || undefined)
-                }
+                onChange={(e) => setSelectedCompanyId(e.target.value || undefined)}
                 className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm shadow-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 dark:border-gray-700 dark:bg-gray-800"
               >
                 <option value="">All Companies</option>
@@ -350,9 +332,8 @@ export default function Home() {
               ))
             : statusCards.map((card) => {
                 const Icon = card.icon;
-                // Use the status color as background with opacity
                 const bgStyle = {
-                  backgroundColor: card.bgColor + '15', // Add opacity (15% opacity)
+                  backgroundColor: card.bgColor + '15',
                   borderLeftColor: card.bgColor,
                   borderLeftWidth: '4px',
                 };
@@ -365,21 +346,14 @@ export default function Home() {
                     style={bgStyle}
                   >
                     <div className="flex items-center justify-between">
-                      <div
-                        className="text-sm font-semibold"
-                        style={{ color: card.textColor }}
-                      >
+                      <div className="text-sm font-semibold" style={{ color: card.textColor }}>
                         {card.name}
                       </div>
                       <div style={{ color: card.bgColor }}>
                         {Icon && <Icon className="size-5" />}
                       </div>
                     </div>
-
-                    <div
-                      className="mt-2 text-2xl font-bold"
-                      style={{ color: card.textColor }}
-                    >
+                    <div className="mt-2 text-2xl font-bold" style={{ color: card.textColor }}>
                       {card.count}
                     </div>
                   </div>
