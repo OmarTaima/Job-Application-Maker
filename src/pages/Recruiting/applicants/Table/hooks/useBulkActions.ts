@@ -4,14 +4,114 @@ import Swal from '../../../../../utils/swal';
 import {
   useScheduleBulkInterviews,
   useBatchUpdateApplicantStatus,
-} from '../../../../../hooks/queries/useApplicants';
-import type {
-  BulkStatusForm,
-  BulkInterviewForm,
-  BulkNotificationChannels,
-  UseBulkActionsProps,
-  UseBulkActionsReturn,
-} from '../../../../../types/applicants';
+} from '../../../../../hooks/queries';
+
+interface SelectedApplicantForInterview {
+  applicantId: string;
+  applicantName: string;
+  applicantNo: number | null;
+  email: string;
+  companyId: string;
+  jobPositionId?: string;
+  status: string;
+}
+
+interface BulkStatusForm {
+  status?: string;
+  reasons?: string[];
+  notes?: string;
+}
+
+interface BulkInterviewForm {
+  date: string;
+  time: string;
+  description: string;
+  comment: string;
+  location: string;
+  link: string;
+  type: 'phone' | 'video' | 'in-person';
+}
+
+interface BulkNotificationChannels {
+  email: boolean;
+  sms: boolean;
+  whatsapp: boolean;
+}
+
+interface UseBulkActionsProps {
+  selectedApplicantIds: string[];
+  selectedApplicantsForInterview: SelectedApplicantForInterview[];
+  selectedApplicantCompanyId: string | null;
+  selectedApplicantCompany: any | null;
+  refetchApplicants: () => void;
+  queryClient: any;
+  onClearSelection?: () => void;
+}
+
+interface UseBulkActionsReturn {
+  // State
+  isDeleting: boolean;
+  isProcessing: boolean;
+  isSubmittingBulkInterview: boolean;
+  isSubmittingBulkStatus: boolean;
+  showBulkModal: boolean;
+  showBulkInterviewModal: boolean;
+  showBulkInterviewPreviewModal: boolean;
+  showBulkStatusModal: boolean;
+  showBulkPreviewFallbackModal: boolean;
+  bulkFormResetKey: number;
+  bulkInterviewError: string;
+  bulkStatusError: string;
+  bulkDeleteError: string;
+  bulkInterviewIntervalMinutes: number;
+  bulkInterviewForm: BulkInterviewForm;
+  bulkNotificationChannels: BulkNotificationChannels;
+  bulkEmailOption: 'company' | 'new';
+  bulkCustomEmail: string;
+  bulkPhoneOption: 'company' | 'user' | 'whatsapp' | 'custom';
+  bulkCustomPhone: string;
+  bulkMessageTemplate: string;
+  bulkInterviewEmailSubject: string;
+  bulkPreviewHtml: string;
+  bulkInterviewPreviewItems: any[];
+  bulkStatusForm: BulkStatusForm;
+  bulkAction: string;
+
+  // Setters
+  setShowBulkModal: (show: boolean) => void;
+  setShowBulkInterviewModal: (show: boolean) => void;
+  setShowBulkInterviewPreviewModal: (show: boolean) => void;
+  setShowBulkStatusModal: (show: boolean) => void;
+  setShowBulkPreviewFallbackModal: (show: boolean) => void;
+  setBulkInterviewError: (error: string) => void;
+  setBulkStatusError: (error: string) => void;
+  setBulkDeleteError: (error: string) => void;
+  setBulkInterviewIntervalMinutes: (minutes: number) => void;
+  setBulkInterviewForm: (form: BulkInterviewForm | ((prev: BulkInterviewForm) => BulkInterviewForm)) => void;
+  setBulkNotificationChannels: (channels: BulkNotificationChannels | ((prev: BulkNotificationChannels) => BulkNotificationChannels)) => void;
+  setBulkEmailOption: (option: 'company' | 'new') => void;
+  setBulkCustomEmail: (email: string) => void;
+  setBulkPhoneOption: (option: 'company' | 'user' | 'whatsapp' | 'custom') => void;
+  setBulkCustomPhone: (phone: string) => void;
+  setBulkMessageTemplate: (template: string) => void;
+  setBulkInterviewEmailSubject: (subject: string) => void;
+  setBulkPreviewHtml: (html: string) => void;
+  setBulkInterviewPreviewItems: (items: any[]) => void;
+  setBulkStatusForm: (form: BulkStatusForm | ((prev: BulkStatusForm) => BulkStatusForm)) => void;
+  setBulkAction: (action: string) => void;
+  setIsProcessing: (processing: boolean) => void;
+
+  // Actions
+  handleBulkDelete: () => Promise<void>;
+  handleBulkStatusChange: (e: React.FormEvent) => Promise<void>;
+  handleBulkInterviewSubmit: (e: React.FormEvent) => Promise<void>;
+  handlePreviewBulkInterviews: () => void;
+  handleBulkChangeStatus: (action: string) => Promise<void>;
+  openBulkInterviewModal: () => Promise<void>;
+  resetBulkInterviewModal: () => void;
+  fillBulkCompanyAddress: () => boolean;
+  getSelectedCompanyAddress: () => string;
+}
 
 const getErrorMessage = (err: any): string => {
   if (err.response?.data?.details && Array.isArray(err.response.data.details)) {
@@ -48,9 +148,11 @@ export function useBulkActions({
   queryClient,
   onClearSelection,
 }: UseBulkActionsProps): UseBulkActionsReturn {
+  // Mutations
   const batchUpdateStatusMutation = useBatchUpdateApplicantStatus();
   const scheduleBulkInterviewsMutation = useScheduleBulkInterviews();
 
+  // State
   const [isDeleting, setIsDeleting] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSubmittingBulkInterview, setIsSubmittingBulkInterview] = useState(false);
@@ -94,12 +196,14 @@ export function useBulkActions({
     notes: '',
   });
 
+  // Helper to clear selection
   const clearSelection = useCallback(() => {
     if (onClearSelection) {
       onClearSelection();
     }
   }, [onClearSelection]);
 
+  // Handle bulk delete (move to trash)
   const handleBulkDelete = useCallback(async () => {
     if (selectedApplicantIds.length === 0) return;
 
@@ -146,6 +250,7 @@ export function useBulkActions({
     }
   }, [selectedApplicantIds, batchUpdateStatusMutation, refetchApplicants, queryClient, clearSelection]);
 
+  // Handle bulk status change
   const handleBulkStatusChange = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
@@ -204,6 +309,7 @@ export function useBulkActions({
     [selectedApplicantIds, bulkStatusForm, batchUpdateStatusMutation, refetchApplicants, queryClient, clearSelection]
   );
 
+  // Handle bulk change status (triggered by button click)
   const handleBulkChangeStatus = useCallback(
     async (action: string) => {
       if (selectedApplicantIds.length === 0 || !action) return;
@@ -230,6 +336,7 @@ export function useBulkActions({
       try {
         setIsProcessing(true);
         
+        // Use batch mutation instead of individual mutations
         const updates = selectedApplicantIds.map((applicantId) => ({
           applicantId: applicantId,
           status: action,
@@ -261,6 +368,7 @@ export function useBulkActions({
     [selectedApplicantIds, batchUpdateStatusMutation, refetchApplicants, queryClient, clearSelection]
   );
 
+  // Get company address
   const getSelectedCompanyAddress = useCallback((): string => {
     const c: any = selectedApplicantCompany || {};
     const isInvalidAddressString = (value: string) => {
@@ -298,6 +406,7 @@ export function useBulkActions({
     return '';
   }, [selectedApplicantCompany]);
 
+  // Fill company address
   const fillBulkCompanyAddress = useCallback((): boolean => {
     const address = getSelectedCompanyAddress();
     if (!address) return false;
@@ -305,95 +414,101 @@ export function useBulkActions({
     return true;
   }, [getSelectedCompanyAddress]);
 
-  const resetBulkInterviewModal = useCallback(() => {
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, '0');
-    const day = String(today.getDate()).padStart(2, '0');
-    const defaultDate = `${year}-${month}-${day}`;
-    
-    const now = new Date();
-    const nextHour = new Date(now);
-    nextHour.setHours(now.getHours() + 1, 0, 0, 0);
-    const hours = String(nextHour.getHours()).padStart(2, '0');
-    const minutes = '00';
-    const defaultTime = `${hours}:${minutes}`;
-    
-    setBulkInterviewForm({
-      date: defaultDate,
-      time: defaultTime,
-      type: 'phone',
-      location: '',
-      link: '',
-      description: '',
-      comment: '',
-    });
-    setBulkInterviewError('');
-    setBulkInterviewIntervalMinutes(15);
-    setBulkNotificationChannels({ email: true, sms: false, whatsapp: false });
-    setBulkEmailOption('company');
-    setBulkCustomEmail('');
-    setBulkPhoneOption('company');
-    setBulkCustomPhone('');
-    setBulkMessageTemplate('');
-    setBulkInterviewEmailSubject('Interview Invitation');
-  }, []);
+  // Reset bulk interview modal
+ const resetBulkInterviewModal = useCallback(() => {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  const defaultDate = `${year}-${month}-${day}`;
+  
+  const now = new Date();
+  const nextHour = new Date(now);
+  nextHour.setHours(now.getHours() + 1, 0, 0, 0);
+  const hours = String(nextHour.getHours()).padStart(2, '0');
+  const minutes = '00';
+  const defaultTime = `${hours}:${minutes}`;
+  
+  setBulkInterviewForm({
+    date: defaultDate,
+    time: defaultTime,
+    type: 'phone',
+    location: '',
+    link: '',
+    description: '',
+    comment: '',
+  });
+  setBulkInterviewError('');
+  setBulkInterviewIntervalMinutes(15);
+  setBulkNotificationChannels({ email: true, sms: false, whatsapp: false });
+  setBulkEmailOption('company');
+  setBulkCustomEmail('');
+  setBulkPhoneOption('company');
+  setBulkCustomPhone('');
+  setBulkMessageTemplate('');
+  setBulkInterviewEmailSubject('Interview Invitation');
+}, [setBulkInterviewForm, setBulkInterviewError, setBulkInterviewIntervalMinutes, setBulkNotificationChannels, setBulkEmailOption, setBulkCustomEmail, setBulkPhoneOption, setBulkCustomPhone, setBulkMessageTemplate, setBulkInterviewEmailSubject]);
 
+  // Open bulk interview modal
   const openBulkInterviewModal = useCallback(async () => {
-    if (selectedApplicantsForInterview.length === 0) return;
+  if (selectedApplicantsForInterview.length === 0) return;
 
-    if (!selectedApplicantCompanyId) {
-      await Swal.fire({
-        title: 'Single Company Required',
-        text: 'Please select applicants from one company to schedule interviews together.',
-        icon: 'warning',
-      });
-      return;
-    }
+  if (!selectedApplicantCompanyId) {
+    await Swal.fire({
+      title: 'Single Company Required',
+      text: 'Please select applicants from one company to schedule interviews together.',
+      icon: 'warning',
+    });
+    return;
+  }
 
-    resetBulkInterviewModal();
-    
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, '0');
-    const day = String(today.getDate()).padStart(2, '0');
-    const defaultDate = `${year}-${month}-${day}`;
-    
-    const now = new Date();
-    const nextHour = new Date(now);
-    nextHour.setHours(now.getHours() + 1, 0, 0, 0);
-    const hours = String(nextHour.getHours()).padStart(2, '0');
-    const minutes = '00';
-    const defaultTime = `${hours}:${minutes}`;
-    
-    let defaultLocation = '';
-    if (selectedApplicantCompany) {
-      const addresses = selectedApplicantCompany?.address || selectedApplicantCompany?.addresses || [];
-      if (addresses.length > 0) {
-        const firstAddress = addresses[0];
-        if (typeof firstAddress === 'string') {
-          defaultLocation = firstAddress;
-        } else if (firstAddress?.location) {
-          defaultLocation = firstAddress.location;
-        } else if (firstAddress?.en) {
-          defaultLocation = firstAddress.en;
-        }
+  resetBulkInterviewModal();
+  
+  // Set default date to today
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  const defaultDate = `${year}-${month}-${day}`;
+  
+  // Set default time to next hour (rounded up)
+  const now = new Date();
+  const nextHour = new Date(now);
+  nextHour.setHours(now.getHours() + 1, 0, 0, 0);
+  const hours = String(nextHour.getHours()).padStart(2, '0');
+  const minutes = '00';
+  const defaultTime = `${hours}:${minutes}`;
+  
+  // Also set default location from company if available
+  let defaultLocation = '';
+  if (selectedApplicantCompany) {
+    const addresses = selectedApplicantCompany?.address || selectedApplicantCompany?.addresses || [];
+    if (addresses.length > 0) {
+      const firstAddress = addresses[0];
+      if (typeof firstAddress === 'string') {
+        defaultLocation = firstAddress;
+      } else if (firstAddress?.location) {
+        defaultLocation = firstAddress.location;
+      } else if (firstAddress?.en) {
+        defaultLocation = firstAddress.en;
       }
     }
-    
-    setBulkInterviewForm({
-      date: defaultDate,
-      time: defaultTime,
-      type: 'phone',
-      location: defaultLocation,
-      link: '',
-      description: '',
-      comment: '',
-    });
-    
-    setShowBulkInterviewModal(true);
-  }, [selectedApplicantsForInterview, selectedApplicantCompanyId, selectedApplicantCompany, resetBulkInterviewModal]);
+  }
+  
+  setBulkInterviewForm({
+    date: defaultDate,
+    time: defaultTime,
+    type: 'phone',
+    location: defaultLocation,
+    link: '',
+    description: '',
+    comment: '',
+  });
+  
+  setShowBulkInterviewModal(true);
+}, [selectedApplicantsForInterview, selectedApplicantCompanyId, selectedApplicantCompany, resetBulkInterviewModal, setBulkInterviewForm]);
 
+  // Build bulk interview preview
   const buildBulkInterviewPreview = useCallback(() => {
     if (selectedApplicantsForInterview.length === 0) {
       return { error: 'Please select at least one applicant.', items: [] };
@@ -433,6 +548,7 @@ export function useBulkActions({
     return { error: '', items };
   }, [selectedApplicantsForInterview, bulkInterviewIntervalMinutes, bulkInterviewEmailSubject]);
 
+  // Handle preview bulk interviews
   const handlePreviewBulkInterviews = useCallback(() => {
     setBulkInterviewError('');
     const built = buildBulkInterviewPreview();
@@ -444,6 +560,7 @@ export function useBulkActions({
     setShowBulkInterviewPreviewModal(true);
   }, [buildBulkInterviewPreview]);
 
+  // Handle bulk interview submit
   const handleBulkInterviewSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
@@ -466,16 +583,17 @@ export function useBulkActions({
           scheduledAt: item.scheduledAt,
           conductedBy: undefined,
           description: bulkInterviewForm.description || undefined,
-          type: bulkInterviewForm.type,
+          type: bulkInterviewForm.type || undefined,
           location: bulkInterviewForm.location || undefined,
           address: bulkInterviewForm.location || undefined,
           videoLink: bulkInterviewForm.link || undefined,
           notes: bulkInterviewForm.comment || undefined,
-          status: 'scheduled' as const,
+          status: 'scheduled',
         }));
 
         await scheduleBulkInterviewsMutation.mutateAsync(bulkInterviewPayload);
 
+        // Update status to interview for each applicant using batch mutation
         const statusUpdates = previewItems
           .filter((item: any) => item.status !== 'interview')
           .map((item: any) => ({
@@ -492,6 +610,7 @@ export function useBulkActions({
         if (bulkNotificationChannels.email) {
           const emailableItems = previewItems.filter((item: any) => Boolean(item.to));
           if (emailableItems.length > 0) {
+            // Here you would send emails
             if (missingEmails.length > 0) {
               emailResultNote = `Email sent to ${emailableItems.length} applicant(s); ${missingEmails.length} without email were skipped.`;
             }
@@ -535,6 +654,7 @@ export function useBulkActions({
   );
 
   return {
+    // State
     isDeleting,
     isProcessing,
     isSubmittingBulkInterview,
@@ -561,6 +681,8 @@ export function useBulkActions({
     bulkInterviewPreviewItems,
     bulkStatusForm,
     bulkAction,
+
+    // Setters
     setShowBulkModal,
     setShowBulkInterviewModal,
     setShowBulkInterviewPreviewModal,
@@ -583,6 +705,8 @@ export function useBulkActions({
     setBulkStatusForm,
     setBulkAction,
     setIsProcessing,
+
+    // Actions
     handleBulkDelete,
     handleBulkStatusChange,
     handleBulkInterviewSubmit,

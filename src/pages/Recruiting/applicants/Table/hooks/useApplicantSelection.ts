@@ -1,11 +1,41 @@
 // hooks/useApplicantSelection.ts
 import { useMemo } from 'react';
 import type { MRT_RowSelectionState } from 'material-react-table';
-import type { 
-  Applicant, 
-  SelectedApplicantRecipient, 
-  SelectedApplicantForInterview 
-} from '../../../../../types/applicants';
+
+interface Applicant {
+  _id: string;
+  id?: string;
+  email?: string;
+  fullName?: string;
+  name?: string;
+  firstName?: string;
+  jobPositionId?: string | { _id?: string; id?: string };
+  company?: string | { _id?: string; id?: string };
+  companyObj?: string | { _id?: string; id?: string };
+  status?: string;
+  applicantNo?: number | string;
+  applicantNumber?: number | string;
+  no?: number | string;
+  number?: number | string;
+  [key: string]: any;
+}
+
+interface SelectedApplicantRecipient {
+  email: string;
+  applicant: string | undefined;
+  jobPositionId: string | undefined;
+  applicantName: string;
+}
+
+interface SelectedApplicantForInterview {
+  applicantId: string;
+  applicantName: string;
+  applicantNo: number | null;
+  email: string;
+  companyId: string;
+  jobPositionId?: string;
+  status: string;
+}
 
 interface UseApplicantSelectionProps {
   rowSelection: MRT_RowSelectionState;
@@ -48,85 +78,96 @@ export function useApplicantSelection({
   allCompaniesRaw = [],
 }: UseApplicantSelectionProps): UseApplicantSelectionReturn {
   
+  // Get selected applicant IDs from row selection
   const selectedApplicantIds = useMemo(() => {
     return Object.keys(rowSelection);
   }, [rowSelection]);
 
+  // Get selected applicant recipients for email/messaging
   const selectedApplicantRecipients = useMemo(() => {
     try {
       const ids = new Set(selectedApplicantIds);
-      const filteredApplicants = applicants.filter((a: Applicant) => {
-        const applicantId = a._id || a.id;
-        return applicantId ? ids.has(String(applicantId)) : false;
-      });
-      
-      return filteredApplicants.map((a: Applicant) => {
-        const applicantId = a._id || a.id;
-        const email = a.email || '';
-        
-        let jobPositionId: string | undefined = undefined;
-        if (typeof a.jobPositionId === 'string') {
-          jobPositionId = a.jobPositionId;
-        } else if (a.jobPositionId && typeof a.jobPositionId === 'object') {
-          jobPositionId = (a.jobPositionId as any)._id || (a.jobPositionId as any).id;
-        }
-        
-        const fullName = a.fullName || a.name || a.firstName || '';
-        
-        return { 
-          email, 
-          applicant: applicantId ? String(applicantId) : undefined, 
-          jobPositionId, 
-          applicantName: fullName 
-        };
-      }).filter((item) => Boolean(item.email));
+      return applicants
+        .filter((a: any) => {
+          const id = typeof a._id === 'string' ? a._id : a._id?._id || a.id || a._id;
+          return ids.has(id);
+        })
+        .map((a: any) => {
+          const applicantId = typeof a._id === 'string' ? a._id : a._id?._id || a.id || undefined;
+          const email = typeof a.email === 'string' ? a.email.trim() : '';
+          
+          let jobPositionId = a.jobPositionId || 
+            (a.jobPosition && typeof a.jobPosition === 'object' ? a.jobPosition._id : a.jobPosition);
+          
+          if (jobPositionId && typeof jobPositionId === 'object') {
+            jobPositionId = jobPositionId._id || jobPositionId.id || String(jobPositionId);
+          }
+          
+          const fullName = a.fullName || a.name || a.firstName || '';
+          
+          return { 
+            email, 
+            applicant: applicantId, 
+            jobPositionId: typeof jobPositionId === 'string' ? jobPositionId : undefined, 
+            applicantName: fullName 
+          };
+        })
+        .filter((item: any) => Boolean(item.email));
     } catch (e) {
-      console.error('Error in selectedApplicantRecipients:', e);
       return [];
     }
   }, [selectedApplicantIds, applicants]);
 
+  // Get selected applicants for interview scheduling
   const selectedApplicantsForInterview = useMemo(() => {
     try {
       const ids = new Set(selectedApplicantIds);
-      const filteredApplicants = applicants.filter((a: Applicant) => {
-        const applicantId = a._id || a.id;
-        return applicantId ? ids.has(String(applicantId)) : false;
-      });
-      
-      const mapped = filteredApplicants.map((a: Applicant) => {
-        const applicantId = a._id || a.id || '';
-        
-        let jobPositionId: string | undefined = undefined;
-        if (typeof a.jobPositionId === 'string') {
-          jobPositionId = a.jobPositionId;
-        } else if (a.jobPositionId && typeof a.jobPositionId === 'object') {
-          jobPositionId = (a.jobPositionId as any)._id || (a.jobPositionId as any).id;
-        }
+      const mapped = applicants
+        .filter((a: any) => {
+          const id = typeof a._id === 'string' ? a._id : a._id?._id || a.id || a._id;
+          return ids.has(id);
+        })
+        .map((a: any) => {
+          const applicantId = typeof a._id === 'string' ? a._id : a._id?._id || a.id || '';
+          
+          let jobPositionId = a.jobPositionId ||
+            (a.jobPosition && typeof a.jobPosition === 'object' ? a.jobPosition._id : a.jobPosition);
+          
+          if (jobPositionId && typeof jobPositionId === 'object') {
+            jobPositionId = jobPositionId._id || jobPositionId.id || String(jobPositionId);
+          }
 
-        let companyId = '';
-        if (typeof a.companyId === 'string') {
-          companyId = a.companyId;
-        } else if (a.companyId && typeof a.companyId === 'object') {
-          companyId = (a.companyId as any)._id || (a.companyId as any).id || '';
-        }
+          const companyRef = a.company ||
+            a.companyObj ||
+            (a.jobPositionId &&
+              (a.jobPositionId.companyId ||
+                a.jobPositionId.company ||
+                a.jobPositionId.companyObj));
+          
+          const companyId = companyRef
+            ? typeof companyRef === 'string'
+              ? companyRef
+              : companyRef._id || companyRef.id || ''
+            : '';
 
-        const applicantNoRaw = a.applicantNo ?? a.applicantNumber ?? a.no ?? a.number;
-        const parsedApplicantNo = Number(applicantNoRaw);
-        const applicantNo = Number.isFinite(parsedApplicantNo) ? parsedApplicantNo : null;
+          const applicantNoRaw = a.applicantNo ?? a.applicantNumber ?? a.no ?? a.number;
+          const parsedApplicantNo = Number(applicantNoRaw);
+          const applicantNo = Number.isFinite(parsedApplicantNo) ? parsedApplicantNo : null;
 
-        return {
-          applicantId: String(applicantId),
-          applicantName: String(a.fullName || a.name || a.firstName || 'Candidate').trim(),
-          email: String(a.email || '').trim(),
-          applicantNo,
-          jobPositionId,
-          companyId: String(companyId || ''),
-          status: String(a.status || ''),
-        };
-      }).filter((item) => Boolean(item.applicantId));
+          return {
+            applicantId: String(applicantId),
+            applicantName: String(a.fullName || a.name || a.firstName || 'Candidate').trim(),
+            email: String(a.email || '').trim(),
+            applicantNo,
+            jobPositionId: typeof jobPositionId === 'string' ? jobPositionId : undefined,
+            companyId: String(companyId || ''),
+            status: String(a.status || ''),
+          };
+        })
+        .filter((item: any) => item.applicantId);
 
-      mapped.sort((a, b) => {
+      // Sort by applicant number then name
+      mapped.sort((a: any, b: any) => {
         const noA = typeof a.applicantNo === 'number' ? a.applicantNo : Infinity;
         const noB = typeof b.applicantNo === 'number' ? b.applicantNo : Infinity;
         if (noA !== noB) return noA - noB;
@@ -135,29 +176,30 @@ export function useApplicantSelection({
 
       return mapped;
     } catch (e) {
-      console.error('Error in selectedApplicantsForInterview:', e);
       return [];
     }
   }, [selectedApplicantIds, applicants]);
 
+  // Get the common company ID for all selected applicants (if they all belong to the same company)
   const selectedApplicantCompanyId = useMemo(() => {
     try {
       const ids = new Set(selectedApplicantIds);
-      const filteredApplicants = applicants.filter((a: Applicant) => {
-        const applicantId = a._id || a.id;
-        return applicantId ? ids.has(String(applicantId)) : false;
-      });
-      
-      const companies: string[] = [];
-      for (const a of filteredApplicants) {
-        let companyId = '';
-        if (typeof a.companyId === 'string') {
-          companyId = a.companyId;
-        } else if (a.companyId && typeof a.companyId === 'object') {
-          companyId = (a.companyId as any)._id || (a.companyId as any).id || '';
-        }
-        if (companyId) companies.push(companyId);
-      }
+      const companies = applicants
+        .filter((a: any) => {
+          const id = typeof a._id === 'string' ? a._id : a._id?._id || a.id || a._id;
+          return ids.has(id);
+        })
+        .map((a: any) => {
+          const c = a.company ||
+            a.companyObj ||
+            (a.jobPositionId &&
+              (a.jobPositionId.companyId ||
+                a.jobPositionId.company ||
+                a.jobPositionId.companyObj));
+          if (!c) return null;
+          return typeof c === 'string' ? c : c._id || c.id || null;
+        })
+        .filter(Boolean) as string[];
       
       const unique = Array.from(new Set(companies));
       return unique.length === 1 ? unique[0] : null;
@@ -166,6 +208,7 @@ export function useApplicantSelection({
     }
   }, [selectedApplicantIds, applicants]);
 
+  // Get the full company object for the selected applicants
   const selectedApplicantCompany = useMemo(() => {
     try {
       if (!selectedApplicantCompanyId) return null;

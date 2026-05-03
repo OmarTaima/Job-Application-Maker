@@ -1,4 +1,4 @@
-// Applicants.tsx - Complete working version with React Query cache
+// Applicants.tsx - Complete working version
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useLocation, useParams } from 'react-router-dom';
 import { useNavigate } from 'react-router';
@@ -252,13 +252,6 @@ export default function Applicants({
   const location = useLocation();
   const params = useParams();
 
-  // ============ UI State Only (not cached by React Query) ============
-  const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
-  const [customFilterOpen, setCustomFilterOpen] = useState(false);
-  const [isExporting, setIsExporting] = useState(false);
-  const [lastRefetch, setLastRefetch] = useState<Date | null>(null);
-  const mountedRef = useRef(true);
-
   const { layout, saveLayout } = useTableLayout(
     layoutKey || 'applicants_table',
     defaultLayout || APPLICANTS_DEFAULT_LAYOUT
@@ -277,7 +270,7 @@ export default function Applicants({
     );
   }, [user?.roleId?.name]);
 
-  // Get persisted table state (UI preference, not server data)
+  // Get persisted table state
   const persistedTableState = useMemo(() => {
     try {
       const rawLocal = localStorage.getItem('applicants_table_state');
@@ -287,7 +280,7 @@ export default function Applicants({
     } catch (e) {
       return null;
     }
-  }, []);
+  }, []); // Empty dependency array - only runs once on mount
 
   // URL params
   const urlParams = useMemo(() => {
@@ -305,7 +298,7 @@ export default function Applicants({
     [user]
   );
 
-  // Company ID logic
+  // Data fetching
   const companyId = useMemo(() => {
     if (companyIdOverride !== undefined) return companyIdOverride as any;
     if (!user) return undefined;
@@ -318,6 +311,7 @@ export default function Applicants({
     return userCompanyId?.length ? userCompanyId : undefined;
   }, [companyIdOverride, user]);
 
+  // Extract department IDs from user companies
   const departmentIds = useMemo(() => {
     if (!user?.companies || !Array.isArray(user.companies)) return undefined;
     const allDepts = user.companies
@@ -346,20 +340,13 @@ export default function Applicants({
     ) as string[];
   }, [user, isSuperAdmin]);
 
-  const queryCompanyIds = useMemo(() => {
-    if (!isSuperAdmin && assignedCompanyIds.length > 0)
-      return assignedCompanyIds;
-    return [] as string[];
-  }, [isSuperAdmin, assignedCompanyIds]);
-
-  // ============ React Query Data Fetching (Cached automatically) ============
+  // React Query hooks
   const {
     data: jobPositions = [],
     isFetching: isJobPositionsFetching,
     isFetched: isJobPositionsFetched,
     refetch: refetchJobPositions,
   } = useJobPositions(companyId, false, departmentIds as any);
-  
   const {
     data: applicants = [],
     error,
@@ -367,7 +354,6 @@ export default function Applicants({
     isFetching: isApplicantsFetching,
     isFetched: isApplicantsFetched,
   } = useApplicants(companyId as any, undefined, departmentIds as any);
-  
   const {
     data: allCompaniesRaw = [],
     refetch: refetchCompanies,
@@ -375,7 +361,13 @@ export default function Applicants({
     isFetched: isCompaniesFetched,
   } = useCompanies(companyId as any);
 
-  // Mail count query (cached by React Query)
+  const queryCompanyIds = useMemo(() => {
+    if (!isSuperAdmin && assignedCompanyIds.length > 0)
+      return assignedCompanyIds;
+    return [] as string[];
+  }, [isSuperAdmin, assignedCompanyIds]);
+
+  // Mail count
   const { data: mailApiResponse } = useQuery<ApiMailResponse>({
     queryKey: ['mail-logs', queryCompanyIds.join(',')],
     queryFn: async () => {
@@ -424,7 +416,7 @@ export default function Applicants({
     return map;
   }, [mailApiResponse]);
 
-  // ============ Table State (UI only) ============
+  // Table state
   const {
     rowSelection,
     setRowSelection,
@@ -463,29 +455,7 @@ export default function Applicants({
     }
   }, [urlParams.status, urlParams.company, setColumnFilters]);
 
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
-  // Update last refetch time when data is loaded
-  useEffect(() => {
-    if (
-      !lastRefetch &&
-      (isJobPositionsFetched || isApplicantsFetched || isCompaniesFetched)
-    ) {
-      if (mountedRef.current) setLastRefetch(new Date());
-    }
-  }, [
-    isJobPositionsFetched,
-    isApplicantsFetched,
-    isCompaniesFetched,
-    lastRefetch,
-  ]);
-
-  // ============ Memoized Values ============
+  // Job position map
   const jobPositionMap = useMemo(() => {
     const map: Record<string, any> = {};
     const getIdValue = (v: any) =>
@@ -505,6 +475,7 @@ export default function Applicants({
     return map;
   }, [jobPositions]);
 
+  // Company map
   const companyMap = useMemo(() => {
     const map: Record<string, any> = {};
     allCompaniesRaw.forEach((company: any) => {
@@ -516,6 +487,7 @@ export default function Applicants({
     return map;
   }, [allCompaniesRaw]);
 
+  // Gender options
   const genderOptions = useMemo(() => {
     const s = new Set<string>();
     const rows = Array.isArray(applicants) ? applicants : [];
@@ -539,6 +511,7 @@ export default function Applicants({
     return ordered.map((g) => ({ id: g, title: g }));
   }, [applicants, isSuperAdmin]);
 
+  // Job options for filter
   const jobOptions = useMemo(() => {
     const getIdValue = (v: any) =>
       typeof v === 'string' ? v : (v?._id ?? v?.id);
@@ -552,6 +525,7 @@ export default function Applicants({
       .filter((x) => x.id && x.title);
   }, [jobPositions]);
 
+  // Company options for filter
   const companyOptions = useMemo(() => {
     return allCompaniesRaw
       .map((c: any) => {
@@ -562,11 +536,13 @@ export default function Applicants({
       .filter((x) => x.id && x.title);
   }, [allCompaniesRaw]);
 
+  // Field to job IDs mapping
   const fieldToJobIds = useMemo(
     () => buildFieldToJobIds(jobPositions),
     [jobPositions]
   );
 
+  // Applicant filters — spread the options object so the hook receives its expected positional/named args
   const selectedCompanyFilterValue = useMemo(():
     | string[]
     | string
@@ -575,6 +551,8 @@ export default function Applicants({
     const companyFilter = columnFilters.find((f: any) => f.id === 'companyId');
     if (!companyFilter?.value) return undefined;
     const value = companyFilter.value;
+
+    // Handle different possible value types
     if (Array.isArray(value)) {
       return value as string[];
     }
@@ -591,6 +569,7 @@ export default function Applicants({
     filteredApplicants,
     duplicatesOnlyEnabled,
     statusFilterOptions,
+    getStatusColor,
     selectedCompanyFilter,
   } = useApplicantFilters({
     applicants,
@@ -605,6 +584,7 @@ export default function Applicants({
     allCompaniesRaw,
   });
 
+  // Applicant selection
   const {
     selectedApplicantIds,
     selectedApplicantRecipients,
@@ -618,6 +598,7 @@ export default function Applicants({
     allCompaniesRaw,
   });
 
+  // Get job IDs for selected applicants
   const selectedApplicantJobIds = useMemo(() => {
     const jobIds = new Set<string>();
     const ids = new Set(selectedApplicantIds);
@@ -626,6 +607,7 @@ export default function Applicants({
       const applicantId = typeof applicant._id === 'string' ? applicant._id : applicant._id?._id || applicant.id;
       if (!ids.has(applicantId)) return;
       
+      // Extract job ID from various possible locations
       const jobId = 
         (typeof applicant.jobPositionId === 'string' ? applicant.jobPositionId : applicant.jobPositionId?._id) ||
         applicant.job?._id ||
@@ -639,6 +621,7 @@ export default function Applicants({
     return Array.from(jobIds);
   }, [selectedApplicantIds, applicants]);
 
+  // Bulk actions
   const {
     isDeleting,
     isProcessing,
@@ -738,6 +721,8 @@ export default function Applicants({
     [isLaptopViewport]
   );
 
+  // Helper functions for navigation
+  // Helper functions for navigation
   const getApplicantHref = useCallback((row: any) => {
     const orig: any = row?.original ?? row;
     const navId = String(orig?._id || orig?.id || row?.id || '');
@@ -754,6 +739,7 @@ export default function Applicants({
     filteredApplicants: [],
   });
 
+  // ✅ THIS IS THE CRITICAL LINE - update ref on every render
   currentFiltersRef.current = {
     columnFilters,
     customFilters,
@@ -769,8 +755,10 @@ export default function Applicants({
       e.preventDefault();
       e.stopPropagation();
 
+      // Use values from ref to ensure we have the latest
       const currentFilters = currentFiltersRef.current;
 
+      // Navigate with the current state
       navigate(getApplicantHref(row), {
         state: {
           applicant: row.original,
@@ -785,6 +773,7 @@ export default function Applicants({
             (f: any) => f.id === 'companyId'
           )?.value,
           totalFilteredCount: currentFilters.filteredApplicants.length,
+          applicantsList: currentFilters.filteredApplicants,
           returnToApplicants: true,
           timestamp: Date.now(),
         },
@@ -800,7 +789,52 @@ export default function Applicants({
     []
   );
 
+  const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
+  const [customFilterOpen, setCustomFilterOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const [lastRefetch, setLastRefetch] = useState<Date | null>(null);
   const [elapsed, setElapsed] = useState<string | null>(null);
+
+  useEffect(() => {
+    // When filters change, clear the navigation state to force fresh data
+    if (columnFilters.length > 0 || customFilters.length > 0) {
+      // Clear the navigation state from location
+      if (location.state?.returnToApplicants) {
+        window.history.replaceState({}, document.title);
+      }
+
+      // Also clear any stored session data
+      try {
+        sessionStorage.removeItem('applicants_current_state');
+        sessionStorage.removeItem('applicants_table_state_backup');
+        sessionStorage.removeItem('applicants_filtered_list');
+      } catch (e) {}
+    }
+  }, [columnFilters, customFilters, location.state]);
+  // In the useEffect that restores table state, add a check to ensure data is loaded first
+
+  useEffect(() => {
+    if (
+      !lastRefetch &&
+      (isJobPositionsFetched || isApplicantsFetched || isCompaniesFetched)
+    ) {
+      if (mountedRef.current) setLastRefetch(new Date());
+    }
+  }, [
+    isJobPositionsFetched,
+    isApplicantsFetched,
+    isCompaniesFetched,
+    lastRefetch,
+  ]);
 
   useEffect(() => {
     if (!lastRefetch) {
@@ -827,17 +861,7 @@ export default function Applicants({
     return () => clearInterval(id);
   }, [lastRefetch]);
 
-  // Refresh handler - uses React Query's built-in refetch
-  const handleRefreshData = async () => {
-    await Promise.all([
-      refetchJobPositions(),
-      refetchApplicants(),
-      refetchCompanies(),
-    ]);
-    if (mountedRef.current) setLastRefetch(new Date());
-  };
-
-  // ============ Helper Functions ============
+  // Helper functions for columns
   const getExpectedSalaryDisplay = useCallback((applicant: any): string => {
     const toText = (value: any): string => {
       if (value === null || value === undefined) return '';
@@ -1260,9 +1284,40 @@ export default function Applicants({
     getApplicantSScore,
   ]);
 
+  const isTableLoading = Boolean(
+    isJobPositionsFetching || isApplicantsFetching || isCompaniesFetching
+  );
+
+  const renderCellSkeleton = (
+    variant: 'text' | 'circular' | 'rectangular' = 'text',
+    width?: number | string,
+    height?: number
+  ) => {
+    if (variant === 'circular') {
+      return (
+        <div className="flex h-10 w-10 items-center justify-center">
+          <Skeleton
+            variant="circular"
+            width={width || 40}
+            height={height || 40}
+          />
+        </div>
+      );
+    }
+    return (
+      <Skeleton
+        variant={variant as any}
+        width={width || '60%'}
+        height={height}
+      />
+    );
+  };
+
+  // Add this function near your other helper functions (before the columns definition)
   const extractRejectionReasons = useCallback(
     (applicant: Applicant): string[] => {
       try {
+        // Check status history
         const history = applicant?.statusHistory;
         if (Array.isArray(history)) {
           const rejected = history.filter(
@@ -1295,9 +1350,11 @@ export default function Applicants({
     []
   );
 
+  // Add this memo for rejection reasons options (add it near your other useMemo hooks)
   const rejectionReasonsOptions = useMemo(() => {
     const reasonsSet = new Set<string>();
 
+    // Extract rejection reasons from filteredApplicants
     (filteredApplicants || []).forEach((applicant: any) => {
       const reasons = extractRejectionReasons(applicant);
       reasons.forEach((reason: string) => {
@@ -1305,41 +1362,13 @@ export default function Applicants({
       });
     });
 
+    // Convert to array and sort alphabetically
     return Array.from(reasonsSet)
       .sort()
       .map((reason) => ({ id: reason, title: reason }));
   }, [filteredApplicants, extractRejectionReasons]);
 
-  const isTableLoading = Boolean(
-    isJobPositionsFetching || isApplicantsFetching || isCompaniesFetching
-  );
-
-  const renderCellSkeleton = (
-    variant: 'text' | 'circular' | 'rectangular' = 'text',
-    width?: number | string,
-    height?: number
-  ) => {
-    if (variant === 'circular') {
-      return (
-        <div className="flex h-10 w-10 items-center justify-center">
-          <Skeleton
-            variant="circular"
-            width={width || 40}
-            height={height || 40}
-          />
-        </div>
-      );
-    }
-    return (
-      <Skeleton
-        variant={variant as any}
-        width={width || '60%'}
-        height={height}
-      />
-    );
-  };
-
-  // ============ Table Columns ============
+  // Build complete columns for the table
   const columns = useMemo<MRT_ColumnDef<any>[]>(
     () => [
       {
@@ -1712,7 +1741,7 @@ export default function Applicants({
           const b = parseComparableNumber(
             getExpectedSalaryDisplay(rowB.original)
           );
-                    const va = a ?? -1;
+          const va = a ?? -1;
           const vb = b ?? -1;
           if (va === vb) return 0;
           return va > vb ? 1 : -1;
@@ -1798,6 +1827,7 @@ export default function Applicants({
         Cell: ({ row }: { row: { original: any } }) => {
           if (isTableLoading) return renderCellSkeleton('text', '80px');
 
+          // Get the company ID from the applicant
           const applicantCompanyId = getApplicantCompanyId(
             row.original,
             jobPositionMap
@@ -1846,6 +1876,7 @@ export default function Applicants({
 
           const applicantReasons = row.getValue(columnId) as string[];
 
+          // Check if any of the applicant's reasons match any selected filter
           return selectedReasons.some((selectedReason) =>
             applicantReasons.some(
               (applicantReason) =>
@@ -2020,6 +2051,7 @@ export default function Applicants({
       jobOptions,
       statusFilterOptions,
       effectiveOnlyStatus,
+      getStatusColor,
       formatDate,
       getExpectedSalaryDisplay,
       getApplicantSScore,
@@ -2028,14 +2060,6 @@ export default function Applicants({
       jobPositionMap,
       companyMap,
       currentUserId,
-      rejectionReasonsOptions,
-      extractRejectionReasons,
-      selectedCompanyFilter,
-      allCompaniesRaw,
-      getApplicantHref,
-      handleApplicantLinkClick,
-      handleApplicantLinkAuxClick,
-      downloadCvForApplicant,
     ]
   );
 
@@ -2330,7 +2354,15 @@ export default function Applicants({
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={handleRefreshData}
+              onClick={async () => {
+                const promises: Promise<any>[] = [];
+                if (isJobPositionsFetched) promises.push(refetchJobPositions());
+                if (isApplicantsFetched) promises.push(refetchApplicants());
+                if (isCompaniesFetched) promises.push(refetchCompanies());
+                if (promises.length === 0) return;
+                await Promise.all(promises);
+                if (mountedRef.current) setLastRefetch(new Date());
+              }}
               disabled={
                 isJobPositionsFetching ||
                 isApplicantsFetching ||
@@ -2341,7 +2373,7 @@ export default function Applicants({
               {isJobPositionsFetching ||
               isApplicantsFetching ||
               isCompaniesFetching
-                ? 'Updating Data...'
+                ? 'Updating Data'
                 : 'Update Data'}
             </button>
             <div className="text-sm text-gray-500">
@@ -2522,8 +2554,8 @@ export default function Applicants({
               intervalMinutes={bulkInterviewIntervalMinutes}
               setIntervalMinutes={setBulkInterviewIntervalMinutes}
               onPreview={handlePreviewBulkInterviews}
-              recipients={selectedApplicantsForInterview}
-              jobTitleById={jobPositionMap}
+              recipients={selectedApplicantsForInterview} // ADD THIS - passes the selected applicants
+              jobTitleById={jobPositionMap} // ADD THIS - passes the job title mapping
             />
 
             <Modal

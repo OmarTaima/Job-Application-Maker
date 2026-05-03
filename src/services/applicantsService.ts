@@ -1,4 +1,3 @@
-// services/applicantsService.ts
 import axios from "../config/axios";
 import { getErrorMessage } from "../utils/errorHandler";
 import { jobPositionsService } from "./jobPositionsService";
@@ -15,7 +14,6 @@ import type {
   SendMessageRequest,
   InterviewAnswer,
 } from '../types/applicants';
-import { ApiError } from '../types/applicants';
 
 // Re-export types for convenience
 export type {
@@ -33,8 +31,17 @@ export type {
   InterviewAnswer,
 } from '../types/applicants';
 
-// Re-export ApiError
-export { ApiError } from '../types/applicants';
+// API Error class
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public statusCode?: number,
+    public details?: any
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
 
 class ApplicantsService {
   private normalizeInterviewQuestions(questions: any): InterviewAnswer[] {
@@ -50,8 +57,6 @@ class ApplicantsService {
           : 0
       ),
       notes: q?.notes ?? '',
-      answerType: q?.answerType || 'text',
-      choices: Array.isArray(q?.choices) ? q.choices : [],
     }));
   }
 

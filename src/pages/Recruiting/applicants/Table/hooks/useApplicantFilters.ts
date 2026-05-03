@@ -2,11 +2,19 @@
 import { useMemo, useCallback } from 'react';
 import { sortApplicantsByDuplicatePriority } from '../../../../../utils/applicantDuplicateSort';
 import { applyCustomFilters, getApplicantCompanyId } from '../utils/filterHelpers';
-import type { 
-  Applicant, 
-  UseApplicantFiltersProps, 
-  UseApplicantFiltersReturn 
-} from '../../../../../types/applicants';
+
+interface UseApplicantFiltersProps {
+  applicants: any[];
+  columnFilters: any[];
+  customFilters: any[];
+  isSuperAdmin: boolean;
+  effectiveOnlyStatus?: string | string[];
+  selectedCompanyFilterValue?: string[] | string | null;
+  jobPositionMap: Record<string, any>;
+  fieldToJobIds: Map<string, Set<string>> | Record<string, Set<string>>;
+  currentUserId: string;
+  allCompaniesRaw: any[];
+}
 
 export function useApplicantFilters({
   applicants,
@@ -18,7 +26,7 @@ export function useApplicantFilters({
   jobPositionMap,
   fieldToJobIds,
   currentUserId,
-}: UseApplicantFiltersProps): UseApplicantFiltersReturn {
+}: UseApplicantFiltersProps) {
   // Get selected company from column filters
   const selectedCompanyIds = useMemo((): string[] | null => {
     if (selectedCompanyFilterValue) {
@@ -44,7 +52,7 @@ export function useApplicantFilters({
     
     // Apply company filter if present
     if (selectedCompanyIds && selectedCompanyIds.length > 0) {
-      filtered = filtered.filter((applicant: Applicant) => {
+      filtered = filtered.filter((applicant: any) => {
         const applicantCompanyId = getApplicantCompanyId(applicant, jobPositionMap);
         return applicantCompanyId && selectedCompanyIds.includes(applicantCompanyId);
       });
@@ -56,13 +64,13 @@ export function useApplicantFilters({
     
     if (jobFilterValue && (Array.isArray(jobFilterValue) ? jobFilterValue.length > 0 : true)) {
       const selectedJobIds = Array.isArray(jobFilterValue) ? jobFilterValue : [jobFilterValue];
-      filtered = filtered.filter((applicant: Applicant) => {
+      filtered = filtered.filter((applicant: any) => {
         const jobPositionId = applicant?.jobPositionId;
         let applicantJobId = '';
         if (typeof jobPositionId === 'string') {
           applicantJobId = jobPositionId;
         } else if (jobPositionId && typeof jobPositionId === 'object') {
-          applicantJobId = (jobPositionId as any)._id || (jobPositionId as any).id || '';
+          applicantJobId = jobPositionId._id || jobPositionId.id || '';
         }
         return selectedJobIds.includes(applicantJobId);
       });
@@ -71,7 +79,7 @@ export function useApplicantFilters({
     // Apply status filter (from props or URL params)
     if (effectiveOnlyStatus !== undefined && effectiveOnlyStatus !== null) {
       const allowed = Array.isArray(effectiveOnlyStatus) ? effectiveOnlyStatus : [effectiveOnlyStatus];
-      filtered = filtered.filter((a: Applicant) => allowed.includes(a.status));
+      filtered = filtered.filter((a: any) => allowed.includes(a.status));
       return filtered;
     }
     
@@ -82,26 +90,26 @@ export function useApplicantFilters({
     if (isSuperAdmin) {
       if (statusVal === 'trashed') return filtered;
       if (Array.isArray(statusVal) && statusVal.length > 0) {
-        filtered = filtered.filter((a: Applicant) => statusVal.includes(a.status));
+        filtered = filtered.filter((a: any) => statusVal.includes(a.status));
         return filtered;
       }
-      filtered = filtered.filter((a: Applicant) => a.status !== 'trashed');
+      filtered = filtered.filter((a: any) => a.status !== 'trashed');
       return filtered;
     }
 
     if (Array.isArray(statusVal) && statusVal.length > 0) {
       const allowed = statusVal.filter((s: any) => s !== 'trashed');
       if (allowed.length === 0) {
-        filtered = filtered.filter((a: Applicant) => a.status !== 'trashed');
+        filtered = filtered.filter((a: any) => a.status !== 'trashed');
         return filtered;
       }
       filtered = filtered.filter(
-        (a: Applicant) => allowed.includes(a.status) && a.status !== 'trashed'
+        (a: any) => allowed.includes(a.status) && a.status !== 'trashed'
       );
       return filtered;
     }
 
-    filtered = filtered.filter((a: Applicant) => a.status !== 'trashed');
+    filtered = filtered.filter((a: any) => a.status !== 'trashed');
     return filtered;
   }, [applicants, columnFilters, isSuperAdmin, effectiveOnlyStatus, selectedCompanyIds, jobPositionMap]);
 
@@ -117,12 +125,14 @@ export function useApplicantFilters({
 
   // Apply custom filters and duplicates logic
   const filteredApplicants = useMemo(() => {
+    
     // First apply custom filters
     let processed = applyCustomFilters(displayedApplicants, customFilters, {
       jobPositionMap,
       fieldToJobIds: fieldToJobIds instanceof Map ? fieldToJobIds : new Map(),
       currentUserId,
     });
+
 
     if (!duplicatesOnlyEnabled) {
       return processed;
@@ -147,7 +157,7 @@ export function useApplicantFilters({
 
   // Get status filter options
   const statusFilterOptions = useMemo(() => {
-    const uniqueStatuses = Array.from(new Set(applicants.map((a: Applicant) => a?.status).filter(Boolean)));
+    const uniqueStatuses = Array.from(new Set(applicants.map((a: any) => a?.status).filter(Boolean)));
     const defaultOrder = ['pending', 'approved', 'interview', 'interviewed', 'rejected', 'trashed'];
     const sorted = [...defaultOrder, ...uniqueStatuses.filter(s => !defaultOrder.includes(s))];
     return sorted.map((status) => ({
@@ -157,7 +167,7 @@ export function useApplicantFilters({
   }, [applicants]);
 
   // Get status color function
-  const getStatusColor = useCallback((status: string): { bg: string; color: string } => {
+  const getStatusColor = useCallback((status: string) => {
     if (!status) return { bg: '#F3F4F6', color: '#1F2937' };
     
     const defaultColors: Record<string, { bg: string; color: string }> = {
@@ -177,7 +187,7 @@ export function useApplicantFilters({
   }, []);
 
   // Get status description
-  const getDescription = useCallback((status: string): string => {
+  const getDescription = useCallback((status: string) => {
     const descriptions: Record<string, string> = {
       pending: 'Application is pending review',
       approved: 'Application has been approved',
@@ -195,7 +205,7 @@ export function useApplicantFilters({
   return {
     filteredApplicants,
     duplicatesOnlyEnabled,
-    displayedApplicants,
+    displayedApplicants,  // IMPORTANT: Return this!
     statusFilterOptions,
     getStatusColor,
     getDescription,

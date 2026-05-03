@@ -1,53 +1,61 @@
 // hooks/useTableState.ts
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
-import type { 
-  MRT_ColumnFiltersState, 
-  MRT_RowSelectionState,
-  MRT_SortingState,
-  MRT_PaginationState
-} from 'material-react-table';
-import type { UseTableStateProps, UseTableStateReturn } from '../../../../../types/applicants';
+import type { MRT_ColumnFiltersState, MRT_RowSelectionState } from 'material-react-table';
 
 export function useTableState({
   showCompanyColumn,
   genderOptions,
   persistedState,
-}: UseTableStateProps): UseTableStateReturn {
+}: {
+  onlyStatus?: string | string[];
+  showCompanyColumn: boolean;
+  jobPositionMap?: Record<string, any>;
+  genderOptions: Array<{ id: string; title: string }>;
+  persistedState?: any;
+}): any {
   const location = useLocation();
   
+  // Get navigation state once on mount (not in effect)
   const navState = (location.state as any);
   const isReturningFromDetails = navState?.returnToApplicants === true;
   
+  // Initialize state SYNCHRONOUSLY based on priority
   const [columnFilters, setColumnFilters] = useState<MRT_ColumnFiltersState>(() => {
+    // Priority 1: Navigation state (coming back from applicant details)
     if (isReturningFromDetails && navState?.columnFilters) {
       return navState.columnFilters;
     }
+    
+    // Priority 2: Persisted state
     if (persistedState?.columnFilters && Array.isArray(persistedState.columnFilters)) {
       return persistedState.columnFilters;
     }
+    
     return [];
   });
   
-  const [sorting, setSorting] = useState<MRT_SortingState>(() => {
+  const [sorting, setSorting] = useState<Array<{ id: string; desc: boolean }>>(() => {
     if (isReturningFromDetails && navState?.sorting) return navState.sorting;
     if (persistedState?.sorting) return persistedState.sorting;
     return [{ id: 'submittedAt', desc: true }];
   });
   
-  const [pagination, setPagination] = useState<MRT_PaginationState>(() => {
+  const [pagination, setPagination] = useState<{ pageIndex: number; pageSize: number }>(() => {
     if (isReturningFromDetails && navState?.pagination) return navState.pagination;
     if (persistedState?.pagination) return persistedState.pagination;
     return { pageIndex: 0, pageSize: 10 };
   });
   
-  const [customFilters, setCustomFilters] = useState<any[]>(() => {
+  const [customFilters, setCustomFilters] = useState<Array<any>>(() => {
     if (isReturningFromDetails && navState?.customFilters) return navState.customFilters;
     if (persistedState?.customFilters) return persistedState.customFilters;
     return [];
   });
   
   const [rowSelection, setRowSelection] = useState<MRT_RowSelectionState>({});
+
+ 
 
   const selectedApplicantIds = useMemo(() => Object.keys(rowSelection), [rowSelection]);
   
@@ -74,7 +82,7 @@ export function useTableState({
       
       if (intersection.length === vals.length) return;
       
-      const next = [...columnFilters];
+      const next = columnFilters.slice();
       if (intersection.length === 0) {
         next.splice(genderFilterIndex, 1);
       } else {
