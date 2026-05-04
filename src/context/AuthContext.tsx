@@ -15,6 +15,7 @@ import {
 } from "../hooks/queries/useAuth";
 import { useQueryClient } from "@tanstack/react-query";
 import { tokenStorage } from "../config/api";
+import { paths } from "../router/Paths";
 
 type AuthContextType = {
   user: User | null;
@@ -78,7 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       onSuccess: () => {
         // ✅ Hard reload to clear all memory
         setTimeout(() => {
-          window.location.href = '/login';
+          window.location.href = paths.auth.signIn;
         }, 100);
       },
     });
@@ -90,7 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (e.key === 'accessToken' && !e.newValue) {
         // Token was removed from storage
         queryClient.clear();
-        window.location.href = '/login';
+        window.location.href = paths.auth.signIn;
       }
     };
     
@@ -99,7 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!hasToken && user) {
         // No token but we have user data - clear cache
         queryClient.clear();
-        window.location.href = '/login';
+        window.location.href = paths.auth.signIn;
       }
     }, 5000); // Check every 5 seconds
     

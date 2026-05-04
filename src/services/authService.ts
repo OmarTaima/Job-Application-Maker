@@ -98,11 +98,11 @@ class ApiClient {
 class AuthService {
   private api = new ApiClient();
 
-  private extractTokens(response: AuthResponse): { accessToken: string; refreshToken: string } {
+  private extractTokens(response: AuthResponse): { accessToken?: string; refreshToken?: string } {
     const accessToken = response.data?.accessToken || (response as any).accessToken;
     const refreshToken = response.data?.refreshToken || (response as any).refreshToken;
     
-    if (!accessToken || !refreshToken) {
+    if (!accessToken && !refreshToken) {
       console.warn("Tokens missing in response", response);
     }
     
@@ -113,9 +113,7 @@ class AuthService {
     const response = await this.api.post<AuthResponse>("/auth/login", credentials, false);
     const { accessToken, refreshToken } = this.extractTokens(response);
     
-    if (accessToken && refreshToken) {
-      tokenStorage.setTokens(accessToken, refreshToken);
-    }
+    tokenStorage.setTokens(accessToken, refreshToken);
     
     return response.data.user;
   }
@@ -124,9 +122,7 @@ class AuthService {
     const response = await this.api.post<AuthResponse>("/auth/register", userData, false);
     const { accessToken, refreshToken } = this.extractTokens(response);
     
-    if (accessToken && refreshToken) {
-      tokenStorage.setTokens(accessToken, refreshToken);
-    }
+    tokenStorage.setTokens(accessToken, refreshToken);
     
     return response.data.user;
   }
@@ -153,9 +149,7 @@ class AuthService {
     
     const { accessToken, refreshToken: newRefreshToken } = this.extractTokens(response);
     
-    if (accessToken && newRefreshToken) {
-      tokenStorage.setTokens(accessToken, newRefreshToken);
-    }
+    tokenStorage.setTokens(accessToken, newRefreshToken);
   }
 
   async changePassword(passwords: ChangePasswordRequest): Promise<void> {
