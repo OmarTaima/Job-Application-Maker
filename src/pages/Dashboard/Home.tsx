@@ -210,7 +210,6 @@ export default function Home() {
           icon: getStatusIcon(statusName),
         };
       })
-      .sort((a, b) => b.count - a.count);
 
     return cards;
   }, [countsData, statusOptions, getColor]);
