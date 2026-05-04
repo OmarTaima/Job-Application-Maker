@@ -1,7 +1,8 @@
-import { Fragment, useState } from 'react';
+import { Fragment, useState, useMemo } from 'react';
 import ComponentCard from '../../../../components/common/ComponentCard';
 import { useAuth } from '../../../../context/AuthContext';
 import { toPlainString } from '../../../../utils/strings';
+import { useApplicantsByPhone } from '../../../../hooks/queries/useApplicants';
 
 type Props = {
   applicant: any;
@@ -64,8 +65,21 @@ const getStatusColor = (status: string) => {
 
 export default function StatusHistory({ applicant, loading = false }: Props) {
   const { user } = useAuth();
-  const [activityTab, setActivityTab] = useState<'all' | 'status' | 'actions' | 'interview'>('all');
+  const [activityTab, setActivityTab] = useState<'all' | 'status' | 'actions' | 'interview' | 'previous'>('all');
   const [expandedHistory, setExpandedHistory] = useState<string | null>(null);
+
+  // Fetch applicants with the same phone number
+  const applicantPhone = useMemo(() => applicant?.phone || applicant?.phoneNumber || '', [applicant?.phone, applicant?.phoneNumber]);
+  const { data: previousApplicants = [], isLoading: isPreviousLoading } = useApplicantsByPhone(applicantPhone, {
+    enabled: !!applicantPhone && activityTab === 'previous',
+  });
+
+  // Filter out current applicant and get unique list
+  const filteredPreviousApplicants = useMemo(() => {
+    if (!previousApplicants || !Array.isArray(previousApplicants)) return [];
+    const currentId = String(applicant?._id || '');
+    return previousApplicants.filter((a: any) => String(a?._id || '') !== currentId);
+  }, [previousApplicants, applicant?._id]);
 
   return (
     <div>
@@ -116,6 +130,16 @@ export default function StatusHistory({ applicant, loading = false }: Props) {
             >
               Interview
             </button>
+            <button
+              onClick={() => setActivityTab('previous')}
+              className={`whitespace-nowrap border-b-2 px-1 py-4 text-sm font-medium transition ${
+                activityTab === 'previous'
+                  ? 'border-brand-500 text-brand-600 dark:text-brand-400'
+                  : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
+              }`}
+            >
+              Previous Entries
+            </button>
           </nav>
         </div>
 
@@ -149,6 +173,95 @@ export default function StatusHistory({ applicant, loading = false }: Props) {
             </div>
           ) : (
             (() => {
+              // Handle "Previous Entries" tab
+              if (activityTab === 'previous') {
+                if (isPreviousLoading) {
+                  return (
+                    <div className="overflow-x-auto rounded-lg border border-stroke dark:border-strokedark">
+                      <table className="min-w-full">
+                        <thead className="bg-gray-50 dark:bg-gray-800/60">
+                          <tr>
+                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Full Name</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Email</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Phone</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Status</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Applied Date</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
+                          {Array.from({ length: 3 }).map((_, i) => (
+                            <tr key={i}>
+                              <td className="px-4 py-3"><div className="h-4 w-32 rounded bg-gray-200 dark:bg-gray-700 animate-pulse" /></td>
+                              <td className="px-4 py-3"><div className="h-4 w-40 rounded bg-gray-200 dark:bg-gray-700 animate-pulse" /></td>
+                              <td className="px-4 py-3"><div className="h-4 w-28 rounded bg-gray-200 dark:bg-gray-700 animate-pulse" /></td>
+                              <td className="px-4 py-3"><div className="h-4 w-20 rounded bg-gray-200 dark:bg-gray-700 animate-pulse" /></td>
+                              <td className="px-4 py-3"><div className="h-4 w-24 rounded bg-gray-200 dark:bg-gray-700 animate-pulse" /></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  );
+                }
+
+                if (!filteredPreviousApplicants || filteredPreviousApplicants.length === 0) {
+                  return (
+                    <div className="rounded-lg border border-dashed border-stroke p-6 text-center text-sm text-gray-500 dark:border-strokedark dark:text-gray-400">
+                      No previous entries found with the same phone number.
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="overflow-x-auto rounded-lg border border-stroke dark:border-strokedark">
+                    <table className="min-w-full">
+                      <thead className="bg-gray-50 dark:bg-gray-800/60">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Full Name</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Email</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Phone</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Status</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Applied Date</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
+                        {filteredPreviousApplicants.map((prev: any, index: number) => (
+                          <tr key={prev?._id || index} className="hover:bg-gray-50 dark:hover:bg-gray-800/30">
+                            <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">
+                              {prev?.fullName || 'N/A'}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">
+                              <a
+                                href={`mailto:${prev?.email}`}
+                                className="text-brand-600 hover:underline dark:text-brand-400"
+                              >
+                                {prev?.email || 'N/A'}
+                              </a>
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">
+                              {prev?.phone || 'N/A'}
+                            </td>
+                            <td className="px-4 py-3 text-sm">
+                              <span
+                                className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${getStatusColor(
+                                  prev?.status || 'pending'
+                                )}`}
+                              >
+                                {prev?.status ? prev.status.charAt(0).toUpperCase() + prev.status.slice(1) : 'Pending'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
+                              {formatDate(prev?.createdAt || prev?.appliedAt)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              }
+
+              // Handle other tabs (original logic)
               const activities: Array<{
                 type: 'status' | 'message' | 'comment' | 'interview';
                 date: string;

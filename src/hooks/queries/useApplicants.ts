@@ -27,6 +27,8 @@ export const applicantsKeys = {
     departmentId?: string[];
   }) => [...applicantsKeys.lists(), params] as const,
   detail: (id: string) => [...applicantsKeys.all, "detail", id] as const,
+  rejectionInsights: (companyId?: string[]) => [...applicantsKeys.all, "rejection-insights", companyId] as const,
+  byPhone: (phone: string) => [...applicantsKeys.all, "by-phone", phone] as const,
 };
 
 // Helper to get user's company IDs from AuthContext
@@ -326,6 +328,31 @@ export function useSendMessage() {
     onError: (error: ApiError) => {
       showErrorToast(error.message, "Failed to send message");
     },
+  });
+}
+
+export function useRejectionInsights(params?: { companyId?: string[]; enabled?: boolean }) {
+  const { user } = useAuth();
+  const userCompanyIds = getUserCompanyIds(user);
+  const effectiveCompanyId = params?.companyId?.length ? params.companyId : userCompanyIds; 
+
+  return useQuery({
+    queryKey: applicantsKeys.rejectionInsights(effectiveCompanyId),
+    queryFn: () => applicantsService.getRejectionInsights({ companyId: effectiveCompanyId }),
+    staleTime: 2 * 60 * 1000,
+    enabled: params?.enabled ?? true,
+    retry: false,
+  });
+}
+
+// Get applicants by phone number
+export function useApplicantsByPhone(phone?: string, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: applicantsKeys.byPhone(phone || ''),
+    queryFn: () => applicantsService.getApplicantsByPhone(phone || ''),
+    staleTime: 2 * 60 * 1000,
+    enabled: !!phone && (options?.enabled ?? true),
+    retry: false,
   });
 }
 

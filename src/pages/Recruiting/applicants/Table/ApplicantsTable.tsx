@@ -28,7 +28,7 @@ import StatusChangeModal from '../../../../components/modals/StatusChangeModal';
 import CustomFilterModal from '../../../../components/modals/CustomFilterModal';
 import { ColumnMultiSelectHeader } from './components/ColumnMultiSelectHeader';
 import { StatusCell } from './components/StatusCell';
-import { TrashBinIcon, ChatIcon } from '../../../../icons';
+import { TrashBinIcon, ChatIcon, AlertIcon } from '../../../../icons';
 
 // Hooks
 import { useTableState } from './hooks/useTableState';
@@ -1500,16 +1500,24 @@ export default function Applicants({
               if (typeof s === 'string') return s === currentUserId;
               return s._id === currentUserId || s.id === currentUserId;
             });
+          const isDuplicated = orig?.isDuplicated ?? false;
           return (
-            <a
-              href={getApplicantHref(row)}
-              className="text-inherit no-underline hover:no-underline"
-              style={{ color: isSeen ? '#9CA3AF' : 'inherit' }}
-              onClick={(e) => handleApplicantLinkClick(e, row)}
-              onAuxClick={handleApplicantLinkAuxClick}
-            >
-              {orig?.fullName || '-'}
-            </a>
+            <div className="flex items-center gap-2">
+              <a
+                href={getApplicantHref(row)}
+                className="text-inherit no-underline hover:no-underline"
+                style={{ color: isSeen ? '#9CA3AF' : 'inherit' }}
+                onClick={(e) => handleApplicantLinkClick(e, row)}
+                onAuxClick={handleApplicantLinkAuxClick}
+              >
+                {orig?.fullName || '-'}
+              </a>
+              {isDuplicated && (
+                <div title="This applicant has duplicate entries">
+                  <AlertIcon className="h-4 w-4 text-yellow-600 dark:text-yellow-500" />
+                </div>
+              )}
+            </div>
           );
         },
       },

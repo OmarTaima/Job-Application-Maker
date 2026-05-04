@@ -14,6 +14,7 @@ import type {
   AddCommentRequest,
   SendMessageRequest,
   InterviewAnswer,
+  RejectionInsights,
 } from '../types/applicants';
 import { ApiError } from "./companiesService";
 
@@ -30,6 +31,7 @@ export type {
   AddCommentRequest,
   SendMessageRequest,
   InterviewAnswer,
+  RejectionInsights,
 } from '../types/applicants';
 
 // ===== Helper Functions =====
@@ -80,7 +82,7 @@ function extractApplicantFromPayload(payload: any, applicantId: string): any {
 
 // ===== Applicants Service =====
 class ApplicantsService {
-  private async request<T>(
+  public async request<T>(
     method: 'get' | 'post' | 'put' | 'delete' | 'patch',
     url: string,
     data?: any,
@@ -363,6 +365,42 @@ class ApplicantsService {
 
   async markAsSeen(applicantId: string): Promise<void> {
     await this.request<void>('patch', `/applicants/${applicantId}/seen`);
+  }
+
+  async getRejectionInsights(params?: { companyId?: string[] }): Promise<RejectionInsights> {
+    const companyIds = this.normalizeCompanyIds(params?.companyId);
+
+    const fetchOne = async (companyId?: string): Promise<RejectionInsights> => {
+      const queryParams: any = {};
+      if (companyId) queryParams.companyId = companyId;
+      return this.request<RejectionInsights>('get', '/applicants/rejection-insights', undefined, queryParams);
+    };
+
+    if (companyIds.length <= 1) {
+      return fetchOne(companyIds[0]);
+    }
+
+    const responses = await Promise.all(companyIds.map((companyId) => fetchOne(companyId)));
+    const countsByReason = new Map<string, number>();
+
+    responses.forEach((response) => {
+      const items = Array.isArray(response) ? response : (response as any)?.data ?? [];
+
+      items.forEach((item: any) => {
+        const reason = String(item?.reason ?? '').trim() || 'Unknown';
+        const count = Number(item?.count ?? 0);
+        countsByReason.set(reason, (countsByReason.get(reason) ?? 0) + count);
+      });
+    });
+
+    return Array.from(countsByReason.entries()).map(([reason, count]) => ({ reason, count }));
+  }
+
+  async getApplicantsByPhone(phone: string): Promise<Applicant[]> {
+    if (!phone || !String(phone).trim()) return [];
+    const queryParams = { phone: String(phone).trim(), PageCount: 'all' };
+    const response = await this.request<any>('get', '/applicants', undefined, queryParams);
+    return this.extractApplicants(response);
   }
 }
 

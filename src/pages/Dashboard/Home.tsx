@@ -16,6 +16,7 @@ import {
   UserIcon,
 } from '../../icons';
 import InterviewScheduleWidget from '../../components/charts/MyInterviewWidget';
+import RejectionInsightsChart from '../../components/charts/RejectionInsightsChart';
 
 // Map status names to icons (fallback icons for common statuses)
 const getStatusIcon = (statusName: string): any => {
@@ -360,6 +361,7 @@ export default function Home() {
               })}
         </div>
         <InterviewScheduleWidget />
+        <RejectionInsightsChart companyId={companyIds} />
 
         {/* Show message when no data */}
         {!loading && statusCards.length === 0 && countsData && (

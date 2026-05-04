@@ -187,3 +187,8 @@ export type SendMessageRequest = {
   comment?: string;
   type?: "email" | "sms" | "internal" | "whatsapp";
 };
+
+export type RejectionInsights = {
+  reason: string;
+  count: number;
+}[];
