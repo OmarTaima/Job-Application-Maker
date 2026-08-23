@@ -159,11 +159,10 @@ function SortableJobCard({
     <Link
       ref={setNodeRef}
       style={style}
-      to={`/job/${job._id}`}
+      to={`/create-job?id=${job._id}`}
       state={{ job }}
       onClick={handleCardClick}
-      {...listeners}
-      className={`group relative block cursor-grab space-y-4 rounded-3xl border border-white/20 bg-white/60 p-6 backdrop-blur-xl transition-[transform,opacity,box-shadow] duration-200 hover:scale-[1.02] hover:shadow-2xl hover:shadow-brand-500/10 active:cursor-grabbing dark:border-slate-800/50 dark:bg-slate-900/60 ${
+      className={`group relative block cursor-pointer space-y-4 rounded-3xl border border-white/20 bg-white/60 p-6 backdrop-blur-xl transition-[transform,opacity,box-shadow] duration-200 hover:scale-[1.02] hover:shadow-2xl hover:shadow-brand-500/10 dark:border-slate-800/50 dark:bg-slate-900/60 ${
         isDragging ? 'opacity-60 ring-2 ring-brand-400 z-50' : ''
       }`}
     >
@@ -172,7 +171,8 @@ function SortableJobCard({
           <div className="flex items-center gap-2">
             <span
               {...attributes}
-              className="inline-flex items-center text-slate-400"
+              {...listeners}
+              className="inline-flex items-center text-slate-400 cursor-grab active:cursor-grabbing"
               title={t('jobsDragReorder', 'jobs')}
             >
               <GripVerticalIcon className="size-4" />
@@ -295,9 +295,8 @@ function SortableJobRow({
     <tr
       ref={setNodeRef}
       style={style}
-      {...listeners}
       onClick={handleRowClick}
-      className={`group cursor-grab transition-colors hover:bg-slate-50/50 active:cursor-grabbing dark:hover:bg-slate-800/30 ${
+      className={`group cursor-pointer transition-colors hover:bg-slate-50/50 dark:hover:bg-slate-800/30 ${
         isDragging ? 'opacity-60 ring-2 ring-brand-400 z-50' : ''
       }`}
     >
@@ -305,7 +304,8 @@ function SortableJobRow({
         <div className="flex items-center gap-3">
           <span
             {...attributes}
-            className="inline-flex items-center text-slate-400"
+            {...listeners}
+            className="inline-flex items-center text-slate-400 cursor-grab active:cursor-grabbing"
             title={t('jobsDragReorder', 'jobs')}
           >
             <GripVerticalIcon className="size-4" />
@@ -315,7 +315,7 @@ function SortableJobRow({
           </div>
           <div>
             <Link
-              to={`/job/${job._id}`}
+              to={`/create-job?id=${job._id}`}
               state={{ job }}
               className="font-bold text-slate-900 hover:text-brand-600 transition-colors dark:text-white"
               onClick={(e) => {
@@ -608,7 +608,7 @@ export default function Jobs() {
 
   const handleJobClick = (job: any) => {
     if (suppressNavigateRef.current) return;
-    navigate(`/job/${job._id}`, { state: { job } });
+    navigate(`/create-job?id=${job._id}`, { state: { job } });
   };
 
   const handleGridDragStart = (event: DragStartEvent) => {
