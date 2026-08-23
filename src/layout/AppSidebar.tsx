@@ -460,7 +460,7 @@ const AppSidebar: React.FC = () => {
 
   return (
     <aside
-      className={`fixed mt-16 flex flex-col lg:mt-0 top-0 pt-[env(safe-area-inset-top)] px-5 ${dir === 'ltr' ? 'left-0' : 'right-0'} bg-white dark:bg-gray-900 dark:border-gray-800 text-gray-900 h-screen transition-all duration-300 ease-in-out z-50 ${dir === 'ltr' ? 'border-r' : 'border-l'} border-gray-200
+      className={`fixed mt-16 flex flex-col lg:mt-0 top-0 pt-[env(safe-area-inset-top)] lg:pt-0 px-5 ${dir === 'ltr' ? 'left-0' : 'right-0'} bg-white dark:bg-gray-900 dark:border-gray-800 text-gray-900 h-screen transition-all duration-300 ease-in-out z-50 ${dir === 'ltr' ? 'border-r' : 'border-l'} border-gray-200
         ${
           isExpanded || isMobileOpen
             ? 'w-[290px]'
