@@ -87,7 +87,7 @@ const PersonalInfo: React.FC<PersonalInfoProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden ">
+    <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
       <div className="p-5">
         <div className="flex flex-col items-center text-center mb-5 mt-8">
           {data.profilePhoto ? (
@@ -150,12 +150,12 @@ const PersonalInfo: React.FC<PersonalInfoProps> = ({
               : null) || t('positionAppliedFor', 'personalInfo')}
           </p>
 
-          <div className="flex items-center justify-center gap-3 mt-3 mb-3">
+          <div className="grid grid-cols-3 gap-3 mt-3 mb-3 sm:flex sm:items-center sm:justify-center sm:gap-3">
             <button
               type="button"
               title={t('scheduleInterview', 'personalInfo')}
               onClick={onScheduleInterview}
-              className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
+              className="flex items-center justify-center w-9 h-9 sm:w-8 sm:h-8 rounded-full bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors mx-auto"
             >
               <CalenderIcon className="w-4 h-4" />
             </button>
@@ -164,7 +164,7 @@ const PersonalInfo: React.FC<PersonalInfoProps> = ({
               type="button"
               title={t('sendMessage', 'personalInfo')}
               onClick={onSendMessage}
-              className="flex items-center justify-center w-8 h-8 rounded-full bg-purple-50 text-purple-600 hover:bg-purple-100 transition-colors"
+              className="flex items-center justify-center w-9 h-9 sm:w-8 sm:h-8 rounded-full bg-purple-50 text-purple-600 hover:bg-purple-100 transition-colors mx-auto"
             >
               <ChatIcon className="w-4 h-4" />
             </button>
@@ -173,7 +173,7 @@ const PersonalInfo: React.FC<PersonalInfoProps> = ({
               type="button"
               title={t('print', 'personalInfo')}
               onClick={onPrint}
-              className="flex items-center justify-center w-8 h-8 rounded-full bg-amber-50 text-amber-600 hover:bg-amber-100 transition-colors"
+              className="flex items-center justify-center w-9 h-9 sm:w-8 sm:h-8 rounded-full bg-amber-50 text-amber-600 hover:bg-amber-100 transition-colors mx-auto"
             >
               <DownloadIcon className="w-4 h-4" />
             </button>

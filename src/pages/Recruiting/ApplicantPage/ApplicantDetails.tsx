@@ -791,17 +791,17 @@ const ApplicantDetails: React.FC = () => {
     <div className="bg-gray-50">
       <div className="max-w-8xl mx-auto p-6">
         <StickyTopBar>
-          <div className="flex items-center justify-between py-3">
+          <div className="flex flex-wrap items-center justify-between py-3 gap-2">
             <div className="flex items-center gap-2 text-sm text-gray-500">
               <span onClick={() => navigate(paths.applicants.root)} className="hover:text-gray-700 cursor-pointer">{t('pageTitle', 'applicants')}</span>
               <span>-›</span>
               <span className="text-gray-800">{applicant.fullName || t('applicantDetails', 'applicantDetails')}</span>
             </div>
-            <div className="flex">
-              <button onClick={() => setShowStatusModal(true)} className={`${dir === 'rtl' ? 'ml-2' : 'mr-2'} px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors`}>{t('changeStatus', 'applicants')}</button>
+            <div className="flex flex-wrap gap-2 ml-auto">
+              <button onClick={() => setShowStatusModal(true)} className="px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors">{t('changeStatus', 'applicants')}</button>
               <button onClick={handleEdit} className="px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors">{isEditing ? t('save', 'applicantDetails') : t('edit', 'applicantDetails')}</button>
-              {isEditing && <button onClick={handleCancel} className={`${dir === 'rtl' ? 'mr-2' : 'ml-2'} px-3 py-1.5 bg-gray-600 text-white text-xs font-medium rounded-lg hover:bg-gray-700 transition-colors`}>{t('cancel', 'modals')}</button>}
-              <button onClick={handleDelete} className={`${dir === 'rtl' ? 'mr-2' : 'ml-2'} px-3 py-1.5 bg-red-600 text-white text-xs font-medium rounded-lg hover:bg-red-700 transition-colors`}>{t('delete', 'applicants')}</button>
+              {isEditing && <button onClick={handleCancel} className="px-3 py-1.5 bg-gray-600 text-white text-xs font-medium rounded-lg hover:bg-gray-700 transition-colors">{t('cancel', 'modals')}</button>}
+              <button onClick={handleDelete} className="px-3 py-1.5 bg-red-600 text-white text-xs font-medium rounded-lg hover:bg-red-700 transition-colors">{t('delete', 'applicants')}</button>
             </div>
           </div>
         </StickyTopBar>

@@ -1114,57 +1114,16 @@ export default function InterviewScheduleModal(props: Props) {
               <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
                 {notificationChannels.email && (
                   <div className="space-y-2">
-                    <Label htmlFor="email-option">{t('sender', 'modals')}</Label>
-                    <Select options={[{ value: 'company', label: t('senderEmailOption', 'modals') },{ value: 'new', label: t('email', 'modals') }]} value={emailOption} placeholder={t('sender', 'modals')} onChange={(value: any) => {
-                      setEmailOption(value);
-                      if (value !== 'new') setNewLocalEmail('');
-                      if (value === 'company') {
-                        const mailDefault = (companyCompany as any)?.mailSettings?.defaultMail || (companyCompany as any)?.email || '';
-                        setCustomEmail(mailDefault || '');
-                      }
-                    }} />
-
-                    {emailOption === 'new' && (
-                      <div className="mt-2 flex items-center gap-2">
-                        <Input id="new-email-local" type="text" value={newLocalEmail} onChange={(e: any) => setNewLocalEmail(e.target.value)} placeholder="your-name" className="mt-0" />
-                        {domainForDisplay ? (
-                          <div className="text-sm text-gray-600">@{domainForDisplay}</div>
-                        ) : (
-                          <div className="text-sm text-amber-600">⚠️ {t('companyDomainRequired', 'modals')}</div>
-                        )}
-                      </div>
-                    )}
-
-                    {emailOption !== 'new' && (
-                      <div className="mt-3">
-                        <Label htmlFor="sender-select">{t('senderEmailOption', 'modals')}</Label>
-                        <Select
-                          options={senderOptions.length > 0 ? senderOptions : [{ value: '', label: t('sender', 'modals') }]}
-                          value={customEmail || ''}
-                          placeholder={t('sender', 'modals')}
-                          onChange={(value: any) => {
-                            setCustomEmail(value);
-                            setEmailOption('company');
-                          }}
-                        />
-                      </div>
-                    )}
-
-                    <div className="mt-3">
-                      <Label htmlFor="selected-sender">{t('sender', 'modals')}</Label>
-                      <Input
-                        id="selected-sender"
-                        type="text"
-                        value={
-                          emailOption === 'new' && newLocalEmail
-                            ? (domainForDisplay ? `${newLocalEmail}@${domainForDisplay}` : `${newLocalEmail}@[domain missing]`)
-                            : customEmail || (companyCompany as any)?.settings?.mailSettings?.defaultMail || (companyCompany as any)?.mailSettings?.defaultMail || (companyCompany as any)?.contactEmail || ''
-                        }
-                        className={`mt-2 ${!domainForDisplay && emailOption === 'new' && newLocalEmail ? 'border-amber-300' : ''}`}
-                        readOnly
-                        placeholder="No sender selected"
-                      />
-                    </div>
+                    <Label htmlFor="sender-select">{t('senderEmailOption', 'modals')}</Label>
+                    <Select
+                      options={senderOptions.length > 0 ? senderOptions : [{ value: '', label: t('sender', 'modals') }]}
+                      value={customEmail || ''}
+                      placeholder={t('sender', 'modals')}
+                      onChange={(value: any) => {
+                        setCustomEmail(value);
+                        setEmailOption('company');
+                      }}
+                    />
                   </div>
                 )}
 
