@@ -7,6 +7,7 @@ layer(base);
 @import "tailwindcss";
 
 @custom-variant dark (&:is(.dark *));
+@custom-variant pwa (@media (display-mode: standalone));
 
 /* Fix for SVG icons not showing in buttons - ensure SVG paths inherit currentColor */
 button svg,
