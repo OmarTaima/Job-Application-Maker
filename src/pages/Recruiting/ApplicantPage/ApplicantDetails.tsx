@@ -368,12 +368,14 @@ const ApplicantDetails: React.FC = () => {
         processedBody = processedBody.replace(regex, value);
       });
     });
-    const urlRegex = /(https?:\/\/[^\s<]+|www\.[^\s<]+)/gi;
-    processedBody = processedBody.replace(urlRegex, (url) => {
-      const href = url.toLowerCase().startsWith('http') ? url : `https://${url}`;
-      return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" style="color:#3b82f6;text-decoration:underline;">${escapeHtml(url)}</a>`;
-    });
     const hasHtml = processedBody.indexOf('<') !== -1;
+    if (!hasHtml) {
+      const urlRegex = /(https?:\/\/[^\s<]+|www\.[^\s<]+)/gi;
+      processedBody = processedBody.replace(urlRegex, (url) => {
+        const href = url.toLowerCase().startsWith('http') ? url : `https://${url}`;
+        return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" style="color:#3b82f6;text-decoration:underline;">${escapeHtml(url)}</a>`;
+      });
+    }
     const bodyHtml = hasHtml
       ? processedBody
       : processedBody.split(/\r?\n/).map((p) => p.trim()).filter((p) => p.length > 0)
@@ -482,6 +484,9 @@ const ApplicantDetails: React.FC = () => {
         const bTime = new Date(b.createdAt || b.scheduledAt || 0).getTime();
         return bTime - aTime;
       })[0];
+      if (applicant && (applicant as any).status !== 'interview') {
+        updateStatus.mutate({ id, data: { status: 'interview' } as any, silent: true } as any);
+      }
       setInterviewForm({ date: '', time: '', description: '', comment: '', location: '', link: '', type: 'phone' });
       setNotificationChannels({ email: false, sms: false, whatsapp: false });
       setEmailOption('company'); setCustomEmail(''); setPhoneOption('company'); setCustomPhone('');
@@ -544,16 +549,14 @@ const ApplicantDetails: React.FC = () => {
     }
   };
 
-  const handleStatusSubmit = async (e: React.FormEvent) => {
+  const handleStatusSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!id || !statusForm.status) { setStatusError(t('selectStatus', 'applicants')); return; }
-    try {
-      const payload: { status: string; notes?: string; reasons?: string[] } = { status: statusForm.status };
-      if (statusForm.notes && statusForm.notes.trim()) payload.notes = statusForm.notes.trim();
-      if (statusForm.status === 'rejected' && statusForm.reasons && statusForm.reasons.length) payload.reasons = statusForm.reasons;
-      await updateStatus.mutateAsync({ id, data: payload });
-      setShowStatusModal(false);
-    } catch { /* toast handled by mutation */ }
+    const payload: { status: string; notes?: string; reasons?: string[] } = { status: statusForm.status };
+    if (statusForm.notes && statusForm.notes.trim()) payload.notes = statusForm.notes.trim();
+    if (statusForm.status === 'rejected' && statusForm.reasons && statusForm.reasons.length) payload.reasons = statusForm.reasons;
+    updateStatus.mutate({ id, data: payload });
+    setShowStatusModal(false);
   };
 
   const handleCommentSubmit = async (e: React.FormEvent) => {

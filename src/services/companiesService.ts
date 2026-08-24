@@ -160,7 +160,11 @@ class CompaniesService {
       `/companies/${companyId}`,
       companyData
     );
-    return extractCompany(response);
+    try {
+      return extractCompany(response);
+    } catch {
+      return { _id: companyId, ...companyData } as Company;
+    }
   }
 
   async deleteCompany(companyId: string): Promise<void> {

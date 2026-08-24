@@ -413,10 +413,8 @@ export function useUpdateApplicantStatus() {
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: UpdateStatusRequest }) =>
       applicantsService.updateApplicantStatus(id, data),
-    onMutate: async ({ id, data }) => {
+    onMutate: async ({ id, data, silent }) => {
       await queryClient.cancelQueries({ queryKey: applicantsKeys.all });
-
-      const previousDetail = queryClient.getQueryData<Applicant>(applicantsKeys.detail(id));
 
       const previousLists: Record<string, Applicant[] | undefined> = {};
       const queryCache = queryClient.getQueryCache();
@@ -429,14 +427,16 @@ export function useUpdateApplicantStatus() {
         });
       });
 
-      if (previousDetail) {
-        queryClient.setQueryData(applicantsKeys.detail(id), {
-          ...previousDetail,
-          status: data.status,
-        });
-      }
+      const previousDetailData: any = {};
+      queryClient.setQueriesData({ queryKey: applicantsKeys.detail(id) }, (old: any) => {
+        if (!old) return old;
+        previousDetailData[JSON.stringify(queryClient.getQueryCache().find({ queryKey: applicantsKeys.detail(id) })?.queryKey)] = old;
+        return { ...old, status: data.status };
+      });
 
-      return { previousDetail, previousLists };
+      if (!silent) showSuccessToast(t('statusUpdated', 'common'), t);
+
+      return { previousLists, previousDetailData };
     },
     onSuccess: (updatedApplicant, { id }) => {
       const looksLikeApplicant =
@@ -450,14 +450,16 @@ export function useUpdateApplicantStatus() {
           (updatedApplicant as Partial<Applicant>).status !== undefined);
 
       if (looksLikeApplicant) {
-        queryClient.setQueryData(applicantsKeys.detail(id), updatedApplicant);
+        queryClient.setQueriesData({ queryKey: applicantsKeys.detail(id) }, updatedApplicant);
       }
-
-      showSuccessToast(t('statusUpdated', 'common'), t);
     },
     onError: (error: ApiError, { id }, context) => {
-      if (context?.previousDetail) {
-        queryClient.setQueryData(applicantsKeys.detail(id), context.previousDetail);
+      if (context?.previousDetailData) {
+        Object.entries(context.previousDetailData).forEach(([key, data]) => {
+          if (data !== undefined) {
+            queryClient.setQueryData(JSON.parse(key), data);
+          }
+        });
       }
       if (context?.previousLists) {
         Object.entries(context.previousLists).forEach(([key, data]) => {
