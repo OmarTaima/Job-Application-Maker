@@ -785,6 +785,7 @@ export default function InterviewScheduleModal(props: Props) {
   }
 
   const [newLocalEmail, setNewLocalEmail] = useState('');
+  void setNewLocalEmail; // to avoid unused variable warning
 
   const getCompanyDomain = () => {
     const domainFromResponse =
