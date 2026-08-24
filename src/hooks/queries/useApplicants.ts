@@ -223,12 +223,13 @@ export function useApplicant(id: string, options?: {
   initialData?: Applicant;
   enabled?: boolean;
   staleTime?: number;
+  fields?: string;
 }) {
   const queryClient = useQueryClient();
 
   return useQuery({
-    queryKey: applicantsKeys.detail(id),
-    queryFn: () => applicantsService.getApplicantById(id),
+    queryKey: [...applicantsKeys.detail(id), { fields: options?.fields }],
+    queryFn: () => applicantsService.getApplicantById(id, options?.fields),
     enabled: !!id && (options?.enabled ?? true),
     staleTime: options?.staleTime ?? 0,
     refetchOnWindowFocus: true,

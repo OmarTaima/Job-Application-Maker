@@ -295,8 +295,8 @@ class ApplicantsService {
     return allApplicants;
   }
 
-  async getApplicantById(id: string): Promise<Applicant> {
-    const response = await this.request<any>('get', `/applicants/${id}`);
+  async getApplicantById(id: string, fields?: string): Promise<Applicant> {
+    const response = await this.request<any>('get', `/applicants/${id}`, undefined, fields ? { fields } : undefined);
 
     const applicant = (response?.applicant ?? response) as any;
 

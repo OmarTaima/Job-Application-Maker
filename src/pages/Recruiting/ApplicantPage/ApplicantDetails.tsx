@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router';
+import { useParams, useNavigate, useLocation } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import axiosInstance from '../../../config/axios';
 import DOMPurify from 'dompurify';
@@ -28,6 +28,7 @@ import {
   useSendMessage,
 } from '../../../hooks/queries';
 import { resolveCompanyAddress } from '../../../utils/companyAddress';
+import PageMeta from '../../../components/common/PageMeta';
 import type {
   Applicant,
   ResponseSection,
@@ -124,9 +125,19 @@ const formatTime12Hour = (value: string): string => {
 const ApplicantDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  const navApplicant = (location.state as { applicant?: { fullName?: string } } | null)?.applicant;
   const { t, dir } = useLocale();
   const { user } = useAuth();
+  const { data: applicantName} = useApplicant(id || '', { fields: 'fullName' });
   const { data: applicant, isLoading: isApplicantLoading, isFetching: isApplicantFetching, isError, error, refetch } = useApplicant(id || '');
+
+  // Set title immediately from nav state, update when API data arrives
+  const titleName = navApplicant?.fullName || applicantName?.fullName || applicant?.fullName;
+  if (titleName && document.title !== titleName) {
+    document.title = titleName;
+  }
+
   const updateApplicant = useUpdateApplicant();
   const updateStatus = useUpdateApplicantStatus();
   const addComment = useAddComment();
@@ -789,6 +800,7 @@ const ApplicantDetails: React.FC = () => {
 
   return (
     <div className="bg-gray-50">
+      <PageMeta title={navApplicant?.fullName || applicant?.fullName || 'Applicant Details'} description="Applicant details page" />
       <div className="max-w-8xl mx-auto p-6">
         <StickyTopBar>
           <div className="flex flex-wrap items-center justify-between py-3 gap-2">
