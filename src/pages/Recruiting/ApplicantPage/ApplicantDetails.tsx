@@ -485,7 +485,7 @@ const ApplicantDetails: React.FC = () => {
         return bTime - aTime;
       })[0];
       if (applicant && (applicant as any).status !== 'interview') {
-        updateStatus.mutate({ id, data: { status: 'interview' } as any, silent: true } as any);
+        updateStatus.mutate({ id, data: { status: 'interview' }, silent: true });
       }
       setInterviewForm({ date: '', time: '', description: '', comment: '', location: '', link: '', type: 'phone' });
       setNotificationChannels({ email: false, sms: false, whatsapp: false });

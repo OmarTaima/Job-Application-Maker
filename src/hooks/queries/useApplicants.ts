@@ -406,12 +406,15 @@ export function useMarkApplicantSeen() {
 }
 
 // Update applicant status
+type UpdateStatusVariables = { id: string; data: UpdateStatusRequest; silent?: boolean };
+type UpdateStatusContext = { previousLists: Record<string, Applicant[] | undefined>; previousDetailData: Record<string, any> };
+
 export function useUpdateApplicantStatus() {
   const queryClient = useQueryClient();
   const { t } = useLocale();
 
-  return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: UpdateStatusRequest }) =>
+  return useMutation<Applicant, ApiError, UpdateStatusVariables, UpdateStatusContext>({
+    mutationFn: ({ id, data }: UpdateStatusVariables) =>
       applicantsService.updateApplicantStatus(id, data),
     onMutate: async ({ id, data, silent }) => {
       await queryClient.cancelQueries({ queryKey: applicantsKeys.all });
@@ -427,7 +430,7 @@ export function useUpdateApplicantStatus() {
         });
       });
 
-      const previousDetailData: any = {};
+      const previousDetailData: Record<string, any> = {};
       queryClient.setQueriesData({ queryKey: applicantsKeys.detail(id) }, (old: any) => {
         if (!old) return old;
         previousDetailData[JSON.stringify(queryClient.getQueryCache().find({ queryKey: applicantsKeys.detail(id) })?.queryKey)] = old;
@@ -453,7 +456,7 @@ export function useUpdateApplicantStatus() {
         queryClient.setQueriesData({ queryKey: applicantsKeys.detail(id) }, updatedApplicant);
       }
     },
-    onError: (error: ApiError, { id }, context) => {
+    onError: (error: ApiError, _variables, context) => {
       if (context?.previousDetailData) {
         Object.entries(context.previousDetailData).forEach(([key, data]) => {
           if (data !== undefined) {
