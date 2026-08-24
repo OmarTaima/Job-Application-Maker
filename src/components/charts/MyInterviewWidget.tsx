@@ -91,7 +91,7 @@ function formatDate(dateStr: string | undefined, locale: string) {
     dayName:  d.toLocaleDateString(locale === 'ar' ? 'ar-EG' : 'en-US', { weekday: 'short' }),
     day:      d.getDate(),
     month:    d.toLocaleDateString(locale === 'ar' ? 'ar-EG' : 'en-US', { month: 'short' }),
-    time:     d.toLocaleTimeString(locale === 'ar' ? 'ar-EG' : 'en-US', { hour: '2-digit', minute: '2-digit' }),
+    time:     d.toLocaleTimeString(locale === 'ar' ? 'ar-EG' : 'en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }),
     full:     d.toLocaleDateString(locale === 'ar' ? 'ar-EG' : 'en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
   };
 }
