@@ -362,45 +362,28 @@ export function useApplicantFilters({
   // Applicants filtered only by company (for cascading filter options)
   // Get status filter options
   const statusFilterOptions = useMemo(() => {
-    // Start from applicants (raw data) and filter by all non-status column filters
-    let source = Array.isArray(applicants) ? applicants : [];
-
-    const nonStatusFilters = columnFilters.filter(
-      (f: any) => f.id !== 'status' && f.id !== 'rejectionReasons'
-    );
-    for (const filter of nonStatusFilters) {
-      if (!filter.value) continue;
-      const vals = Array.isArray(filter.value) ? filter.value : [filter.value];
-      if (vals.length === 0) continue;
-
-      if (filter.id === 'jobPositionId') {
-        source = source.filter((a: any) => {
-          const raw = a?.jobPositionId;
-          const id = typeof raw === 'string' ? raw : (raw?._id ?? raw?.id ?? '');
-          return vals.includes(id);
-        });
-      } else if (filter.id === 'companyId') {
-        source = source.filter((a: any) => {
-          const cId = getApplicantCompanyId(a, jobPositionMap);
-          return !!cId && vals.includes(cId);
-        });
-      } else if (filter.id === 'gender') {
-        source = source.filter((a: any) => {
-          const raw = a?.gender || a?.customResponses?.gender || a?.customResponses?.['النوع'] || '';
-          const g = normalizeGender(raw);
-          return !!g && vals.includes(g);
+    const statusesFromSettings = new Map<string, string>();
+    allCompaniesRaw.forEach((company: any) => {
+      const statuses = company?.settings?.statuses;
+      if (Array.isArray(statuses)) {
+        statuses.forEach((s: any) => {
+          const name = s?.name?.trim();
+          if (name) {
+            statusesFromSettings.set(name.toLowerCase(), name);
+          }
         });
       }
+    });
+
+    if (statusesFromSettings.size === 0) {
+      const source = Array.isArray(applicants) ? applicants : [];
+      source.forEach((a: any) => {
+        const s = a?.status?.trim();
+        if (s) statusesFromSettings.set(s.toLowerCase(), s);
+      });
     }
 
-    const uniqueStatuses = Array.from(
-      new Map(
-        source
-          .map((a: any) => a?.status)
-          .filter(Boolean)
-          .map((s: string) => [s.trim().toLowerCase(), s.trim()] as [string, string])
-      ).values()
-    );
+    const uniqueStatuses = Array.from(statusesFromSettings.values());
 
     const defaultOrderKeys = ['pending', 'approved', 'interview', 'interviewed', 'rejected', 'trashed'];
     const inDefault = uniqueStatuses.filter(s => defaultOrderKeys.includes(s.toLowerCase()));
@@ -418,7 +401,7 @@ export function useApplicantFilters({
       id: status,  // ← original casing, matches applicant.status exactly
       title: status.charAt(0).toUpperCase() + status.slice(1),
     }));
-  }, [applicants, columnFilters, jobPositionMap, isSuperAdmin, canViewTrashed]);
+  }, [applicants, allCompaniesRaw]);
 
   // Get status color function
   const getStatusColor = useCallback((status: string) => {
