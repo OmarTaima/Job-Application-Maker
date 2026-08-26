@@ -400,7 +400,7 @@ export function useDeleteSavedQuestionGroup() {
       });
       return { previousGroups };
     },
-    onSuccess: (_, groupId) => {
+    onSuccess: (_, _groupId) => {
       showSuccessToast(t('questionGroupDeleted', 'common'), t);
     },
     onError: (error: ApiError, _groupId, context) => {

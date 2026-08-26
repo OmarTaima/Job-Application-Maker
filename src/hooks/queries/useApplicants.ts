@@ -12,7 +12,6 @@ import type {
   SendMessageRequest,
   Applicant,
   Activity,
-  Interview,
   InterviewAnswer,
 } from "../../types/applicants";
 import { ApiError } from "../../services/companiesService";
@@ -142,7 +141,7 @@ function applyInterviewIntent<T extends Applicant | undefined>(
   if (!data || !Array.isArray(data.interviews)) return data;
   const now = Date.now();
   let touched = false;
-  const interviews = (data as Applicant).interviews.map((iv) => {
+  const interviews = ((data as Applicant).interviews ?? []).map((iv) => {
     const ivId = String(iv?._id || iv?.id || '');
     if (!ivId) return iv;
 
@@ -173,7 +172,7 @@ function applyInterviewIntent<T extends Applicant | undefined>(
 
       const incomingById = new Map<string, unknown>();
       deduped.forEach((q) => {
-        const id = String(q?.id || q?._id || '');
+        const id = String((q as Record<string, unknown>)?.id || (q as Record<string, unknown>)?._id || '');
         if (id) incomingById.set(id, q);
       });
 
@@ -192,7 +191,7 @@ function applyInterviewIntent<T extends Applicant | undefined>(
       // 1. Prune anything the client just deleted (server read lagged).
       if (entry.removedIds.size > 0 && questions.length > 0) {
         const filtered = questions.filter((q) => {
-          const qid = String(q?.id || q?._id || '');
+          const qid = String((q as Record<string, unknown>)?.id || (q as Record<string, unknown>)?._id || '');
           return !entry!.removedIds.has(qid);
         });
         if (filtered.length !== questions.length) {
@@ -883,7 +882,6 @@ export function useAddComment() {
           _id: `temp_comment_${Date.now()}`,
           text: data.text || '',
           createdAt: new Date().toISOString(),
-          userId: data.userId,
         };
         queryClient.setQueryData(applicantsKeys.detail(id), {
           ...previousApplicant,
@@ -930,7 +928,7 @@ export function useSendMessage() {
         };
         queryClient.setQueryData(applicantsKeys.detail(id), {
           ...previousApplicant,
-          activities: [...(previousApplicant.activities || []), tempActivity],
+          activities: [...((previousApplicant as any).activities || []), tempActivity],
         });
       }
       return { previousApplicant };

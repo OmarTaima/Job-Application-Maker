@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
 import {
   Ban,
   ClipboardList,
@@ -48,7 +47,6 @@ import {
   useCompanies,
   useCompanyInterviewSettings,
   useUpdateCompanyInterviewSettings,
-  companiesKeys,
 } from '../../../hooks/queries/useCompanies';
 import RejectionTab from './Rejectiontab';
 import StatusSettings from './StatusSettings';
@@ -747,7 +745,6 @@ export default function InterviewCompanySettingsPage() {
   );
 
   const updateInterviewMutation = useUpdateCompanyInterviewSettings();
-  const queryClient = useQueryClient();
 
   const {
     data: interviewSettingsFromQuery,
@@ -1033,7 +1030,7 @@ export default function InterviewCompanySettingsPage() {
         showConfirmButton: false,
       });
     }).catch((error: any) => {
-      setGroups(prev => prev === optimisticGroups ? normalizeGroups(derivedInterviewSettings?.groups) : prev);
+      setGroups(prev => prev === optimisticGroups ? normalizeGroups(derivedInterviewSettings?.groups).map((g, i) => ({ ...g, _id: prev[i]?._id ?? uid() })) as (InterviewGroup & { _id: string })[] : prev);
       Swal.fire(
         t('interviewCompany.swalSaveFailed', 'settings'),
         error?.message || t('interviewCompany.swalSaveFailedMsg', 'settings'),
