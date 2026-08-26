@@ -995,7 +995,6 @@ export default function InterviewCompanySettingsPage() {
     const payloadGroups = validateGroups();
     if (!payloadGroups) return;
 
-    // Get the settings ID from the selected company
     const settingsId = selectedCompany?.settings?._id;
 
     if (!settingsId) {
@@ -1008,62 +1007,41 @@ export default function InterviewCompanySettingsPage() {
     }
 
     setIsSaving(true);
-    // Optimistic: apply the saved groups immediately so the UI never clears
     const optimisticGroups = payloadGroups.map((g, i) => ({
       ...g,
       _id: groups[i]?._id ?? uid(),
     }));
     setGroups(optimisticGroups);
-    if (isSuperAdmin) {
-      queryClient.setQueryData(companiesKeys.list(), (old: any) => {
-        if (!old) return old;
-        if (Array.isArray(old)) {
-          return old.map((c: any) => {
-            if (!c || c._id !== effectiveCompanyId) return c;
-            return {
-              ...c,
-              interviewSettings: { groups: optimisticGroups },
-              settings: { ...(c.settings ?? {}), interviewSettings: { groups: optimisticGroups } },
-            };
-          });
-        }
-        return old;
-      });
-    } else {
-      queryClient.setQueryData(companiesKeys.interviewSettings(effectiveCompanyId), {
-        groups: optimisticGroups,
-      });
-    }
 
-    try {
-      const serverGroups = payloadGroups.map((g) => ({
-        ...g,
-        questions: g.questions.map((q) => ({
-          ...q,
-          choices: Array.isArray(q.choices) ? normalizeChoicesToServer(q.choices) : [],
-        })),
-      }));
-      await updateInterviewMutation.mutateAsync({
-        settingsId,
-        companyId: effectiveCompanyId,
-        data: { interviewSettings: { groups: serverGroups } } as any,
-      });
+    const serverGroups = payloadGroups.map((g) => ({
+      ...g,
+      questions: g.questions.map((q) => ({
+        ...q,
+        choices: Array.isArray(q.choices) ? normalizeChoicesToServer(q.choices) : [],
+      })),
+    }));
 
+    updateInterviewMutation.mutateAsync({
+      settingsId,
+      companyId: effectiveCompanyId,
+      data: { interviewSettings: { groups: serverGroups } } as any,
+    }).then(() => {
       Swal.fire({
         title: t('commonSaved', 'settings'),
         icon: 'success',
         timer: 1200,
         showConfirmButton: false,
       });
-    } catch (error: any) {
+    }).catch((error: any) => {
+      setGroups(prev => prev === optimisticGroups ? normalizeGroups(derivedInterviewSettings?.groups) : prev);
       Swal.fire(
         t('interviewCompany.swalSaveFailed', 'settings'),
         error?.message || t('interviewCompany.swalSaveFailedMsg', 'settings'),
         'error'
       );
-    } finally {
+    }).finally(() => {
       setIsSaving(false);
-    }
+    });
   };
 
   if (!canRead) {

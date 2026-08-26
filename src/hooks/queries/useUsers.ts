@@ -366,12 +366,21 @@ export function useUpdateSavedQuestionGroups() {
   return useMutation({
     mutationFn: (groups: SavedQuestionGroup[]) =>
       savedQuestionGroupsService.updateSavedQuestionGroups(groups),
+    onMutate: async (groups) => {
+      await queryClient.cancelQueries({ queryKey: savedQuestionGroupsKeys.list() });
+      const previousGroups = queryClient.getQueryData<SavedQuestionGroup[]>(savedQuestionGroupsKeys.list());
+      queryClient.setQueryData(savedQuestionGroupsKeys.list(), groups);
+      return { previousGroups };
+    },
     onSuccess: (groups) => {
       queryClient.setQueryData(savedQuestionGroupsKeys.list(), groups);
       showSuccessToast(t('questionGroupsUpdated', 'common'), t);
     },
-    onError: (error: ApiError) => {
-      showErrorToast(error.message, t('questionGroupsUpdateFailed', 'common'), t);
+    onError: (_error: ApiError, _variables, context) => {
+      if (context?.previousGroups) {
+        queryClient.setQueryData(savedQuestionGroupsKeys.list(), context.previousGroups);
+      }
+      showErrorToast(_error.message, t('questionGroupsUpdateFailed', 'common'), t);
     },
   });
 }
@@ -382,14 +391,22 @@ export function useDeleteSavedQuestionGroup() {
 
   return useMutation({
     mutationFn: (groupId: string) => savedQuestionGroupsService.deleteSavedQuestionGroup(groupId),
-    onSuccess: (_, groupId) => {
+    onMutate: async (groupId) => {
+      await queryClient.cancelQueries({ queryKey: savedQuestionGroupsKeys.list() });
+      const previousGroups = queryClient.getQueryData<SavedQuestionGroup[]>(savedQuestionGroupsKeys.list());
       queryClient.setQueryData<SavedQuestionGroup[]>(savedQuestionGroupsKeys.list(), (old) => {
         if (!old) return [];
         return old.filter(group => group._id !== groupId);
       });
+      return { previousGroups };
+    },
+    onSuccess: (_, groupId) => {
       showSuccessToast(t('questionGroupDeleted', 'common'), t);
     },
-    onError: (error: ApiError) => {
+    onError: (error: ApiError, _groupId, context) => {
+      if (context?.previousGroups) {
+        queryClient.setQueryData(savedQuestionGroupsKeys.list(), context.previousGroups);
+      }
       showErrorToast(error.message, t('questionGroupDeleteFailed', 'common'), t);
     },
   });

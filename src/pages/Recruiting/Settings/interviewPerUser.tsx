@@ -291,9 +291,13 @@ export default function SavedQuestionsPage() {
 		if (!payloadGroups) return;
 
 		setIsSaving(true);
+		// Optimistic: immediately update local state so the UI reflects changes
+		setGroups(normalizeGroups(payloadGroups));
+
 		try {
-			const savedGroups = await updateGroupsMutation.mutateAsync(payloadGroups);
-			setGroups(normalizeGroups(savedGroups));
+			updateGroupsMutation.mutateAsync(payloadGroups).catch(() => {
+				setGroups(normalizeGroups(groupsFromApi));
+			});
 
 			Swal.fire({
 				title: t('interviewPerUser.swalSaved', 'settings'),
@@ -303,6 +307,7 @@ export default function SavedQuestionsPage() {
 				showConfirmButton: false,
 			});
 		} catch (error: any) {
+			setGroups(normalizeGroups(groupsFromApi));
 			Swal.fire(
 				t('interviewPerUser.swalSaveFailed', 'settings'),
 				error?.message || t('interviewPerUser.swalSaveFailedMsg', 'settings'),

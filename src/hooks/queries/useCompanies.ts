@@ -562,6 +562,36 @@ export function useUpdateCompanyInterviewSettings() {
       companyId?: string;
       data: UpdateInterviewSettingsRequest;
     }) => companiesService.updateCompanyInterviewSettings(settingsId, data),
+    onMutate: async ({ settingsId, companyId, data }) => {
+      await queryClient.cancelQueries({ queryKey: companiesKeys.interviewSettings(companyId || settingsId) });
+      await queryClient.cancelQueries({ queryKey: companiesKeys.lists() });
+
+      const previousInterviewSettings = queryClient.getQueryData(companiesKeys.interviewSettings(companyId || settingsId));
+      const previousList = queryClient.getQueryData(companiesKeys.list());
+
+      const interviewSettings = (data as any)?.interviewSettings ?? data;
+
+      queryClient.setQueryData(companiesKeys.interviewSettings(companyId || settingsId), interviewSettings);
+      queryClient.setQueryData(companiesKeys.list(), (old: any) => {
+        if (!old) return old;
+        if (Array.isArray(old)) {
+          return old.map((c: any) => {
+            if (!c) return c;
+            if (c.settings?._id === settingsId) {
+              return {
+                ...c,
+                interviewSettings,
+                settings: { ...(c.settings ?? {}), interviewSettings },
+              };
+            }
+            return c;
+          });
+        }
+        return old;
+      });
+
+      return { previousInterviewSettings, previousList, settingsId, companyId };
+    },
     onSuccess: (response, variables) => {
       const { settingsId, companyId } = variables;
 
@@ -600,7 +630,16 @@ export function useUpdateCompanyInterviewSettings() {
 
       showSuccessToast(t('interviewSettingsUpdated', 'common'), t);
     },
-    onError: (error: ApiError) => {
+    onError: (error: ApiError, _variables, context) => {
+      if (context?.previousInterviewSettings) {
+        queryClient.setQueryData(
+          companiesKeys.interviewSettings(context.companyId || context.settingsId),
+          context.previousInterviewSettings
+        );
+      }
+      if (context?.previousList) {
+        queryClient.setQueryData(companiesKeys.list(), context.previousList);
+      }
       showErrorToast(
         error.message,
         t('interviewSettingsUpdateFailed', 'common'),

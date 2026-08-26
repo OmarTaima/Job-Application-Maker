@@ -162,13 +162,40 @@ export const useInterviewState = (
   // We preserve the user's existing slider state for any question whose id
   // Seed group meta from loaded questions so answerType is available for
   // enrichment even before the question pool finishes loading.
-  useEffect(() => {
+  // Must run in useLayoutEffect: a background GET swaps question id-space
+  // (client pool ids -> server document ids), which breaks groupMeta lookups
+  // for exactly one painted frame if seeding happens post-paint — the
+  // "blink". Re-seeding pre-paint means the browser never sees the
+  // intermediate ungrouped state.
+  useLayoutEffect(() => {
     if (!selectedInterview) return;
     const questions = Array.isArray(selectedInterview.questions) ? selectedInterview.questions : [];
     if (questions.length === 0) return;
     groupMeta.seedFromLoaded(questions);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedInterviewId]);
+
+  // Background refetches return questions with regenerated server ids and
+  // stripped group fields. Re-run the seeder whenever the question list
+  // content changes so the stored __idx_N fallbacks re-map groups onto
+  // fresh ids — pre-paint, so the swap is visually seamless.
+  const questionsSignatureRef = useRef<string>('');
+  useLayoutEffect(() => {
+    const sig = flatExistingQuestions
+      .map((q) => `${getQuestionId(q)}:${q?.score ?? ''}:${q?.question ?? ''}`)
+      .join('|');
+    if (sig === questionsSignatureRef.current) return;
+    const isFirst = questionsSignatureRef.current === '';
+    questionsSignatureRef.current = sig;
+    if (!selectedInterview) return;
+    if (flatExistingQuestions.length === 0) return;
+    // First render for this interview is handled by the selectedInterviewId
+    // effect above; this covers subsequent cache swaps (refetch landings).
+    if (!isFirst) {
+      groupMeta.seedFromLoaded(flatExistingQuestions);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flatExistingQuestions, selectedInterview]);
   
   // is still present, and only seed entries for new questions from their
   // achievedScore. This way, the slider responds to drags immediately after
@@ -178,6 +205,20 @@ export const useInterviewState = (
   // preserved by text when a server round trip replaces question ids (while
   // leaving the text intact).
   const questionTextRef = useRef<Record<string, string>>({});
+  // Hard-reset ALL per-interview answer state on interview switch, BEFORE
+  // any seeder runs. Without this, opening another interview inherits the
+  // previous interview's sliders/answers via the byText preservation logic
+  // (same group -> same question wording) — cross-interview answer bleed.
+  useLayoutEffect(() => {
+    setAchievedPercentages({});
+    setAnswers({});
+    setSelectedTagsByQuestion({});
+    setOpenGroups([]);
+    seededQIdsRef.current = '';
+    questionTextRef.current = {};
+    questionsSignatureRef.current = '';
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedInterviewId]);
   useLayoutEffect(() => {
     if (!selectedInterview) return;
     const questions = Array.isArray(selectedInterview.questions) ? selectedInterview.questions : [];

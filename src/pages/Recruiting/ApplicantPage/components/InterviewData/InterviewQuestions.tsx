@@ -10,7 +10,11 @@ import { applicantsKeys } from '../../../../../hooks/queries/useApplicants';
 import { useInterviewActions } from './hooks/useInterviewActions';
 import { useInterviewState } from './hooks/useInterviewState';
 import { useInterviewTimer } from './hooks/useInterviewTimer';
-import { useDeleteInterview } from '../../../../../hooks/queries';
+import {
+  useDeleteInterview,
+  recordQuestionRemovals,
+  recordQuestionAdditions,
+} from '../../../../../hooks/queries';
 import Swal from '../../../../../utils/swal';
 import { getInterviewId } from './utils/interviewUtils';
 import { AssessmentView } from './views/AssessmentView';
@@ -332,8 +336,38 @@ const InterviewQuestions = ({
       newCustomQuestions.length > 0;
     if (!hasPending) return;
     const updated = buildUpdatedQuestions();
+    // Register structural intent BEFORE saving: any background refetch that
+    // lands while the backend read still lags the write gets reconciled in
+    // the query layer, so deleted groups/questions never visibly return and
+    // added ones never visibly vanish.
+    const interviewIdForIntent = getInterviewId(state.selectedInterview as Interview);
+    if (applicantId && interviewIdForIntent) {
+      const prevIds = new Set<string>(
+        state.flatExistingQuestions
+          .map((q) => String(q?.id || q?._id || ''))
+          .filter(Boolean),
+      );
+      const removedIds: string[] = [];
+      const addedQuestions: InterviewAnswer[] = [];
+      const nextIds = new Set<string>();
+      updated.forEach((q) => {
+        const id = String(q?.id || q?._id || '');
+        if (!id) return;
+        nextIds.add(id);
+        if (!prevIds.has(id)) addedQuestions.push(q);
+      });
+      prevIds.forEach((id) => {
+        if (!nextIds.has(id)) removedIds.push(id);
+      });
+      if (removedIds.length > 0) {
+        recordQuestionRemovals(applicantId, interviewIdForIntent, removedIds);
+      }
+      if (addedQuestions.length > 0) {
+        recordQuestionAdditions(applicantId, interviewIdForIntent, addedQuestions);
+      }
+    }
     let cleared = false;
-    void cleared; 
+    void cleared;
     saveInFlightRef.current = true;
     try {
       const ok = await actions.savePickedGroups(updated, false, true);
@@ -352,21 +386,30 @@ const InterviewQuestions = ({
     }
   }, [state, buildUpdatedQuestions, pendingAddGroups, pendingRemoveGroups, pendingRemoveIds, newCustomQuestions, actions]);
 
+  const registerPickerIntent = useCallback((built: InterviewAnswer[]) => {
+    if (!state.selectedInterview || !applicantId) return;
+    const interviewIdForIntent = getInterviewId(state.selectedInterview as Interview);
+    if (!interviewIdForIntent || built.length === 0) return;
+    recordQuestionAdditions(applicantId, interviewIdForIntent, built);
+  }, [state.selectedInterview, applicantId]);
+
   const handleSaveQuestions = useCallback(async () => {
     if (!state.selectedInterview) return;
     const built = buildQuestionsFromGroups(pickerSelectedKeys);
     if (built.length === 0) return;
+    registerPickerIntent(built);
     const ok = await actions.savePickedGroups(built, false);
     if (ok) {
       setPickerSelectedKeys([]);
       state.setView('assessment');
     }
-  }, [state, pickerSelectedKeys, buildQuestionsFromGroups, actions]);
+  }, [state, pickerSelectedKeys, buildQuestionsFromGroups, actions, registerPickerIntent]);
 
   const handleSaveAndStart = useCallback(async () => {
     if (!state.selectedInterview) return;
     const built = buildQuestionsFromGroups(pickerSelectedKeys);
     if (built.length === 0) return;
+    registerPickerIntent(built);
     const ok = await actions.savePickedGroups(built, true);
     if (ok) {
       setPickerSelectedKeys([]);

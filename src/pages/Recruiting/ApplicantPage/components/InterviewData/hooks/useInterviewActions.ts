@@ -81,6 +81,10 @@ void setFieldSaveStatusMap;
           applicantId,
           interviewId,
           data: payload as UpdateInterviewStatusRequest,
+          // Field-level autosave: skip the post-commit background refetch
+          // so rapid typing doesn't trigger a fetch storm. The optimistic
+          // cache entry stays authoritative between structural saves.
+          skipBackgroundRefetch: true,
         });
         const responseInterview = extractInterview(response, interviewId);
         onQuestionsPersisted?.(responseInterview?.questions, builtQuestions);
