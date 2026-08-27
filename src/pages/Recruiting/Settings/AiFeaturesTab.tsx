@@ -132,7 +132,6 @@ const getCompanyName = (
 
 export default function AiFeaturesTab({
   companyId: _companyId,
-  onSaved,
   onChange,
   embedded = false,
 }: Props) {
