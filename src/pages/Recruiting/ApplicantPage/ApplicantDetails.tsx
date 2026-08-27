@@ -486,6 +486,7 @@ const ApplicantDetails: React.FC = () => {
             .map(
               (p) =>
                 `<p style="margin:0 0 12px;color:#444;">${escapeHtml(p)}</p>`
+              
             )
             .join('');
       return `<!DOCTYPE html>
